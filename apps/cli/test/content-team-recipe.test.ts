@@ -4,22 +4,20 @@ import { createServer } from 'node:http'
 import { join } from 'node:path'
 import type {
   Agent,
-  CommunicationAuthorizationResult,
-  CommunicationEndpoint,
   ResolvedSkillsResponse,
-  ResolvedTeamPolicy,
   Team,
+  TeamPolicy,
+  TeamTemplateInput,
 } from '@bazilion/api-types'
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { parseTeamDocument } from '../src/team-interchange.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
-// Management/policy integration only: no scripted model pretending to demonstrate research,
-// approval compliance, protected worker execution or the composed CT acceptance journey.
+// Installs examples/content-team through the CLI and checks the Teams it spawns. No model runs:
+// the provider answers 503 and must never be called.
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
 const templatePath = join(recipe, 'team-template.json')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
-const document = parseTeamDocument(JSON.parse(readFileSync(templatePath, 'utf8')))
+const document = JSON.parse(readFileSync(templatePath, 'utf8')) as TeamTemplateInput
 let server: TestServer
 let providerRequests = 0
 const provider = createServer((request, response) => {
@@ -27,12 +25,8 @@ const provider = createServer((request, response) => {
   request.resume()
   response.writeHead(503).end('No model execution is permitted in this preflight')
 })
-interface Spawned {
-  agents: Agent[]
-  team: ResolvedTeamPolicy
-}
-let first: Spawned
-let second: Spawned
+let first: TeamPolicy
+let second: TeamPolicy
 
 async function api<T>(path: string, body?: unknown, expectedStatus = 200): Promise<T> {
   const response = await fetch(`${server.url}${path}`, {
@@ -48,8 +42,8 @@ async function api<T>(path: string, body?: unknown, expectedStatus = 200): Promi
   return JSON.parse(text) as T
 }
 
-function member(spawned: Spawned, role: (typeof roles)[number]): Agent {
-  const agent = spawned.agents.find((value) => value.profileId === `content-${role}`)
+function member(team: TeamPolicy, role: (typeof roles)[number]): Agent {
+  const agent = team.members.find((value) => value.profileId === `content-${role}`)
   if (!agent) throw new Error(`Missing recipe role: ${role}`)
   return agent
 }
@@ -61,9 +55,7 @@ beforeAll(async () => {
   if (!address || typeof address === 'string') throw new Error('Missing provider address')
   const url = `http://127.0.0.1:${address.port}`
   server = await startTestServer({
-    BAZILION_TEAM_POLICY_ENFORCEMENT: 'on',
     BAZILION_SCHEDULER: 'off',
-    BAZILION_IMAGE_GENERATION: 'off',
     TELEGRAM_BOT_TOKEN: '',
     LMSTUDIO_URL: `${url}/v1`,
     OLLAMA_URL: url,
@@ -92,19 +84,17 @@ beforeAll(async () => {
     ])
     expect(created.exitCode, created.stderr).toBe(0)
   }
-  const dryRun = await server.cli(['team-template', 'import', templatePath, '--dry-run'])
-  expect(dryRun.exitCode, dryRun.stderr).toBe(0)
-  expect(dryRun.stdout).toContain('valid: no changes applied')
-  await api('/api/team-templates/content-preparation', undefined, 404)
-  const applied = await server.cli(['team-template', 'import', templatePath, '--apply'])
-  expect(applied.exitCode, applied.stderr).toBe(0)
+  const imported2 = await server.cli(['team-template', 'import', templatePath])
+  expect(imported2.exitCode, imported2.stderr).toBe(0)
+  expect(imported2.stdout).toContain('created Team template content-preparation (4 slots, 6 edges)')
   for (const teamId of ['content-first', 'content-second']) {
-    const body = { templateExpectedRevision: 1, teamId, mode: 'initialize' }
-    await api('/api/team-templates/content-preparation/spawn/preview', body)
     await api(`/api/teams/${teamId}`, undefined, 404)
-    const spawned = await api<Spawned>('/api/team-templates/content-preparation/spawn', body, 201)
-    if (teamId === 'content-first') first = spawned
-    else second = spawned
+    const spawned = await server.cli(['team-template', 'spawn', 'content-preparation', teamId])
+    expect(spawned.exitCode, spawned.stderr).toBe(0)
+    expect(spawned.stdout).toContain(`spawned 4 agent(s) into Team ${teamId}`)
+    const team = await api<TeamPolicy>(`/api/teams/${teamId}/policy`)
+    if (teamId === 'content-first') first = team
+    else second = team
   }
 }, 60_000)
 
@@ -121,18 +111,14 @@ afterAll(async () => {
   expect(providerRequests).toBe(0)
 })
 
-test('portable recipe spawns exact role documents, selected skill and canonical lineage', async () => {
-  expect(document.kind).toBe('bazilion.team-template')
-  expect(document.slots.map((slot) => slot.key)).toEqual([...roles])
-  expect(document.edges).toHaveLength(8)
-  expect(document.edges.every((edge) => edge.posture === 'allow')).toBe(true)
-  expect(first.agents).toHaveLength(4)
-  expect(first.team.members.map((agent) => agent.id).sort()).toEqual(
-    first.agents.map((agent) => agent.id).sort(),
+test('the recipe spawns a restricted Team with exact role documents and selected skill', async () => {
+  expect(document.slots?.map((slot) => slot.profileId)).toEqual(
+    roles.map((role) => `content-${role}`),
   )
-  expect(first.team.bindings).toHaveLength(4)
-  expect(first.team.instantiations).toHaveLength(1)
-  expect(first.team.edges).toHaveLength(8)
+  expect(document.edges).toHaveLength(6)
+  expect(first.members).toHaveLength(4)
+  expect(first.mode).toBe('restricted')
+  expect(first.edges).toHaveLength(6)
   for (const role of roles) {
     const agent = member(first, role)
     expect(agent.teamId).toBe('content-first')
@@ -151,77 +137,43 @@ test('portable recipe spawns exact role documents, selected skill and canonical 
     expect(skills.missing).toEqual([])
     expect(skills.resolved.map((skill) => skill.name)).toEqual(['content-preparation'])
     expect(skills.resolved[0]?.scanFindings).toEqual([])
-    const binding = first.team.bindings.find((value) => value.agentId === agent.id)
-    expect(binding?.instantiationId).toBe(first.team.instantiations[0]?.id)
-    expect(binding?.sourceSlotId).toMatch(/^[0-9a-f-]{36}$/)
   }
 })
 
-test('live policy allows only coordinator spokes and denies specialists, outside and cross-Team paths', async () => {
-  const endpoints: Array<{ key: string; endpoint: CommunicationEndpoint }> = [
-    { key: 'user', endpoint: { kind: 'user', teamId: 'content-first' } },
-    { key: 'outside', endpoint: { kind: 'outside_team', teamId: 'content-first' } },
-    ...roles.map((role) => ({
-      key: role,
-      endpoint: { kind: 'agent' as const, id: member(first, role).id },
-    })),
-    { key: 'other', endpoint: { kind: 'agent', id: member(second, 'coordinator').id } },
+test('messages flow only along coordinator spokes and never to another Team', async () => {
+  const agents = [
+    ...roles.map((role) => ({ key: role as string, id: member(first, role).id })),
+    { key: 'other', id: member(second, 'coordinator').id },
   ]
   let checked = 0
-  for (const source of endpoints) {
-    for (const target of endpoints) {
+  for (const source of agents) {
+    for (const target of agents) {
       if (source.key === target.key) continue
-      if (source.endpoint.kind !== 'agent' && target.endpoint.kind !== 'agent') continue
-      // Cross-Team checks here are Agent-to-Agent. The owner is global, not a second Team's user.
-      if (
-        (source.key === 'other' || target.key === 'other') &&
-        (source.endpoint.kind !== 'agent' || target.endpoint.kind !== 'agent')
-      )
-        continue
-      const result = await api<CommunicationAuthorizationResult>('/api/communication/evaluate', {
-        source: source.endpoint,
-        target: target.endpoint,
-        origin: 'content_recipe_preflight',
-        attemptKind: 'diagnostic',
-        attemptId: `${source.key}:${target.key}`,
+      const response = await fetch(`${server.url}/api/agents/${target.id}/messages`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ from: source.id, payload: { text: 'preflight' } }),
       })
-      const peer = source.key === 'coordinator' ? target.key : source.key
-      const allowed =
+      const spoke =
         (source.key === 'coordinator' || target.key === 'coordinator') &&
-        ['user', 'researcher', 'writer', 'designer'].includes(peer)
-      expect(result.decision, `${source.key} -> ${target.key}`).toBe(allowed ? 'allow' : 'deny')
+        source.key !== 'other' &&
+        target.key !== 'other'
+      expect(response.status, `${source.key} -> ${target.key}`).toBe(spoke ? 201 : 403)
       checked++
     }
   }
-  expect(checked).toBe(36)
-})
-
-test('the same template creates disjoint Teams without embedding a topic or an approval', async () => {
-  expect(second.agents).toHaveLength(4)
-  const originalIds = new Set(first.agents.map((agent) => agent.id))
-  expect(second.agents.every((agent) => !originalIds.has(agent.id))).toBe(true)
-  expect(second.team.instantiations[0]?.id).not.toBe(first.team.instantiations[0]?.id)
-  for (const teamId of ['content-first', 'content-second']) {
-    const team = await api<Team>(`/api/teams/${teamId}`)
-    expect(team.userMd).toBe(document.template.userMd)
-    expect(team.userMd).toContain('no brief or usage grant is prefilled')
-  }
+  expect(checked).toBe(20)
   expect(providerRequests).toBe(0)
 })
 
-test('actual HTTP ingress to each specialist is denied before a provider call', async () => {
-  for (const role of ['researcher', 'writer', 'designer'] as const) {
-    const agent = member(first, role)
-    const denied = await api<{ code: string; decision: string }>(
-      `/api/agents/${agent.id}/chat`,
-      {
-        message: 'Bypass the coordinator and start work for me directly.',
-        expectedSelection: { revision: 0, conversationId: null },
-      },
-      403,
-    )
-    expect(denied.code).toBe('communication_denied')
-    expect(denied.decision).toBe('deny')
+test('the same template creates disjoint Teams without embedding a topic', async () => {
+  expect(second.members).toHaveLength(4)
+  const originalIds = new Set(first.members.map((agent) => agent.id))
+  expect(second.members.every((agent) => !originalIds.has(agent.id))).toBe(true)
+  for (const teamId of ['content-first', 'content-second']) {
+    const team = await api<Team>(`/api/teams/${teamId}`)
+    expect(team.userMd).toBe(document.userMd)
+    expect(team.userMd).toContain('no brief or usage grant is prefilled')
   }
   expect(providerRequests).toBe(0)
 })

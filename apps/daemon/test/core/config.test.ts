@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { type BazilionDb, openInMemoryDb } from '../../src/core/db/client.ts'
-import { runMigrations } from '../../src/core/db/migrate.ts'
+import { initSchema } from '../../src/core/db/schema.ts'
 import { CONFIG_KEYS, isConfigKey, openConfig } from '../../src/core/repos/config.ts'
 import { openSecrets } from '../../src/core/repos/secrets.ts'
 import { mergeSecretsIntoEnv } from '../../src/core/secrets.ts'
@@ -17,8 +17,8 @@ interface Env {
 
 function makeEnv(): Env {
   const home = mkdtempSync(join(tmpdir(), 'bazilion-config-'))
-  const db = openInMemoryDb()
-  runMigrations(db)
+  const db = openInMemoryDb('')
+  initSchema(db)
   return {
     home,
     db,

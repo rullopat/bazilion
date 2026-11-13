@@ -28,4 +28,4 @@ only current-version approval precedes images, then the exact final combination 
 - Source references, supplied-fact attribution and unresolved rights questions.
 - Intended publication time/timezone and chosen-server format/visibility guidance.
 - Manual composer/upload steps, with an explicit stop before clicking Post unless separately authorized.
-- Correct status: prepared/handed off, not published; held/unavailable/uncertain where applicable.
+- Correct status: prepared/handed off, not published; denied/unavailable/uncertain where applicable.

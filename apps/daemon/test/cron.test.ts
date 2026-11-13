@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test } from 'vitest'
 import { matchesCron, parseCron, validateCron } from '../src/lib/cron.ts'
 
 function at(y: number, mo: number, d: number, h: number, mi: number, dow?: number): Date {
@@ -86,5 +86,59 @@ describe('matchesCron semantics', () => {
     expect(matchesCron(p, at(2026, 4, 17, 0, 0))).toBe(true) // Fri
     expect(matchesCron(p, at(2026, 4, 15, 0, 0))).toBe(true) // 15th
     expect(matchesCron(p, at(2026, 4, 16, 0, 0))).toBe(false)
+  })
+})
+
+describe('matchesCron across daylight-saving changes (daemon local time)', () => {
+  const originalTz = process.env.TZ
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env.TZ
+    else process.env.TZ = originalTz
+  })
+
+  /** Instants (ISO) among `count` minutes from `start` that the expression matches in `tz`. */
+  function matching(tz: string, expression: string, start: string, count: number): string[] {
+    process.env.TZ = tz
+    const cron = parseCron(expression)
+    return Array.from({ length: count }, (_, i) => new Date(Date.parse(start) + i * 60_000))
+      .filter((date) => matchesCron(cron, date))
+      .map((date) => date.toISOString())
+  }
+
+  test.each([
+    ['America/New_York', '2026-03-07T07:30:00Z', '2026-03-08T06:00:00Z', '2026-03-09T06:30:00Z'],
+    ['Europe/Berlin', '2026-03-28T01:30:00Z', '2026-03-29T00:00:00Z', '2026-03-30T00:30:00Z'],
+  ])('02:30 in %s matches around the spring-forward gap but not on the skipped day', (tz, dayBefore, gapStart, dayAfter) => {
+    expect(matching(tz, '30 2 * * *', dayBefore, 1)).toEqual([new Date(dayBefore).toISOString()])
+    expect(matching(tz, '30 2 * * *', gapStart, 180)).toEqual([])
+    expect(matching(tz, '30 2 * * *', dayAfter, 1)).toEqual([new Date(dayAfter).toISOString()])
+  })
+
+  test.each([
+    [
+      'America/New_York',
+      '30 1 * * *',
+      '2026-11-01T04:00:00Z',
+      '2026-11-01T05:30:00.000Z',
+      '2026-11-01T06:30:00.000Z',
+    ],
+    [
+      'Europe/Berlin',
+      '30 2 * * *',
+      '2026-10-24T23:00:00Z',
+      '2026-10-25T00:30:00.000Z',
+      '2026-10-25T01:30:00.000Z',
+    ],
+  ])('a time in the repeated fall-back hour in %s matches both real instants', (tz, expression, start, first, second) => {
+    expect(matching(tz, expression, start, 240)).toEqual([first, second])
+  })
+
+  test('expressions follow the daemon local time, not UTC', () => {
+    expect(matching('Europe/Berlin', '0 9 * * *', '2026-01-15T07:30:00Z', 120)).toEqual([
+      '2026-01-15T08:00:00.000Z',
+    ])
+    expect(matching('Europe/Berlin', '0 9 * * *', '2026-07-15T06:30:00Z', 120)).toEqual([
+      '2026-07-15T07:00:00.000Z',
+    ])
   })
 })

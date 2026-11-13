@@ -1,20 +1,13 @@
 import { fstatSync } from 'node:fs'
-import type { ProviderMessage } from '@bazilion/api-types'
-import { createIpcApiKeyRefresher } from '../../src/runtime/worker/api-key-refresh.ts'
-import { createIpcClient } from '../../src/runtime/worker/ipc-client.ts'
-import {
-  initializeMinimalWorkerProcessEnv,
-  type MinimalWorkerScratch,
-} from '../../src/runtime/worker/runtime.ts'
+import { createProcessIpcClient } from '../../src/runtime/worker/ipc-client.ts'
+import type { MinimalWorkerScratch } from '../../src/runtime/worker/runtime.ts'
 
 interface FixtureInput {
-  kind: 'protected'
-  agent: { agent: { id: string } }
+  kind: 'restricted_review'
   message: string
-  turnId: string
   runtime: { providerName: 'openai-codex'; apiKey: string }
   scratch: MinimalWorkerScratch
-  apiKeyRefreshEnabled: true
+  hosts: string[]
 }
 
 const FORBIDDEN_MINIMAL_INPUT_SENTINELS = [
@@ -25,6 +18,9 @@ const FORBIDDEN_MINIMAL_INPUT_SENTINELS = [
   'unrelated-tool-secret-sentinel',
 ]
 
+/** One more character than the daemon buffers for a single stdout line. */
+const OVERSIZED_FRAME_CHARS = 40 * 1024 * 1024 + 1
+
 async function readInput(): Promise<{ input: FixtureInput; raw: string }> {
   const chunks: Buffer[] = []
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
@@ -34,8 +30,7 @@ async function readInput(): Promise<{ input: FixtureInput; raw: string }> {
 
 async function main(): Promise<void> {
   const { input, raw } = await readInput()
-  initializeMinimalWorkerProcessEnv(process.env, input.scratch)
-  if (!input.apiKeyRefreshEnabled) throw new Error('refresh IPC was not enabled')
+  if (!input.hosts.includes('apiKeyRefreshHost')) throw new Error('refresh IPC was not enabled')
   if (input.message === 'native-abi-mismatch') {
     await new Promise<void>((resolve, reject) => {
       process.stderr.write(
@@ -61,22 +56,11 @@ async function main(): Promise<void> {
     process.exitCode = 1
     return
   }
-  const call = createIpcClient({
-    send: process.send
-      ? (message, done) => process.send?.(message, undefined, undefined, done)
-      : undefined,
-    onMessage: (listener) => process.on('message', listener),
-    onDisconnect: (listener) => process.on('disconnect', listener),
-  })
-  const refresh = createIpcApiKeyRefresher(call, {
-    providerName: input.runtime.providerName,
-    agentId: input.agent.agent.id,
-    turnId: input.turnId,
-  })
-  const rotated = await refresh('openai-codex')
+  const call = createProcessIpcClient()
+  const rotated = await call('refreshApiKey', { providerName: input.runtime.providerName })
   if (input.message === 'oversized-frame') {
-    process.stdout.write('x'.repeat(4_096))
-    return
+    process.stdout.write('x'.repeat(OVERSIZED_FRAME_CHARS))
+    await new Promise<void>(() => setInterval(() => undefined, 1_000))
   }
 
   process.stderr.write('x'.repeat(20_000))
@@ -84,17 +68,18 @@ async function main(): Promise<void> {
   process.stderr.write(`initial=${input.runtime.apiKey.slice(0, initialSplit)}`)
   process.stderr.write(`${input.runtime.apiKey.slice(initialSplit)}\nrotated=${rotated}\n`)
 
-  const messages: ProviderMessage[] = [
+  const proposals = [
     {
-      role: 'assistant',
-      content: JSON.stringify({
+      scope: 'private',
+      evidenceEntryIds: [],
+      text: JSON.stringify({
+        hosts: input.hosts,
         environment: process.env,
         argv: process.argv,
         scratchRoot: input.scratch.root,
         stdinEnded: process.stdin.readableEnded,
         stdioAreRegularFiles: [0, 1, 2].map((fd) => fstatSync(fd).isFile()),
         ipcConnected: process.connected,
-        selectedTokenInputOccurrences: raw.split(input.runtime.apiKey).length - 1,
         forbiddenInputOccurrences: Object.fromEntries(
           FORBIDDEN_MINIMAL_INPUT_SENTINELS.map((sentinel) => [
             sentinel,
@@ -106,7 +91,7 @@ async function main(): Promise<void> {
       }),
     },
   ]
-  process.stdout.write(`${JSON.stringify({ kind: 'done', messages })}\n`)
+  process.stdout.write(`${JSON.stringify({ kind: 'review_result', proposals })}\n`)
   if (input.message === 'hang-after-frame') {
     await new Promise<void>(() => setInterval(() => undefined, 1_000))
   }

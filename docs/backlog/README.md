@@ -1,114 +1,43 @@
-# Product backlog
+# Backlog
 
-One file per user story, organized by state. Each story owns its user outcome, scope, exclusions,
-acceptance criteria, unresolved work and concise As-built summary. Done means the accepted scope
-shipped, not that every provider, platform or future journey is qualified. Active stories describe
-concrete product capability changes or defects; example recipes and validation campaigns are not
-standalone implementation work.
+One file per user story, `BAZ-NNN-short-slug.md`, in `draft/` (an idea), `in_progress/` or
+`done/`; move the file when its state changes. A story holds the outcome, the scope, a short
+as-built summary and the known limits, in 25 to 60 lines. Current behaviour belongs in the
+[guides](../README.md). Stories of removed features are deleted (Git history keeps them), and IDs
+are never reused, so the gaps below are deliberate.
 
-- **Draft:** uncommitted ideas or unresolved prerequisites; refine before starting.
-- **Todo:** refined and ready to implement.
-- **In progress:** active implementation or incomplete acceptance.
-- **Done:** shipped within the explicit recorded scope.
+## Done
 
-Use `BAZ-NNN-short-slug.md` and frontmatter with `id`, `title`, `status`, `size`, `created` and
-applicable release dates. Move the same story between state folders rather than creating a
-progress/acceptance sidecar. Current behavior belongs in the [product documentation](../README.md).
+| ID | Story | Release | Guide |
+| --- | --- | --- | --- |
+| [BAZ-003](done/BAZ-003-reviewed-learning.md) | Reviewed learning | 0.12.0 | |
+| [BAZ-005](done/BAZ-005-agent-templates-refresh.md) | Agent templates with a two-sided first run | 0.5.0 | |
+| [BAZ-006](done/BAZ-006-shell-sandbox-and-approval.md) | Docker shell sandbox and dangerous-command approval | 0.11.0 | [coding](../coding-environments.md) |
+| [BAZ-007](done/BAZ-007-simple-installer-and-dashboard.md) | One-command install and dashboard launch | 0.6.0 | [README](../../README.md) |
+| [BAZ-008](done/BAZ-008-skill-content-scan.md) | Skill content scan | 0.8.0 | |
+| [BAZ-015](done/BAZ-015-team-templates.md) | Team templates | 0.9.0 | [Team Policy](../team-policy.md) |
+| [BAZ-016](done/BAZ-016-team-policy.md) | Team Policy | 0.9.0 | [Team Policy](../team-policy.md) |
+| [BAZ-018](done/BAZ-018-canonical-teams-cleanup.md) | One Team vocabulary and a clean-install schema | 0.9.0 | [upgrades](../upgrades.md) |
+| [BAZ-019](done/BAZ-019-scheduled-triggers.md) | Scheduled triggers | 0.10.0 | [agent engine](../agent-engine.md#9-scheduler) |
+| [BAZ-023](done/BAZ-023-worker-oauth-refresh.md) | ChatGPT token refresh during long turns | 0.11.0 | |
+| [BAZ-024](done/BAZ-024-consistent-backup-restore.md) | Consistent backup and checked restore | 0.11.0 | [backup](../backup.md) |
+| [BAZ-025](done/BAZ-025-agent-loop-circuit-breaker.md) | Agent-message loop breaker | 0.12.0 | |
+| [BAZ-026](done/BAZ-026-operator-attention-center.md) | Attention | 0.12.0 | [attention](../attention-notifications.md) |
+| [BAZ-028](done/BAZ-028-private-web-gateway.md) | Private web gateway | 0.13.0 | [private gateway](../private-gateway.md) |
+| [BAZ-029](done/BAZ-029-single-owner-telegram-pairing.md) | Telegram owner pairing | 0.13.0 | [Telegram](../telegram.md) |
+| [BAZ-030](done/BAZ-030-encrypted-backups.md) | Encrypted backups | 0.13.0 | [backup](../backup.md) |
+| [BAZ-034](done/BAZ-034-durable-agent-deliverables.md) | Saved results | 0.15.0 | [results](../results.md) |
+| [BAZ-035](done/BAZ-035-conversation-library.md) | Conversation library | 0.15.0 | [conversations](../conversations.md) |
+| [BAZ-036](done/BAZ-036-visible-follow-up-queue.md) | Follow-up queue | 0.15.0 | [follow-up queue](../follow-up-queue.md) |
+| [BAZ-037](done/BAZ-037-structured-agent-questions.md) | Agent questions | 0.15.0 | [questions](../questions.md) |
+| [BAZ-038](done/BAZ-038-telegram-attention-notifications.md) | Attention notifications on Telegram | 0.15.0 | [attention](../attention-notifications.md) |
+| [BAZ-039](done/BAZ-039-repository-instructions.md) | Repository instructions | 0.16.0 | [coding](../coding-environments.md) |
+| [BAZ-041](done/BAZ-041-live-tool-output.md) | Live tool output | 0.17.0 | [change review](../change-review.md) |
+| [BAZ-042](done/BAZ-042-git-change-review.md) | Change review | 0.17.0 | [change review](../change-review.md) |
+| [BAZ-053](done/BAZ-053-remove-expo-mobile-app.md) | Remove the Expo mobile app | 0.21.0-beta.1 | |
+| [BAZ-056](done/BAZ-056-remove-cli-chat-repl.md) | Remove the interactive CLI chat loop | 0.21.0-beta.1 | |
+| [BAZ-059](done/BAZ-059-pi-image-generation.md) | Image generation | 0.22.0 | [image generation](../image-generation.md) |
+| [BAZ-069](done/BAZ-069-web-research-and-managed-browser.md) | Web research and the managed browser | 0.23.0 | [web research](../web-research.md), [browser](../browser-research.md) |
+| [BAZ-071](done/BAZ-071-installation-diagnostics.md) | Installation diagnostics | 0.24.0 | |
 
-## Draft (0)
-
-No draft stories currently retained.
-
-The [Telegram roadmap](../telegram-v2.md) retains unnumbered future user stories. It is not an
-implementation commitment or supported-feature list. The
-[experimental content-Team recipe](../../examples/content-team/README.md) remains an example,
-not a product implementation commitment or qualified end-to-end workflow.
-Removed stories remain recoverable through Git history; do not reuse their IDs.
-
-## Todo (0)
-
-No stories currently ready to pull.
-
-## In progress (1)
-
-- [BAZ-072 — Apple Silicon macOS feature parity](in_progress/BAZ-072-apple-silicon-feature-parity.md):
-  targets 0.25.0; Git, stdio, browser and protected-runtime parity with Linux. Qualification targets
-  Apple Silicon on the latest stable macOS with both supported Node lines. Technical-floor auditing,
-  safe platform adapters, implementation and macOS qualification remain open.
-
-## Done (56)
-
-### Released in 0.24.0 within explicit limits
-
-- [BAZ-057 — Ordinary macOS chat](done/BAZ-057-portable-safe-reads.md): bounded macOS arm64
-  CLI/API/browser qualification; Linux-only Git/stdio and conservative ownership remain.
-- [BAZ-071 — Installation and platform diagnostics](done/BAZ-071-platform-readiness-diagnostics.md):
-  independent CLI/web health, support and protected readiness; execution gates unchanged.
-
-### Agent configuration, policy and runtime
-
-- [BAZ-002 — Profile groups](done/BAZ-002-profile-groups.md)
-- [BAZ-003 — Reviewed self-learning](done/BAZ-003-hermes-self-learning.md)
-- [BAZ-005 — Agent templates](done/BAZ-005-agent-templates-refresh.md)
-- [BAZ-006 — Shell isolation and command approval](done/BAZ-006-skill-execution-security.md)
-- [BAZ-007 — Installer and dashboard](done/BAZ-007-simple-installer-and-dashboard.md)
-- [BAZ-008 — Skill content scan](done/BAZ-008-skill-content-scan.md)
-- [BAZ-009 — Configurable Team policy](done/BAZ-009-configurable-agent-harness.md)
-- [BAZ-010 — Policy persistence/API](done/BAZ-010-harness-persistence-api.md)
-- [BAZ-011 — Policy runtime enforcement](done/BAZ-011-harness-runtime-enforcement.md)
-- [BAZ-012 — Policy management web UI](done/BAZ-012-production-harness-web.md)
-- [BAZ-013 — Policy CLI](done/BAZ-013-harness-cli-policy-tools.md)
-- [BAZ-014 — Communication approvals](done/BAZ-014-harness-communication-approvals.md)
-- [BAZ-015 — Policy lifecycle/API](done/BAZ-015-harness-policy-lifecycle-api.md)
-- [BAZ-016 — Runtime communication boundaries](done/BAZ-016-harness-runtime-boundaries.md)
-- [BAZ-017 — Canonical web editor](done/BAZ-017-harness-web-editor-migration.md)
-- [BAZ-018 — Canonical Teams](done/BAZ-018-canonical-teams-cleanup.md)
-- [BAZ-019 — Scheduled trigger reliability](done/BAZ-019-scheduled-trigger-reliability.md)
-- [BAZ-023 — Worker OAuth refresh](done/BAZ-023-worker-oauth-refresh.md)
-- [BAZ-024 — Consistent backup/restore](done/BAZ-024-consistent-backup-restore.md)
-- [BAZ-025 — Agent-loop circuit breaker](done/BAZ-025-agent-loop-circuit-breaker.md)
-- [BAZ-026 — Operator attention](done/BAZ-026-operator-attention-center.md)
-- [BAZ-027 — Credential-minimal protected execution](done/BAZ-027-credential-minimal-protected-agent-execution.md)
-- [BAZ-028 — Private gateway](done/BAZ-028-secure-personal-web-mobile-gateway.md)
-- [BAZ-029 — Telegram owner pairing](done/BAZ-029-single-owner-telegram-pairing.md)
-- [BAZ-030 — Encrypted backups/recovery](done/BAZ-030-encrypted-backups-credential-recovery.md)
-- [BAZ-031 — Protected provider coverage](done/BAZ-031-protected-runtime-provider-expansion.md)
-- [BAZ-032 — Personal-server security](done/BAZ-032-personal-server-security-acceptance.md)
-- [BAZ-033 — Product experience](done/BAZ-033-product-experience-hardening.md)
-
-### Conversations and Agent-led coding
-
-- [BAZ-034 — Durable Results](done/BAZ-034-durable-agent-deliverables.md)
-- [BAZ-035 — Conversation library](done/BAZ-035-conversation-library.md)
-- [BAZ-036 — Follow-up queue](done/BAZ-036-visible-follow-up-queue.md)
-- [BAZ-037 — Structured questions](done/BAZ-037-structured-agent-questions.md)
-- [BAZ-038 — Attention notifications](done/BAZ-038-telegram-attention-notifications.md)
-- [BAZ-039 — Repository context](done/BAZ-039-repository-coding-context.md)
-- [BAZ-040 — Coding readiness](done/BAZ-040-coding-environment-readiness.md)
-- [BAZ-041 — Coding command receipts](done/BAZ-041-coding-command-verification.md)
-- [BAZ-042 — Captured source changes](done/BAZ-042-git-change-review.md)
-- [BAZ-043 — Specialist review](done/BAZ-043-coding-review-handoff.md)
-- [BAZ-044 — Specialist verification](done/BAZ-044-specialist-verification-handoff.md)
-- [BAZ-045 — Boundary claims](done/BAZ-045-boundary-claims-observed.md)
-- [BAZ-046 — Operator-controlled publication](done/BAZ-046-publish-accepted-change.md)
-- [BAZ-047 — Schema compatibility](done/BAZ-047-stable-schema-contract.md)
-- [BAZ-049 — Platform CI/installer](done/BAZ-049-cross-platform-ci-and-installer-e2e.md)
-- [BAZ-050 — Coding UI consistency](done/BAZ-050-post-coding-sequence-ui-consistency-sweep.md)
-- [BAZ-051 — Failure visibility](done/BAZ-051-failure-mode-visibility-audit.md)
-- [BAZ-052 — Supportability and growth](done/BAZ-052-beta-supportability-gates-and-growth.md)
-- [BAZ-053 — Remove Expo app](done/BAZ-053-remove-expo-mobile-app.md)
-- [BAZ-055 — Device credentials/pairing](done/BAZ-055-scoped-device-credentials-and-pairing.md)
-- [BAZ-056 — Remove CLI REPL](done/BAZ-056-remove-cli-chat-repl.md)
-
-### Released in 0.23.0 within explicit limits
-
-- [BAZ-059 — Image generation](done/BAZ-059-pi-image-generation.md): bounded ChatGPT live scope;
-  direct OpenAI/OpenRouter remain live-unqualified; no exact-geometry guarantee.
-- [BAZ-065 — Scheduling/recovery](done/BAZ-065-content-team-scheduling-and-recovery.md): limited
-  scheduler/process scope; composed D/S and live/human content journey remain unassigned.
-- [BAZ-067 — Protected discovery](done/BAZ-067-protected-web-discovery.md): bounded configured
-  SearXNG, not native search/browser access for protected turns.
-- [BAZ-068 — Workspace recovery](done/BAZ-068-workspace-recovery-surface.md): only known recorded
-  owned resources; no arbitrary-host cleanup or unknown-owner force unlock.
-- [BAZ-069 — Web research](done/BAZ-069-browser-backed-default-web-search.md): bounded subscription
-  acceptance; API-key search remains experimental/live-unqualified and browser access is site-dependent.
+No story is in draft or in progress.

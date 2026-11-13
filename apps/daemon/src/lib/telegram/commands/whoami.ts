@@ -1,8 +1,4 @@
-// `/whoami` — echo the sender's Telegram identity.
-//
-// Seed for a future per-user ACL system (the doc's "command_allow_from"
-// allowlist keyed on Telegram user_id). For now it's diagnostic: lets the
-// operator confirm the bot is actually reading their inputs.
+// `/whoami` — echo the sender's Telegram identity (the user id is what /allow takes).
 
 import { htmlEscape } from '../html.ts'
 import type { CommandHandler } from './types.ts'

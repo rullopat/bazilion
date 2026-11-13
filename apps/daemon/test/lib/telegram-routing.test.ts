@@ -18,7 +18,7 @@ import {
   routeUpdate,
 } from '../../src/lib/telegram/routing.ts'
 import { _resetSpawnStateForTest } from '../../src/lib/telegram/spawn-state.ts'
-import * as queueAdmission from '../../src/lib/user-queue-admission.ts'
+import * as queueAdmission from '../../src/lib/user-queue.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 const CHAT_ID = -1003964430972
@@ -102,19 +102,11 @@ beforeEach(() => {
     id: 'base',
     defaultModel: 'anthropic:claude-opus-4-6',
     defaultSkills: [],
-    communicationDefaults: {
-      userInput: true,
-      userOutput: true,
-      outsideTeamInput: false,
-      outsideTeamOutput: false,
-      peerDefault: 'allow_all',
-    },
   })
   _resetRouterStateForTest()
   _resetSpawnStateForTest()
-  // Seed the default sender (user 11) as an allowlisted owner so the Phase 7
-  // ACL gate doesn't claim/deny in tests that pre-date it. ACL-specific tests
-  // start from a fresh env (no seed) to exercise pairing + deny.
+  // Seed the default sender (user 11) as the paired owner. ACL-specific tests
+  // clear the list to exercise pairing and denial.
   telegramAclRepo.add(env.db, { userId: 11, role: 'owner', label: 'P' })
 })
 afterEach(() => {
@@ -125,55 +117,56 @@ afterEach(() => {
 })
 
 describe('routeUpdate classification', () => {
-  test('queue commands enforce owner identity, revisions and pause-before-cancel', async () => {
+  test('members chat and control the queue with /queue, /stop and /resume', async () => {
     const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const { api, sends } = makeReplyApi()
-    const deps = {
-      db: env.db,
-      paths: env.paths,
-      authToken: 't',
-      api,
-      chatId: CHAT_ID,
-      botToken: 'bot',
-    }
-    await routeUpdate(deps, messageUpdate({ threadId: 42, text: 'retained input' }))
-    const item = userQueue.list(env.db, agent.id).items[0]
-    if (!item) throw new Error('Expected accepted input')
+    const deps = { db: env.db, paths: env.paths, api, chatId: CHAT_ID, botToken: 'bot' }
     telegramAclRepo.add(env.db, { userId: 22, role: 'member' })
-    await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue pause 0', fromUserId: 22 }))
-    expect(sends.at(-1)?.text).toContain('paired owner')
-    expect(userQueue.control(env.db, agent.id).paused).toBe(false)
+    expect(
+      await routeUpdate(
+        deps,
+        messageUpdate({ threadId: 42, text: 'from a member', fromUserId: 22 }),
+      ),
+    ).toMatchObject({ kind: 'agent_topic', queued: true })
+    await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue', fromUserId: 22 }))
+    expect(sends.at(-1)?.text).toContain('1. pending · from a member')
     const controller = new AbortController()
     registerAgent(agent.id, controller)
     try {
-      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue stop 3' }))
-      expect(controller.signal.aborted).toBe(false)
-      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue stop 0' }))
+      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/stop', fromUserId: 22 }))
       expect(controller.signal.aborted).toBe(true)
-      expect(userQueue.control(env.db, agent.id)).toMatchObject({ paused: true, revision: 1 })
-      await routeUpdate(
-        deps,
-        messageUpdate({ threadId: 42, text: `/queue remove ${item.id} ${item.revision}` }),
-      )
-      expect(userQueue.get(env.db, agent.id, item.id)?.status).toBe('cancelled')
-      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue resume 1' }))
-      expect(userQueue.control(env.db, agent.id)).toMatchObject({ paused: false, revision: 2 })
+      expect(userQueue.isPaused(env.db, agent.id)).toBe(true)
+      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue drop 1' }))
+      expect(userQueue.pendingCount(env.db, agent.id)).toBe(0)
+      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/resume' }))
+      expect(userQueue.isPaused(env.db, agent.id)).toBe(false)
     } finally {
       unregisterAgent(agent.id)
     }
   })
-  test('approval-required Telegram ingress retains complete media with its canonical hold', async () => {
+  test('only an owner can /allow and /deny', async () => {
+    const { api, sends } = makeReplyApi()
+    const deps = { db: env.db, paths: env.paths, api, chatId: CHAT_ID, botToken: 'bot' }
+    telegramAclRepo.add(env.db, { userId: 22, role: 'member' })
+    const command = (text: string, fromUserId: number) =>
+      routeUpdate(deps, messageUpdate({ threadId: SERVICE_TOPIC, text, fromUserId }))
+
+    await command('/allow 99', 22)
+    expect(sends.at(-1)?.text).toBe('Only an owner can manage the allowlist.')
+    expect(telegramAclRepo.get(env.db, 99)).toBeNull()
+    await command('/deny 11', 22)
+    expect(sends.at(-1)?.text).toBe('Only an owner can manage the allowlist.')
+    expect(telegramAclRepo.get(env.db, 11)?.role).toBe('owner')
+
+    await command('/allow 99', 11)
+    expect(telegramAclRepo.get(env.db, 99)?.role).toBe('member')
+    await command('/deny 99', 11)
+    expect(telegramAclRepo.get(env.db, 99)).toBeNull()
+  })
+  test('Telegram ingress retains complete media in the follow-up queue', async () => {
     const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-    env.db.raw.run(
-      `UPDATE team_policy_edges SET posture = 'approval_required'
-       WHERE team_id = ? AND source_kind = 'user' AND target_kind = 'agent'
-         AND target_id = ?`,
-      [env.teamId, agent.id],
-    )
-    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     const { api, sends } = makeReplyApi()
     let lookups = 0
     api.getFile = async () => {
@@ -189,104 +182,26 @@ describe('routeUpdate classification', () => {
     ).photo = [{ file_id: 'secret', file_size: 4, width: 1, height: 1 }]
     try {
       const outcome = await routeUpdate(
-        { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
+        { db: env.db, paths: env.paths, botToken: 'bot', api, chatId: CHAT_ID },
         update,
       )
       expect(outcome).toMatchObject({ kind: 'agent_topic', queued: true })
       expect(lookups).toBe(1)
-      expect(userQueue.list(env.db, agent.id).items[0]?.status).toBe('held')
-      expect(sends.at(-1)?.text).toMatch(/held/)
-      expect(
-        env.db.raw
-          .query<{ count: number }, []>('SELECT COUNT(*) count FROM communication_approvals')
-          .get()?.count,
-      ).toBe(1)
-    } finally {
-      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
-    }
-  })
-
-  test('policy denial happens before Telegram media lookup or download', async () => {
-    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
-    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-    env.db.raw.run("DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'user'", [
-      env.teamId,
-    ])
-    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
-    const { api, sends } = makeReplyApi()
-    let lookups = 0
-    api.getFile = async () => {
-      lookups++
-      return { file_path: 'secret.jpg' }
-    }
-    const update = messageUpdate({ threadId: 42 })
-    ;(
-      update.message as never as {
-        photo: Array<{ file_id: string; file_size: number; width: number; height: number }>
-      }
-    ).photo = [{ file_id: 'secret', file_size: 4, width: 1, height: 1 }]
-    try {
-      const outcome = await routeUpdate(
-        { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
-        update,
-      )
-      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
-      expect(lookups).toBe(0)
-      expect(userQueue.pendingCount(env.db, agent.id)).toBe(0)
-      expect(sends.at(-1)?.text).toMatch(/blocked by Team policy/)
-    } finally {
-      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
-    }
-  })
-
-  test('policy changes during media fetch deny acceptance and retain source-owned block evidence', async () => {
-    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
-    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
-    const { api } = makeReplyApi()
-    api.getFile = async () => ({ file_path: 'secret.jpg' })
-    vi.stubGlobal('fetch', async () => {
-      env.db.raw.run("DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'user'", [
-        env.teamId,
-      ])
-      return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } })
-    })
-    const update = messageUpdate({ threadId: 42 })
-    ;(
-      update.message as never as {
-        photo: Array<{ file_id: string; file_size: number; width: number; height: number }>
-      }
-    ).photo = [{ file_id: 'secret', file_size: 3, width: 1, height: 1 }]
-    try {
-      const outcome = await routeUpdate(
-        { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
-        update,
-      )
-      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
-      expect(userQueue.pendingCount(env.db, agent.id)).toBe(0)
-      expect(
-        env.db.raw
-          .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
-          .get()?.count,
-      ).toBe(1)
+      const item = userQueue.list(env.db, agent.id).items[0]
+      if (!item) throw new Error('Expected retained input')
+      expect(item.status).toBe('pending')
+      expect(item.attachments).toHaveLength(1)
+      // The 👀 reaction is the only acknowledgement.
+      expect(sends).toEqual([])
     } finally {
       vi.unstubAllGlobals()
-      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
     }
   })
 
   test('non-message updates flow through with kind=non_message', async () => {
     const { api, sends } = makeReplyApi()
     const u: Update = { update_id: 1, my_chat_member: {} as never }
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 'tok', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('non_message')
     expect(sends.length).toBe(0)
   })
@@ -301,10 +216,7 @@ describe('routeUpdate classification', () => {
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: 42, text: 'hi from another bot', fromIsBot: true })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('ignored_bot')
     expect(sends.length).toBe(0)
   })
@@ -316,7 +228,7 @@ describe('routeUpdate classification', () => {
       name: 'identity-bound',
     })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-    const enqueue = vi.spyOn(queueAdmission, 'enqueueTelegramInput')
+    const enqueue = vi.spyOn(queueAdmission, 'enqueueUserInput')
     enqueue.mockClear()
     const { api, sends } = makeReplyApi()
 
@@ -328,10 +240,7 @@ describe('routeUpdate classification', () => {
     }
     delete edited.message
     expect(
-      await routeUpdate(
-        { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-        edited,
-      ),
+      await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, edited),
     ).toEqual({ kind: 'ignored_edit' })
 
     const anonymous = messageUpdate({ threadId: 42, text: 'anonymous admin' }) as Update
@@ -343,10 +252,7 @@ describe('routeUpdate classification', () => {
     anonymousMessage.from = undefined
     anonymousMessage.sender_chat = anonymousMessage.chat
     expect(
-      await routeUpdate(
-        { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-        anonymous,
-      ),
+      await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, anonymous),
     ).toEqual({ kind: 'unauthorized', userId: 0 })
 
     expect(enqueue).not.toHaveBeenCalled()
@@ -357,10 +263,7 @@ describe('routeUpdate classification', () => {
     env.db.raw.run('DELETE FROM telegram_allowed_users')
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 7 })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('pairing_required')
     expect(telegramAclRepo.get(env.db, 7)).toBeNull()
     expect(sends[0]?.text).toMatch(/not paired/i)
@@ -368,7 +271,7 @@ describe('routeUpdate classification', () => {
     const { telegramPairingRepo } = await import('../../src/core/index.ts')
     const challenge = telegramPairingRepo.create(env.db)
     const paired = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      { db: env.db, paths: env.paths, api, chatId: CHAT_ID },
       messageUpdate({ threadId: SERVICE_TOPIC, text: `/pair ${challenge.code}`, fromUserId: 7 }),
     )
     expect(paired.kind).toBe('paired_owner')
@@ -379,23 +282,18 @@ describe('routeUpdate classification', () => {
     // user 11 is the seeded owner; user 99 is not on the list.
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 99 })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('unauthorized')
     if (outcome.kind === 'unauthorized') expect(outcome.userId).toBe(99)
-    expect(sends[0]?.text).toMatch(/not authorized/i)
+    // The id the owner needs for /allow comes with the refusal.
+    expect(sends[0]?.text).toMatch(/not authorized.*\/allow 99/i)
   })
 
   test('ACL: an allowlisted member passes the gate', async () => {
     telegramAclRepo.add(env.db, { userId: 42, role: 'member' })
     const { api } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 42 })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('service_command')
   })
 
@@ -411,10 +309,7 @@ describe('routeUpdate classification', () => {
         migrate_to_chat_id: -1009999999999,
       },
     } as Update
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('chat_migrated')
     if (outcome.kind === 'chat_migrated') expect(outcome.toChatId).toBe(-1009999999999)
     expect(openConfig(env.db).get('TELEGRAM_MIGRATED_CHAT_ID')).toBe('-1009999999999')
@@ -423,17 +318,14 @@ describe('routeUpdate classification', () => {
   test('foreign chat (private DM with the bot) is recognized but ignored', async () => {
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ chatId: 11, text: 'hi' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('foreign_chat')
     expect(sends.length).toBe(0)
   })
 
   test('General topic (no thread_id) triggers a redirect once, then suppresses for 60s', async () => {
     const { api, sends } = makeReplyApi()
-    const deps = { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID }
+    const deps = { db: env.db, paths: env.paths, api, chatId: CHAT_ID }
 
     const first = await routeUpdate(deps, messageUpdate({ text: 'hello' }))
     expect(first.kind).toBe('general_redirect')
@@ -450,10 +342,7 @@ describe('routeUpdate classification', () => {
   test('service-chat plain text gets a "/help" nudge', async () => {
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: 'random chatter' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('service_plain_text')
     expect(sends.length).toBe(1)
     expect(sends[0]?.text).toMatch(/\/help/)
@@ -462,10 +351,7 @@ describe('routeUpdate classification', () => {
   test('service-chat slash command dispatches /help', async () => {
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('service_command')
     if (outcome.kind === 'service_command') {
       expect(outcome.name).toBe('help')
@@ -479,10 +365,7 @@ describe('routeUpdate classification', () => {
   test('service-chat unknown command surfaces with a hint', async () => {
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/nope' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('service_unknown_command')
     if (outcome.kind === 'service_unknown_command') expect(outcome.name).toBe('nope')
     expect(sends[0]?.text).toMatch(/Unknown command/)
@@ -496,10 +379,7 @@ describe('routeUpdate classification', () => {
     })
     const { api, sends, creates } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/talk r1' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('service_command')
     // The createForumTopic API call landed.
     expect(creates.length).toBe(1)
@@ -516,10 +396,7 @@ describe('routeUpdate classification', () => {
     registerTeam(env.db, { id: 'work', name: 'Work' }, env.paths)
     const { api, creates } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/spawn base teammate in work' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('service_command')
     const created = agentRepo.list(env.db).find((a) => a.name === 'teammate')
     expect(created?.teamId).toBe('work')
@@ -529,16 +406,13 @@ describe('routeUpdate classification', () => {
   test('/spawn into an unknown team is rejected with a hint', async () => {
     const { api, creates } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/spawn base x in nope' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('service_command')
     expect(creates.length).toBe(0)
     expect(agentRepo.list(env.db).find((a) => a.name === 'x')).toBeUndefined()
   })
 
-  test('agent-topic inbound durably accepts input and acknowledges its receipt', async () => {
+  test('agent-topic input joins the queue without a reply', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
       teamId: env.teamId,
@@ -547,23 +421,17 @@ describe('routeUpdate classification', () => {
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: 42, text: 'hi agent' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('agent_topic')
     if (outcome.kind === 'agent_topic') expect(outcome.agentId).toBe(agent.id)
-    expect(sends.at(-1)?.text).toMatch(/Follow-up .*pending/)
+    expect(sends).toEqual([])
     expect(userQueue.pendingCount(env.db, agent.id)).toBe(1)
   })
 
   test('unknown topic (not service, not bound) gets a "not bound" reply', async () => {
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: 9999, text: 'lost' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('unknown_topic')
     if (outcome.kind === 'unknown_topic') expect(outcome.topicId).toBe(9999)
     expect(sends[0]?.text).toMatch(/isn.+t bound/)
@@ -586,10 +454,7 @@ describe('routeUpdate classification', () => {
         data: 'spawn:profile:base',
       } as never,
     }
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('callback_spawn_profile')
     // The picker message gets edited in place with the name prompt.
     expect(edits.length).toBe(1)
@@ -612,10 +477,7 @@ describe('routeUpdate classification', () => {
 
     const { api, sends, creates } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: 'orpheus', fromUserId: 11 })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('spawn_name_input')
     if (outcome.kind === 'spawn_name_input') {
       expect(outcome.profileId).toBe('base')
@@ -643,10 +505,7 @@ describe('routeUpdate classification', () => {
         data: 'something-else',
       } as never,
     }
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('unauthorized')
     expect(acks.length).toBe(1)
     expect(edits.length).toBe(0)
@@ -664,10 +523,7 @@ describe('routeUpdate classification', () => {
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: 42, text: '/close' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('agent_topic_command')
     if (outcome.kind === 'agent_topic_command') {
       expect(outcome.name).toBe('close')
@@ -686,10 +542,7 @@ describe('routeUpdate classification', () => {
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const { api } = makeReplyApi()
     const u = messageUpdate({ threadId: 42, text: '/unbind' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('agent_topic_command')
     expect(agentRepo.getTelegramTopicId(env.db, agent.id)).toBeNull()
   })
@@ -709,10 +562,7 @@ describe('routeUpdate classification', () => {
 
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: 42, text: '/rebind target' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('agent_topic_command')
     expect(agentRepo.getTelegramTopicId(env.db, sourceAgent.id)).toBeNull()
     expect(agentRepo.getTelegramTopicId(env.db, targetAgent.id)).toBe(42)
@@ -735,10 +585,7 @@ describe('routeUpdate classification', () => {
 
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: 42, text: '/rebind target' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('agent_topic_command')
     // Source still bound to 42; target still bound to 99 — no swap happened.
     expect(agentRepo.getTelegramTopicId(env.db, sourceAgent.id)).toBe(42)
@@ -755,10 +602,7 @@ describe('routeUpdate classification', () => {
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: 42, text: '/spawn base' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     // Service-only command dispatched in topic context → routes as unknown.
     expect(outcome.kind).toBe('agent_topic_unknown_command')
     expect(sends[0]?.text).toMatch(/Unknown command/)
@@ -773,10 +617,7 @@ describe('routeUpdate classification', () => {
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: 42, text: '/help' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('agent_topic_command')
     expect(sends[0]?.text).toContain("You're in")
     expect(sends[0]?.text).toContain('<code>r1</code>')
@@ -785,55 +626,8 @@ describe('routeUpdate classification', () => {
   test('/close in service chat is rejected (wrong surface)', async () => {
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/close' })
-    const outcome = await routeUpdate(
-      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
-      u,
-    )
+    const outcome = await routeUpdate({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }, u)
     expect(outcome.kind).toBe('service_unknown_command')
     expect(sends[0]?.text).toMatch(/Unknown command/)
   })
-})
-
-test('media ingress captures its conversation before an asynchronous download', async () => {
-  const { randomUUID } = await import('node:crypto')
-  const conversations = await import('../../src/core/repos/conversations.ts')
-  const { createConversationFile } = await import('../../src/lib/conversation-file.ts')
-  const media = await import('../../src/lib/telegram/media.ts')
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
-  agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-  let finishDownload!: () => void
-  const gate = new Promise<void>((resolve) => {
-    finishDownload = resolve
-  })
-  const download = vi.spyOn(media, 'downloadMediaBytes').mockImplementation(async () => {
-    await gate
-    return { ok: true, data: 'eA==', mimeType: 'text/plain', name: 'input.txt' }
-  })
-  const { api } = makeReplyApi()
-  const update = messageUpdate({ threadId: 42, text: 'Read this file' })
-  Object.assign(update.message!, {
-    document: {
-      file_id: 'test-file',
-      file_unique_id: 'unique',
-      file_name: 'input.txt',
-      mime_type: 'text/plain',
-    },
-  })
-  const routing = routeUpdate(
-    { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID, botToken: 'bot' },
-    update,
-  )
-  await vi.waitFor(() => expect(download).toHaveBeenCalledOnce())
-  const original = conversations.selection(env.db, agent.id)
-  const next = conversations.create(
-    env.db,
-    agent.id,
-    { requestId: randomUUID(), expectedSelection: original },
-    (id) => createConversationFile(env.paths, agent.id, id, env.paths.teamDir(env.teamId)),
-  )
-  finishDownload()
-  await routing
-  expect(userQueue.list(env.db, agent.id).items).toHaveLength(1)
-  expect(userQueue.list(env.db, agent.id).items[0]?.conversationId).toBe(original.conversationId)
-  expect(conversations.selection(env.db, agent.id)).toEqual(next.selection)
 })

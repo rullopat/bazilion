@@ -4,10 +4,7 @@ import { connect } from 'node:net'
 import { join } from 'node:path'
 import { defineCommand } from 'citty'
 import { resolveCliPaths } from '../paths.ts'
-
-const bundledDaemonEntry = join(import.meta.dirname, 'daemon.js')
-const sourceDaemonEntry = join(import.meta.dirname, '..', '..', '..', 'daemon', 'src', 'index.ts')
-const daemonEntry = existsSync(bundledDaemonEntry) ? bundledDaemonEntry : sourceDaemonEntry
+import { daemonEntry, nodeArgs } from './serve.ts'
 
 const bundledWebServerEntry = join(import.meta.dirname, 'web-server.js')
 const sourceWebServerEntry = join(import.meta.dirname, '..', 'web-server.ts')
@@ -18,10 +15,6 @@ const webServerEntry = existsSync(bundledWebServerEntry)
 const bundledWebDist = join(import.meta.dirname, 'web')
 const sourceWebDist = join(import.meta.dirname, '..', '..', '..', 'web', 'dist')
 const webDist = existsSync(bundledWebDist) ? bundledWebDist : sourceWebDist
-
-function nodeArgs(entry: string): string[] {
-  return entry.endsWith('.ts') ? ['--import', 'tsx/esm', entry] : [entry]
-}
 
 async function responds(url: string): Promise<boolean> {
   try {
@@ -97,16 +90,8 @@ async function waitFor(url: string, label: string, timeoutMs = 20_000): Promise<
 }
 
 function openBrowser(url: string): void {
-  const platform = process.platform
-  const cmd =
-    platform === 'darwin'
-      ? 'open'
-      : platform === 'win32'
-        ? 'cmd'
-        : process.env.BROWSER || 'xdg-open'
-  const args = platform === 'win32' ? ['/c', 'start', '', url] : [url]
-  const proc = spawn(cmd, args, { detached: true, stdio: 'ignore' })
-  proc.unref()
+  const cmd = process.platform === 'darwin' ? 'open' : process.env.BROWSER || 'xdg-open'
+  spawn(cmd, [url], { detached: true, stdio: 'ignore' }).unref()
 }
 
 function spawnProcess(label: string, entry: string, env: NodeJS.ProcessEnv): ChildProcess {
@@ -126,15 +111,9 @@ export const dashboardCommand = defineCommand({
   },
   args: {
     port: { type: 'string', description: 'Web UI port (default 4322)' },
-    host: {
-      type: 'string',
-      description: 'Web UI host (default 127.0.0.1). Use loopback unless you know why not.',
-    },
+    host: { type: 'string', description: 'Web UI host (default 127.0.0.1)' },
     'daemon-port': { type: 'string', description: 'Daemon port (default 4321)' },
-    'daemon-host': {
-      type: 'string',
-      description: 'Daemon host (default 127.0.0.1). Use loopback unless you know why not.',
-    },
+    'daemon-host': { type: 'string', description: 'Daemon host (default 127.0.0.1)' },
     open: {
       type: 'boolean',
       description: 'Open the dashboard in your browser (default true)',
@@ -218,7 +197,7 @@ export const dashboardCommand = defineCommand({
 
       console.log('')
       console.log(`dashboard: ${webUrl}`)
-      console.log(`token:     ${authFile}`)
+      console.log(`sign in:   the token in ${authFile} (print it: bazilion token show-local)`)
       if (args.open) openBrowser(webUrl)
     } catch (err) {
       terminateChildren()

@@ -1,58 +1,26 @@
-// Per-team shared memory: BM25-indexed markdown notes that every member
-// agent reads from and writes to. Browse the list, search, edit/create
-// entries. The qmd index lives at <team.path>/memory/ on disk.
+// The Team's shared memory: BM25-indexed markdown notes every member reads and writes (stored in
+// <team>/memory/). List, search, open, edit, create and delete entries.
 
-import { ApiClientError } from '@bazilion/client'
-import type { Agent, Team, MemoryEntry, MemoryHit } from '@bazilion/api-types'
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { RecoveryState } from '../../../components/RecoveryState'
+import type { MemoryEntry, MemoryHit } from '@bazilion/api-types'
+import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
-import { PageShell } from '../../../components/Page'
-import { TeamTabs } from '../../../components/TeamTabs'
 import { UnsavedChangesGuard } from '../../../components/UnsavedChangesGuard'
+import { api, errorMessage } from '../../../lib/api'
 import { daemonClient } from '../../../lib/daemon-client'
 
-interface MemoryView {
-  team: Team
-  memberCount: number
-  entries: MemoryEntry[]
-}
-
-const fetchMemory = createServerFn({ method: 'POST' })
-  .validator((d: { id: string }) => d)
-  .handler(async ({ data }): Promise<MemoryView | null> => {
-    const c = daemonClient()
-    let team: Team
-    try {
-      team = await c.get<Team>(`/api/teams/${encodeURIComponent(data.id)}`)
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 404) return null
-      throw err
-    }
-    const [entries, agents] = await Promise.all([
-      c.get<MemoryEntry[]>(`/api/teams/${encodeURIComponent(team.id)}/memory`),
-      c.get<Agent[]>('/api/agents?includeArchived=true'),
-    ])
-    const memberCount = agents.filter((a) => a.teamId === team.id).length
-    return { team, memberCount, entries }
-  })
+const fetchMemory = createServerFn({ method: 'GET' })
+  .validator((data: { id: string }) => data)
+  .handler(({ data }) =>
+    daemonClient().get<MemoryEntry[]>(`/api/teams/${encodeURIComponent(data.id)}/memory`),
+  )
 
 export const Route = createFileRoute('/teams/$id/memory')({
-  errorComponent: ({ error, reset }) => <RecoveryState title="Team memory unavailable" error={error} reset={reset} fallbackHref="/teams" />,
-  loader: async ({ params }) => {
-    const data = await fetchMemory({ data: { id: params.id } })
-    if (!data) throw redirect({ to: '/teams' })
-    return data
-  },
+  loader: ({ params }) => fetchMemory({ data: { id: params.id } }),
   component: MemoryPage,
 })
-
-function encodeKey(key: string): string {
-  return key.split('/').map(encodeURIComponent).join('/')
-}
 
 interface ListRow {
   key: string
@@ -60,341 +28,244 @@ interface ListRow {
   score?: number
 }
 
+const toRow = (entry: MemoryEntry): ListRow => ({
+  key: entry.key,
+  preview: entry.content.slice(0, 80),
+})
+
 type Mode = 'none' | 'edit' | 'new'
 
-interface MemoryConfirmation {
+interface Confirmation {
   title: string
-  description: React.ReactNode
+  description: ReactNode
   confirmLabel: string
   onConfirm: () => void | Promise<void>
 }
 
 function MemoryPage() {
-  const { team, memberCount, entries: initialEntries } = Route.useLoaderData()
-  const teamId = team.id
+  const initialEntries = Route.useLoaderData()
+  const { id: teamId } = Route.useParams()
+  const base = `/api/teams/${encodeURIComponent(teamId)}/memory`
+  const entryPath = (key: string) => `${base}/${key.split('/').map(encodeURIComponent).join('/')}`
 
-  const [rows, setRows] = useState<ListRow[]>(() =>
-    initialEntries.map((e) => ({ key: e.key, preview: e.content.slice(0, 80) })),
-  )
-  const [isSearch, setIsSearch] = useState(false)
+  const [rows, setRows] = useState<ListRow[]>(() => initialEntries.map(toRow))
+  const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [mode, setMode] = useState<Mode>('none')
   const [keyInput, setKeyInput] = useState('')
   const [content, setContent] = useState('')
-  const [savedKey, setSavedKey] = useState('')
-  const [savedContent, setSavedContent] = useState('')
-  const [status, setStatus] = useState<{ msg: string; kind: 'info' | 'error' } | null>(null)
-  const [confirmation, setConfirmation] = useState<MemoryConfirmation | null>(null)
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const dirty = mode !== 'none' && (keyInput !== savedKey || content !== savedContent)
+  const [saved, setSaved] = useState({ key: '', content: '' })
+  const [status, setStatus] = useState<{ message: string; error: boolean } | null>(null)
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
+  const dirty = mode !== 'none' && (keyInput !== saved.key || content !== saved.content)
 
-  async function loadList(q: string) {
+  async function loadList(text: string) {
     try {
-      const url =
-        q.trim().length > 0
-          ? `/api/teams/${encodeURIComponent(teamId)}/memory/search?q=${encodeURIComponent(q)}&limit=50`
-          : `/api/teams/${encodeURIComponent(teamId)}/memory`
-      const res = await fetch(url)
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        throw new Error(body?.error ?? res.statusText)
-      }
-      const data = (await res.json()) as MemoryEntry[] | MemoryHit[]
-      if (q.trim().length > 0) {
-        setRows(
-          (data as MemoryHit[]).map((h) => ({
-            key: h.key,
-            preview: h.snippet,
-            score: h.score,
-          })),
-        )
-        setIsSearch(true)
+      if (text.trim()) {
+        const hits = await api<MemoryHit[]>(`${base}/search?q=${encodeURIComponent(text)}&limit=50`)
+        setRows(hits.map((hit) => ({ key: hit.key, preview: hit.snippet, score: hit.score })))
+        setSearching(true)
       } else {
-        setRows(
-          (data as MemoryEntry[]).map((e) => ({
-            key: e.key,
-            preview: e.content.slice(0, 80),
-          })),
-        )
-        setIsSearch(false)
+        setRows((await api<MemoryEntry[]>(base)).map(toRow))
+        setSearching(false)
       }
-    } catch (err) {
-      setStatus({ msg: `error: ${(err as Error).message}`, kind: 'error' })
+    } catch (cause) {
+      setStatus({ message: errorMessage(cause), error: true })
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: search as the query changes.
   useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => {
-      void loadList(query)
-    }, 200)
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const timer = setTimeout(() => void loadList(query), 200)
+    return () => clearTimeout(timer)
   }, [query])
 
-  async function loadEntry(key: string) {
-    setStatus({ msg: 'loading…', kind: 'info' })
+  function show(nextMode: Mode, key: string, text: string) {
+    setMode(nextMode)
+    setSelectedKey(nextMode === 'edit' ? key : null)
+    setKeyInput(key)
+    setContent(text)
+    setSaved({ key, content: text })
+  }
+
+  async function open(key: string) {
+    setStatus({ message: 'Loading…', error: false })
     try {
-      const res = await fetch(
-        `/api/teams/${encodeURIComponent(teamId)}/memory/${encodeKey(key)}`,
-      )
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        throw new Error(body?.error ?? res.statusText)
-      }
-      const entry = (await res.json()) as MemoryEntry
-      setSelectedKey(entry.key)
-      setMode('edit')
-      setKeyInput(entry.key)
-      setContent(entry.content ?? '')
-      setSavedKey(entry.key)
-      setSavedContent(entry.content ?? '')
-      setStatus({ msg: `loaded ${entry.key}`, kind: 'info' })
-    } catch (err) {
-      setStatus({ msg: `error: ${(err as Error).message}`, kind: 'error' })
+      const entry = await api<MemoryEntry>(entryPath(key))
+      show('edit', entry.key, entry.content ?? '')
+      setStatus(null)
+    } catch (cause) {
+      setStatus({ message: errorMessage(cause), error: true })
     }
   }
 
-  function requestOpenEntry(key: string) {
-    if (mode === 'edit' && key === selectedKey) return
+  /** Run `action`, first asking to discard unsaved changes. */
+  function leaveDraft(action: () => void | Promise<void>, label: string) {
     if (!dirty) {
-      void loadEntry(key)
+      void action()
       return
     }
     setConfirmation({
       title: 'Discard unsaved memory changes?',
       description: (
         <p>
-          Opening <code className="font-mono">{key}</code> will permanently discard your changes
-          to{' '}
-          <code className="font-mono">{selectedKey ?? (keyInput || 'this new entry')}</code>.
+          Your changes to{' '}
+          <code className="font-mono">{selectedKey ?? (keyInput || 'the new entry')}</code> will be
+          lost.
         </p>
       ),
-      confirmLabel: 'discard and open entry',
-      onConfirm: () => loadEntry(key),
-    })
-  }
-
-  function startNewEntry() {
-    setSelectedKey(null)
-    setMode('new')
-    setKeyInput('')
-    setContent('')
-    setSavedKey('')
-    setSavedContent('')
-    setStatus({ msg: 'new entry — type a key and content, then save', kind: 'info' })
-  }
-
-  function requestNewEntry() {
-    if (!dirty) {
-      startNewEntry()
-      return
-    }
-    setConfirmation({
-      title: 'Discard unsaved memory changes?',
-      description: (
-        <p>
-          Starting a new entry will permanently discard your changes to{' '}
-          <code className="font-mono">{selectedKey ?? (keyInput || 'this new entry')}</code>.
-        </p>
-      ),
-      confirmLabel: 'discard and create new',
-      onConfirm: startNewEntry,
+      confirmLabel: label,
+      onConfirm: action,
     })
   }
 
   async function save() {
     const key = keyInput.trim()
-    if (!key) {
-      setStatus({ msg: 'key is required', kind: 'error' })
-      return
-    }
     try {
-      const res = await fetch(
-        `/api/teams/${encodeURIComponent(teamId)}/memory/${encodeKey(key)}`,
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ content }),
-        },
-      )
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        throw new Error(body?.error ?? res.statusText)
-      }
-      setSelectedKey(key)
-      setMode('edit')
-      setKeyInput(key)
-      setSavedKey(key)
-      setSavedContent(content)
-      setStatus({ msg: 'saved', kind: 'info' })
+      await api(entryPath(key), { method: 'PUT', body: { content } })
+      show('edit', key, content)
+      setStatus({ message: 'Saved', error: false })
       await loadList(query)
-    } catch (err) {
-      setStatus({ msg: `error: ${(err as Error).message}`, kind: 'error' })
+    } catch (cause) {
+      setStatus({ message: errorMessage(cause), error: true })
     }
   }
 
-  async function deleteSelected() {
-    if (!selectedKey) return
-    const key = selectedKey
-    const res = await fetch(
-      `/api/teams/${encodeURIComponent(teamId)}/memory/${encodeKey(key)}`,
-      { method: 'DELETE' },
-    )
-    if (!res.ok && res.status !== 204) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      throw new Error(body?.error ?? res.statusText)
-    }
-    setSelectedKey(null)
-    setMode('none')
-    setKeyInput('')
-    setContent('')
-    setSavedKey('')
-    setSavedContent('')
-    setStatus({ msg: `${key} deleted`, kind: 'info' })
+  async function remove(key: string) {
+    await api(entryPath(key), { method: 'DELETE' })
+    show('none', '', '')
+    setStatus({ message: `${key} deleted`, error: false })
     await loadList(query)
   }
 
-  function requestDelete() {
-    if (!selectedKey) return
-    const key = selectedKey
-    setConfirmation({
-      title: `Delete ${key}?`,
-      description: (
-        <p>
-          This permanently deletes <code className="font-mono">{key}</code> from shared Team
-          memory and removes it from search results for every Team member. This cannot be undone.
-        </p>
-      ),
-      confirmLabel: 'delete memory entry',
-      onConfirm: deleteSelected,
-    })
-  }
-
-  const canSave = mode !== 'none' && keyInput.trim().length > 0
-  const canDelete = mode === 'edit' && selectedKey !== null
-
   return (
-    <PageShell>
+    <div className="space-y-6">
       <UnsavedChangesGuard when={dirty} subject="Team memory draft" />
-      <header className="mb-6">
-        <h1 className="font-serif text-3xl text-foreground">
-          {team.name}{' '}
-          <span className="text-muted-foreground text-base">/ Shared memory</span>
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          BM25-indexed markdown notes shared by every agent in{' '}
-          <a
-            href={`/teams/${encodeURIComponent(team.id)}`}
-            className="font-mono underline"
-          >
-            {team.id}
-          </a>{' '}
-          ({memberCount} member{memberCount === 1 ? '' : 's'}). Anything written here is
-          visible to every member; per-agent notes belong in the agent's own{' '}
-          <code className="font-mono">IDENTITY.md</code> via <code>home_write</code>.
-        </p>
-      </header>
-      <TeamTabs teamId={team.id} />
+      <p className="text-sm text-muted-foreground">
+        Notes shared by every Agent in this Team and found by the memory search. Notes about one
+        Agent belong in its own <code className="font-mono">IDENTITY.md</code> instead.
+      </p>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
         <div>
           <div className="overflow-hidden rounded-[16px] border border-frost bg-snow">
             <div className="border-b border-frost p-2">
-              <label htmlFor="team-memory-search" className="sr-only">
-                Search Team memory
-              </label>
               <input
-                id="team-memory-search"
-                type="text"
+                aria-label="Search Team memory"
+                type="search"
                 placeholder="search (BM25)..."
                 autoComplete="off"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(event) => setQuery(event.target.value)}
               />
             </div>
             <div className="max-h-[520px] overflow-y-auto">
               {rows.length === 0 ? (
                 <div className="p-8 text-center text-mocha-light">no entries</div>
               ) : (
-                rows.map((r) => {
-                  const active = r.key === selectedKey
-                  return (
-                    <button
-                      key={r.key}
-                      type="button"
-                      onClick={() => requestOpenEntry(r.key)}
-                      className={`unstyled block w-full cursor-pointer border-b border-frost/50 px-3.5 py-2 text-left font-mono text-[0.84em] transition-colors last:border-b-0 hover:bg-sapphire-glow ${
-                        active ? 'bg-sapphire-glow font-medium text-sapphire-deep' : ''
-                      }`}
-                    >
-                      {isSearch && r.score !== undefined && (
-                        <span className="float-right text-[0.75em] text-sapphire">
-                          {r.score.toFixed(2)}
-                        </span>
-                      )}
-                      {r.key}
-                      {r.preview && (
-                        <span className="mt-1 block text-[0.9em] font-normal text-mocha-light">
-                          {r.preview}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })
+                rows.map((row) => (
+                  <button
+                    key={row.key}
+                    type="button"
+                    onClick={() => {
+                      if (mode !== 'edit' || row.key !== selectedKey) {
+                        leaveDraft(() => open(row.key), 'Discard and open')
+                      }
+                    }}
+                    className={`unstyled block w-full cursor-pointer border-b border-frost/50 px-3.5 py-2 text-left font-mono text-[0.84em] transition-colors last:border-b-0 hover:bg-sapphire-glow ${
+                      row.key === selectedKey
+                        ? 'bg-sapphire-glow font-medium text-sapphire-deep'
+                        : ''
+                    }`}
+                  >
+                    {searching && row.score !== undefined && (
+                      <span className="float-right text-[0.75em] text-sapphire">
+                        {row.score.toFixed(2)}
+                      </span>
+                    )}
+                    {row.key}
+                    {row.preview && (
+                      <span className="mt-1 block text-[0.9em] font-normal text-mocha-light">
+                        {row.preview}
+                      </span>
+                    )}
+                  </button>
+                ))
               )}
             </div>
           </div>
-          <Button variant="ghost" className="mt-3 w-full" onClick={requestNewEntry}>
+          <Button
+            variant="ghost"
+            className="mt-3 w-full"
+            onClick={() =>
+              leaveDraft(() => {
+                show('new', '', '')
+                setStatus({
+                  message: 'New entry: type a key and content, then save.',
+                  error: false,
+                })
+              }, 'Discard and create new')
+            }
+          >
             + new entry
           </Button>
         </div>
 
         <div>
-          <div className="mb-3 flex items-center gap-2">
-            <label htmlFor="team-memory-key" className="sr-only">
-              Memory entry key
-            </label>
-            <input
-              id="team-memory-key"
-              type="text"
-              placeholder="key (e.g. prefs/hiking.md)"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              disabled={mode !== 'new'}
-              className="flex-1 font-mono"
-            />
-          </div>
-          <label htmlFor="team-memory-content" className="sr-only">
-            Memory entry content
-          </label>
+          <input
+            aria-label="Memory entry key"
+            type="text"
+            placeholder="key (e.g. prefs/hiking.md)"
+            value={keyInput}
+            onChange={(event) => setKeyInput(event.target.value)}
+            disabled={mode !== 'new'}
+            className="mb-3 font-mono"
+          />
           <textarea
-            id="team-memory-content"
-            placeholder="select an entry on the left, or create a new one."
+            aria-label="Memory entry content"
+            placeholder="Select an entry on the left, or create a new one."
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(event) => setContent(event.target.value)}
             disabled={mode === 'none'}
-            className="min-h-[360px] w-full font-mono text-[0.9em] leading-[1.55]"
+            className="min-h-[360px] font-mono text-[0.9em] leading-[1.55]"
           />
           <div className="mt-3 flex gap-2">
-            <Button variant="primary" onClick={save} disabled={!canSave || !dirty}>
-              save
+            <Button
+              variant="primary"
+              onClick={() => void save()}
+              disabled={mode === 'none' || !keyInput.trim() || !dirty}
+            >
+              Save
             </Button>
-            <Button variant="danger" onClick={requestDelete} disabled={!canDelete}>
-              delete
+            <Button
+              variant="danger"
+              disabled={mode !== 'edit' || selectedKey === null}
+              onClick={() => {
+                const key = selectedKey
+                if (!key) return
+                setConfirmation({
+                  title: `Delete ${key}?`,
+                  description: (
+                    <p>
+                      This permanently deletes <code className="font-mono">{key}</code> from the
+                      Team's shared memory and its search results.
+                    </p>
+                  ),
+                  confirmLabel: 'Delete memory entry',
+                  onConfirm: () => remove(key),
+                })
+              }}
+            >
+              Delete
             </Button>
           </div>
           {status && (
             <p
-              role={status.kind === 'error' ? 'alert' : 'status'}
-              className={`mt-2 text-[0.9em] ${
-                status.kind === 'error' ? 'text-danger' : 'text-mocha-light'
-              }`}
+              role={status.error ? 'alert' : 'status'}
+              className={`mt-2 text-[0.9em] ${status.error ? 'text-danger' : 'text-mocha-light'}`}
             >
-              {status.msg}
+              {status.message}
             </p>
           )}
         </div>
@@ -403,12 +274,12 @@ function MemoryPage() {
         open={confirmation !== null}
         title={confirmation?.title ?? ''}
         description={confirmation?.description ?? null}
-        confirmLabel={confirmation?.confirmLabel ?? 'continue'}
+        confirmLabel={confirmation?.confirmLabel ?? 'Continue'}
         onConfirm={() => confirmation?.onConfirm()}
         onOpenChange={(open) => {
           if (!open) setConfirmation(null)
         }}
       />
-    </PageShell>
+    </div>
   )
 }

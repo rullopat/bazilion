@@ -5,7 +5,7 @@ import { resolveCliPaths } from './paths.ts'
 export type { BazilionClient } from '@bazilion/client'
 export { ApiClientError } from '@bazilion/client'
 
-export interface ClientConfig {
+interface ClientConfig {
   serverUrl: string
   token: string
 }
@@ -32,6 +32,7 @@ export function loadClientConfig(): ClientConfig {
   }
 }
 
-export function createClient(cfg: ClientConfig = loadClientConfig()): BazilionClient {
-  return createPackageClient({ serverUrl: cfg.serverUrl, token: cfg.token })
+export function createClient(): BazilionClient {
+  const { serverUrl, token } = loadClientConfig()
+  return createPackageClient({ serverUrl, token })
 }

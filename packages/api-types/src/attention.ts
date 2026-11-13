@@ -1,5 +1,4 @@
 export type AttentionKind =
-  | 'communication_approval'
   | 'lesson_proposal'
   | 'review_failure'
   | 'trigger_failure'
@@ -42,12 +41,4 @@ export interface AttentionSummary {
   bySeverity: Record<AttentionSeverity, number>
   byKind: Record<AttentionKind, number>
   degraded: AttentionDegradedSource[]
-}
-
-export interface AttentionAcknowledgementResponse {
-  item: AttentionItem
-}
-
-export interface AttentionAcknowledgeAllResponse {
-  acknowledged: number
 }

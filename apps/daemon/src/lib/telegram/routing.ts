@@ -1,121 +1,31 @@
-import { acquireAgentLifecycleLease } from '../agent-lifecycle-lease.ts'
-import { resolveConversationTarget } from '../conversation-target.ts'
-// Inbound update router. Classifies each Telegram update by
-// (chat_id, message_thread_id) and dispatches.
+// Inbound update router. Classifies each update by (chat, topic) and dispatches it:
 //
-// Categories:
+//   service topic   the ⚙ bazilion topic → slash commands (/talk, /spawn, ...)
+//   agent topic     a topic bound to an agent → topic commands, question answers, or the
+//                   agent's follow-up queue
+//   General         no thread / thread ≤ 1 → a redirect to the service topic (once a minute)
+//   unknown topic   a topic with no agent → a hint to bind it with /talk
 //
-//   service_chat   the configured ⚙ bazilion topic → parse slash command
-//   agent_topic    a topic bound to an agent via agents.telegram_topic_id
-//   general        no thread / thread <= 1 → polite redirect (60s suppression)
-//   unknown        topic with no agent binding and not the service chat
-//   non_message    service updates, member changes — log + advance offset
-//
-// Agent-topic inbound for Step 3 is "log and ack to the bot lifecycle"
-// only — actual chat-back routing ships in Step 6 alongside the outbound
-// mirror from runAgentTurn.
+// Only allowlisted users (the paired owner and the members they add) get past the sender gate.
 
-import type { Attachment } from '@bazilion/api-types'
+import type { Agent, Attachment } from '@bazilion/api-types'
 import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import {
-  agentRepo,
-  authorizeInSnapshot,
-  openConfig,
-  profileRepo,
-  telegramAclRepo,
-  telegramPairingRepo,
-} from '../../core/index.ts'
+import { agentRepo, openConfig, profileRepo, telegramPairingRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import * as userQueue from '../../core/repos/user-queue.ts'
-import {
-  authorizeUserIngress,
-  CommunicationDeniedError,
-  CommunicationPendingError,
-} from '../communication.ts'
-import { questionServiceFor } from '../question-service.ts'
-import { enqueueTelegramInput } from '../user-queue-admission.ts'
+import { enqueueUserInput } from '../user-queue.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import { SPAWN_TEAM_CALLBACK_PREFIX, spawnTeamAndBind } from './commands/spawn-team.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
-import type { TelegramIngressAttempt } from './ingress-attempt.ts'
-import {
-  _resetLoopGuardForTest,
-  allowTelegramInbound,
-  shouldNotifyInboundThrottle,
-} from './loop-guard.ts'
+import { MIGRATED_CHAT_KEY, readServiceTopicId } from './config.ts'
+import { htmlEscape } from './html.ts'
 import { downloadMediaBytes, extractMedia } from './media.ts'
-import { parseTelegramQuestionReply, type QuestionReply } from './question-transport.ts'
-import { captureTelegramQueueBinding } from './queue-binding.ts'
+import { isTelegramSenderAllowed } from './origin.ts'
+import { answerFromTelegram, questionCallback, questionReply } from './questions.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
-
-const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
-
-async function handleQuestionReply(
-  deps: RouterDeps,
-  reply: Exclude<QuestionReply, { kind: 'unrelated' }>,
-  callback?: CallbackQuery,
-  message?: Message,
-): Promise<RouteOutcome> {
-  let status: 'accepted' | 'held' | 'rejected' | 'other' =
-    reply.kind === 'other' ? 'other' : 'rejected'
-  if (reply.kind === 'answer') {
-    try {
-      const result = questionServiceFor(deps.db, deps.paths, deps.authToken).respond(
-        reply.agentId,
-        reply.questionId,
-        reply.input,
-      )
-      status =
-        result.kind === 'held' ? 'held' : result.kind === 'conflict' ? 'rejected' : 'accepted'
-    } catch {
-      status = 'rejected'
-    }
-  }
-  const text =
-    status === 'accepted'
-      ? 'Answer accepted. Consumption and task completion are separate.'
-      : status === 'held'
-        ? 'Answer awaits communication approval; the Agent has not received it.'
-        : status === 'other'
-          ? 'Reply to this question message with your answer, or use /answer followed by its question ID and your answer.'
-          : 'Question reply was not accepted. It may be expired, settled, or bound to another prompt.'
-  if (callback)
-    await deps.api
-      .answerCallbackQuery(callback.id, { text, show_alert: status === 'rejected' })
-      .catch(() => undefined)
-  else if (message)
-    await deps.api
-      .sendMessage(deps.chatId, text, { message_thread_id: message.message_thread_id })
-      .catch(() => undefined)
-  return { kind: 'question_reply', status }
-}
-
-/** Suppress duplicate General-topic redirects per chat. */
-const GENERAL_REDIRECT_SUPPRESS_MS = 60_000
-const _lastGeneralRedirectByChat = new Map<number, number>()
-
-/** Suppress repeated "not authorized" replies per user. */
-const UNAUTHORIZED_SUPPRESS_MS = 60_000
-const _lastUnauthorizedNoticeByUser = new Map<number, number>()
-
-/**
- * One shared fail-closed identity gate for every actionable update.
- */
-function authorizeUser(db: BazilionDb, from: User | undefined): 'allowed' | 'denied' {
-  if (!from || from.is_bot) return 'denied'
-  return telegramAclRepo.isAllowed(db, from.id) ? 'allowed' : 'denied'
-}
-
-function shouldNotifyUnauthorized(userId: number): boolean {
-  const now = Date.now()
-  const last = _lastUnauthorizedNoticeByUser.get(userId) ?? 0
-  if (now - last < UNAUTHORIZED_SUPPRESS_MS) return false
-  _lastUnauthorizedNoticeByUser.set(userId, now)
-  return true
-}
 
 /**
  * Send surface the router uses to reply. Real wiring passes
@@ -133,10 +43,7 @@ export interface ReplyApi extends CommandApi {
       reply_markup?: InlineKeyboardMarkup
     },
   ): Promise<{ message_id: number }>
-  /**
-   * Used by the `/spawn` keyboard flow to update the picker message after
-   * the user taps a profile button.
-   */
+  /** Used by the `/spawn` keyboard flow to update the picker message after a tap. */
   editMessageText(
     chatId: number,
     messageId: number,
@@ -148,22 +55,21 @@ export interface ReplyApi extends CommandApi {
     callbackQueryId: string,
     opts?: { text?: string; show_alert?: boolean },
   ): Promise<unknown>
-  /** Resolve a file_id to a downloadable file_path (Phase 11 media inbound). */
+  /** Resolve a file_id to a downloadable file_path (inbound media). */
   getFile(fileId: string): Promise<{ file_path?: string; file_size?: number }>
 }
 
 export interface RouterDeps {
   db: BazilionDb
   paths: Paths
-  authToken: string
   api: ReplyApi
   chatId: number
-  /** Bot token — needed to download inbound media (Phase 11). */
+  /** Bot token — needed to download inbound media. */
   botToken?: string
 }
 
 export type RouteOutcome =
-  | { kind: 'question_reply'; status: 'accepted' | 'held' | 'rejected' | 'other' }
+  | { kind: 'question_answer' }
   | { kind: 'service_command'; name: string; handled: boolean }
   | { kind: 'service_unknown_command'; name: string }
   | { kind: 'service_plain_text' }
@@ -177,7 +83,6 @@ export type RouteOutcome =
       handled: boolean
     }
   | { kind: 'agent_topic_unknown_command'; agentId: string; topicId: number; name: string }
-  | { kind: 'rate_limited'; agentId: string; topicId: number }
   | { kind: 'general_redirect'; suppressed: boolean }
   | { kind: 'unknown_topic'; topicId: number }
   | { kind: 'callback_spawn_profile'; profileId: string }
@@ -192,311 +97,228 @@ export type RouteOutcome =
   | { kind: 'chat_migrated'; toChatId: number }
   | { kind: 'foreign_chat'; chatId: number }
 
+/** Suppress duplicate General-topic redirects per chat. */
+const GENERAL_REDIRECT_SUPPRESS_MS = 60_000
+const _lastGeneralRedirectByChat = new Map<number, number>()
+
+/** Suppress repeated "not authorized" replies per user. */
+const UNAUTHORIZED_SUPPRESS_MS = 60_000
+const _lastUnauthorizedNoticeByUser = new Map<number, number>()
+
+function shouldNotifyUnauthorized(userId: number): boolean {
+  const now = Date.now()
+  const last = _lastUnauthorizedNoticeByUser.get(userId) ?? 0
+  if (now - last < UNAUTHORIZED_SUPPRESS_MS) return false
+  _lastUnauthorizedNoticeByUser.set(userId, now)
+  return true
+}
+
+/** The sender gate for messages and button taps. */
+function allowedSender(db: BazilionDb, from: User | undefined): boolean {
+  return !!from && !from.is_bot && isTelegramSenderAllowed(db, from.id)
+}
+
 /**
  * Dispatch a single update. Returns an outcome describing what the router
  * did so the bot lifecycle can log it (and tests can assert on it).
  */
 export async function routeUpdate(deps: RouterDeps, update: Update): Promise<RouteOutcome> {
-  // Callback queries (from inline-keyboard taps) arrive on their own
-  // dedicated field — handle them before the message-only fallthrough.
-  if (update.callback_query) {
-    const q = update.callback_query
-    const callbackChatId = q.message?.chat.id
-    if (callbackChatId !== deps.chatId || q.from.is_bot) {
-      await deps.api
-        .answerCallbackQuery(q.id, { text: 'Not authorized.', show_alert: true })
-        .catch(() => undefined)
-      if (callbackChatId === undefined) return { kind: 'unauthorized', userId: q.from.id }
-      return { kind: 'foreign_chat', chatId: callbackChatId }
-    }
-    if (
-      !telegramPairingRepo.status(deps.db).paired ||
-      authorizeUser(deps.db, q.from) === 'denied'
-    ) {
-      await deps.api
-        .answerCallbackQuery(q.id, { text: 'Not authorized.', show_alert: true })
-        .catch(() => undefined)
-      return { kind: 'unauthorized', userId: q.from.id }
-    }
-    const question = parseTelegramQuestionReply(deps.db, deps.authToken, { callback: q })
-    if (question.kind !== 'unrelated') return handleQuestionReply(deps, question, q)
-    return handleCallbackQuery(deps, q)
-  }
+  if (update.callback_query) return routeCallback(deps, update.callback_query)
 
-  // An edit reuses an old message identity with new content. Treating it as
-  // fresh ingress would bypass the one-update/one-attempt replay binding.
+  // An edit reuses an old message identity with new content; it is not new input.
   if (update.edited_message) return { kind: 'ignored_edit' }
 
   const m = update.message ?? null
   if (!m) return { kind: 'non_message' }
 
-  // Drop anything authored by a bot. bazilion never sees its OWN messages
-  // (Telegram doesn't redeliver them), so this guards against *other* bots in
-  // the supergroup driving agent turns — the one Telegram-side loop vector for
-  // a single-bot install. Also covers the bot's own forum-topic service
-  // messages, which we don't process anyway.
+  // Telegram never redelivers the bot's own messages, so this drops other bots in the group:
+  // they must not drive agent turns.
   if (m.from?.is_bot) return { kind: 'ignored_bot' }
 
-  // Supergroup migration: Telegram fires `migrate_to_chat_id` in the OLD chat
-  // (the one we're configured for) when a basic team is upgraded. Stash the
-  // new id and surface a reconnect prompt — we don't auto-rewrite config from
-  // a runtime event (v1 principle); the operator confirms via /reconnect.
+  // Supergroup migration: Telegram fires `migrate_to_chat_id` in the OLD chat when a basic
+  // group is upgraded. Stash the new id; the operator confirms the switch (reconnect).
   if (typeof m.migrate_to_chat_id === 'number') {
-    openConfig(deps.db).set('TELEGRAM_MIGRATED_CHAT_ID', String(m.migrate_to_chat_id))
+    openConfig(deps.db).set(MIGRATED_CHAT_KEY, String(m.migrate_to_chat_id))
     return { kind: 'chat_migrated', toChatId: m.migrate_to_chat_id }
   }
 
-  // Foreign chat — any chat that isn't the configured supergroup. Telegram
-  // private chats (the bot's DM with the operator) land here. The new chat
-  // after a migration also arrives here (its messages carry
-  // `migrate_from_chat_id === our old id`) — capture that too.
+  // Any other chat, including private chats with the bot. The new chat after a migration also
+  // lands here (its messages carry `migrate_from_chat_id === our old id`).
   if (m.chat.id !== deps.chatId) {
     if (m.migrate_from_chat_id === deps.chatId) {
-      openConfig(deps.db).set('TELEGRAM_MIGRATED_CHAT_ID', String(m.chat.id))
+      openConfig(deps.db).set(MIGRATED_CHAT_KEY, String(m.chat.id))
       return { kind: 'chat_migrated', toChatId: m.chat.id }
     }
     return { kind: 'foreign_chat', chatId: m.chat.id }
   }
 
-  // Sender identity must be explicit. Anonymous administrators and
-  // sender_chat-attributed/channel posts never reach commands, downloads, or turns.
-  if (!m.from || m.from.is_bot || m.sender_chat) {
-    return { kind: 'unauthorized', userId: m.from?.id ?? 0 }
-  }
+  // Anonymous admins and channel posts (sender_chat) never reach commands, downloads or turns.
+  if (!m.from || m.sender_chat) return { kind: 'unauthorized', userId: m.from?.id ?? 0 }
 
   const serviceTopicId = readServiceTopicId(deps.db)
   const threadId = m.message_thread_id ?? null
   if (!telegramPairingRepo.status(deps.db).paired) {
-    const parsed = parseCommand(m.text ?? undefined)
-    if (serviceTopicId !== null && threadId === serviceTopicId && parsed?.name === 'pair') {
-      const code = parsed.args.trim()
-      const label = [m.from.first_name, m.from.last_name].filter(Boolean).join(' ') || null
-      const paired =
-        code.length > 0 &&
-        telegramPairingRepo.consume(deps.db, {
-          code,
-          userId: m.from.id,
-          username: m.from.username ?? null,
-          label,
-        })
-      await deps.api.sendMessage(
-        deps.chatId,
-        paired
-          ? '🔐 Telegram owner paired. All other senders remain blocked.'
-          : 'Pairing was not accepted. Generate a fresh code in authenticated Bazilion settings.',
-        { message_thread_id: threadId },
-      )
-      return paired ? { kind: 'paired_owner', userId: m.from.id } : { kind: 'pairing_required' }
-    }
+    return handleUnpaired(deps, m, m.from, threadId, serviceTopicId)
+  }
+  if (!allowedSender(deps.db, m.from)) {
     if (shouldNotifyUnauthorized(m.from.id)) {
       await deps.api.sendMessage(
         deps.chatId,
-        'Telegram is not paired. Generate a one-time owner code in authenticated Bazilion settings.',
+        `You're not authorized to use this bot. Ask the owner to run /allow ${m.from.id}.`,
         { message_thread_id: threadId ?? undefined },
       )
     }
-    return { kind: 'pairing_required' }
+    return { kind: 'unauthorized', userId: m.from.id }
   }
 
-  // Flat ACL scope gates both commands and chat after explicit owner pairing.
-  const authz = authorizeUser(deps.db, m.from)
-  if (authz === 'denied') {
-    if (m.from && shouldNotifyUnauthorized(m.from.id)) {
-      await deps.api.sendMessage(
-        deps.chatId,
-        "You're not authorized to use this bot. Ask the owner to add you with /allow.",
-        { message_thread_id: m.message_thread_id ?? undefined },
-      )
-    }
-    return { kind: 'unauthorized', userId: m.from?.id ?? 0 }
+  // A reply to a waiting question answers it instead of queueing behind the turn that asks.
+  const questionId = questionReply(m)
+  if (questionId && m.text && !parseCommand(m.text)) {
+    await reply(
+      deps,
+      threadId ?? undefined,
+      answerFromTelegram(questionId, { kind: 'text', text: m.text }),
+    )
+    return { kind: 'question_answer' }
   }
 
-  // General topic: outbound API rejects message_thread_id=1, and inbound
-  const question = parseTelegramQuestionReply(deps.db, deps.authToken, { message: m })
-  if (question.kind !== 'unrelated') return handleQuestionReply(deps, question, undefined, m)
+  // Inbound sometimes carries phantom thread ids ≤ 1 for General: treat them as no thread.
+  if (threadId === null || threadId <= 1) return handleGeneral(deps)
+  if (serviceTopicId !== null && threadId === serviceTopicId)
+    return handleServiceChat(deps, m, m.from)
 
-  // General topic: outbound API rejects message_thread_id=1, and inbound
-  // sometimes carries phantom thread ids ≤ 1 — collapse both cases into
-  // "no thread".
-  const isGeneral = threadId === null || threadId <= 1
-  if (isGeneral) {
-    return handleGeneral(deps, m)
-  }
-
-  // Service chat dispatch.
-  if (serviceTopicId !== null && threadId === serviceTopicId) {
-    return handleServiceChat(deps, m)
-  }
-
-  // Agent topic — look up by thread id.
   const agent = agentRepo.findByTelegramTopicId(deps.db, threadId)
-  if (agent) {
-    const parsed = parseCommand(m.text ?? m.caption ?? undefined)
-    if (parsed) {
-      return await handleAgentTopicCommand(deps, m, agent, threadId, parsed.name, parsed.args)
-    }
-    // Capture the transport's conversation and authority before downloading.
-    // Admission retains complete bytes atomically; the shared durable drain owns
-    // worker admission and classifies images versus filesystem input centrally.
-    const caption = m.text ?? m.caption ?? ''
-    const media = extractMedia(m)
-    if (!caption && !media)
-      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-    const releaseConversationLease = await acquireAgentLifecycleLease(agent.id)
-    let conversationId: string
-    try {
-      const existing = userQueue.findAttempt(deps.db, 'telegram', `${deps.chatId}:${m.message_id}`)
-      conversationId =
-        existing?.agentId === agent.id
-          ? existing.conversationId
-          : resolveConversationTarget(deps.db, deps.paths, agent.id).id
-    } finally {
-      releaseConversationLease()
-    }
-    const ingressAttempt: TelegramIngressAttempt = {
-      origin: 'telegram_agent_topic',
-      attemptKind: 'telegram_ingress',
-      attemptId: `${deps.chatId}:${m.message_id}`,
-      approvalPayloadKind: 'telegram_ingress',
-      approvalPayload: {
-        agentId: agent.id,
-        conversationId,
-        text: caption,
-        media,
-        chatId: deps.chatId,
-        threadId,
-        messageId: m.message_id,
-      },
-      requester: `telegram:${m.from?.id ?? 'unknown'}`,
-    }
-    try {
-      const decision = authorizeInSnapshot(deps.db, {
-        source: { kind: 'user', teamId: agent.teamId },
-        target: { kind: 'agent', id: agent.id },
-        origin: ingressAttempt.origin,
-        attemptKind: ingressAttempt.attemptKind,
-        attemptId: ingressAttempt.attemptId,
-      })
-      if (decision.decision === 'deny') authorizeUserIngress(deps.db, agent.id, ingressAttempt)
-    } catch (error) {
-      if (error instanceof CommunicationPendingError) {
-        await deps.api.sendMessage(
-          deps.chatId,
-          `Communication is pending approval (${error.approval.id}).`,
-          { message_thread_id: threadId },
-        )
-        return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-      }
-      if (!(error instanceof CommunicationDeniedError)) throw error
-      await deps.api.sendMessage(
-        deps.chatId,
-        `Communication blocked by Team policy (${error.result.reasonCode}).`,
-        { message_thread_id: threadId },
-      )
-      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-    }
-    try {
-      const binding = captureTelegramQueueBinding(
-        deps.db,
-        deps.authToken,
-        ingressAttempt,
-        deps.botToken,
-      )
-      const userText = caption
-      const attachments: Attachment[] = []
-      if (media) {
-        if (deps.botToken) {
-          const result = await downloadMediaBytes(deps.api, deps.botToken, media)
-          if (result.ok) {
-            attachments.push({
-              mimeType: result.mimeType,
-              data: result.data,
-              ...(result.name ? { name: result.name } : {}),
-            })
-          } else {
-            await deps.api.sendMessage(
-              deps.chatId,
-              'Attachment download failed. This input was not queued; send the complete input again.',
-              { message_thread_id: threadId },
-            )
-            return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-          }
-        } else {
-          await deps.api.sendMessage(
-            deps.chatId,
-            'Attachment download is unavailable. This input was not queued.',
-            { message_thread_id: threadId },
-          )
-          return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-        }
-      }
-      if (!userText && attachments.length === 0) {
-        // Non-text, non-media message (sticker, etc.) — skip.
-        return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-      }
-      // Per-agent inbound rate budget — backstop against a human/script spamming
-      // a topic faster than the agent can answer. Over budget: drop the message
-      // and post a single cooldown notice (suppressed for the rest of the
-      // cooldown window).
-      if (
-        !userQueue.findAttempt(deps.db, 'telegram', ingressAttempt.attemptId) &&
-        !allowTelegramInbound(agent.id)
-      ) {
-        if (shouldNotifyInboundThrottle(agent.id)) {
-          await deps.api.sendMessage(
-            deps.chatId,
-            "Whoa — that's a lot of messages very fast. I'll pause new ones for a minute so I can catch up.",
-            { message_thread_id: threadId, parse_mode: 'HTML' },
-          )
-        }
-        return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
-      }
-      const accepted = await enqueueTelegramInput(binding, userText, attachments, deps)
-      await deps.api.sendMessage(
-        deps.chatId,
-        `Follow-up ${accepted.id}: ${accepted.status}. Use /queue to inspect pending input.`,
-        { message_thread_id: threadId },
-      )
-      // 👀 "I see this" indicator on the user's message. Cleared by the
-      // mirror when the agent's reply lands.
-      reactSeen(agent.id, deps.chatId, m.message_id)
-      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: true }
-    } catch (error) {
-      const message =
-        error instanceof userQueue.QueueCapacityError
-          ? 'Queue capacity reached. This input was not accepted; inspect /queue before sending again.'
-          : error instanceof CommunicationDeniedError
-            ? 'Team Policy changed. This input was not queued.'
-            : 'Queue acceptance was not confirmed. Inspect /queue before sending a new attempt.'
-      await deps.api.sendMessage(deps.chatId, message, { message_thread_id: threadId })
-      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-    }
+  if (!agent) {
+    await deps.api.sendMessage(
+      deps.chatId,
+      "This topic isn't bound to a bazilion agent. Run /talk &lt;agent&gt; in the ⚙ bazilion topic to bind one.",
+      { message_thread_id: threadId, parse_mode: 'HTML' },
+    )
+    return { kind: 'unknown_topic', topicId: threadId }
   }
-
-  // Orphan / unknown topic.
-  await deps.api.sendMessage(
-    deps.chatId,
-    "This topic isn't bound to a bazilion agent. Run /talk &lt;agent&gt; in the ⚙ bazilion topic to bind one.",
-    { message_thread_id: threadId, parse_mode: 'HTML' },
-  )
-  return { kind: 'unknown_topic', topicId: threadId }
+  const parsed = parseCommand(m.text ?? m.caption ?? undefined)
+  if (parsed)
+    return handleAgentTopicCommand(deps, m.from, agent, threadId, parsed.name, parsed.args)
+  return handleAgentTopicMessage(deps, m, m.from, agent, threadId)
 }
 
-async function handleServiceChat(deps: RouterDeps, m: Message): Promise<RouteOutcome> {
+/** Before pairing only `/pair <code>` in the service topic does anything. */
+async function handleUnpaired(
+  deps: RouterDeps,
+  m: Message,
+  from: User,
+  threadId: number | null,
+  serviceTopicId: number | null,
+): Promise<RouteOutcome> {
+  const parsed = parseCommand(m.text ?? undefined)
+  if (serviceTopicId !== null && threadId === serviceTopicId && parsed?.name === 'pair') {
+    const code = parsed.args.trim()
+    const label = [from.first_name, from.last_name].filter(Boolean).join(' ') || null
+    const paired =
+      code.length > 0 &&
+      telegramPairingRepo.consume(deps.db, {
+        code,
+        userId: from.id,
+        username: from.username ?? null,
+        label,
+      })
+    await deps.api.sendMessage(
+      deps.chatId,
+      paired
+        ? '🔐 Telegram owner paired. Other people need /allow from you before they can use the bot.'
+        : 'Pairing was not accepted. Generate a fresh code in authenticated Bazilion settings.',
+      { message_thread_id: threadId },
+    )
+    return paired ? { kind: 'paired_owner', userId: from.id } : { kind: 'pairing_required' }
+  }
+  if (shouldNotifyUnauthorized(from.id)) {
+    await deps.api.sendMessage(
+      deps.chatId,
+      'Telegram is not paired. Generate a one-time owner code in authenticated Bazilion settings.',
+      { message_thread_id: threadId ?? undefined },
+    )
+  }
+  return { kind: 'pairing_required' }
+}
+
+/** Plain input in an agent topic joins the agent's follow-up queue; 👀 marks it as seen. */
+async function handleAgentTopicMessage(
+  deps: RouterDeps,
+  m: Message,
+  from: User,
+  agent: Agent,
+  topicId: number,
+): Promise<RouteOutcome> {
+  const outcome = (queued: boolean): RouteOutcome => ({
+    kind: 'agent_topic',
+    agentId: agent.id,
+    topicId,
+    queued,
+  })
+  const text = m.text ?? m.caption ?? ''
+  const media = extractMedia(m)
+  // Stickers and the like carry neither.
+  if (!text && !media) return outcome(false)
+  const attachments: Attachment[] = []
+  if (media) {
+    const downloaded = deps.botToken
+      ? await downloadMediaBytes(deps.api, deps.botToken, media)
+      : null
+    if (!downloaded?.ok) {
+      await reply(
+        deps,
+        topicId,
+        'The attachment could not be downloaded, so this message was not queued. Send it again.',
+      )
+      return outcome(false)
+    }
+    attachments.push({
+      mimeType: downloaded.mimeType,
+      data: downloaded.data,
+      ...(downloaded.name ? { name: downloaded.name } : {}),
+    })
+  }
+  try {
+    await enqueueUserInput(
+      agent.id,
+      {
+        message: text,
+        attachments,
+        telegram: {
+          chatId: deps.chatId,
+          threadId: topicId,
+          messageId: m.message_id,
+          userId: from.id,
+        },
+      },
+      deps,
+    )
+  } catch (error) {
+    await reply(
+      deps,
+      topicId,
+      error instanceof userQueue.QueueCapacityError
+        ? 'The queue is full, so this message was not queued. Check /queue.'
+        : 'This message could not be queued. Check /queue.',
+    )
+    return outcome(false)
+  }
+  reactSeen(agent.id, deps.chatId, m.message_id)
+  return outcome(true)
+}
+
+async function handleServiceChat(deps: RouterDeps, m: Message, from: User): Promise<RouteOutcome> {
   const parsed = parseCommand(m.text ?? m.caption ?? undefined)
 
-  // Pending-spawn name-input has priority over the "unknown text" hint —
-  // a user who just tapped a profile button is expected to follow up with
-  // a name as plain text, not a command.
-  if (!parsed && m.from && m.text) {
-    const pending = takePendingSpawn(deps.chatId, m.from.id)
+  // A user who just tapped a profile button in /spawn is expected to send the name next.
+  if (!parsed && m.text) {
+    const pending = takePendingSpawn(deps.chatId, from.id)
     if (pending) {
       return await resumePendingSpawn(deps, m, pending.profileId, m.text)
     }
   }
 
   if (!parsed) {
-    // Plain text in the service chat — acknowledge once with a hint.
     await deps.api.sendMessage(deps.chatId, 'Run /help for the command list.', {
       message_thread_id: m.message_thread_id ?? undefined,
       parse_mode: 'HTML',
@@ -506,35 +328,27 @@ async function handleServiceChat(deps: RouterDeps, m: Message): Promise<RouteOut
 
   const result = await dispatchCommand(
     parsed,
-    {
-      db: deps.db,
-      paths: deps.paths,
-      authToken: deps.authToken,
-      api: deps.api,
-      chatId: deps.chatId,
-      from: m.from!,
-    },
+    { db: deps.db, paths: deps.paths, api: deps.api, chatId: deps.chatId, from },
     'service',
   )
 
   if ('unknown' in result) {
     await deps.api.sendMessage(
       deps.chatId,
-      `Unknown command <code>/${escapeForHtml(parsed.name)}</code>. Run /help for the command list.`,
+      `Unknown command <code>/${htmlEscape(parsed.name)}</code>. Run /help for the command list.`,
       { message_thread_id: m.message_thread_id ?? undefined, parse_mode: 'HTML' },
     )
     return { kind: 'service_unknown_command', name: parsed.name }
   }
 
-  // result is narrowed to CommandResult — TS now knows .text exists.
   await sendCommandResult(deps, m.message_thread_id ?? undefined, result)
   return { kind: 'service_command', name: parsed.name, handled: true }
 }
 
 async function handleAgentTopicCommand(
   deps: RouterDeps,
-  m: Message,
-  agent: import('@bazilion/api-types').Agent,
+  from: User,
+  agent: Agent,
   topicId: number,
   name: string,
   args: string,
@@ -544,13 +358,11 @@ async function handleAgentTopicCommand(
     {
       db: deps.db,
       paths: deps.paths,
-      authToken: deps.authToken,
       api: deps.api,
       chatId: deps.chatId,
-      from: m.from!,
+      from,
       agent,
       topicId,
-      messageId: m.message_id,
     },
     'topic',
   )
@@ -558,7 +370,7 @@ async function handleAgentTopicCommand(
   if ('unknown' in result) {
     await deps.api.sendMessage(
       deps.chatId,
-      `Unknown command <code>/${escapeForHtml(name)}</code> for this topic. Run /help for the command list.`,
+      `Unknown command <code>/${htmlEscape(name)}</code> for this topic. Run /help for the command list.`,
       { message_thread_id: topicId, parse_mode: 'HTML' },
     )
     return { kind: 'agent_topic_unknown_command', agentId: agent.id, topicId, name }
@@ -568,11 +380,7 @@ async function handleAgentTopicCommand(
   return { kind: 'agent_topic_command', agentId: agent.id, topicId, name, handled: true }
 }
 
-async function handleGeneral(
-  deps: RouterDeps,
-  // _m is unused — General-topic handling is chat-wide, not per-message.
-  _m: Message,
-): Promise<RouteOutcome> {
+async function handleGeneral(deps: RouterDeps): Promise<RouteOutcome> {
   const now = Date.now()
   const last = _lastGeneralRedirectByChat.get(deps.chatId) ?? 0
   if (now - last < GENERAL_REDIRECT_SUPPRESS_MS) {
@@ -589,12 +397,8 @@ async function handleGeneral(
 }
 
 /**
- * Complete the `/spawn` keyboard flow: the user has just typed the new
- * agent's name (or `-` for auto-name) as a plain message in the service
- * chat after picking a profile via the inline keyboard. We delegate the
- * heavy lifting (spawnAgent + ensureAgentTopic + reply text) to the
- * /spawn handler's exported `spawnAndBind` so the typed-args path and the
- * keyboard path share one implementation.
+ * Complete the `/spawn` keyboard flow: the user has just typed the new agent's name (or `-` for
+ * an automatic one) after picking a profile. Shares `spawnAndBind` with the typed-args path.
  */
 async function resumePendingSpawn(
   deps: RouterDeps,
@@ -606,7 +410,7 @@ async function resumePendingSpawn(
   if (!profile) {
     await deps.api.sendMessage(
       deps.chatId,
-      `Profile <code>${escapeForHtml(profileId)}</code> was removed while waiting for the name — start over with /spawn.`,
+      `Profile <code>${htmlEscape(profileId)}</code> was removed while waiting for the name — start over with /spawn.`,
       { message_thread_id: m.message_thread_id ?? undefined, parse_mode: 'HTML' },
     )
     return { kind: 'spawn_name_input', profileId, spawned: false }
@@ -625,18 +429,28 @@ async function resumePendingSpawn(
   return { kind: 'spawn_name_input', profileId, spawned: true }
 }
 
-/**
- * Handle an inline-keyboard tap. Step 4 only knows about the spawn-profile
- * picker — other callback_data values are logged + acknowledged but
- * otherwise ignored.
- */
-async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<RouteOutcome> {
-  // Always acknowledge so Telegram's loading spinner stops — even when we
-  // don't know what the callback is for.
+/** Inline-keyboard taps: question answers and the /spawn and /spawn_team pickers. */
+async function routeCallback(deps: RouterDeps, q: CallbackQuery): Promise<RouteOutcome> {
+  const callbackChatId = q.message?.chat.id
+  if (callbackChatId !== deps.chatId || !allowedSender(deps.db, q.from)) {
+    await deps.api
+      .answerCallbackQuery(q.id, { text: 'Not authorized.', show_alert: true })
+      .catch(() => undefined)
+    return callbackChatId === undefined || callbackChatId === deps.chatId
+      ? { kind: 'unauthorized', userId: q.from.id }
+      : { kind: 'foreign_chat', chatId: callbackChatId }
+  }
   const data = q.data ?? ''
 
-  // Spawn-team picker: tapping a profile team spawns the whole team
-  // immediately (no name step — names come from the template).
+  const answer = questionCallback(data)
+  if (answer) {
+    await deps.api
+      .answerCallbackQuery(q.id, { text: answerFromTelegram(answer.questionId, answer.answer) })
+      .catch(() => undefined)
+    return { kind: 'question_answer' }
+  }
+
+  // Spawn-team picker: tapping a team template spawns it at once (names come from the template).
   if (data.startsWith(SPAWN_TEAM_CALLBACK_PREFIX)) {
     await deps.api.answerCallbackQuery(q.id, {}).catch(() => undefined)
     const templateId = data.slice(SPAWN_TEAM_CALLBACK_PREFIX.length)
@@ -666,8 +480,7 @@ async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<
     return { kind: 'callback_unknown' }
   }
 
-  // Stash the pending state on (chat, user) so the next plain-text message
-  // from this user gets routed as the name input.
+  // The next plain-text message from this user is the new agent's name.
   setPendingSpawn(deps.chatId, q.from.id, profile.id)
 
   // Update the picker message in place — buttons go away, prompt appears.
@@ -696,6 +509,12 @@ async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<
   return { kind: 'callback_spawn_profile', profileId: profile.id }
 }
 
+function reply(deps: RouterDeps, threadId: number | undefined, text: string): Promise<unknown> {
+  return deps.api
+    .sendMessage(deps.chatId, text, threadId !== undefined ? { message_thread_id: threadId } : {})
+    .catch(() => undefined)
+}
+
 async function sendCommandResult(
   deps: RouterDeps,
   threadId: number | undefined,
@@ -709,20 +528,8 @@ async function sendCommandResult(
   })
 }
 
-function readServiceTopicId(db: BazilionDb): number | null {
-  const raw = openConfig(db).get(SERVICE_TOPIC_KEY) ?? ''
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : null
-}
-
-function escapeForHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-/** Test-only — clear the in-memory General-redirect suppression map. */
+/** Test-only — clear the in-memory redirect and notice suppression maps. */
 export function _resetRouterStateForTest(): void {
   _lastGeneralRedirectByChat.clear()
   _lastUnauthorizedNoticeByUser.clear()
-  _resetLoopGuardForTest()
 }

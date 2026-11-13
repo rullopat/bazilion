@@ -1,198 +1,262 @@
-// Managed local browser lifecycle (BAZ-069): claim the Agent's persistent
-// profile, persist ownership before direct spawn, then attach through CDP.
-// process.ts owns the live child/group; a stored PID never authorizes attach
-// or kill. Uncertain startup/retirement retains the marker and refuses reuse.
-import { randomUUID } from 'node:crypto'
+// Start an agent's browser the OpenClaw way: spawn the installed binary on the
+// agent's persistent profile and attach Playwright over CDP, so the browser runs
+// without Playwright's automation launch flags.
+
+import { spawn } from 'node:child_process'
+import { mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { BrowserReasonCode } from '@bazilion/api-types'
-import type { BrowserContext } from 'playwright'
-import type { Paths } from '../../core/index.ts'
-import { getDaemonInstanceId } from '../daemon-liveness.ts'
-import { BrowserProcessError, type OwnedBrowserProcess, startOwnedBrowser } from './process.ts'
-import {
-  BROWSER_PROFILE_FORMAT_VERSION,
-  type BrowserOwnerMarker,
-  type BrowserProfileDeps,
-  browserUserDataDir,
-  claimBrowserProfile,
-  clearOwnerMarker,
-  probeProcessPresence,
-  readSingletonLockPid,
-  writeOwnerMarker,
-} from './profile.ts'
+import type { Browser, BrowserContext, CDPSession } from 'playwright'
 
-export interface ManagedLaunchInput {
-  paths: Paths
-  agentId: string
-  teamId: string
+const STARTUP_MS = 15_000
+
+export interface LaunchOptions {
   executablePath: string
+  /** The agent's browser directory: `user-data/` is the profile, `home/` its HOME. */
+  dir: string
   headless: boolean
-  /** Omitted only for the explicit local-development private-network mode. */
+  /** The SSRF proxy; omitted only when private-network access is allowed. */
   proxyUrl?: string
-  display?: string
-  xauthority?: string
-  waylandDisplay?: string
-  xdgRuntimeDir?: string
-  deps?: ManagedLaunchDeps
 }
 
-export interface ManagedLaunchDeps extends BrowserProfileDeps {
-  daemonInstanceId?: string
-  startBrowser?: typeof startOwnedBrowser
-  /** Additional singleton-lock exit confirmation; injectable for tests. */
-  retirementBoundMs?: number
-}
-
-export class ManagedLaunchError extends Error {
-  constructor(
-    readonly reasonCode: BrowserReasonCode,
-    message: string,
-  ) {
-    super(message)
-    this.name = 'ManagedLaunchError'
-  }
-}
-
-export interface ManagedBrowserHandle {
+export interface LaunchedBrowser {
   context: BrowserContext
-  launchNonce: string
-  slotDir: string
-  profileDir: string
+  /** False once the browser process has exited (a crash, a closed window). */
+  readonly running: boolean
+  /** Quit Chromium, then kill its process group if anything lingers. Never throws. */
   close(): Promise<void>
 }
 
-/** Missing/dead is safe; permission errors are not evidence of absence. */
-function lockMayBeHeld(profileDir: string): boolean {
-  const pid = readSingletonLockPid(profileDir)
-  return pid !== null && probeProcessPresence(pid) !== 'absent'
+/** Removes WebRTC from every page: its UDP traffic could not go through the proxy. */
+const NO_WEBRTC_SCRIPT = `for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'mozRTCPeerConnection']) {
+  Object.defineProperty(window, name, { configurable: false, get() { return undefined } })
+}`
+
+function launchArgs(opts: LaunchOptions): string[] {
+  const wayland = !opts.headless && !process.env.DISPLAY && !!process.env.WAYLAND_DISPLAY
+  return [
+    // Chromium picks the port and prints the endpoint on stderr.
+    '--remote-debugging-port=0',
+    `--user-data-dir=${join(opts.dir, 'user-data')}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-sync',
+    '--disable-background-networking',
+    '--disable-component-update',
+    '--disable-updater-scheduler',
+    '--disable-features=Translate,MediaRouter',
+    '--disable-session-crashed-bubble',
+    '--hide-crash-restore-bubble',
+    // Saved passwords stay in the profile, out of the desktop keyring.
+    '--password-store=basic',
+    '--use-mock-keychain',
+    '--disable-dev-shm-usage',
+    // The proxy carries TCP only: keep QUIC and WebRTC UDP from going around it.
+    '--disable-quic',
+    '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+    ...(opts.headless ? ['--headless=new', '--disable-gpu'] : []),
+    ...(wayland ? ['--ozone-platform=wayland'] : []),
+    ...(opts.proxyUrl
+      ? [`--proxy-server=${opts.proxyUrl}`, '--proxy-bypass-list=<-loopback>']
+      : ['--no-proxy-server']),
+    'about:blank',
+  ]
 }
 
-export async function launchManagedBrowser(
-  input: ManagedLaunchInput,
-): Promise<ManagedBrowserHandle> {
-  const deps = input.deps ?? {}
-  const daemonInstanceId = deps.daemonInstanceId ?? getDaemonInstanceId()
-  if (!daemonInstanceId) {
-    throw new ManagedLaunchError('browser_start_failed', 'daemon instance identity is unavailable')
+/** PATH, locale, the profile's own HOME and, for a visible window, display access. */
+function browserEnv(opts: LaunchOptions): Record<string, string> {
+  const env: Record<string, string> = {
+    PATH: process.env.PATH ?? '/usr/bin:/bin',
+    HOME: join(opts.dir, 'home'),
+    LANG: 'C.UTF-8',
   }
-  const claim = claimBrowserProfile(
-    input.paths,
-    { agentId: input.agentId, teamId: input.teamId },
-    deps,
-  )
-  if (claim.state !== 'ready') {
-    throw new ManagedLaunchError(
-      'browser_recovery_required',
-      'browser profile ownership is not proven clean',
-    )
-  }
-  if (claim.staleOwner) clearOwnerMarker(claim.dir)
-  const slotDir = claim.dir
-  const profileDir = browserUserDataDir(slotDir)
-  if (lockMayBeHeld(profileDir)) {
-    throw new ManagedLaunchError(
-      'browser_recovery_required',
-      'another browser may hold this profile lock',
-    )
-  }
-  const launchNonce = randomUUID()
-  const marker: BrowserOwnerMarker = {
-    formatVersion: BROWSER_PROFILE_FORMAT_VERSION,
-    agentId: input.agentId,
-    teamId: input.teamId,
-    launchNonce,
-    daemonInstanceId,
-    phase: 'starting',
-    startedAt: Date.now(),
-  }
-  writeOwnerMarker(slotDir, marker)
-  let owned: OwnedBrowserProcess
-  try {
-    owned = await (deps.startBrowser ?? startOwnedBrowser)(
-      {
-        executablePath: input.executablePath,
-        profileDir,
-        home: join(slotDir, 'home'),
-        headless: input.headless,
-        proxyUrl: input.proxyUrl,
-        display: input.display,
-        xauthority: input.xauthority,
-        waylandDisplay: input.waylandDisplay,
-        xdgRuntimeDir: input.xdgRuntimeDir,
-      },
-      (pid) => {
-        marker.pid = pid
-        marker.processGroupId = pid
-        writeOwnerMarker(slotDir, marker)
-      },
-    )
-  } catch (error) {
-    if (
-      (error instanceof BrowserProcessError && error.reasonCode === 'browser_recovery_required') ||
-      lockMayBeHeld(profileDir)
-    ) {
-      throw new ManagedLaunchError(
-        'browser_recovery_required',
-        'browser cleanup is uncertain; ownership marker retained',
-      )
+  if (!opts.headless) {
+    for (const key of ['DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR']) {
+      const value = process.env[key]
+      if (value) env[key] = value
     }
-    clearOwnerMarker(slotDir)
-    throw new ManagedLaunchError(
-      error instanceof BrowserProcessError ? error.reasonCode : 'browser_start_failed',
-      'local browser startup failed',
-    )
   }
+  return env
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+function signalGroup(pid: number, signal: NodeJS.Signals): void {
   try {
-    marker.phase = 'running'
-    writeOwnerMarker(slotDir, marker)
+    process.kill(-pid, signal)
   } catch {
-    try {
-      await owned.close()
-      clearOwnerMarker(slotDir)
-    } catch {
-      throw new ManagedLaunchError(
-        'browser_recovery_required',
-        'browser ownership publication failed and cleanup is uncertain',
-      )
-    }
-    throw new ManagedLaunchError('browser_start_failed', 'browser ownership publication failed')
+    // The group is gone.
   }
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Kill a browser that a daemon which died (SIGKILL, OOM) left running on the
+ * profile in `dir` (the agent's browser directory, as in LaunchOptions).
+ */
+export async function killOrphanBrowser(dir: string): Promise<void> {
+  const userDataDir = join(dir, 'user-data')
+  let pid: number
+  try {
+    // Chromium's profile lock is a symlink to "<hostname>-<pid>".
+    pid = Number(/-(\d+)$/.exec(readlinkSync(join(userDataDir, 'SingletonLock')))?.[1])
+    const argv = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0')
+    if (!argv.includes(`--user-data-dir=${userDataDir}`)) return
+  } catch {
+    return
+  }
+  signalGroup(pid, 'SIGKILL')
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {
+    // Already gone with its group.
+  }
+  for (let i = 0; i < 40 && isAlive(pid); i++) await sleep(50)
+}
+
+/** Open with a blank tab instead of restoring the previous session's pages. */
+function skipSessionRestore(userDataDir: string): void {
+  const dir = join(userDataDir, 'Default')
+  const file = join(dir, 'Preferences')
+  let prefs: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      prefs = parsed as Record<string, unknown>
+    }
+  } catch {
+    // A new profile has no preferences yet.
+  }
+  prefs.session = { ...(prefs.session as object), restore_on_startup: 5 }
+  prefs.profile = { ...(prefs.profile as object), exit_type: 'Normal', exited_cleanly: true }
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  writeFileSync(file, JSON.stringify(prefs), { mode: 0o600 })
+}
+
+// Browsers still running when the daemon process exits are killed by one hook.
+const liveGroups = new Set<number>()
+let exitHookInstalled = false
+
+function trackGroup(pid: number): void {
+  liveGroups.add(pid)
+  if (exitHookInstalled) return
+  exitHookInstalled = true
+  process.on('exit', () => {
+    for (const group of liveGroups) signalGroup(group, 'SIGKILL')
+  })
+}
+
+export async function launchBrowser(opts: LaunchOptions): Promise<LaunchedBrowser> {
+  const userDataDir = join(opts.dir, 'user-data')
+  mkdirSync(userDataDir, { recursive: true, mode: 0o700 })
+  mkdirSync(join(opts.dir, 'home'), { recursive: true, mode: 0o700 })
+  await killOrphanBrowser(opts.dir)
+  skipSessionRestore(userDataDir)
+
+  // Detached: the browser leads its own process group, helpers included.
+  const child = spawn(opts.executablePath, launchArgs(opts), {
+    env: browserEnv(opts),
+    detached: true,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  child.on('error', () => {})
+  const pid = child.pid
+  if (pid) {
+    trackGroup(pid)
+    // Whenever the main process exits (a crash, a closed window, a quit), its
+    // helpers go at once, while the group id is still theirs. The group is
+    // never signalled again after this, so a reused pid is never hit.
+    child.once('exit', () => {
+      signalGroup(pid, 'SIGKILL')
+      liveGroups.delete(pid)
+    })
+  }
+  const exited = new Promise<boolean>((resolve) => child.once('exit', () => resolve(true)))
+  const waitForExit = (ms: number) => Promise.race([exited, sleep(ms).then(() => false)])
+  const running = () => child.exitCode === null && child.signalCode === null
+
+  let browser: Browser | undefined
+  let cdp: CDPSession | undefined
   let closing: Promise<void> | undefined
-  return {
-    context: owned.context,
-    launchNonce,
-    slotDir,
-    profileDir,
-    close() {
-      closing ??= (async () => {
-        marker.phase = 'stopping'
-        // Even a metadata write failure must not strand the owned process.
-        let markerError: unknown
-        try {
-          writeOwnerMarker(slotDir, marker)
-        } catch (error) {
-          markerError = error
-        }
-        let retirementStep: 'process' | 'profile-lock' | 'marker' = 'process'
-        try {
-          await owned.close()
-          retirementStep = 'profile-lock'
-          const deadline = Date.now() + (deps.retirementBoundMs ?? 500)
-          while (lockMayBeHeld(profileDir) && Date.now() < deadline) {
-            await new Promise((resolve) => setTimeout(resolve, 50))
+  const close = (): Promise<void> =>
+    (closing ??= (async () => {
+      if (pid && running()) {
+        // Browser.close is Chromium's own clean quit, which saves cookies;
+        // disconnecting Playwright alone would leave the process running.
+        cdp?.send('Browser.close').catch(() => {})
+        if (!(await waitForExit(cdp ? 5_000 : 0))) {
+          signalGroup(pid, 'SIGTERM')
+          if (!(await waitForExit(2_000))) {
+            signalGroup(pid, 'SIGKILL')
+            await waitForExit(1_000)
           }
-          if (lockMayBeHeld(profileDir)) throw new Error('profile retirement is uncertain')
-          retirementStep = 'marker'
-          if (markerError) throw new Error('owner marker publication is uncertain')
-          clearOwnerMarker(slotDir)
-        } catch {
-          throw new ManagedLaunchError(
-            'browser_recovery_required',
-            `browser retirement could not be proven (${retirementStep}); ownership marker retained`,
-          )
         }
-      })()
-      return closing
-    },
+      }
+      if (browser) await Promise.race([browser.close().catch(() => {}), sleep(1_000)])
+    })())
+
+  let stderr = ''
+  try {
+    const endpoint = await new Promise<string>((resolve, reject) => {
+      const fail = (message: string) => {
+        clearTimeout(timer)
+        reject(new Error(stderr.trim() ? `${message}:\n${stderr.trim()}` : message))
+      }
+      const timer = setTimeout(
+        () => fail(`the browser did not start within ${STARTUP_MS / 1000}s`),
+        STARTUP_MS,
+      )
+      child.once('error', (error) =>
+        fail(`could not run ${opts.executablePath} (${error.message})`),
+      )
+      child.once('exit', (code, signal) =>
+        fail(`the browser exited during startup (${signal ?? `exit code ${code}`})`),
+      )
+      let pending = ''
+      child.stderr?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString('utf8')
+        stderr = (stderr + text).slice(-2_000)
+        const lines = (pending + text).slice(-16_384).split('\n')
+        pending = lines.pop() ?? ''
+        for (const line of lines) {
+          const match =
+            /^DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[\w-]+)$/.exec(
+              line.trim(),
+            )
+          if (match?.[1]) {
+            clearTimeout(timer)
+            resolve(match[1])
+          }
+        }
+      })
+    })
+    const { chromium } = await import('playwright')
+    browser = await chromium.connectOverCDP(endpoint, { timeout: STARTUP_MS, isLocal: true })
+    cdp = await browser.newBrowserCDPSession()
+    await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' })
+    const context = browser.contexts()[0]
+    if (!context) throw new Error('the browser has no default context')
+    context.setDefaultNavigationTimeout(30_000)
+    context.setDefaultTimeout(10_000)
+    await context.addInitScript(NO_WEBRTC_SCRIPT)
+    // The first tab opened before the init script existed: give it a fresh document.
+    await (context.pages()[0] ?? (await context.newPage())).goto('about:blank')
+    return {
+      context,
+      close,
+      get running() {
+        return running()
+      },
+    }
+  } catch (error) {
+    await close()
+    throw error
   }
 }

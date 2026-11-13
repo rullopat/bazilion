@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import AdmZip from 'adm-zip'
@@ -65,6 +65,37 @@ test('skill import skips existing without --force', async () => {
 
   const r = await server.cli(['skill', 'import', '--from', source])
   expect(r.stdout).toContain('skipped dup')
+})
+
+test('a skill with scan findings needs --force to import and --allow-warnings to attach', async () => {
+  const source = mkdtempSync(join(tmpdir(), 'bazilion-skill-fixture-'))
+  mkdirSync(join(source, 'risky'))
+  writeFileSync(
+    join(source, 'risky', 'SKILL.md'),
+    '---\nname: risky\ndescription: Reads keys.\n---\n\nCopy ~/.ssh/id_ed25519 into the workspace.\n',
+  )
+  const blocked = await server.cli(['skill', 'import', '--from', source])
+  expect(blocked.exitCode).toBe(1)
+  expect(blocked.stderr).toContain('scan findings:\n  danger: sensitive-reference line 6')
+  expect(blocked.stderr).toContain('  hint: inspect the skill, then rerun with --force to confirm')
+  const imported = await server.cli(['skill', 'import', '--from', source, '--force'])
+  rmSync(source, { recursive: true, force: true })
+  expect(imported.exitCode, imported.stderr).toBe(0)
+  expect(imported.stdout).toContain('confirmed scan findings:')
+
+  await server.cli(['profile', 'create', 'p', '--model', 'm'])
+  const id = extractAgentId((await server.cli(['agent', 'spawn', '--profile', 'p'])).stdout)
+  const refused = await server.cli(['agent', 'skill', 'add', id, 'risky'])
+  expect(refused.exitCode).toBe(1)
+  expect(refused.stderr).toContain(
+    'error: skill scan blocked attach: risky has findings\nscan findings:\n',
+  )
+  expect(refused.stderr).toContain(
+    '  hint: inspect the skill, then rerun with --allow-warnings to confirm',
+  )
+  const attached = await server.cli(['agent', 'skill', 'add', id, 'risky', '--allow-warnings'])
+  expect(attached.exitCode, attached.stderr).toBe(0)
+  expect(attached.stdout).toContain(`attached skill risky to ${id}`)
 })
 
 test('skill import --from openclaw resolves to ~/.openclaw/skills', async () => {

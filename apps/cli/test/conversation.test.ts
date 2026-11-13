@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { spawnAgent } from '../../daemon/src/core/agent/spawn.ts'
 import { openDb } from '../../daemon/src/core/db/client.ts'
@@ -11,7 +10,7 @@ beforeAll(async () => {
   server = await startTestServer()
 })
 afterAll(() => server?.stop())
-test('CLI creates and renames retained history without changing active selection on reads', async () => {
+test('CLI starts, renames, reads and lists conversations; reading never changes the active one', async () => {
   const paths = resolvePaths(server.home)
   const db = openDb(paths.db)
   let agentId: string
@@ -21,58 +20,26 @@ test('CLI creates and renames retained history without changing active selection
   } finally {
     db.close()
   }
-  const requestId = randomUUID()
-  const first = await server.cli([
-    'conversation',
-    'new',
-    agentId,
-    '--request-id',
-    requestId,
-    '--expected-revision',
-    '0',
-    '--expected-conversation',
-    'none',
-    '--title',
-    'First task',
-    '--json',
-  ])
-  expect(first.exitCode).toBe(0)
-  const firstId = JSON.parse(first.stdout).conversation.id
-  const second = await server.cli(['conversation', 'new', agentId, '--json'])
-  expect(second.exitCode).toBe(0)
-  const secondId = JSON.parse(second.stdout).conversation.id
+  const run = async (args: string[]) => {
+    const result = await server.cli(args)
+    expect(result.exitCode, result.stderr).toBe(0)
+    return JSON.parse(result.stdout)
+  }
+  const first = await run(['conversation', 'new', agentId, '--title', 'First task', '--json'])
+  expect(first).toMatchObject({ title: 'First task' })
+  const second = await run(['conversation', 'new', agentId, '--json'])
+  expect(second).toMatchObject({ title: 'Conversation 2' })
   expect(
-    (await server.cli(['conversation', 'rename', agentId, firstId, 'Original task'])).exitCode,
-  ).toBe(0)
-  const retry = await server.cli([
-    'conversation',
-    'new',
-    agentId,
-    '--request-id',
-    requestId,
-    '--expected-revision',
-    '0',
-    '--expected-conversation',
-    'none',
-    '--title',
-    'First task',
-    '--json',
-  ])
-  expect(retry.exitCode).toBe(0)
-  expect(JSON.parse(retry.stdout)).toMatchObject({
-    conversation: { id: firstId, title: 'Original task' },
-    selection: { conversationId: secondId, revision: 2 },
+    await run(['conversation', 'rename', agentId, first.id, 'Original task', '--json']),
+  ).toMatchObject({
+    conversation: { id: first.id, title: 'Original task' },
   })
-  const history = await server.cli(['conversation', 'show', agentId, firstId, '--json'])
-  expect(history.exitCode).toBe(0)
-  expect(JSON.parse(history.stdout)).toMatchObject({
+  expect(await run(['conversation', 'show', agentId, first.id, '--json'])).toMatchObject({
     conversation: { title: 'Original task' },
     messages: [],
-    selection: { conversationId: secondId },
   })
-  const listed = await server.cli(['conversation', 'list', agentId, '--json'])
-  expect(JSON.parse(listed.stdout)).toMatchObject({
+  expect(await run(['conversation', 'list', agentId, '--json'])).toMatchObject({
     total: 2,
-    selection: { conversationId: secondId, revision: 2 },
+    selectedId: second.id,
   })
 })

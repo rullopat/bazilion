@@ -1,6 +1,6 @@
 // Per-supergroup outbound queue.
 //
-// Telegram caps outbound to ~20 msg/min per team (across all topics) and
+// Telegram caps outbound to ~20 msg/min per group (across all topics) and
 // ~1 msg/sec to the same chat. With many agents in one supergroup, bursts
 // of mirror sends + first-traffic `createForumTopic` calls all share that
 // budget. The queue serializes outbound work per chat_id and enforces a
@@ -11,7 +11,7 @@
 // bubbles to the caller — the mirror swallows it, the directory module
 // logs it, etc.
 
-const DEFAULT_MIN_INTERVAL_MS = Number(process.env.BAZILION_TELEGRAM_SEND_INTERVAL_MS ?? 200)
+const DEFAULT_MIN_INTERVAL_MS = 200
 
 interface ChatQueue {
   /** The tail of the chain — `enqueue` appends to this. */

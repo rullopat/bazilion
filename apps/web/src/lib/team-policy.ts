@@ -1,381 +1,162 @@
-export type TeamPolicyKind = 'template' | 'live'
-export type TeamPolicyPreset = 'open_team' | 'coordinator' | 'review_pipeline' | 'blank'
-export type ProfilePeerDefault = 'inherit_team_policy' | 'allow_all' | 'deny_all'
-export type TeamPolicyChannel =
-  | 'user_input'
-  | 'user_output'
-  | 'agent_message'
-  | 'outside_team_input'
-  | 'outside_team_output'
+import {
+  type AgentStatus,
+  OUTSIDE_TEAM,
+  type Profile,
+  type ReasoningLevel,
+  type TeamPolicy,
+  type TeamPolicyEdge,
+  type TeamPolicyMode,
+  type TeamTemplate,
+  type TeamTemplateEndpoint,
+  type TeamTemplateInput,
+} from '@bazilion/api-types'
 
-export type TeamPolicyEndpoint =
-  | { kind: 'user' }
-  | { kind: 'outside_team' }
-  | { kind: 'member_slot'; slotId: string }
-  | { kind: 'agent'; agentId: string }
+export const OUTSIDE = OUTSIDE_TEAM
 
-export interface TeamPolicyEdge {
-  id: string
-  source: TeamPolicyEndpoint
-  target: TeamPolicyEndpoint
-  posture?: 'allow' | 'approval_required'
-}
-
-export interface TeamPolicyPolicy {
-  version: 1
-  edges: TeamPolicyEdge[]
-}
-
-export interface TeamPolicyDecision {
-  decision: 'allow' | 'deny'
-  reason: string
-  edgeId?: string
-}
-
-export interface ProfileCommunicationDefaults {
-  userInput: boolean
-  userOutput: boolean
-  outsideTeamInput: boolean
-  outsideTeamOutput: boolean
-  peerDefault: ProfilePeerDefault
-}
-
-export interface TeamPolicyPosition {
+export interface PolicyPosition {
   x: number
   y: number
 }
 
-export interface TeamPolicyMember {
-  slotId: string
-  agentId?: string
+/** A node of the editor. `key` is the Agent id in a live Team and a local slot key in a template. */
+export interface PolicyMember {
+  key: string
+  name: string
   profileId: string
+  status?: AgentStatus
+  modelOverride?: string | null
+  reasoningLevel?: ReasoningLevel | null
+  position: PolicyPosition
+}
+
+/** Directed allow edge between member keys or `outside`. */
+export interface PolicyEdge {
+  from: string
+  to: string
+}
+
+export interface PolicyDocument {
+  kind: 'live' | 'template'
   name: string
-  role?: 'coordinator' | 'planner' | 'worker' | 'reviewer' | 'reporter'
-  status?: 'idle' | 'running' | 'archived'
-  position: TeamPolicyPosition
+  userMd: string | null
+  mode: TeamPolicyMode
+  members: PolicyMember[]
+  edges: PolicyEdge[]
 }
 
-export interface TeamPolicyDocument {
-  id: string
-  kind: TeamPolicyKind
-  name: string
-  preset: TeamPolicyPreset
-  members: TeamPolicyMember[]
-  policy: TeamPolicyPolicy
-  sourceTemplateId?: string
-  boundTeamId?: string
-  createdAt: number
-  updatedAt: number
+export function edgeKey(from: string, to: string): string {
+  return `${from}>${to}`
 }
 
-export const DEFAULT_PROFILE_COMMUNICATION: ProfileCommunicationDefaults = {
-  userInput: true,
-  userOutput: true,
-  outsideTeamInput: false,
-  outsideTeamOutput: false,
-  peerDefault: 'allow_all',
+export function hasEdge(document: PolicyDocument, from: string, to: string): boolean {
+  return document.edges.some((edge) => edge.from === from && edge.to === to)
 }
 
-/**
- * Resolve a profile's explicitly persisted prototype defaults.
- *
- * A missing entry is neutral unless the caller deliberately supplies a workflow-specific
- * fallback. Preset resolution omits that fallback so the four documented topologies stay exact;
- * direct profile spawn supplies the open default because it snapshots a profile directly.
- */
-export function effectiveProfileDefaults(
-  defaultsByProfile: Readonly<Record<string, ProfileCommunicationDefaults>>,
-  profileId: string,
-): ProfileCommunicationDefaults | undefined
-export function effectiveProfileDefaults(
-  defaultsByProfile: Readonly<Record<string, ProfileCommunicationDefaults>>,
-  profileId: string,
-  fallback: ProfileCommunicationDefaults,
-): ProfileCommunicationDefaults
-export function effectiveProfileDefaults(
-  defaultsByProfile: Readonly<Record<string, ProfileCommunicationDefaults>>,
-  profileId: string,
-  fallback?: ProfileCommunicationDefaults,
-): ProfileCommunicationDefaults | undefined {
-  return defaultsByProfile[profileId] ?? fallback
+/** Add or remove one allow edge; an endpoint never connects to itself. */
+export function setEdge(
+  document: PolicyDocument,
+  from: string,
+  to: string,
+  allowed: boolean,
+): PolicyDocument {
+  if (from === to || hasEdge(document, from, to) === allowed) return document
+  const edges = allowed
+    ? [...document.edges, { from, to }]
+    : document.edges.filter((edge) => edge.from !== from || edge.to !== to)
+  return { ...document, edges }
 }
 
-export const USER_ENDPOINT: TeamPolicyEndpoint = { kind: 'user' }
-export const OUTSIDE_GROUP_ENDPOINT: TeamPolicyEndpoint = { kind: 'outside_team' }
+export function endpointLabel(document: PolicyDocument, key: string): string {
+  if (key === OUTSIDE) return 'Other teams'
+  return document.members.find((member) => member.key === key)?.name || key
+}
 
-const FIXTURE_TIME = Date.UTC(2026, 6, 10, 10, 0, 0)
+export function defaultPosition(index: number): PolicyPosition {
+  return { x: 40 + (index % 3) * 250, y: 40 + Math.floor(index / 3) * 130 }
+}
 
-export function endpointKey(endpoint: TeamPolicyEndpoint): string {
-  switch (endpoint.kind) {
-    case 'user':
-      return 'user'
-    case 'outside_team':
-      return 'outside_team'
-    case 'member_slot':
-      return `slot:${endpoint.slotId}`
-    case 'agent':
-      return `agent:${endpoint.agentId}`
+export function liveDocument(policy: TeamPolicy): PolicyDocument {
+  return {
+    kind: 'live',
+    name: policy.teamId,
+    userMd: null,
+    mode: policy.mode,
+    members: policy.members.map((agent, index) => ({
+      key: agent.id,
+      name: agent.name,
+      profileId: agent.profileId,
+      status: agent.status,
+      position: defaultPosition(index),
+    })),
+    edges: policy.edges.map((edge) => ({ from: edge.from, to: edge.to })),
   }
 }
 
-export function endpointFromKey(key: string): TeamPolicyEndpoint | null {
-  if (key === 'user') return USER_ENDPOINT
-  if (key === 'outside_team') return OUTSIDE_GROUP_ENDPOINT
-  if (key.startsWith('slot:') && key.length > 5) {
-    return { kind: 'member_slot', slotId: key.slice(5) }
+export function liveEdges(document: PolicyDocument): TeamPolicyEdge[] {
+  return document.edges.map((edge) => ({ from: edge.from, to: edge.to }))
+}
+
+export function templateDocument(template: TeamTemplate): PolicyDocument {
+  const key = (end: TeamTemplateEndpoint) => (end === OUTSIDE ? OUTSIDE : `slot:${end}`)
+  return {
+    kind: 'template',
+    name: template.name,
+    userMd: template.userMd,
+    mode: template.policyMode,
+    members: template.slots.map((slot, index) => ({
+      key: `slot:${index}`,
+      name: slot.agentName,
+      profileId: slot.profileId,
+      modelOverride: slot.modelOverride,
+      reasoningLevel: slot.reasoningLevel,
+      position: slot.layoutPosition ?? defaultPosition(index),
+    })),
+    edges: template.edges.map((edge) => ({ from: key(edge.from), to: key(edge.to) })),
   }
-  if (key.startsWith('agent:') && key.length > 6) {
-    return { kind: 'agent', agentId: key.slice(6) }
-  }
-  return null
 }
 
-export function endpointsEqual(left: TeamPolicyEndpoint, right: TeamPolicyEndpoint): boolean {
-  return endpointKey(left) === endpointKey(right)
-}
-
-export function edgeKey(source: TeamPolicyEndpoint, target: TeamPolicyEndpoint): string {
-  return `${endpointKey(source)}>${endpointKey(target)}`
-}
-
-function edgeId(source: TeamPolicyEndpoint, target: TeamPolicyEndpoint): string {
-  return `edge:${edgeKey(source, target)}`
-}
-
-export function isMemberEndpoint(endpoint: TeamPolicyEndpoint): boolean {
-  return endpoint.kind === 'member_slot' || endpoint.kind === 'agent'
-}
-
-export function isValidTeamPolicyConnection(
-  source: TeamPolicyEndpoint,
-  target: TeamPolicyEndpoint,
-): boolean {
-  if (endpointsEqual(source, target)) return false
-  if (!isMemberEndpoint(source) && !isMemberEndpoint(target)) return false
-  if (source.kind === 'member_slot' && target.kind === 'agent') return false
-  if (source.kind === 'agent' && target.kind === 'member_slot') return false
-  return true
-}
-
-export function deriveTeamPolicyChannel(
-  source: TeamPolicyEndpoint,
-  target: TeamPolicyEndpoint,
-): TeamPolicyChannel {
-  if (source.kind === 'user' && isMemberEndpoint(target)) return 'user_input'
-  if (isMemberEndpoint(source) && target.kind === 'user') return 'user_output'
-  if (source.kind === 'outside_team' && isMemberEndpoint(target)) {
-    return 'outside_team_input'
-  }
-  if (isMemberEndpoint(source) && target.kind === 'outside_team') {
-    return 'outside_team_output'
-  }
-  return 'agent_message'
-}
-
-export function hasTeamPolicyEdge(
-  policy: TeamPolicyPolicy,
-  source: TeamPolicyEndpoint,
-  target: TeamPolicyEndpoint,
-): boolean {
-  const wanted = edgeKey(source, target)
-  return policy.edges.some((edge) => edgeKey(edge.source, edge.target) === wanted)
-}
-
-export function addTeamPolicyEdge(
-  policy: TeamPolicyPolicy,
-  source: TeamPolicyEndpoint,
-  target: TeamPolicyEndpoint,
-): TeamPolicyPolicy {
-  if (!isValidTeamPolicyConnection(source, target) || hasTeamPolicyEdge(policy, source, target)) {
-    return policy
+/** The PUT body for a template draft; slots are numbered by their order in the draft. */
+export function templateInput(document: PolicyDocument, profiles: Profile[]): TeamTemplateInput {
+  const profileIds = new Set(profiles.map((profile) => profile.id))
+  const position = new Map(document.members.map((member, index) => [member.key, index]))
+  const endpoint = (key: string): TeamTemplateEndpoint => {
+    if (key === OUTSIDE) return OUTSIDE
+    const index = position.get(key)
+    if (index === undefined) throw new Error(`Edge names a removed slot: ${key}`)
+    return index
   }
   return {
-    ...policy,
-    edges: [...policy.edges, { id: edgeId(source, target), source, target }],
-  }
-}
-
-export function removeTeamPolicyEdge(
-  policy: TeamPolicyPolicy,
-  source: TeamPolicyEndpoint,
-  target: TeamPolicyEndpoint,
-): TeamPolicyPolicy {
-  const unwanted = edgeKey(source, target)
-  const edges = policy.edges.filter((edge) => edgeKey(edge.source, edge.target) !== unwanted)
-  return edges.length === policy.edges.length ? policy : { ...policy, edges }
-}
-
-export function evaluateTeamPolicyPolicy(
-  policy: TeamPolicyPolicy,
-  source: TeamPolicyEndpoint,
-  target: TeamPolicyEndpoint,
-): TeamPolicyDecision {
-  if (!isValidTeamPolicyConnection(source, target)) {
-    return { decision: 'deny', reason: 'This source and target cannot communicate.' }
-  }
-  const match = policy.edges.find(
-    (edge) => edgeKey(edge.source, edge.target) === edgeKey(source, target),
-  )
-  if (match) {
-    return {
-      decision: 'allow',
-      reason: 'A directed allow edge matches this communication path.',
-      edgeId: match.id,
-    }
-  }
-  return {
-    decision: 'deny',
-    reason: 'No directed allow edge exists for this communication path.',
-  }
-}
-
-export function endpointForMember(
-  teamPolicy: Pick<TeamPolicyDocument, 'kind'>,
-  member: TeamPolicyMember,
-): TeamPolicyEndpoint {
-  if (teamPolicy.kind === 'live') {
-    return { kind: 'agent', agentId: member.agentId ?? `prototype:${member.slotId}` }
-  }
-  return { kind: 'member_slot', slotId: member.slotId }
-}
-
-export function findTeamPolicyMember(
-  teamPolicy: TeamPolicyDocument,
-  endpoint: TeamPolicyEndpoint,
-): TeamPolicyMember | undefined {
-  if (endpoint.kind === 'member_slot') {
-    return teamPolicy.members.find((member) => member.slotId === endpoint.slotId)
-  }
-  if (endpoint.kind === 'agent') {
-    return teamPolicy.members.find(
-      (member) => (member.agentId ?? `prototype:${member.slotId}`) === endpoint.agentId,
-    )
-  }
-  return undefined
-}
-
-function emptyPolicy(): TeamPolicyPolicy {
-  return { version: 1, edges: [] }
-}
-
-function addBothDirections(
-  policy: TeamPolicyPolicy,
-  left: TeamPolicyEndpoint,
-  right: TeamPolicyEndpoint,
-): TeamPolicyPolicy {
-  return addTeamPolicyEdge(addTeamPolicyEdge(policy, left, right), right, left)
-}
-
-export function createPresetPolicy(
-  kind: TeamPolicyKind,
-  members: TeamPolicyMember[],
-  preset: TeamPolicyPreset,
-): TeamPolicyPolicy {
-  const endpoints = members.map((member) =>
-    endpointForMember({ kind }, member),
-  )
-  let policy = emptyPolicy()
-
-  if (preset === 'blank') return policy
-
-  if (preset === 'open_team') {
-    for (let index = 0; index < endpoints.length; index++) {
-      const endpoint = endpoints[index]
-      if (!endpoint) continue
-      policy = addBothDirections(policy, USER_ENDPOINT, endpoint)
-      policy = addBothDirections(policy, OUTSIDE_GROUP_ENDPOINT, endpoint)
-      for (let peerIndex = index + 1; peerIndex < endpoints.length; peerIndex++) {
-        const peer = endpoints[peerIndex]
-        if (peer) policy = addBothDirections(policy, endpoint, peer)
+    name: document.name,
+    userMd: document.userMd,
+    policyMode: document.mode,
+    slots: document.members.map((member) => {
+      if (!profileIds.has(member.profileId)) {
+        throw new Error(`Missing Agent template: ${member.profileId || '(none)'}`)
       }
-    }
-    return policy
-  }
-
-  if (preset === 'coordinator') {
-    const coordinatorIndex = Math.max(
-      0,
-      members.findIndex((member) => member.role === 'coordinator'),
-    )
-    const coordinator = endpoints[coordinatorIndex]
-    if (!coordinator) return policy
-    policy = addBothDirections(policy, USER_ENDPOINT, coordinator)
-    for (const endpoint of endpoints) {
-      if (endpoint && !endpointsEqual(endpoint, coordinator)) {
-        policy = addBothDirections(policy, coordinator, endpoint)
+      return {
+        profileId: member.profileId,
+        agentName: member.name,
+        modelOverride: member.modelOverride ?? null,
+        reasoningLevel: member.reasoningLevel ?? null,
+        layoutPosition: member.position,
       }
-    }
-    return policy
+    }),
+    edges: document.edges.map((edge) => ({ from: endpoint(edge.from), to: endpoint(edge.to) })),
   }
-
-  const roleOrder: Array<TeamPolicyMember['role']> = [
-    'planner',
-    'worker',
-    'reviewer',
-    'reporter',
-  ]
-  const ordered = roleOrder
-    .map((role) => {
-      const member = members.find((candidate) => candidate.role === role)
-      return member ? endpointForMember({ kind }, member) : undefined
-    })
-    .filter((endpoint): endpoint is TeamPolicyEndpoint => Boolean(endpoint))
-  const sequence = [USER_ENDPOINT, ...ordered, USER_ENDPOINT]
-  for (let index = 0; index < sequence.length - 1; index++) {
-    const source = sequence[index]
-    const target = sequence[index + 1]
-    if (source && target && !endpointsEqual(source, target)) {
-      policy = addTeamPolicyEdge(policy, source, target)
-    }
-  }
-  return policy
 }
 
-export function applyProfileDefaults(
-  policy: TeamPolicyPolicy,
-  teamPolicy: Pick<TeamPolicyDocument, 'kind' | 'members'>,
-  member: TeamPolicyMember,
-  defaults: ProfileCommunicationDefaults,
-): TeamPolicyPolicy {
-  const endpoint = endpointForMember(teamPolicy, member)
-  let next = policy
-  const boundaryRules: Array<[boolean, TeamPolicyEndpoint, TeamPolicyEndpoint]> = [
-    [defaults.userInput, USER_ENDPOINT, endpoint],
-    [defaults.userOutput, endpoint, USER_ENDPOINT],
-    [defaults.outsideTeamInput, OUTSIDE_GROUP_ENDPOINT, endpoint],
-    [defaults.outsideTeamOutput, endpoint, OUTSIDE_GROUP_ENDPOINT],
-  ]
-  for (const [allowed, source, target] of boundaryRules) {
-    next = allowed
-      ? addTeamPolicyEdge(next, source, target)
-      : removeTeamPolicyEdge(next, source, target)
-  }
-
-  if (defaults.peerDefault === 'inherit_team_policy') return next
-  for (const peer of teamPolicy.members) {
-    if (peer.slotId === member.slotId) continue
-    const peerEndpoint = endpointForMember(teamPolicy, peer)
-    if (defaults.peerDefault === 'allow_all') {
-      next = addBothDirections(next, endpoint, peerEndpoint)
-    } else {
-      next = removeTeamPolicyEdge(next, endpoint, peerEndpoint)
-      next = removeTeamPolicyEdge(next, peerEndpoint, endpoint)
-    }
-  }
-  return next
-}
-
-export function resolvePresetWithProfileDefaults(
-  kind: TeamPolicyKind,
-  members: TeamPolicyMember[],
-  preset: TeamPolicyPreset,
-  defaultsByProfile: Record<string, ProfileCommunicationDefaults>,
-): TeamPolicyPolicy {
-  const teamPolicy = { kind, members }
-  let policy = createPresetPolicy(kind, members, preset)
-  for (const member of members) {
-    const defaults = effectiveProfileDefaults(defaultsByProfile, member.profileId)
-    if (defaults) policy = applyProfileDefaults(policy, teamPolicy, member, defaults)
-  }
-  return policy
+/** A live Team stores no layout, so dragging its nodes never makes the draft dirty. */
+export function sameDocument(left: PolicyDocument, right: PolicyDocument): boolean {
+  const edges = (document: PolicyDocument) =>
+    document.edges
+      .map((edge) => edgeKey(edge.from, edge.to))
+      .sort()
+      .join('|')
+  if (left.mode !== right.mode || edges(left) !== edges(right)) return false
+  if (left.kind === 'live') return true
+  return (
+    left.name === right.name &&
+    left.userMd === right.userMd &&
+    JSON.stringify(left.members) === JSON.stringify(right.members)
+  )
 }

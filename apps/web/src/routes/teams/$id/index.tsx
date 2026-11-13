@@ -1,170 +1,140 @@
-import { WorkspaceRecoveryCard } from '../../../components/WorkspaceRecoveryCard'
-import { CodingDefaultsCard } from '../../../components/CodingDefaultsCard'
-import { ApiClientError } from '@bazilion/client'
-import type {
-  Agent,
-  Team,
-  TeamTemplateWithCount,
-  ResolvedTeamPolicy,
-} from '@bazilion/api-types'
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
-import { RecoveryState } from '../../../components/RecoveryState'
+import type { Agent, Team, TeamTemplate } from '@bazilion/api-types'
+import { createFileRoute, getRouteApi, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
-import { PageShell, SectionCard, StatusBadge } from '../../../components/Page'
-import { RepositoryContextCard } from '../../../components/RepositoryContextCard'
-import { TeamTabs } from '../../../components/TeamTabs'
+import { CodingDefaultsCard } from '../../../components/CodingDefaultsCard'
+import { SectionCard, StatusBadge } from '../../../components/Page'
+import { SpawnTeamModal } from '../../../components/SpawnTeamModal'
 import { UnsavedChangesGuard } from '../../../components/UnsavedChangesGuard'
+import { api, errorMessage } from '../../../lib/api'
 import { daemonClient } from '../../../lib/daemon-client'
 
-interface TeamDetail {
-  team: Team
-  members: Agent[]
-  profileGroups: TeamTemplateWithCount[]
-}
+const teamRoute = getRouteApi('/teams/$id')
 
-const fetchGroup = createServerFn({ method: 'POST' })
-  .validator((d: { id: string }) => d)
-  .handler(async ({ data }): Promise<TeamDetail | null> => {
-    const c = daemonClient()
-    let team: Team
-    try {
-      team = await c.get<Team>(`/api/teams/${encodeURIComponent(data.id)}`)
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 404) return null
-      throw err
-    }
-    const [all, profileGroups] = await Promise.all([
-      c.get<Agent[]>('/api/agents?includeArchived=true'),
-      c.get<TeamTemplateWithCount[]>('/api/team-templates'),
+const fetchContext = createServerFn({ method: 'GET' })
+  .validator((data: { id: string }) => data)
+  .handler(async ({ data }) => {
+    const client = daemonClient()
+    const [agents, templates] = await Promise.all([
+      client.get<Agent[]>('/api/agents?includeArchived=true'),
+      client.get<TeamTemplate[]>('/api/team-templates'),
     ])
-    const members = all.filter((a) => a.teamId === team.id)
-    return { team, members, profileGroups }
+    return { members: agents.filter((agent) => agent.teamId === data.id), templates }
   })
 
 export const Route = createFileRoute('/teams/$id/')({
-  errorComponent: ({ error, reset }) => <RecoveryState title="Team overview unavailable" error={error} reset={reset} fallbackHref="/teams" />,
-  loader: async ({ params }) => {
-    const data = await fetchGroup({ data: { id: params.id } })
-    if (!data) throw redirect({ to: '/teams' })
-    return data
-  },
-  component: TeamDetailPage,
+  loader: ({ params }) => fetchContext({ data: { id: params.id } }),
+  component: TeamContextPage,
 })
 
-function TeamDetailPage() {
-  const { team, members, profileGroups } = Route.useLoaderData()
+function TeamContextPage() {
+  const team = teamRoute.useLoaderData()
+  const { members, templates } = Route.useLoaderData()
   const router = useRouter()
-  const [userMd, setUserMd] = useState(team.userMd)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [userMdDirty, setUserMdDirty] = useState(false)
   const [topicDirty, setTopicDirty] = useState(false)
-  const contextDirty = userMd !== team.userMd || topicDirty
-
-  async function save() {
-    setBusy(true)
-    setErr(null)
-    try {
-      const res = await fetch(`/api/teams/${encodeURIComponent(team.id)}/user-md`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ userMd }),
-      })
-      if (!res.ok) {
-        const e = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(e.error ?? `${res.status} ${res.statusText}`)
-      }
-      setSavedAt(Date.now())
-      await router.invalidate()
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
-    <PageShell>
-      <UnsavedChangesGuard when={contextDirty} subject="Team context" />
-      <h1 className="font-serif text-3xl text-foreground">
-        {team.name} <span className="text-muted-foreground text-base">({team.id})</span>
-      </h1>
-      <p className="text-muted-foreground text-sm mb-6 mt-1">
-        <code className="font-mono">{team.path}</code> · {members.length}{' '}
-        member{members.length === 1 ? '' : 's'} ·{' '}
-        <a
-          href={`/teams/${encodeURIComponent(team.id)}/memory`}
-          className="text-primary underline"
-        >
-          shared memory →
-        </a>
-      </p>
-
-      <TeamTabs teamId={team.id} />
-
-      <section className="rounded-lg border bg-card p-5 mb-6">
-        <h3 className="font-serif text-xl mb-1">USER.md</h3>
-        <p className="text-muted-foreground text-sm mb-3">
-          Read-only context about the human, injected into every member agent's system prompt.
-          12 KB cap. Agents cannot edit this file — only you can.
-        </p>
-        <label htmlFor="team-user-context" className="sr-only">
-          USER.md Team context
-        </label>
-        <textarea
-          id="team-user-context"
-          value={userMd}
-          onChange={(e) => setUserMd(e.target.value)}
-          rows={16}
-          className="w-full rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-ring/30"
-          placeholder="What the agent should know about you in this team context…"
-        />
-        <div className="flex items-center gap-3 mt-3">
-          <Button
-            variant="primary"
-            onClick={save}
-            disabled={busy || userMd === team.userMd}
-          >
-            {busy ? 'saving…' : 'save'}
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {userMd.length} / 12000 chars
-          </span>
-          {savedAt && <span role="status" className="text-xs text-success">Saved</span>}
-          {err && <span role="alert" className="text-xs text-danger">{err}</span>}
-        </div>
-      </section>
-
-      <WorkspaceRecoveryCard key={team.id} teamId={team.id} />
-      <details className="mb-6 rounded-lg border bg-card p-4"><summary className="cursor-pointer text-sm">Advanced repository diagnostics</summary><RepositoryContextCard key={team.id} teamId={team.id} /><CodingDefaultsCard teamId={team.id} /></details>
-
+    <div className="space-y-6">
+      <UnsavedChangesGuard when={userMdDirty || topicDirty} subject="Team context" />
+      <UserMdCard team={team} onDirtyChange={setUserMdDirty} onSaved={() => router.invalidate()} />
+      <SectionCard>
+        <CodingDefaultsCard teamId={team.id} />
+      </SectionCard>
       <TopicNameFormatCard
         team={team}
         sampleAgent={members[0]?.name ?? 'researcher'}
         onSaved={() => router.invalidate()}
         onDirtyChange={setTopicDirty}
       />
-
       {members.length === 0 && (
         <SpawnFromTemplateCard
-          teamId={team.id}
-          profileGroups={profileGroups}
+          team={team}
+          templates={templates}
           onSpawned={() => router.invalidate()}
         />
       )}
-
       <SectionCard
-        title="Roster"
-        description="Live Team membership has one canonical management view."
-        actions={<StatusBadge variant={members.length > 0 ? 'success' : 'neutral'}>{members.length} member{members.length === 1 ? '' : 's'}</StatusBadge>}
+        title="Members"
+        actions={
+          <StatusBadge variant={members.length > 0 ? 'success' : 'neutral'}>
+            {members.length} member{members.length === 1 ? '' : 's'}
+          </StatusBadge>
+        }
       >
         <a href={`/teams/${encodeURIComponent(team.id)}/members`} className="ghost-btn">
-          Manage Team members
+          Show Team members
         </a>
       </SectionCard>
-    </PageShell>
+    </div>
+  )
+}
+
+function UserMdCard({
+  team,
+  onDirtyChange,
+  onSaved,
+}: {
+  team: Team
+  onDirtyChange: (dirty: boolean) => void
+  onSaved: () => Promise<void>
+}) {
+  const [userMd, setUserMd] = useState(team.userMd)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const dirty = userMd !== team.userMd
+
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      await api(`/api/teams/${encodeURIComponent(team.id)}/user-md`, {
+        method: 'PUT',
+        body: { userMd },
+      })
+      setSaved(true)
+      await onSaved()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SectionCard
+      title="USER.md"
+      description="Context about you, added to every member's system prompt (12 KB at most). Only you can edit it; Agents cannot."
+    >
+      <textarea
+        aria-label="USER.md Team context"
+        value={userMd}
+        onChange={(event) => setUserMd(event.target.value)}
+        rows={16}
+        className="font-mono text-sm"
+        placeholder="What the agents should know about you in this Team…"
+      />
+      <div className="mt-3 flex items-center gap-3">
+        <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty}>
+          {busy ? 'Saving…' : 'Save'}
+        </Button>
+        <span className="text-xs text-muted-foreground">{userMd.length} / 12000 chars</span>
+        {saved && !dirty && (
+          <span role="status" className="text-xs text-success">
+            Saved
+          </span>
+        )}
+        {error && (
+          <span role="alert" className="text-xs text-danger">
+            {error}
+          </span>
+        )}
+      </div>
+    </SectionCard>
   )
 }
 
@@ -181,10 +151,10 @@ function TopicNameFormatCard({
 }) {
   const [format, setFormat] = useState(team.telegramTopicNameFormat ?? '')
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
-
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
   const trimmed = format.trim()
+  const dirty = (team.telegramTopicNameFormat ?? '') !== format
   const preview = trimmed
     ? trimmed
         .replaceAll('{agent.name}', sampleAgent)
@@ -194,8 +164,6 @@ function TopicNameFormatCard({
       ? sampleAgent
       : `${team.id} › ${sampleAgent}`
 
-  const dirty = (team.telegramTopicNameFormat ?? '') !== format
-
   useEffect(() => {
     onDirtyChange(dirty)
     return () => onDirtyChange(false)
@@ -203,154 +171,127 @@ function TopicNameFormatCard({
 
   async function save(clear: boolean) {
     setBusy(true)
-    setErr(null)
+    setError(null)
     try {
-      const res = await fetch(`/api/teams/${encodeURIComponent(team.id)}/topic-format`, {
+      await api(`/api/teams/${encodeURIComponent(team.id)}/topic-format`, {
         method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ format: clear ? null : format }),
+        body: { format: clear ? null : format },
       })
-      if (!res.ok) {
-        const e = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(e.error ?? `${res.status} ${res.statusText}`)
-      }
       if (clear) setFormat('')
-      setSavedAt(Date.now())
+      setSaved(true)
       onSaved()
-    } catch (e) {
-      setErr((e as Error).message)
+    } catch (cause) {
+      setError(errorMessage(cause))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <section className="rounded-lg border bg-card p-5 mb-6">
-      <h3 className="font-serif text-xl mb-1">Telegram topic names</h3>
-      <p className="text-muted-foreground text-sm mb-3">
-        Template for this team's Telegram forum-topic titles. Leave empty for built-in naming.
-        Tokens: <code className="font-mono">{'{agent.name}'}</code>{' '}
-        <code className="font-mono">{'{team.name}'}</code>{' '}
-        <code className="font-mono">{'{team.slug}'}</code> — must include{' '}
-        <code className="font-mono">{'{agent.name}'}</code>. Saving renames existing topics that you
-        haven't manually renamed in Telegram.
-      </p>
-      <label htmlFor="team-telegram-topic-format" className="sr-only">
-        Telegram topic name format
-      </label>
+    <SectionCard
+      title="Telegram topic names"
+      description={
+        <>
+          The title of each member's Telegram forum topic; leave empty for the built-in naming.
+          Tokens: <code>{'{agent.name}'}</code> (required), <code>{'{team.name}'}</code>,{' '}
+          <code>{'{team.slug}'}</code>. Saving renames the existing topics you have not renamed in
+          Telegram.
+        </>
+      }
+    >
       <input
-        id="team-telegram-topic-format"
+        aria-label="Telegram topic name format"
         value={format}
-        onChange={(e) => setFormat(e.target.value)}
+        onChange={(event) => setFormat(event.target.value)}
         placeholder="{team.name} / {agent.name}"
-        className="w-full rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-ring/30"
+        className="font-mono text-sm"
       />
-      <p className="text-xs text-muted-foreground mt-2">
+      <p className="mt-2 text-xs text-muted-foreground">
         preview: <span className="font-mono text-foreground">{preview}</span>
       </p>
-      <div className="flex items-center gap-3 mt-3">
+      <div className="mt-3 flex items-center gap-3">
         <Button
           variant="primary"
-          onClick={() => save(false)}
+          onClick={() => void save(false)}
           disabled={busy || !dirty || trimmed.length === 0}
         >
-          {busy ? 'saving…' : 'save'}
+          {busy ? 'Saving…' : 'Save'}
         </Button>
         {team.telegramTopicNameFormat && (
-          <Button variant="ghost" onClick={() => save(true)} disabled={busy}>
-            clear
+          <Button variant="ghost" onClick={() => void save(true)} disabled={busy}>
+            Clear
           </Button>
         )}
-        {savedAt && <span role="status" className="text-xs text-success">Saved</span>}
-        {err && <span role="alert" className="text-xs text-danger">{err}</span>}
+        {saved && !dirty && (
+          <span role="status" className="text-xs text-success">
+            Saved
+          </span>
+        )}
+        {error && (
+          <span role="alert" className="text-xs text-danger">
+            {error}
+          </span>
+        )}
       </div>
-    </section>
+    </SectionCard>
   )
 }
 
+/** An empty Team offers its Team templates; the spawn itself is the shared spawn dialog. */
 function SpawnFromTemplateCard({
-  teamId,
-  profileGroups,
+  team,
+  templates,
   onSpawned,
 }: {
-  teamId: string
-  profileGroups: TeamTemplateWithCount[]
+  team: Team
+  templates: TeamTemplate[]
   onSpawned: () => void
 }) {
-  const eligible = profileGroups.filter((g) => g.slotCount > 0 && !g.deletedAt)
-  const [selected, setSelected] = useState<string>(eligible[0]?.id ?? '')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  async function spawn() {
-    if (!selected) return
-    setBusy(true)
-    setErr(null)
-    try {
-      const template = eligible.find((item) => item.id === selected)
-      if (!template) throw new Error('Team template is unavailable.')
-      const policyResponse = await fetch(`/api/teams/${encodeURIComponent(teamId)}/policy`)
-      if (!policyResponse.ok) throw new Error('The current Team policy is unavailable.')
-      const current = (await policyResponse.json()) as ResolvedTeamPolicy
-      const res = await fetch(`/api/team-templates/${encodeURIComponent(selected)}/spawn`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          templateExpectedRevision: template.currentRevision,
-          teamId,
-          teamExpectedRevision: current.teamPolicy.revision,
-          mode: 'initialize',
-        }),
-      })
-      if (!res.ok) {
-        const e = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(e.error ?? `${res.status} ${res.statusText}`)
-      }
-      onSpawned()
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
+  const eligible = templates.filter((template) => template.slots.length > 0)
+  const [selected, setSelected] = useState(eligible[0]?.id ?? '')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const template = eligible.find((item) => item.id === selected)
 
   return (
-    <section className="rounded-lg border bg-card p-5 mb-6">
-      <h3 className="font-serif text-xl mb-1">spawn a team into this team</h3>
-      <p className="text-muted-foreground text-sm mb-3">
-        This Team is empty. Pick a canonical Team template to initialize its roster and policy at
-        the current reviewed Team and Team revisions.
-      </p>
+    <SectionCard
+      title="Spawn from a Team template"
+      description="This Team has no members. A Team template spawns its Agents and allow edges here."
+    >
       {eligible.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          No Team templates with slots yet. Build one on{' '}
-          <a href="/templates/teams" className="text-primary underline">
-            Team templates
-          </a>{' '}
-          first.
+        <p className="text-sm text-muted-foreground">
+          No Team template has members yet. Build one under{' '}
+          <a href="/templates/teams">Team templates</a> first.
         </p>
       ) : (
         <div className="flex flex-wrap items-end gap-3">
-          <label className="m-0 flex min-w-0 flex-1 flex-col gap-1 text-sm text-foreground">
+          <label className="m-0 min-w-0 flex-1">
             Team template
-            <select
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              className="min-w-0 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30"
-            >
-              {eligible.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name} ({g.slotCount} slot{g.slotCount === 1 ? '' : 's'}, r{g.currentRevision})
+            <select value={selected} onChange={(event) => setSelected(event.target.value)}>
+              {eligible.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name} ({template.slots.length} slot
+                  {template.slots.length === 1 ? '' : 's'})
                 </option>
               ))}
             </select>
           </label>
-          <Button variant="primary" onClick={spawn} disabled={busy || !selected}>
-            {busy ? 'spawning…' : 'spawn team'}
+          <Button variant="primary" onClick={() => setDialogOpen(true)} disabled={!template}>
+            Spawn team…
           </Button>
-          {err && <span role="alert" className="basis-full text-xs text-danger">{err}</span>}
         </div>
       )}
-    </section>
+      {dialogOpen && template && (
+        <SpawnTeamModal
+          template={template}
+          teams={[team]}
+          initialTeamId={team.id}
+          onClose={() => setDialogOpen(false)}
+          onSpawned={() => {
+            setDialogOpen(false)
+            onSpawned()
+          }}
+        />
+      )}
+    </SectionCard>
   )
 }

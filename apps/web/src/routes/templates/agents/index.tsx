@@ -1,57 +1,45 @@
-import type { Profile, SkillInfo } from '@bazilion/api-types'
+import type {
+  AvailableModelsResponse,
+  CreateProfileRequest,
+  ModelGroup,
+  ProfileSummary,
+  ProfileTemplates,
+  SkillInfo,
+  SkillsMode,
+} from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
-import { PageHeader, PageShell } from '../../../components/Page'
-import { ProfileCommunicationEditor } from '../../../components/team-policy/ProfileCommunicationEditor'
-import { TemplatesTabs } from '../../../components/TemplatesTabs'
+import { AVAILABLE_MODELS_PATH, ModelSelect } from '../../../components/ModelSelect'
+import {
+  ItemList,
+  ItemRow,
+  PageHeader,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from '../../../components/Page'
+import { SectionTabs, TEMPLATE_TABS } from '../../../components/SectionTabs'
+import { SkillsPicker } from '../../../components/SkillsPicker'
+import { Tabs } from '../../../components/Tabs'
 import { UnsavedChangesGuard } from '../../../components/UnsavedChangesGuard'
+import { api, errorMessage } from '../../../lib/api'
 import { daemonClient } from '../../../lib/daemon-client'
-import { DEFAULT_PROFILE_COMMUNICATION } from '../../../lib/team-policy'
 
-interface ProfileWithCounts extends Profile {
-  agentCount: number
-  defaultSkills: string[]
-}
-interface ModelGroup {
-  provider: string
-  models: string[]
-}
-interface AvailableModelsResponse {
-  teams: ModelGroup[]
-}
-interface TemplatesResponse {
-  soul: string
-  identity: string
-  bootstrap: string
-  agents: string
-  tools: string
-  userMd: string
-}
-
-interface ProfilesView {
-  profiles: ProfileWithCounts[]
-  modelGroups: ModelGroup[]
-  skills: SkillInfo[]
-  templates: TemplatesResponse
-}
-
-const fetchProfiles = createServerFn({ method: 'GET' }).handler(async (): Promise<ProfilesView> => {
-  const c = daemonClient()
+const fetchProfiles = createServerFn({ method: 'GET' }).handler(async () => {
+  const client = daemonClient()
   const [profiles, models, skills, templates] = await Promise.all([
-    c.get<ProfileWithCounts[]>('/api/profiles'),
-    c.get<AvailableModelsResponse>('/api/config/available-models'),
-    c.get<SkillInfo[]>('/api/skills'),
-    c.get<TemplatesResponse>('/api/profiles/_/templates'),
+    client.get<ProfileSummary[]>('/api/profiles'),
+    client.get<AvailableModelsResponse>(AVAILABLE_MODELS_PATH),
+    client.get<SkillInfo[]>('/api/skills'),
+    client.get<ProfileTemplates>('/api/profiles/_/templates'),
   ])
   return { profiles, modelGroups: models.teams, skills, templates }
 })
 
 export const Route = createFileRoute('/templates/agents/')({
-  errorComponent: ({ error, reset }) => <RecoveryState title="Agent templates unavailable" error={error} reset={reset} fallbackHref="/templates" />,
   loader: () => fetchProfiles(),
   component: ProfilesPage,
 })
@@ -59,31 +47,16 @@ export const Route = createFileRoute('/templates/agents/')({
 function ProfilesPage() {
   const { profiles, modelGroups, skills, templates } = Route.useLoaderData()
   const router = useRouter()
-  const [deleteTarget, setDeleteTarget] = useState<ProfileWithCounts | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-
-  async function del(id: string) {
-    const res = await fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
-    if (!res.ok && res.status !== 204) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      throw new Error(body?.error ?? res.statusText)
-    }
-    await router.invalidate()
-  }
+  const [deleteTarget, setDeleteTarget] = useState<ProfileSummary | null>(null)
 
   return (
     <PageShell size="wide">
       <PageHeader
         eyebrow="Templates"
         title="Agent templates"
-        description="Define reusable identity, model, skills, and communication defaults for newly spawned agents."
+        description="Reusable identity, model and skills for newly spawned agents."
       />
-      {deleteError && (
-        <p role="alert" className="err">
-          {deleteError}
-        </p>
-      )}
-      <TemplatesTabs />
+      <SectionTabs label="Template kinds" base="/templates" tabs={TEMPLATE_TABS} />
 
       <CreateProfileForm
         modelGroups={modelGroups}
@@ -92,87 +65,62 @@ function ProfilesPage() {
         onCreated={() => router.invalidate()}
       />
 
-      <div className="overflow-x-auto">
-      <table>
-        <thead>
-          <tr>
-            <th>id</th>
-            <th>name</th>
-            <th>model</th>
-            <th>agents</th>
-            <th>skills</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {profiles.length === 0 && (
-            <tr>
-              <td colSpan={6} className="muted">
-                no agent templates yet
-              </td>
-            </tr>
-          )}
-          {profiles.map((p) => {
-            const skillsLabel =
-              p.skillsMode === 'all'
-                ? 'all'
-                : p.defaultSkills.length === 0
-                  ? '—'
-                  : p.defaultSkills.join(', ')
-            return (
-              <tr key={p.id}>
-                <td>
-                  <a href={`/templates/agents/${p.id}`}>
-                    <code>{p.id}</code>
-                  </a>
-                </td>
-                <td>{p.name}</td>
-                <td>
-                  <code>{p.defaultModel}</code>
-                </td>
-                <td>{p.agentCount}</td>
-                <td className="text-xs text-mocha-light">{skillsLabel}</td>
-                <td>
-                  {p.agentCount === 0 ? (
-                    <Button
-                      variant="danger"
-                      onClick={() => {
-                        setDeleteError(null)
-                        setDeleteTarget(p)
-                      }}
-                    >
-                      delete
+      <SectionCard title="Templates">
+        {profiles.length === 0 ? (
+          <p className="muted">No Agent templates yet.</p>
+        ) : (
+          <ItemList>
+            {profiles.map((profile) => (
+              <ItemRow
+                key={profile.id}
+                title={
+                  <a href={`/templates/agents/${encodeURIComponent(profile.id)}`}>{profile.name}</a>
+                }
+                meta={
+                  <>
+                    <code>{profile.id}</code>
+                    <code>{profile.defaultModel}</code>
+                    <span>
+                      {profile.agentCount} agent{profile.agentCount === 1 ? '' : 's'}
+                    </span>
+                    <span>
+                      skills:{' '}
+                      {profile.skillsMode === 'all'
+                        ? 'all'
+                        : profile.defaultSkills.join(', ') || 'none'}
+                    </span>
+                  </>
+                }
+                actions={
+                  profile.agentCount === 0 ? (
+                    <Button variant="danger" onClick={() => setDeleteTarget(profile)}>
+                      Delete
                     </Button>
                   ) : (
-                    <span className="muted" title={`${p.agentCount} agent(s) use this profile`}>
-                      in use
-                    </span>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      </div>
+                    <StatusBadge title={`${profile.agentCount} agent(s) use this template`}>
+                      In use
+                    </StatusBadge>
+                  )
+                }
+              />
+            ))}
+          </ItemList>
+        )}
+      </SectionCard>
       <ConfirmDialog
         open={deleteTarget !== null}
         title={`Delete Agent template ${deleteTarget?.name ?? ''}?`}
         description={
           <p>
-            This permanently deletes <code className="font-mono">{deleteTarget?.id}</code> and all
-            of its template files. It cannot be restored. Existing Agents keep their own copies.
+            This permanently deletes <code className="font-mono">{deleteTarget?.id}</code> and its
+            files. Existing Agents keep their own copies.
           </p>
         }
-        confirmLabel="delete Agent template"
+        confirmLabel="Delete Agent template"
         onConfirm={async () => {
           if (!deleteTarget) return
-          try {
-            await del(deleteTarget.id)
-          } catch (err) {
-            setDeleteError(err instanceof Error ? err.message : String(err))
-            throw err
-          }
+          await api(`/api/profiles/${encodeURIComponent(deleteTarget.id)}`, { method: 'DELETE' })
+          await router.invalidate()
         }}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null)
@@ -182,15 +130,46 @@ function ProfilesPage() {
   )
 }
 
-type TabKey =
-  | 'basics'
-  | 'soul'
-  | 'identity'
-  | 'bootstrap'
-  | 'agents'
-  | 'tools'
-  | 'skills'
-  | 'communication'
+type FileKey = 'soul' | 'identity' | 'bootstrap' | 'agents' | 'tools'
+type TabKey = 'basics' | FileKey | 'skills'
+
+const FILES: { key: FileKey; label: string; hint: string; rows: number; optional: boolean }[] = [
+  {
+    key: 'soul',
+    label: 'SOUL.md',
+    hint: 'Persona, values and operating principles. Part of every session.',
+    rows: 16,
+    optional: false,
+  },
+  {
+    key: 'identity',
+    label: 'IDENTITY.md',
+    hint: 'Name, creature, vibe, emoji, avatar: filled in during the first-run ritual.',
+    rows: 12,
+    optional: false,
+  },
+  {
+    key: 'bootstrap',
+    label: 'BOOTSTRAP.md',
+    hint: 'The first-run ritual; the agent retires it once introductions are done.',
+    rows: 16,
+    optional: true,
+  },
+  {
+    key: 'agents',
+    label: 'AGENTS.md',
+    hint: 'The workspace operating manual: memory discipline, red lines, channel etiquette.',
+    rows: 16,
+    optional: true,
+  },
+  {
+    key: 'tools',
+    label: 'TOOLS.md',
+    hint: 'Agent-specific tool notes and environment facts beyond the tool descriptions.',
+    rows: 14,
+    optional: true,
+  },
+]
 
 function CreateProfileForm({
   modelGroups,
@@ -200,411 +179,189 @@ function CreateProfileForm({
 }: {
   modelGroups: ModelGroup[]
   skills: SkillInfo[]
-  templates: TemplatesResponse
-  onCreated: () => void
+  templates: ProfileTemplates
+  onCreated: () => Promise<void>
 }) {
+  const initialFiles = (): Record<FileKey, string> => ({
+    soul: templates.soul,
+    identity: templates.identity,
+    bootstrap: templates.bootstrap,
+    agents: templates.agents,
+    tools: templates.tools,
+  })
   const [tab, setTab] = useState<TabKey>('basics')
   const [id, setId] = useState('')
   const [name, setName] = useState('')
   const [model, setModel] = useState('')
-  const [soul, setSoul] = useState(templates.soul)
-  const [identity, setIdentity] = useState(templates.identity)
-  const [bootstrap, setBootstrap] = useState(templates.bootstrap)
-  // SOUL + IDENTITY are always included (no toggle). BOOTSTRAP/AGENTS/TOOLS are
-  // on by default. Textareas are prefilled so an enabled file is ready to edit.
-  const [enableBootstrap, setEnableBootstrap] = useState(true)
-  const [agentsTpl, setAgentsTpl] = useState(templates.agents)
-  const [enableAgents, setEnableAgents] = useState(true)
-  const [toolsTpl, setToolsTpl] = useState(templates.tools)
-  const [enableTools, setEnableTools] = useState(true)
-
-  // Toggle a template on/off. Disabling the currently-open tab drops the editor
-  // back to "basics" so we never show a disabled tab's panel.
-  function setTemplateEnabled(key: TabKey, setter: (on: boolean) => void, on: boolean) {
-    setter(on)
-    if (!on && tab === key) setTab('basics')
-  }
-  const [skillsMode, setSkillsMode] = useState<'all' | 'selected'>('all')
-  const [communication, setCommunication] = useState(DEFAULT_PROFILE_COMMUNICATION)
+  const [files, setFiles] = useState(initialFiles)
+  // SOUL and IDENTITY are always created; the optional files start enabled.
+  const [enabled, setEnabled] = useState<Record<FileKey, boolean>>({
+    soul: true,
+    identity: true,
+    bootstrap: true,
+    agents: true,
+    tools: true,
+  })
+  const [skillsMode, setSkillsMode] = useState<SkillsMode>('all')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const starter = initialFiles()
   const dirty =
     id.length > 0 ||
     name.length > 0 ||
     model.length > 0 ||
-    soul !== templates.soul ||
-    identity !== templates.identity ||
-    bootstrap !== templates.bootstrap ||
-    !enableBootstrap ||
-    agentsTpl !== templates.agents ||
-    !enableAgents ||
-    toolsTpl !== templates.tools ||
-    !enableTools ||
+    FILES.some((file) => files[file.key] !== starter[file.key] || !enabled[file.key]) ||
     skillsMode !== 'all' ||
-    picked.size > 0 ||
-    JSON.stringify(communication) !== JSON.stringify(DEFAULT_PROFILE_COMMUNICATION)
+    picked.size > 0
 
-  function togglePicked(name: string) {
-    setPicked((prev) => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
+  function toggleFile(key: FileKey, on: boolean) {
+    setEnabled((current) => ({ ...current, [key]: on }))
+    if (!on && tab === key) setTab('basics')
   }
 
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
     setError(null)
-    if (!id.trim()) {
-      setError('id is required')
-      return
-    }
-    if (!model.trim()) {
-      setError('default model is required')
-      return
-    }
     setSubmitting(true)
     try {
-      const body: Record<string, unknown> = {
-        id: id.trim(),
-        name: name.trim() || undefined,
-        model: model.trim(),
-        skillsMode,
-        defaultSkills: skillsMode === 'selected' ? Array.from(picked) : [],
-        soul,
-        identity,
-        // null opts a template out; SOUL/IDENTITY are always sent.
-        bootstrap: enableBootstrap ? bootstrap : null,
-        agents: enableAgents ? agentsTpl : null,
-        tools: enableTools ? toolsTpl : null,
-        communicationDefaults: communication,
-      }
-      const res = await fetch('/api/profiles', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+      await api('/api/profiles', {
+        body: {
+          id: id.trim(),
+          name: name.trim() || undefined,
+          defaultModel: model,
+          skillsMode,
+          defaultSkills: skillsMode === 'selected' ? Array.from(picked) : [],
+          soul: files.soul,
+          identity: files.identity,
+          // null leaves an optional file out.
+          bootstrap: enabled.bootstrap ? files.bootstrap : null,
+          agents: enabled.agents ? files.agents : null,
+          tools: enabled.tools ? files.tools : null,
+        } satisfies CreateProfileRequest,
       })
-      if (!res.ok) {
-        const e2 = (await res.json().catch(() => null)) as { error?: string } | null
-        throw new Error(e2?.error ?? res.statusText)
-      }
-      // Reset
       setId('')
       setName('')
       setModel('')
-      setSoul(templates.soul)
-      setIdentity(templates.identity)
-      setBootstrap(templates.bootstrap)
-      setEnableBootstrap(true)
-      setAgentsTpl(templates.agents)
-      setEnableAgents(true)
-      setToolsTpl(templates.tools)
-      setEnableTools(true)
+      setFiles(initialFiles())
+      setEnabled({ soul: true, identity: true, bootstrap: true, agents: true, tools: true })
       setPicked(new Set())
       setSkillsMode('all')
-      setCommunication(DEFAULT_PROFILE_COMMUNICATION)
       setTab('basics')
-      onCreated()
-    } catch (err) {
-      setError((err as Error).message)
+      await onCreated()
+    } catch (cause) {
+      setError(errorMessage(cause))
     } finally {
       setSubmitting(false)
     }
   }
 
+  const file = FILES.find((entry) => entry.key === tab)
   return (
-    <form className="card" onSubmit={submit}>
-      <UnsavedChangesGuard when={dirty && !submitting} subject="Agent template draft" />
-      <h3>create agent template</h3>
-      {error && <div role="alert" className="err">{error}</div>}
-
-      <Tabs
-        items={[
-          { id: 'basics', label: 'basics' },
-          { id: 'soul', label: 'SOUL' },
-          { id: 'identity', label: 'IDENTITY' },
-          { id: 'bootstrap', label: 'BOOTSTRAP', disabled: !enableBootstrap },
-          { id: 'agents', label: 'AGENTS', disabled: !enableAgents },
-          { id: 'tools', label: 'TOOLS', disabled: !enableTools },
-          { id: 'skills', label: 'skills' },
-          { id: 'communication', label: 'communication' },
-        ]}
-        active={tab}
-        onChange={(t) => setTab(t as TabKey)}
-      />
-
-      {/* Enable checklist — outside the tab panels so it always governs which
-          template tabs are active. SOUL + IDENTITY are always included. */}
-      <fieldset className="mb-5 rounded-md border border-frost p-3">
-        <legend className="px-1 text-[0.85em] font-medium text-mocha">templates to include</legend>
-        <div className="flex flex-wrap gap-x-5 gap-y-2 text-[0.9em]">
-          <label className="inline-flex items-center gap-1.5 opacity-60" title="always included">
-            <input type="checkbox" defaultChecked disabled /> SOUL.md
-          </label>
-          <label className="inline-flex items-center gap-1.5 opacity-60" title="always included">
-            <input type="checkbox" defaultChecked disabled /> IDENTITY.md
-          </label>
-          <label className="inline-flex cursor-pointer items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={enableBootstrap}
-              onChange={(e) => setTemplateEnabled('bootstrap', setEnableBootstrap, e.target.checked)}
-            />
-            BOOTSTRAP.md
-          </label>
-          <label className="inline-flex cursor-pointer items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={enableAgents}
-              onChange={(e) => setTemplateEnabled('agents', setEnableAgents, e.target.checked)}
-            />
-            AGENTS.md
-          </label>
-          <label className="inline-flex cursor-pointer items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={enableTools}
-              onChange={(e) => setTemplateEnabled('tools', setEnableTools, e.target.checked)}
-            />
-            TOOLS.md
-          </label>
-        </div>
-        <p className="muted mt-2 text-[0.8em]">
-          Disabled files aren't created for this Agent template. Each spawned agent gets its own copy of
-          the enabled files at spawn time.
-        </p>
-      </fieldset>
-
-      {tab === 'basics' && (
-        <div>
-          <div className="flex gap-4">
-            <label className="flex-1">
-              id (slug)
-              <input value={id} onChange={(e) => setId(e.target.value)} required />
-            </label>
-            <label className="flex-1">
-              name
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-          </div>
-          <label>
-            default model
-            {modelGroups.length === 0 ? (
-              <>
-                <select disabled>
-                  <option>(no models available)</option>
-                </select>
-                <span className="muted text-[0.85em]">
-                  Enable a provider and curate models on <a href="/config">/config</a> first.
-                </span>
-              </>
-            ) : (
-              <select value={model} onChange={(e) => setModel(e.target.value)} required>
-                <option value="">-- pick a model --</option>
-                {modelGroups.map((g) => (
-                  <optgroup key={g.provider} label={g.provider}>
-                    {g.models.map((m) => (
-                      <option key={m} value={`${g.provider}:${m}`}>
-                        {`${g.provider}:${m}`}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            )}
-          </label>
-        </div>
-      )}
-
-      {tab === 'soul' && (
-        <TemplateTab
-          label="SOUL.md"
-          hint="Persona, values, and operating principles. Injected into every session."
-          value={soul}
-          onChange={setSoul}
-          rows={16}
-        />
-      )}
-      {tab === 'identity' && (
-        <TemplateTab
-          label="IDENTITY.md"
-          hint="Name, creature, vibe, emoji, avatar — filled in during the bootstrap ritual."
-          value={identity}
-          onChange={setIdentity}
-          rows={12}
-        />
-      )}
-      {tab === 'bootstrap' && (
-        <TemplateTab
-          label="BOOTSTRAP.md"
-          hint="One-time first-run ritual. The agent retires it once introductions are done."
-          value={bootstrap}
-          onChange={setBootstrap}
-          rows={16}
-        />
-      )}
-      {tab === 'agents' && (
-        <TemplateTab
-          label="AGENTS.md"
-          hint="The workspace operating manual — memory discipline, red lines, channel etiquette."
-          value={agentsTpl}
-          onChange={setAgentsTpl}
-          rows={16}
-        />
-      )}
-      {tab === 'tools' && (
-        <TemplateTab
-          label="TOOLS.md"
-          hint="Agent-specific tool notes and environment facts beyond the generic tool descriptions."
-          value={toolsTpl}
-          onChange={setToolsTpl}
-          rows={14}
-        />
-      )}
-      {tab === 'skills' && (
-        <div>
-          <p className="muted my-2">
-            Choose which skills agents inherit at spawn time. In both modes each agent can still
-            attach or detach skills individually after it's spawned.
+    <SectionCard title="Create an Agent template">
+      <form onSubmit={(event) => void submit(event)}>
+        <UnsavedChangesGuard when={dirty && !submitting} subject="Agent template draft" />
+        {error && (
+          <p role="alert" className="err">
+            {error}
           </p>
-          <label className="flex items-start gap-2 my-2 cursor-pointer">
-            <input
-              type="radio"
-              name="skillsMode"
-              value="all"
-              checked={skillsMode === 'all'}
-              onChange={() => setSkillsMode('all')}
-            />
-            <span>
-              <strong>allow all skills</strong> — every skill on disk is attached when an agent
-              is spawned.
-            </span>
-          </label>
-          <label className="flex items-start gap-2 my-2 cursor-pointer">
-            <input
-              type="radio"
-              name="skillsMode"
-              value="selected"
-              checked={skillsMode === 'selected'}
-              onChange={() => setSkillsMode('selected')}
-            />
-            <span>
-              <strong>select skills</strong> — attach only the ones you pick below.
-            </span>
-          </label>
+        )}
+        <Tabs
+          items={[
+            { id: 'basics', label: 'Basics' },
+            ...FILES.map((entry) => ({
+              id: entry.key,
+              label: entry.label.replace('.md', ''),
+              disabled: !enabled[entry.key],
+            })),
+            { id: 'skills', label: 'Skills' },
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
 
-          <div
-            className={`mt-3 max-h-[22rem] overflow-y-auto rounded-md border border-frost p-3 ${skillsMode === 'all' ? 'opacity-50 pointer-events-none' : ''}`}
-          >
-            {skills.length === 0 ? (
-              <p className="muted">
-                No skills installed yet. Import some on <a href="/skills">/skills</a>.
+        <fieldset className="mb-5 rounded-md border border-frost p-3">
+          <legend className="px-1 text-[0.85em] font-medium text-mocha">Files to include</legend>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-[0.9em]">
+            {FILES.map((entry) => (
+              <label
+                key={entry.key}
+                className={`m-0 inline-flex items-center gap-1.5 ${entry.optional ? 'cursor-pointer' : 'opacity-60'}`}
+                title={entry.optional ? undefined : 'always included'}
+              >
+                <input
+                  type="checkbox"
+                  checked={enabled[entry.key]}
+                  disabled={!entry.optional}
+                  onChange={(event) => toggleFile(entry.key, event.target.checked)}
+                />
+                {entry.label}
+              </label>
+            ))}
+          </div>
+          <p className="muted mt-2 text-[0.8em]">
+            Each spawned agent gets its own copy of the included files.
+          </p>
+        </fieldset>
+
+        {tab === 'basics' && (
+          <div>
+            <div className="grid gap-x-4 sm:grid-cols-2">
+              <label>
+                ID (slug)
+                <input value={id} onChange={(event) => setId(event.target.value)} required />
+              </label>
+              <label>
+                Name
+                <input value={name} onChange={(event) => setName(event.target.value)} />
+              </label>
+            </div>
+            <ModelSelect
+              label="Default model"
+              value={model}
+              onChange={setModel}
+              groups={modelGroups}
+              required
+            />
+            {modelGroups.length === 0 && (
+              <p className="muted text-[0.85em]">
+                Enable a provider and curate its models under <a href="/config">Setup</a> first.
               </p>
-            ) : (
-              skills.map((s) => (
-                <label
-                  key={s.name}
-                  className="my-1.5 flex cursor-pointer items-start gap-2"
-                >
-                  <input
-                    type="checkbox"
-                    checked={picked.has(s.name)}
-                    onChange={() => togglePicked(s.name)}
-                  />
-                  <span>
-                    <code>{s.name}</code>
-                    {s.description && (
-                      <span className="text-[0.9em] text-mocha-light"> — {s.description}</span>
-                    )}
-                  </span>
-                </label>
-              ))
             )}
           </div>
-        </div>
-      )}
-
-      {tab === 'communication' && (
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-chocolate">Communication defaults</h4>
+        )}
+        {file && (
+          <div>
+            <p className="muted my-2 text-[0.85em]">{file.hint}</p>
+            <label>
+              {file.label}
+              <textarea
+                rows={file.rows}
+                value={files[file.key]}
+                onChange={(event) =>
+                  setFiles((current) => ({ ...current, [file.key]: event.target.value }))
+                }
+                className="font-mono text-[0.88em] leading-[1.55]"
+              />
+            </label>
           </div>
-          <p className="muted mb-4">
-            Materialized when a Team or live policy snapshot is created. Existing snapshots never
-            inherit later changes.
-          </p>
-          <ProfileCommunicationEditor value={communication} onChange={setCommunication} />
+        )}
+        {tab === 'skills' && (
+          <SkillsPicker
+            mode={skillsMode}
+            onModeChange={setSkillsMode}
+            picked={picked}
+            onPickedChange={setPicked}
+            skills={skills}
+          />
+        )}
+
+        <div className="mt-5">
+          <Button variant="primary" type="submit" disabled={submitting || !id.trim() || !model}>
+            {submitting ? 'Creating…' : 'Create'}
+          </Button>
         </div>
-      )}
-
-      <div className="mt-5 flex gap-2">
-        <Button variant="primary" type="submit" disabled={submitting}>
-          {submitting ? 'creating…' : 'create'}
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-interface TabsProps<T extends string> {
-  items: { id: T; label: string; disabled?: boolean }[]
-  active: T
-  onChange: (id: T) => void
-}
-function Tabs<T extends string>({ items, active, onChange }: TabsProps<T>) {
-  return (
-    <nav role="tablist" className="-mb-px mb-5 flex flex-wrap gap-1 border-b border-frost">
-      {items.map((it) => (
-        <button
-          key={it.id}
-          type="button"
-          role="tab"
-          aria-selected={active === it.id}
-          disabled={it.disabled}
-          title={it.disabled ? 'disabled — enable it in “templates to include”' : undefined}
-          onClick={() => onChange(it.id)}
-          className={`unstyled border-b-2 bg-transparent px-4 py-2 text-[0.9em] font-medium transition-colors ${
-            it.disabled
-              ? 'cursor-not-allowed border-transparent text-mocha-light/40'
-              : active === it.id
-                ? 'cursor-pointer border-sapphire text-sapphire'
-                : 'cursor-pointer border-transparent text-mocha hover:text-sapphire'
-          }`}
-        >
-          {it.label}
-        </button>
-      ))}
-    </nav>
-  )
-}
-
-function TemplateTab({
-  label,
-  hint,
-  value,
-  onChange,
-  rows,
-}: {
-  label: string
-  hint: string
-  value: string
-  onChange: (v: string) => void
-  rows: number
-}) {
-  return (
-    <div>
-      <p className="muted my-2 text-[0.85em]">{hint}</p>
-      <label>
-        {label}
-        <textarea
-          rows={rows}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="font-mono text-[0.88em] leading-[1.55]"
-        />
-      </label>
-    </div>
+      </form>
+    </SectionCard>
   )
 }

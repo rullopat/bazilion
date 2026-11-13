@@ -1,13 +1,9 @@
-import { expect, test } from 'vitest'
 import type { RepositoryChanges, ReviewChange } from '@bazilion/api-types'
+import { expect, test } from 'vitest'
 import {
-  applicabilityLabel,
-  applicabilityWarns,
   baseLabel,
   changeStatusLabel,
   changeSummary,
-  referenceLabel,
-  snapshotLabel,
   unavailableMessage,
 } from '../src/lib/git-review-presentation.ts'
 
@@ -19,8 +15,6 @@ function change(overrides: Partial<ReviewChange> = {}): ReviewChange {
     binary: false,
     addedLines: 3,
     deletedLines: 1,
-    oldMode: null,
-    newMode: null,
     patch: null,
     patchTruncated: false,
     contentOmitted: null,
@@ -35,7 +29,7 @@ function changes(overrides: Partial<RepositoryChanges> = {}): RepositoryChanges 
     identity: { branch: 'main', head: 'a'.repeat(40), headState: 'branch' },
     changes: [],
     truncated: false,
-    withheld: { untracked: 0, excluded: 0, binary: 0, tooLarge: 0 },
+    withheld: { untracked: 0, excluded: 0 },
     issues: [],
     ...overrides,
   }
@@ -49,15 +43,12 @@ test('a change reads as its status plus counts, never a bare zero', () => {
   expect(changeSummary(change({ binary: true }))).toBe('modified · binary')
 })
 
-test('a withheld or unselected file says so instead of looking like an empty diff', () => {
+test('a withheld file says so instead of looking like an empty diff', () => {
   expect(changeSummary(change({ excludedReason: 'credential_shaped' }))).toBe(
     'modified · content withheld (credential-shaped)',
   )
   expect(changeSummary(change({ excludedReason: 'bazilion_state' }))).toBe(
     'modified · content withheld (Bazilion state)',
-  )
-  expect(changeSummary(change({ contentOmitted: 'untracked_not_selected' }))).toBe(
-    'modified · content not selected',
   )
   expect(changeStatusLabel('type_changed')).toBe('type changed')
 })
@@ -69,9 +60,9 @@ test('the label distinguishes a branch, a detached head and an unborn branch', (
   expect(
     baseLabel({ branch: null, head: 'b'.repeat(40), headState: 'detached' }, changes()),
   ).toContain('detached at')
-  expect(
-    baseLabel({ branch: 'main', head: null, headState: 'unborn' }, changes()),
-  ).toContain('unborn on main')
+  expect(baseLabel({ branch: 'main', head: null, headState: 'unborn' }, changes())).toContain(
+    'unborn on main',
+  )
 })
 
 test('an unavailable review reads as not reviewable, never as an empty change list', () => {
@@ -79,88 +70,4 @@ test('an unavailable review reads as not reviewable, never as an empty change li
   expect(unavailableMessage('unsupported_layout', 'fallback')).toContain('does not widen mounts')
   expect(unavailableMessage('unknown_base', 'fallback')).toContain('does not name a commit')
   expect(unavailableMessage(undefined, 'fallback')).toBe('fallback')
-})
-
-test('an incomplete snapshot is never labelled as exact', () => {
-  const summary = {
-    snapshotId: 'c'.repeat(64),
-    teamId: 'team',
-    capturedBy: 'operator' as const,
-    agentId: null,
-    turnId: null,
-    toolCallId: null,
-    complete: false,
-    head: 'a'.repeat(40),
-    baseOid: 'a'.repeat(40),
-    entryCount: 2,
-    capturedContentBytes: 10,
-    createdAt: 1_700_000_000_000,
-    expiresAt: 1_700_000_000_000,
-  }
-  expect(snapshotLabel(summary)).toContain('incomplete')
-  expect(snapshotLabel({ ...summary, complete: true })).toContain('complete')
-  expect(referenceLabel({ id: 'd'.repeat(64), complete: false, capturedAt: 0 })).toBe(
-    `${'d'.repeat(12)} · incomplete`,
-  )
-})
-
-test('a receipt with no captured source says Not checked, never something that reads as passing', () => {
-  expect(applicabilityLabel(null)).toBe('Source: Not checked')
-  expect(applicabilityWarns(null)).toBe(false)
-})
-
-test('an applicability verdict states what it knows and warns rather than passing silently', () => {
-  expect(applicabilityLabel({ comparison: 'identical', reason: 'source_unchanged' })).toContain(
-    'unchanged since',
-  )
-  expect(applicabilityLabel({ comparison: 'changed', reason: 'source_changed' })).toContain(
-    'relevance unknown',
-  )
-  expect(applicabilityLabel({ comparison: 'unknown', reason: 'incomplete_snapshot' })).toContain(
-    'incomplete snapshot',
-  )
-  // Unchanged is the only state that does not warrant a warning.
-  expect(applicabilityWarns({ comparison: 'identical' })).toBe(false)
-  expect(applicabilityWarns({ comparison: 'changed' })).toBe(true)
-  expect(applicabilityWarns({ comparison: 'unknown' })).toBe(true)
-})
-
-test('a receipt card renders applicability without claiming a pass', async () => {
-  const { createElement } = await import('react')
-  const { renderToStaticMarkup } = await import('react-dom/server')
-  const { CodingToolResult } = await import('../src/components/CodingToolResult.tsx')
-  const receipt = {
-    id: 'receipt-1',
-    agentId: 'agent-1',
-    teamId: 'team-1',
-    turnId: 'turn-1',
-    toolCallId: 'call-1',
-    state: 'succeeded',
-    exitCode: 0,
-    input: { command: 'pnpm test', cwd: '.', purpose: 'test', timeoutSeconds: 30 },
-    environment: { posture: 'docker', cwd: '.', imageId: null },
-    diagnostic: 'ok\n',
-    truncated: false,
-    reason: null,
-    startedAt: 1,
-    finishedAt: 2,
-  }
-  const withoutSource = renderToStaticMarkup(
-    createElement(CodingToolResult, { name: 'coding_command', body: JSON.stringify(receipt) }),
-  )
-  expect(withoutSource).toContain('Not checked')
-  expect(withoutSource).not.toContain('unchanged since')
-
-  const withSource = renderToStaticMarkup(
-    createElement(CodingToolResult, {
-      name: 'coding_command',
-      body: JSON.stringify({
-        ...receipt,
-        sourceAfter: { id: 'a'.repeat(64), complete: true, capturedAt: 2 },
-      }),
-    }),
-  )
-  expect(withSource).toContain('tested version')
-  expect(withSource).toContain('Check applicability')
-  expect(withSource).toContain('aaaaaaaaaaaa')
 })

@@ -1,10 +1,9 @@
-import type { CommandRisk, CommandRiskCode, CommandRiskSeverity } from '@bazilion/api-types'
+import { posix } from 'node:path'
+import type { CommandRisk, CommandRiskCode } from '@bazilion/api-types'
 
-export type { CommandRisk, CommandRiskCode, CommandRiskSeverity } from '@bazilion/api-types'
+export type { CommandRisk, CommandRiskCode } from '@bazilion/api-types'
 
-export type CommandRiskSpan = CommandRisk['span']
-
-export type BashSandboxMode = 'off' | 'docker' | 'native'
+export type BashSandboxMode = 'off' | 'docker'
 
 export type BashApprovalPolicy = 'off' | 'dangerous'
 
@@ -12,38 +11,11 @@ export interface ShellSecurityConfig {
   sandboxMode: BashSandboxMode
   approvalMode: BashApprovalPolicy
   sandboxImage: string
-  envAllowlist: readonly string[]
 }
 
 export const DEFAULT_BASH_SANDBOX_IMAGE = 'debian:bookworm-slim'
 
-export const SAFE_SHELL_ENV_KEYS = [
-  'PATH',
-  'HOME',
-  'LANG',
-  'LANGUAGE',
-  'LC_ALL',
-  'LC_CTYPE',
-  'TERM',
-  'SHELL',
-  'TMPDIR',
-  'TZ',
-] as const
-
-const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
-const RESERVED_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 const DOCKER_IMAGE_RE = /^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/
-const DOCKER_CLIENT_CONTROL_ENV = new Set([
-  'DOCKER_HOST',
-  'DOCKER_CONTEXT',
-  'DOCKER_CONFIG',
-  'DOCKER_CERT_PATH',
-  'DOCKER_TLS_VERIFY',
-  'DOCKER_API_VERSION',
-  'XDG_CONFIG_HOME',
-  'XDG_RUNTIME_DIR',
-])
-const SANDBOX_CONTROL_ENV = new Set(['BASH_ENV'])
 
 const SENSITIVE_HOME_PATH_RE =
   /(?:~(?:[A-Za-z0-9_-]+)?|\$(?:HOME|\{HOME\})|\/(?:home|Users)\/[^\s'"`;|&/]+|\/root)\/\.(?:ssh|aws|gnupg)(?:\/[^\s'"`;|&]*)?/gi
@@ -57,41 +29,18 @@ const REMOTE_PIPE_RE =
 
 const COMMAND_BOUNDARY_RE = /[;&|)\n]/
 
-export class ShellSecurityConfigError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ShellSecurityConfigError'
-  }
-}
-
-function isValidEnvName(name: string): boolean {
-  return ENV_NAME_RE.test(name) && !RESERVED_OBJECT_KEYS.has(name)
-}
-
 function addRisk(
   command: string,
   risks: CommandRisk[],
   seen: Set<string>,
-  input: {
-    code: CommandRiskCode
-    severity?: CommandRiskSeverity
-    message: string
-    start: number
-    end: number
-  },
+  input: { code: CommandRiskCode; message: string; start: number; end: number },
 ): void {
   const start = Math.max(0, input.start)
   const end = Math.min(command.length, Math.max(start, input.end))
   const key = `${input.code}:${start}:${end}`
   if (seen.has(key)) return
   seen.add(key)
-  risks.push({
-    code: input.code,
-    severity: input.severity ?? 'danger',
-    message: input.message,
-    matchedText: command.slice(start, end),
-    span: { start, end },
-  })
+  risks.push({ code: input.code, message: input.message, span: { start, end } })
 }
 
 function addRegexRisks(
@@ -131,12 +80,17 @@ function shellTokens(fragment: string): string[] {
   )
 }
 
-function isBroadFilesystemTarget(rawTarget: string): boolean {
-  const target = rawTarget.replace(/[;,]+$/, '')
+function isBroadFilesystemTarget(rawTarget: string, workspace?: string): boolean {
+  let target = rawTarget.replace(/[;,]+$/, '')
   // An absolute target can point outside the Team regardless of its top-level
-  // directory (/mnt, /srv, /data, custom mounts, ...). Relative project-local
-  // targets such as ./dist remain intentionally below the approval threshold.
-  if (target.startsWith('/')) return true
+  // directory (/mnt, /srv, /data, custom mounts, ...), unless it lies inside the
+  // workspace: there it is judged like the relative path it names. Relative
+  // project-local targets such as ./dist stay below the approval threshold.
+  if (target.startsWith('/')) {
+    const normalized = posix.normalize(target).replace(/(.)\/+$/, '$1')
+    if (!workspace || !normalized.startsWith(`${workspace}/`)) return true
+    target = `./${normalized.slice(workspace.length + 1)}`
+  }
   return /^(?:\.|\.\/\*+|\*+|~(?:\/.*)?|\$(?:HOME|\{HOME\})(?:\/.*)?|\.\.(?:\/.*)?)$/.test(target)
 }
 
@@ -144,7 +98,9 @@ function classifyBroadFilesystemOperations(
   command: string,
   risks: CommandRisk[],
   seen: Set<string>,
+  workspace: string | undefined,
 ): void {
+  const broad = (target: string) => isBroadFilesystemTarget(target, workspace)
   const commandRe = /(?:^|[;&|(\n])\s*(?:command\s+)?(rm|find|chmod|chown)\b[^;&|)\n]*/gim
   for (const match of command.matchAll(commandRe)) {
     if (match.index === undefined || !match[1]) continue
@@ -160,15 +116,15 @@ function classifyBroadFilesystemOperations(
       const recursive = args.some(
         (arg) => arg === '--recursive' || (/^-[^-]+$/.test(arg) && /[rR]/.test(arg)),
       )
-      risky = recursive && args.some((arg) => !arg.startsWith('-') && isBroadFilesystemTarget(arg))
+      risky = recursive && args.some((arg) => !arg.startsWith('-') && broad(arg))
     } else if (name === 'find') {
       const target = args.find((arg) => !arg.startsWith('-'))
-      risky = args.includes('-delete') && target !== undefined && isBroadFilesystemTarget(target)
+      risky = args.includes('-delete') && target !== undefined && broad(target)
     } else if (name === 'chmod' || name === 'chown') {
       const recursive = args.some(
         (arg) => arg === '--recursive' || (/^-[^-]+$/.test(arg) && /R/.test(arg)),
       )
-      risky = recursive && args.some((arg) => !arg.startsWith('-') && isBroadFilesystemTarget(arg))
+      risky = recursive && args.some((arg) => !arg.startsWith('-') && broad(arg))
     }
 
     if (!risky) continue
@@ -332,8 +288,10 @@ function classifyPrivilegeAndCredentialAccess(
 /**
  * Conservatively identify shell commands that should hit the dangerous-command
  * approval tripwire. This is a classifier, not a shell parser or sandbox.
+ * `workspace` is the Team directory as the command sees it (`/workspace` in
+ * Docker): absolute paths below it count as project-local.
  */
-export function classifyBashCommand(command: string): CommandRisk[] {
+export function classifyBashCommand(command: string, workspace?: string): CommandRisk[] {
   const risks: CommandRisk[] = []
   const seen = new Set<string>()
 
@@ -361,7 +319,7 @@ export function classifyBashCommand(command: string): CommandRisk[] {
     'sensitive-path-read',
     'References an environment variable name commonly used for credentials.',
   )
-  classifyBroadFilesystemOperations(command, risks, seen)
+  classifyBroadFilesystemOperations(command, risks, seen, workspace)
   addRegexRisks(
     command,
     risks,
@@ -376,102 +334,47 @@ export function classifyBashCommand(command: string): CommandRisk[] {
   return risks.sort((a, b) => a.span.start - b.span.start || a.code.localeCompare(b.code))
 }
 
-function parseEnvAllowlist(raw: string | undefined): string[] {
-  if (raw === undefined || raw.trim() === '') return []
-  const values = raw.split(',').map((value) => value.trim())
-  if (values.some((value) => value === '')) {
-    throw new ShellSecurityConfigError(
-      'BAZILION_BASH_SANDBOX_ENV_ALLOWLIST contains an empty environment variable name',
-    )
-  }
-
-  const unique: string[] = []
-  const seen = new Set<string>()
-  for (const value of values) {
-    if (!isValidEnvName(value)) {
-      throw new ShellSecurityConfigError(
-        `BAZILION_BASH_SANDBOX_ENV_ALLOWLIST contains invalid environment variable name: ${value}`,
-      )
-    }
-    if (DOCKER_CLIENT_CONTROL_ENV.has(value)) {
-      throw new ShellSecurityConfigError(
-        `BAZILION_BASH_SANDBOX_ENV_ALLOWLIST cannot include Docker client control variable: ${value}`,
-      )
-    }
-    if (SANDBOX_CONTROL_ENV.has(value)) {
-      throw new ShellSecurityConfigError(
-        `BAZILION_BASH_SANDBOX_ENV_ALLOWLIST cannot include shell startup control variable: ${value}`,
-      )
-    }
-    if (!seen.has(value)) {
-      seen.add(value)
-      unique.push(value)
-    }
-  }
-  return unique
-}
-
 /** Resolve shell sandbox settings without silently accepting unsafe typos. */
 export function resolveShellSecurityConfig(
   env: Readonly<NodeJS.ProcessEnv> = process.env,
 ): ShellSecurityConfig {
   const rawMode = env.BAZILION_BASH_SANDBOX?.trim() ?? ''
-  if (rawMode !== '' && rawMode !== 'off' && rawMode !== 'docker' && rawMode !== 'native') {
-    throw new ShellSecurityConfigError(
-      `BAZILION_BASH_SANDBOX must be "off", "docker" or "native", received: ${rawMode}`,
-    )
+  if (rawMode !== '' && rawMode !== 'off' && rawMode !== 'docker') {
+    throw new Error(`BAZILION_BASH_SANDBOX must be "off" or "docker", received: ${rawMode}`)
   }
 
   const rawApproval = env.BAZILION_BASH_APPROVAL?.trim() ?? ''
   if (rawApproval !== '' && rawApproval !== 'off' && rawApproval !== 'dangerous') {
-    throw new ShellSecurityConfigError(
-      `BAZILION_BASH_APPROVAL must be "off" or "dangerous", received: ${rawApproval}`,
-    )
+    throw new Error(`BAZILION_BASH_APPROVAL must be "off" or "dangerous", received: ${rawApproval}`)
   }
 
   const rawImage = env.BAZILION_BASH_SANDBOX_IMAGE?.trim() ?? ''
   if (rawImage !== '' && !DOCKER_IMAGE_RE.test(rawImage)) {
-    throw new ShellSecurityConfigError(
+    throw new Error(
       `BAZILION_BASH_SANDBOX_IMAGE is not a valid Docker image reference: ${rawImage}`,
     )
   }
 
   return {
-    sandboxMode: rawMode === 'native' ? 'native' : rawMode === 'docker' ? 'docker' : 'off',
-    approvalMode: rawMode === 'native' || rawApproval === 'dangerous' ? 'dangerous' : 'off',
+    sandboxMode: rawMode === 'docker' ? 'docker' : 'off',
+    approvalMode: rawApproval === 'dangerous' ? 'dangerous' : 'off',
     sandboxImage: rawImage || DEFAULT_BASH_SANDBOX_IMAGE,
-    envAllowlist: parseEnvAllowlist(env.BAZILION_BASH_SANDBOX_ENV_ALLOWLIST),
   }
 }
 
-function assertEnvName(name: string): void {
-  if (!isValidEnvName(name)) {
-    throw new ShellSecurityConfigError(`invalid shell environment variable name: ${name}`)
-  }
-  if (DOCKER_CLIENT_CONTROL_ENV.has(name) || SANDBOX_CONTROL_ENV.has(name)) {
-    throw new ShellSecurityConfigError(`unsafe shell environment variable name: ${name}`)
-  }
-}
+/** Bazilion's own credentials, by variable name: never handed to Agent tools. */
+const INTERNAL_SECRET_NAME =
+  /^(?:OPENAI_CODEX_OAUTH|TELEGRAM_BOT_TOKEN|BAZILION_TOKEN|MCP_TOKEN_.*)$/
 
 /**
- * Copy only fixed shell basics and operator-approved keys into a fresh object.
- * Explicit keys are intentionally authoritative: an operator may opt a secret
- * into the sandbox, but it is never inherited accidentally.
+ * The environment for Agent tools (the turn worker, so its shell commands, and MCP stdio servers):
+ * `env` without Bazilion's own credentials — the ChatGPT OAuth blob, MCP bearer tokens, the Telegram
+ * bot token and the bootstrap token, under whatever name it appears. Provider API keys stay.
  */
-export function buildScrubbedShellEnv(
-  env: Readonly<NodeJS.ProcessEnv>,
-  allowedKeys: readonly string[] = [],
-): NodeJS.ProcessEnv {
-  const scrubbed: NodeJS.ProcessEnv = {}
-  const keys = new Set<string>(SAFE_SHELL_ENV_KEYS)
-  for (const key of allowedKeys) {
-    assertEnvName(key)
-    keys.add(key)
-  }
-
-  for (const key of keys) {
-    const value = env[key]
-    if (value !== undefined) scrubbed[key] = value
-  }
-  return scrubbed
+export function toolEnvironment(env: NodeJS.ProcessEnv, bootstrapToken: string): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([name, value]) => !INTERNAL_SECRET_NAME.test(name) && value !== bootstrapToken,
+    ),
+  )
 }

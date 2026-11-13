@@ -1,261 +1,37 @@
+// Pi model runtime for one provider:model, with credentials held in memory only: Pi never reads
+// or writes its own auth or model files, and never fetches catalogs from the network.
+
+import type { ProviderTestResponse } from '@bazilion/api-types'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { InMemoryCredentialStore } from '@earendil-works/pi-ai'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
+import {
+  findProvider,
+  piProviderName,
+  providerApiKey,
+  providerCredentialEnv,
+  providerEndpoint,
+} from '../../core/providers.ts'
 
-const PROVIDER_ALIASES: Record<string, string> = {
-  bedrock: 'amazon-bedrock',
-  'azure-openai': 'azure',
-}
-
-export const PROTECTED_PROVIDER_NAMES = [
-  'anthropic',
-  'openai',
-  'openai-codex',
-  'google',
-  'google-vertex',
-  'azure-openai',
-  'bedrock',
-  'mistral',
-  'groq',
-  'cerebras',
-  'xai',
-  'zai',
-  'huggingface',
-  'openrouter',
-  'vercel-ai-gateway',
-  'deepseek',
-  'fireworks',
-  'together',
-  'baseten',
-  'moonshotai',
-  'moonshotai-cn',
-  'kimi-coding',
-  'minimax',
-  'minimax-cn',
-  'qwen-token-plan',
-  'qwen-token-plan-cn',
-  'qwen-token-plan-individual',
-  'xiaomi',
-  'xiaomi-token-plan-ams',
-  'xiaomi-token-plan-cn',
-  'xiaomi-token-plan-sgp',
-  'ant-ling',
-  'nvidia',
-  'opencode',
-  'opencode-go',
-  'zai-coding-cn',
-  'meta',
-  'radius',
-  'github-copilot',
-  'cloudflare-ai-gateway',
-  'cloudflare-workers-ai',
-  'lmstudio',
-  'ollama',
-  'llamacpp',
-] as const
-
-export type ProtectedProviderName = (typeof PROTECTED_PROVIDER_NAMES)[number]
-
-export const LOCAL_PROVIDERS: Record<
-  string,
-  { baseUrl: string; apiKey: string; authHeader: boolean }
-> = {
-  lmstudio: {
-    baseUrl: 'http://127.0.0.1:1234/v1',
-    apiKey: 'lm-studio',
-    authHeader: false,
-  },
-  ollama: { baseUrl: 'http://127.0.0.1:11434/v1', apiKey: 'ollama', authHeader: false },
-  llamacpp: { baseUrl: 'http://127.0.0.1:8080/v1', apiKey: 'no-key', authHeader: true },
-}
-
-export const PROVIDER_API_KEY_ENV: Record<string, readonly string[]> = {
-  anthropic: ['ANTHROPIC_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'],
-  openai: ['OPENAI_API_KEY'],
-  google: ['GEMINI_API_KEY'],
-  'azure-openai': ['AZURE_OPENAI_API_KEY'],
-  mistral: ['MISTRAL_API_KEY'],
-  groq: ['GROQ_API_KEY'],
-  cerebras: ['CEREBRAS_API_KEY'],
-  xai: ['XAI_API_KEY'],
-  zai: ['ZAI_API_KEY'],
-  huggingface: ['HF_TOKEN'],
-  openrouter: ['OPENROUTER_API_KEY'],
-  'vercel-ai-gateway': ['AI_GATEWAY_API_KEY'],
-  deepseek: ['DEEPSEEK_API_KEY'],
-  fireworks: ['FIREWORKS_API_KEY'],
-  together: ['TOGETHER_API_KEY'],
-  baseten: ['BASETEN_API_KEY'],
-  moonshotai: ['MOONSHOT_API_KEY'],
-  'moonshotai-cn': ['MOONSHOT_CN_API_KEY'],
-  'kimi-coding': ['KIMI_API_KEY'],
-  minimax: ['MINIMAX_API_KEY'],
-  'minimax-cn': ['MINIMAX_CN_API_KEY'],
-  'qwen-token-plan': ['QWEN_TOKEN_PLAN_API_KEY'],
-  'qwen-token-plan-cn': ['QWEN_TOKEN_PLAN_CN_API_KEY'],
-  'qwen-token-plan-individual': ['QWEN_TOKEN_PLAN_API_KEY'],
-  xiaomi: ['XIAOMI_API_KEY'],
-  'xiaomi-token-plan-ams': ['XIAOMI_TOKEN_PLAN_AMS_API_KEY'],
-  'xiaomi-token-plan-cn': ['XIAOMI_TOKEN_PLAN_CN_API_KEY'],
-  'xiaomi-token-plan-sgp': ['XIAOMI_TOKEN_PLAN_SGP_API_KEY'],
-  'ant-ling': ['ANT_LING_API_KEY'],
-  nvidia: ['NVIDIA_API_KEY'],
-  opencode: ['OPENCODE_API_KEY'],
-  'opencode-go': ['OPENCODE_GO_API_KEY'],
-  'zai-coding-cn': ['ZAI_CODING_CN_API_KEY'],
-  meta: ['META_API_KEY'],
-  radius: ['RADIUS_API_KEY'],
-  'github-copilot': ['COPILOT_GITHUB_TOKEN'],
-  'cloudflare-ai-gateway': ['CLOUDFLARE_API_KEY'],
-  'cloudflare-workers-ai': ['CLOUDFLARE_API_KEY'],
-  lmstudio: ['LMSTUDIO_API_KEY'],
-  ollama: ['OLLAMA_API_KEY'],
-  llamacpp: ['LLAMACPP_API_KEY'],
-}
-
-export const PROVIDER_CREDENTIAL_ENV: Record<string, readonly string[]> = {
-  bedrock: [
-    'AWS_PROFILE',
-    'AWS_BEARER_TOKEN_BEDROCK',
-    'AWS_ACCESS_KEY_ID',
-    'AWS_SECRET_ACCESS_KEY',
-    'AWS_SESSION_TOKEN',
-    'AWS_REGION',
-    'AWS_DEFAULT_REGION',
-  ],
-  'google-vertex': [
-    'GOOGLE_CLOUD_PROJECT',
-    'GOOGLE_CLOUD_LOCATION',
-    'GOOGLE_APPLICATION_CREDENTIALS',
-  ],
-  'cloudflare-ai-gateway': ['CLOUDFLARE_API_KEY', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_GATEWAY_ID'],
-  'cloudflare-workers-ai': ['CLOUDFLARE_API_KEY', 'CLOUDFLARE_ACCOUNT_ID'],
-}
-
-export interface BazilionPiRuntimeOptions {
+export interface PiModelSpec {
   providerName: string
-  env: NodeJS.ProcessEnv
-  apiKey?: string
-  baseUrl?: string
-  modelId?: string
-}
-
-export interface OpenAICodexPiRuntimeOptions {
-  providerName: 'openai-codex'
   modelId: string
-  accessToken: string
-}
-
-export interface ProtectedPiRuntimeOptions {
-  providerName: ProtectedProviderName
-  modelId: string
+  /** Where credentials and the endpoint are read from (the merged daemon env, or a projection). */
+  env: Readonly<Record<string, string | undefined>>
+  /** Wins over the key in `env`: the ChatGPT access token, a review worker's selected key. */
   apiKey?: string
+  /** Wins over the endpoint in `env`. */
   baseUrl?: string
-  credentialEnv?: Array<{ name: string; value: string }>
 }
 
-export function piProviderName(providerName: string): string {
-  return PROVIDER_ALIASES[providerName] ?? providerName
-}
-
-export function providerApiKey(providerName: string, env: NodeJS.ProcessEnv): string | undefined {
-  for (const name of PROVIDER_API_KEY_ENV[providerName] ?? []) {
-    const value = env[name]
-    if (value) return value
-  }
-  return LOCAL_PROVIDERS[providerName]?.apiKey
-}
-
-export function providerBaseUrl(providerName: string, env: NodeJS.ProcessEnv): string | undefined {
-  switch (providerName) {
-    case 'lmstudio':
-      return env.LMSTUDIO_URL ?? LOCAL_PROVIDERS.lmstudio?.baseUrl
-    case 'ollama':
-      return env.OLLAMA_URL ?? LOCAL_PROVIDERS.ollama?.baseUrl
-    case 'llamacpp':
-      return env.LLAMACPP_URL ?? LOCAL_PROVIDERS.llamacpp?.baseUrl
-    case 'vercel-ai-gateway':
-      return env.AI_GATEWAY_BASE_URL
-    case 'fireworks':
-      // Fireworks serves every model it hosts, including ones released after this build's catalog, from
-      // one endpoint of its own. Pinning it preserves the fail-closed rule's actual intent — an
-      // uncatalogued id must never be built against *another vendor's* default while carrying this
-      // provider's credential — and makes an upstream model usable without waiting for a catalog update.
-      // The override exists so an operator can point at a proxy, explicitly, the same way LMSTUDIO_URL
-      // works; that is the documented remedy the unknown-model error was already suggesting.
-      return env.FIREWORKS_BASE_URL ?? 'https://api.fireworks.ai/inference'
-    default:
-      return undefined
-  }
-}
-
-export function providerCredentialEnv(
-  providerName: string,
-  env: NodeJS.ProcessEnv,
-): Record<string, string> | undefined {
-  const result: Record<string, string> = {}
-  for (const name of PROVIDER_CREDENTIAL_ENV[providerName] ?? []) {
-    const value = env[name]
-    if (value !== undefined) result[name] = value
-  }
-  return Object.keys(result).length > 0 ? result : undefined
-}
-
-function fallbackApi(providerName: string): Api {
-  switch (providerName) {
-    case 'anthropic':
-      return 'anthropic-messages'
-    case 'google':
-      return 'google-generative-ai'
-    case 'google-vertex':
-      return 'google-vertex'
-    case 'azure-openai':
-      return 'azure-openai-responses'
-    case 'bedrock':
-      return 'bedrock-converse-stream'
-    case 'openai-codex':
-      return 'openai-codex-responses'
-    default:
-      return 'openai-completions'
-  }
-}
-
-/**
- * Raised when a model id is neither in the provider's catalog nor sent to a
- * configured endpoint.
- *
- * This is deliberately fatal rather than a fallback: an uncatalogued id with no
- * base URL would be built with `baseUrl: ''`, which resolves to a provider
- * default elsewhere in the stack — carrying this provider's credential to
- * whatever endpoint that happens to be.
- */
-export class UnknownModelError extends Error {
-  readonly providerName: string
-  readonly modelId: string
-
-  // Fields are declared explicitly, not as constructor parameter properties:
-  // worker subprocesses run Node's strip-only TypeScript, which rejects them.
-  constructor(providerName: string, modelId: string) {
-    super(
-      `Unknown model "${modelId}" for provider "${providerName}": it is not in that provider's catalog, and no endpoint is configured for it. Choose a catalogued model, or configure an endpoint for a custom one.`,
-    )
-    this.name = 'UnknownModelError'
-    this.providerName = providerName
-    this.modelId = modelId
-  }
-}
-
-export function fallbackPiModel(
-  providerName: string,
-  modelId: string,
-  baseUrl?: string,
-): Model<Api> {
+/** A model Pi's catalog lacks, sent to an OpenAI-compatible endpoint. */
+function endpointModel(providerName: string, modelId: string, baseUrl: string): Model<Api> {
   return {
     id: modelId,
     name: modelId,
-    api: fallbackApi(providerName),
+    api: 'openai-completions',
     provider: piProviderName(providerName),
-    baseUrl: baseUrl ?? '',
+    baseUrl,
     reasoning: false,
     input: ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -264,25 +40,24 @@ export function fallbackPiModel(
   }
 }
 
-export async function createBazilionPiRuntime(
-  options: BazilionPiRuntimeOptions,
-): Promise<ModelRuntime> {
-  const providerName = options.providerName
-  const canonicalName = piProviderName(providerName)
-  const credentials = new InMemoryCredentialStore()
-  const apiKey = options.apiKey ?? providerApiKey(providerName, options.env)
-  const credentialEnv = providerCredentialEnv(providerName, options.env)
+/** Build the runtime and resolve the model; an uncatalogued id needs an endpoint. */
+export async function createPiModel(
+  spec: PiModelSpec,
+): Promise<{ runtime: ModelRuntime; model: Model<Api> }> {
+  const { providerName, modelId, env } = spec
+  const piName = piProviderName(providerName)
+  const apiKey = spec.apiKey ?? providerApiKey(providerName, env)
+  const credentialEnv = providerCredentialEnv(providerName, env)
+  const endpoint = spec.baseUrl ?? providerEndpoint(providerName, env)
 
+  const credentials = new InMemoryCredentialStore()
   if (apiKey || credentialEnv) {
-    await credentials.modify(canonicalName, async () =>
-      canonicalName === 'openai-codex' && apiKey
+    await credentials.modify(piName, async () =>
+      piName === 'openai-codex' && apiKey
         ? {
             type: 'oauth',
             access: apiKey,
-            // Bazilion owns refresh outside Pi. This deliberately empty value
-            // satisfies Pi's canonical OAuth shape but is never used because
-            // the token is long-lived only inside this one-shot runtime and
-            // mid-turn replacement is supplied through Agent.getApiKey.
+            // Bazilion refreshes the token itself (Agent.getApiKey); Pi's OAuth shape needs these.
             refresh: '',
             expires: Number.MAX_SAFE_INTEGER,
           }
@@ -293,117 +68,55 @@ export async function createBazilionPiRuntime(
           },
     )
   }
-
   const runtime = await ModelRuntime.create({
     credentials,
     modelsPath: null,
     allowModelNetwork: false,
   })
-  const local = LOCAL_PROVIDERS[providerName]
-  const baseUrl = options.baseUrl ?? providerBaseUrl(providerName, options.env)
 
-  if (local) {
-    const modelId = options.modelId ?? 'model-name'
-    const model = fallbackPiModel(providerName, modelId, baseUrl ?? local.baseUrl)
-    runtime.registerProvider(canonicalName, {
-      baseUrl: baseUrl ?? local.baseUrl,
+  const provider = findProvider(providerName)
+  if (provider?.local) {
+    const baseUrl = endpoint ?? provider.endpoint?.fallback ?? ''
+    runtime.registerProvider(piName, {
+      baseUrl,
       api: 'openai-completions',
-      authHeader: local.authHeader,
-      apiKey: apiKey ?? local.apiKey,
-      models: [model],
+      authHeader: provider.local.authHeader,
+      apiKey: apiKey ?? provider.local.key,
+      models: [endpointModel(providerName, modelId, baseUrl)],
     })
-  } else if (baseUrl) {
-    runtime.registerProvider(canonicalName, { baseUrl })
   }
 
-  return runtime
-}
-
-/**
- * Closed provider runtime for protected/review workers. It cannot consult an
- * environment record or register a non-Codex provider.
- */
-export async function createOpenAICodexPiRuntime(
-  options: OpenAICodexPiRuntimeOptions,
-): Promise<ModelRuntime> {
-  if (options.providerName !== 'openai-codex') {
-    throw new Error('protected execution supports only openai-codex')
+  const known = runtime.getModel(piName, modelId)
+  if (known) return { runtime, model: endpoint ? { ...known, baseUrl: endpoint } : known }
+  const fallback = endpoint ?? provider?.endpoint?.fallback
+  // Fatal by design: built without a base URL, the request would go to some default endpoint
+  // while carrying this provider's credential.
+  if (!fallback) {
+    throw new Error(
+      `Unknown model "${modelId}" for provider "${providerName}": it is not in that provider's catalog, and no endpoint is configured for it. Choose a catalogued model, or configure an endpoint for a custom one.`,
+    )
   }
-  if (!options.modelId.trim()) throw new Error('openai-codex model id is required')
-  if (!options.accessToken.trim()) throw new Error('openai-codex access token is required')
-
-  const credentials = new InMemoryCredentialStore()
-  await credentials.modify('openai-codex', async () => ({
-    type: 'oauth',
-    access: options.accessToken,
-    // The daemon-owned refresh credential never enters this process. Pi only
-    // needs a non-expiring in-memory access-token projection for its startup
-    // auth gate; Agent.getApiKey performs every real mid-turn refresh over IPC.
-    refresh: '',
-    expires: Number.MAX_SAFE_INTEGER,
-  }))
-  return ModelRuntime.create({ credentials, modelsPath: null, allowModelNetwork: false })
+  return { runtime, model: endpointModel(providerName, modelId, fallback) }
 }
 
-/** Build a protected runtime only from the daemon's explicit wire projection. */
-export async function createProtectedPiRuntime(
-  options: ProtectedPiRuntimeOptions,
-): Promise<ModelRuntime> {
-  const env: NodeJS.ProcessEnv = {}
-  for (const field of options.credentialEnv ?? []) env[field.name] = field.value
-  return createBazilionPiRuntime({
-    providerName: options.providerName,
-    modelId: options.modelId,
-    env,
-    apiKey: options.apiKey,
-    baseUrl: options.baseUrl,
-  })
-}
-
-/**
- * Providers whose OpenAI-compatible API lives under a version segment.
- *
- * The OpenAI SDK appends only `/chat/completions` to the base URL it is given, while these providers serve
- * `…/v1/chat/completions`. Catalogue entries are unaffected — they carry the provider's own base URL and
- * their own API type — so this translation applies *only* to the fallback model built for an uncatalogued
- * id, which is always the OpenAI-compatible adapter.
- *
- * Without it, an operator who configured an endpoint to use a model released after this build's catalogue
- * would get a 404 from a URL that looks right.
- */
-const OPENAI_COMPATIBLE_VERSION_SEGMENT: Record<string, string> = { fireworks: '/v1' }
-
-export function fallbackBaseUrl(
-  providerName: string,
-  baseUrl: string | undefined,
-): string | undefined {
-  const segment = OPENAI_COMPATIBLE_VERSION_SEGMENT[providerName]
-  if (!segment || !baseUrl) return baseUrl
-  let url: URL
-  try {
-    url = new URL(baseUrl)
-  } catch {
-    return baseUrl
+/** The provider test: one short real request through the same runtime a turn uses. */
+export async function testProviderModel(
+  spec: PiModelSpec & { message: string; signal?: AbortSignal },
+): Promise<ProviderTestResponse> {
+  const { runtime, model } = await createPiModel(spec)
+  const reply = await runtime.completeSimple(
+    model,
+    {
+      systemPrompt: '',
+      messages: [{ role: 'user', content: spec.message, timestamp: Date.now() }],
+    },
+    { maxTokens: 256, ...(spec.signal ? { signal: spec.signal } : {}) },
+  )
+  if (reply.stopReason === 'error' || reply.stopReason === 'aborted') {
+    throw new Error(reply.errorMessage ?? 'provider request failed')
   }
-  const path = url.pathname.replace(/\/+$/, '')
-  if (path.endsWith(segment)) return baseUrl
-  url.pathname = `${path}${segment}`
-  return url.toString()
-}
-
-export function resolvePiModel(
-  runtime: ModelRuntime,
-  providerName: string,
-  modelId: string,
-  baseUrl?: string,
-): Model<Api> {
-  const known = runtime.getModel(piProviderName(providerName), modelId)
-  if (known) return baseUrl ? { ...known, baseUrl } : known
-  // Fail closed. A model absent from the catalog is only safe to build when this
-  // provider has a concrete endpoint; without one the request would inherit a
-  // default base URL (OpenAI's) while still carrying this provider's API key, so
-  // a typo in a model string would disclose a credential to another vendor.
-  // Local/compat providers are unaffected — they always supply a base URL.
-  if (!baseUrl) throw new UnknownModelError(providerName, modelId)
-  return fallbackPiModel(providerName, modelId, fallbackBaseUrl(providerName, baseUrl))
+  return {
+    content: reply.content.map((part) => (part.type === 'text' ? part.text : '')).join(''),
+    usage: { promptTokens: reply.usage.input, completionTokens: reply.usage.output },
+  }
 }

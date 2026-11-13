@@ -40,6 +40,6 @@ export function renderMd(text: string, domReady: boolean): string {
   }
 }
 
-export function escapeHtml(s: string): string {
+function escapeHtml(s: string): string {
   return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }

@@ -1,15 +1,10 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import {
-  type BazilionDb,
-  openInMemoryDb,
-  runMigrations,
-  webTokenRepo,
-} from '../../src/core/index.ts'
+import { type BazilionDb, initSchema, openInMemoryDb, webTokenRepo } from '../../src/core/index.ts'
 
 let db: BazilionDb
 beforeEach(() => {
-  db = openInMemoryDb()
-  runMigrations(db)
+  db = openInMemoryDb('')
+  initSchema(db)
 })
 
 describe('webTokenRepo', () => {
@@ -18,13 +13,15 @@ describe('webTokenRepo', () => {
     expect(out.token).toMatch(/^[0-9a-f]{48}$/)
     expect(out.meta.label).toBe('laptop')
     expect(out.meta.kind).toBe('device')
-    expect(out.meta.expiresAt).toBeGreaterThan(Date.now())
+    // Device tokens never expire unless asked to.
+    expect(out.meta.expiresAt).toBe(null)
+    expect(webTokenRepo.create(db, 'phone', { expiresAt: 5 }).meta.expiresAt).toBe(5)
     expect(out.meta.revokedAt).toBe(null)
     expect(out.meta.lastUsedAt).toBe(null)
 
     // list() returns meta only — no plaintext
     const listed = webTokenRepo.list(db)
-    expect(listed).toHaveLength(1)
+    expect(listed).toHaveLength(2)
     expect((listed[0] as unknown as { token?: unknown }).token).toBeUndefined()
   })
 

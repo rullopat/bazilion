@@ -1,45 +1,62 @@
-// /api/config/telegram/* — credential CRUD + preflight health + live polling state.
+// Telegram. /api/config/telegram: credentials, setup checks, owner pairing, allowlist and bot
+// control. /api/agents/:id/telegram: an agent's forum-topic binding. /api/teams/:id/topic-format:
+// a Team's topic-name template.
 //
-// Endpoints:
+//   GET    /                    current config state (no Bot API calls)
+//   PUT    /                    save {botToken, chatId}; restarts the bot when they changed
+//   DELETE /                    clear credentials, stop the bot, wipe derived state
+//   POST   /reconnect           switch to the supergroup a migration announced
+//   POST   /restart             restart the bot
+//   GET    /health              setup checks + live polling state
+//   /pairing, /acl              owner pairing code and the member allowlist
 //
-//   GET    /api/config/telegram           — read current config state (no preflight)
-//   PUT    /api/config/telegram           — write {botToken, chatId} in one call
-//                                            (restarts the bot if creds changed)
-//   DELETE /api/config/telegram           — clear creds + stop the bot + wipe derived state
-//   GET    /api/config/telegram/health    — run preflight + return live polling state
-//   POST   /api/config/telegram/restart   — force-restart the bot (debugging)
-//
-// PUT/DELETE only wipe derived state (TELEGRAM_LAST_UPDATE_ID,
-// TELEGRAM_SERVICE_TOPIC_ID, TELEGRAM_DIRECTORY_MESSAGE_ID) when the
-// incoming credentials actually differ from what's already stored.
-// Repeated idempotent saves with identical creds preserve the activated
-// state so we don't orphan the existing service chat.
+// Saving identical credentials keeps the derived ids (service topic, directory message), so the
+// existing service topic is not orphaned.
 
 import type {
   AddTelegramAllowedUserRequest,
+  SetTeamTopicFormatRequest,
+  TelegramBindResponse,
   TelegramConfigInput,
   TelegramConfigState,
   TelegramHealth,
   TelegramPairingChallenge,
   TelegramPairingStatus,
 } from '@bazilion/api-types'
-import { Hono } from 'hono'
-import { openConfig, openSecrets, telegramAclRepo, telegramPairingRepo } from '../core/index.ts'
+import {
+  agentRepo,
+  openConfig,
+  openSecrets,
+  teamRepo,
+  telegramAclRepo,
+  telegramPairingRepo,
+} from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { getTelegramBotState, restartTelegramBot, stopTelegramBot } from '../lib/telegram/bot.ts'
+import {
+  BOT_TOKEN_KEY,
+  CHAT_ID_KEY,
+  DIRECTORY_MESSAGE_KEY,
+  LAST_UPDATE_KEY,
+  MIGRATED_CHAT_KEY,
+  SERVICE_TOPIC_KEY,
+} from '../lib/telegram/config.ts'
+import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
+import { telegramLive } from '../lib/telegram/live.ts'
+import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { runPreflight } from '../lib/telegram/preflight.ts'
+import { ensureAgentTopic } from '../lib/telegram/topic-autocreate.ts'
+import { syncTeamTopicNames } from '../lib/telegram/topic-rename.ts'
+import { jsonBody, newRouter, routeAgent, routeTeam } from './http.ts'
 
-const BOT_TOKEN_KEY = 'TELEGRAM_BOT_TOKEN'
-const CHAT_ID_KEY = 'TELEGRAM_CHAT_ID'
-const MIGRATED_CHAT_ID_KEY = 'TELEGRAM_MIGRATED_CHAT_ID'
 const DERIVED_STATE_KEYS = [
-  'TELEGRAM_LAST_UPDATE_ID',
-  'TELEGRAM_SERVICE_TOPIC_ID',
-  'TELEGRAM_DIRECTORY_MESSAGE_ID',
-  MIGRATED_CHAT_ID_KEY,
+  LAST_UPDATE_KEY,
+  SERVICE_TOPIC_KEY,
+  DIRECTORY_MESSAGE_KEY,
+  MIGRATED_CHAT_KEY,
 ] as const
 
-export const telegramRouter = new Hono()
+export const telegramRouter = newRouter()
 
 telegramRouter.get('/', (c) => {
   const { db, authToken } = getCtx()
@@ -47,7 +64,7 @@ telegramRouter.get('/', (c) => {
 })
 
 telegramRouter.put('/', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as Partial<TelegramConfigInput> | null
+  const body = await jsonBody<TelegramConfigInput>(c)
   if (!body || typeof body.botToken !== 'string' || typeof body.chatId !== 'string') {
     return c.json({ error: 'body must be {"botToken": "<string>", "chatId": "<string>"}' }, 400)
   }
@@ -113,7 +130,7 @@ telegramRouter.delete('/', async (c) => {
   return c.body(null, 204)
 })
 
-// Apply a pending supergroup migration: promote TELEGRAM_MIGRATED_CHAT_ID to
+// Apply a pending supergroup migration: promote the announced chat id to
 // the live chat id, wipe derived state (the service topic / directory live in
 // the OLD chat and must be recreated), and restart the bot so activation runs
 // against the new chat. Agent topic bindings reconcile lazily on the next
@@ -121,7 +138,7 @@ telegramRouter.delete('/', async (c) => {
 telegramRouter.post('/reconnect', (c) => {
   const { db, authToken } = getCtx()
   const config = openConfig(db)
-  const migrated = (config.get(MIGRATED_CHAT_ID_KEY) ?? '').trim()
+  const migrated = (config.get(MIGRATED_CHAT_KEY) ?? '').trim()
   if (!migrated) return c.json({ error: 'no migrated chat id pending' }, 400)
   config.set(CHAT_ID_KEY, migrated)
   for (const key of DERIVED_STATE_KEYS) config.remove(key)
@@ -147,15 +164,11 @@ telegramRouter.get('/pairing', (c) => {
 
 telegramRouter.post('/pairing/challenge', (c) => {
   const { db } = getCtx()
-  try {
-    const challenge = telegramPairingRepo.create(db)
-    return c.json(
-      { ...telegramPairingRepo.status(db), ...challenge } satisfies TelegramPairingChallenge,
-      201,
-    )
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 409)
-  }
+  const challenge = telegramPairingRepo.create(db)
+  return c.json(
+    { ...telegramPairingRepo.status(db), ...challenge } satisfies TelegramPairingChallenge,
+    201,
+  )
 })
 
 telegramRouter.delete('/pairing/challenge', (c) => {
@@ -165,17 +178,16 @@ telegramRouter.delete('/pairing/challenge', (c) => {
 })
 
 telegramRouter.post('/pairing/reset', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { confirm?: unknown } | null
+  const body = await jsonBody<{ confirm: true }>(c)
   if (body?.confirm !== true) return c.json({ error: 'body must include {"confirm": true}' }, 400)
   const { db } = getCtx()
   telegramPairingRepo.reset(db)
   return c.json(telegramPairingRepo.status(db) satisfies TelegramPairingStatus)
 })
 
-// ─── Per-user allowlist (Phase 7) ─────────────────────────────────────────
-// HTTP callers are already bearer-authed (admin-level), so these don't apply
-// the owner-role check the Telegram /allow command does — operator access is
-// the auth boundary here.
+// ─── Member allowlist ─────────────────────────────────────────────────────
+// HTTP callers are already authenticated operators, so these skip the owner-role
+// check the Telegram /allow command applies.
 
 telegramRouter.get('/acl', (c) => {
   const { db } = getCtx()
@@ -183,7 +195,7 @@ telegramRouter.get('/acl', (c) => {
 })
 
 telegramRouter.post('/acl', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as AddTelegramAllowedUserRequest | null
+  const body = await jsonBody<AddTelegramAllowedUserRequest>(c)
   if (!body || typeof body.userId !== 'number' || !Number.isInteger(body.userId)) {
     return c.json({ error: 'userId (integer) is required' }, 400)
   }
@@ -248,7 +260,7 @@ function readState(db: ReturnType<typeof getCtx>['db'], authToken: string): Tele
   const config = openConfig(db)
   const botToken = openSecrets(db, authToken).get(BOT_TOKEN_KEY) ?? ''
   const chatId = config.get(CHAT_ID_KEY) ?? ''
-  const migratedChatId = (config.get(MIGRATED_CHAT_ID_KEY) ?? '').trim()
+  const migratedChatId = (config.get(MIGRATED_CHAT_KEY) ?? '').trim()
   return {
     configured: botToken.length > 0 && chatId.length > 0,
     chatId,
@@ -269,3 +281,72 @@ function maskBotToken(t: string): string {
   const tail = t.slice(colonIdx + 1)
   return `${head}:${tail.slice(0, 4)}…`
 }
+
+// ─── Agent topic binding ──────────────────────────────────────────────────
+// The HTTP form of the topic-context `/talk` and `/unbind` commands: bind creates (or finds)
+// the agent's forum topic like `/talk` does; unbind just clears the binding.
+
+export const agentTelegramRouter = newRouter()
+
+agentTelegramRouter.post('/:id/telegram/bind', async (c) => {
+  const { db, paths } = getCtx()
+  const { id } = routeAgent(c)
+  const live = telegramLive()
+  if (!live) {
+    return c.json(
+      {
+        error:
+          'Telegram bot is not running — configure credentials at /config/integrations/telegram',
+      },
+      503,
+    )
+  }
+  const result = await ensureAgentTopic({
+    db,
+    paths,
+    api: live.api as unknown as Parameters<typeof ensureAgentTopic>[0]['api'],
+    chatId: live.chatId,
+    agentId: id,
+  })
+  if (result.kind === 'agent-not-found') return c.json({ error: `agent not found: ${id}` }, 404)
+  if (result.kind === 'team-not-found') return c.json({ error: 'team not found for agent' }, 500)
+  const agent = agentRepo.get(db, id)
+  if (!agent) return c.json({ error: `agent not found: ${id}` }, 404)
+  return c.json({
+    agent,
+    topicId: result.topicId,
+    deepLink: result.deepLink,
+    created: result.created,
+  } satisfies TelegramBindResponse)
+})
+
+agentTelegramRouter.delete('/:id/telegram/binding', (c) => {
+  agentRepo.setTelegramTopicId(getCtx().db, routeAgent(c).id, null)
+  notifyDirectoryDirty()
+  return c.body(null, 204)
+})
+
+// ─── Team topic names ─────────────────────────────────────────────────────
+
+export const teamTelegramRouter = newRouter()
+
+teamTelegramRouter.put('/:id/topic-format', async (c) => {
+  const body = await jsonBody<SetTeamTopicFormatRequest>(c)
+  if (!body || (body.format !== null && typeof body.format !== 'string')) {
+    return c.json({ error: 'format (string or null) is required' }, 400)
+  }
+  const { db, paths } = getCtx()
+  const { id } = routeTeam(c)
+  // An empty or whitespace-only string clears the template.
+  const format = body.format?.trim() ? body.format : null
+  if (format !== null) {
+    const err = validateTopicNameFormat(format)
+    if (err) return c.json({ error: err }, 400)
+  }
+  teamRepo.setTelegramTopicNameFormat(db, id, format)
+  // Re-render existing topics in the background; no-op when the bot isn't running.
+  void syncTeamTopicNames(db, paths, id).catch((e) =>
+    console.warn('telegram: topic-name sync after format change failed:', e),
+  )
+  return c.json(teamRepo.get(db, id, paths))
+})

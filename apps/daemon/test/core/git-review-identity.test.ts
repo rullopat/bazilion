@@ -1,20 +1,20 @@
-import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { PinnedBase } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import {
   type CapturedGit,
   captureRepositoryGit,
   findRepositoryRoot,
 } from '../../src/lib/git/capture.ts'
+import { ContextDirectory } from '../../src/lib/git/context-directory.ts'
 import {
-  type PinnedBase,
   ReviewBaseError,
   readRepositoryIdentity,
   resolveComparisonBase,
 } from '../../src/lib/git-review/identity.ts'
-import { ContextDirectory } from '../../src/lib/repository-context/files.ts'
+import { runGit } from '../fixtures/git.ts'
 
 // BAZ-042 slice 2: repository identity and comparison-base resolution. A review must pin a concrete
 // commit, so a branch tip moving later cannot silently rewrite what was reviewed.
@@ -28,21 +28,7 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(parent, { recursive: true, force: true }))
 
-function git(...args: string[]): string {
-  return execFileSync('git', ['-C', root, ...args], {
-    encoding: 'utf8',
-    env: {
-      PATH: '/usr/bin:/bin',
-      HOME: parent,
-      GIT_CONFIG_NOSYSTEM: '1',
-      GIT_CONFIG_GLOBAL: '/dev/null',
-      GIT_AUTHOR_NAME: 'Test',
-      GIT_AUTHOR_EMAIL: 'test@example.invalid',
-      GIT_COMMITTER_NAME: 'Test',
-      GIT_COMMITTER_EMAIL: 'test@example.invalid',
-    },
-  }).trim()
-}
+const git = (...args: string[]) => runGit(root, parent, ...args)
 
 function commit(message: string, content = message): string {
   writeFileSync(join(root, 'code.txt'), `${content}\n`)
@@ -161,19 +147,27 @@ test('detached and unborn heads are distinguished', async () => {
   })
 })
 
+test('revision syntax such as HEAD~1 and HEAD^ resolves to a pinned commit', async () => {
+  git('init', '-q', '-b', 'main')
+  const parent = commit('initial')
+  commit('second')
+  await withCapture(async (captured) => {
+    for (const ref of ['HEAD~1', 'HEAD^', 'main~1']) {
+      expect(await resolveComparisonBase(captured, ref)).toEqual({
+        requestedRef: ref,
+        resolvedOid: parent,
+      })
+    }
+  })
+})
+
 test.each([
   ['--upload-pack=/tmp/evil', 'option injection'],
   ['-n', 'bare option'],
   ['a b', 'whitespace'],
-  ['a..b', 'revision range'],
-  ['main@{1}', 'reflog syntax'],
-  ['refs//heads/main', 'double slash'],
-  ['main/', 'trailing slash'],
-  ['main.', 'trailing dot'],
-  ['main.lock', 'lock suffix'],
+  ['main\n', 'control byte'],
   ['', 'empty'],
   ['a'.repeat(256), 'over-long'],
-  ['..', 'dot dot'],
 ])('an unsafe base %s is refused before Git runs (%s)', async (ref) => {
   git('init', '-q', '-b', 'main')
   commit('initial')

@@ -1,10 +1,4 @@
-import type {
-  RepositoryChanges,
-  RepositoryIdentity,
-  ReviewChange,
-  SourceSnapshotSummary,
-  SnapshotReference,
-} from '@bazilion/api-types'
+import type { RepositoryChanges, RepositoryIdentity, ReviewChange } from '@bazilion/api-types'
 
 // Presentation-only helpers for the Git review panel (BAZ-042). Pure functions so they can be
 // tested without a browser, and so the panel never invents wording inline.
@@ -41,9 +35,10 @@ export function changeStatusLabel(status: ReviewChange['status']): string {
  */
 export function changeSummary(change: ReviewChange): string {
   const label = changeStatusLabel(change.status)
-  if (change.excludedReason === 'credential_shaped') return `${label} · content withheld (credential-shaped)`
-  if (change.excludedReason === 'bazilion_state') return `${label} · content withheld (Bazilion state)`
-  if (change.contentOmitted === 'untracked_not_selected') return `${label} · content not selected`
+  if (change.excludedReason === 'credential_shaped')
+    return `${label} · content withheld (credential-shaped)`
+  if (change.excludedReason === 'bazilion_state')
+    return `${label} · content withheld (Bazilion state)`
   if (change.binary) return `${label} · binary`
   if (change.addedLines === null || change.deletedLines === null) return label
   return `${label} · +${change.addedLines} −${change.deletedLines}`
@@ -60,7 +55,7 @@ export function baseLabel(identity: RepositoryIdentity, changes: RepositoryChang
   return `${head} · base ${changes.base.requestedRef} (${short(changes.base.resolvedOid)})`
 }
 
-export function short(oid: string | null): string {
+function short(oid: string | null): string {
   return oid === null ? '—' : oid.slice(0, 12)
 }
 
@@ -77,46 +72,10 @@ export function unavailableMessage(code: string | undefined, fallback: string): 
     case 'unsupported_layout':
       return `${fallback} Bazilion does not widen mounts or run repository helpers to make inspection work; use a repository whose work tree and metadata are reachable from the Team root.`
     case 'invalid_base':
-      return 'That comparison base is not a plain branch, tag or commit id.'
+      return 'That comparison base is not a branch, tag, commit id or revision such as HEAD~1.'
     case 'unknown_base':
       return 'That comparison base does not name a commit in this repository.'
     default:
       return fallback
   }
-}
-
-/** Snapshot list label, distinguishing an incomplete capture from an exact one. */
-export function snapshotLabel(snapshot: SourceSnapshotSummary): string {
-  const when = new Date(snapshot.createdAt).toISOString().replace('T', ' ').slice(0, 16)
-  const state = snapshot.complete ? 'complete' : 'incomplete (applicability unknown)'
-  return `${snapshot.snapshotId.slice(0, 12)} · ${state} · ${snapshot.capturedBy} · ${when} · ${snapshot.entryCount} entries`
-}
-
-/**
- * Wording for a receipt's source applicability.
- *
- * Absence is **Not checked**: a receipt with no captured source can never read as passing, and
- * `changed` says only that the code moved, never that the result is wrong.
- */
-export function applicabilityLabel(
-  state: { comparison: 'identical' | 'changed' | 'unknown'; reason: string } | null,
-): string {
-  if (state === null) return 'Source: Not checked'
-  switch (state.comparison) {
-    case 'identical':
-      return 'Source: unchanged since this result was produced'
-    case 'changed':
-      return 'Source: changed since this result was produced — relevance unknown'
-    default:
-      return `Source: unknown (${state.reason.replaceAll('_', ' ')})`
-  }
-}
-
-/** Whether an applicability verdict warrants a warning presentation. */
-export function applicabilityWarns(state: { comparison: 'identical' | 'changed' | 'unknown' } | null): boolean {
-  return state !== null && state.comparison !== 'identical'
-}
-
-export function referenceLabel(reference: SnapshotReference): string {
-  return `${reference.id.slice(0, 12)} · ${reference.complete ? 'complete' : 'incomplete'}`
 }

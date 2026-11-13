@@ -1,35 +1,75 @@
-// Daemon-owned Pi MCP clients. No Pi extension, mcp.json, OAuth store or worker connection.
-// Pi owns protocol correlation/framing, cancellation and transport shutdown.
-// stdio-owner.ts keeps Linux/macOS retirement truthful for surviving SIGTERM-ignoring descendants.
-// This adapter owns configuration admission, catalog bounds and resource lifetime only.
-import { createHash } from 'node:crypto'
+// Daemon-owned MCP clients (Pi's `@earendil-works/pi-mcp`): one connection per configured server,
+// opened on first use and shared by every turn. It is closed when idle, when its configuration
+// changes, when the server goes away (a stdio process exits, an HTTP session expires) and at
+// shutdown; the next use opens a new one. stdio servers run as daemon child processes with an
+// explicit environment; Streamable HTTP servers may send a bearer token. Workers never connect:
+// they call tools over IPC.
+
 import type { McpTransport } from '@bazilion/api-types'
 import {
+  McpAbortError,
   McpClient,
+  McpSessionExpiredError,
   type McpTransport as PiTransport,
+  StdioTransport,
   StreamableHttpTransport,
   toLlmContent,
 } from '@earendil-works/pi-mcp'
 import type { ToolResultPart } from '../../runtime/tools/types.ts'
 import type { InjectedMcpTool } from '../../runtime/worker/ipc-protocol.ts'
 import { ensureResourceReaper, resources } from '../resources.ts'
-import { retainTransport, retireMcpClient } from './retirement.ts'
-import { assertStdioPlatform, OwnedStdioTransport } from './stdio-owner.ts'
-
-export type { InjectedMcpTool, McpTransport }
-
-export class McpToolUncertainError extends Error {
-  constructor(retirementHeld = false) {
-    super(
-      `MCP tool failed or was cancelled; it may have taken effect. Not replayed.${retirementHeld ? ' Retirement incomplete; operator intervention required.' : ''}`,
-    )
-  }
-}
 
 const REQUEST_MS = 60_000
 const MESSAGE_BYTES = 8 * 1024 * 1024
-const CATALOG_BYTES = 2 * 1024 * 1024
+const CLOSE_MS = 5_000
+const KILL_WAIT_MS = 2_000
+/** A connection unused this long is closed; the next use reopens it. */
+const IDLE_MS = 15 * 60_000
+const TOOL_NAME = /^[a-zA-Z0-9_-]+$/
 
+/**
+ * Pi's stdio close ends stdin, then signals the server's process group while the leader lives. A
+ * descendant that ignores SIGTERM after the leader exited would survive that, so the group gets a
+ * final SIGKILL once Pi's close settles (or after a bounded wait, if a detached descendant keeps the
+ * pipes open). Every caller shares the first close: a second Pi close returns at once, which would
+ * otherwise SIGKILL the server before its graceful shutdown.
+ */
+class GroupStdioTransport extends StdioTransport {
+  private group: number | undefined
+  private closing: Promise<void> | undefined
+  override async start(): Promise<void> {
+    const starting = super.start()
+    this.group = this.pid
+    await starting
+  }
+  override close(): Promise<void> {
+    this.closing ??= this.shutDown()
+    return this.closing
+  }
+  private async shutDown(): Promise<void> {
+    await withTimeout(super.close(), CLOSE_MS)
+    const group = this.group
+    if (group === undefined) return
+    try {
+      process.kill(-group, 'SIGKILL')
+    } catch {
+      return // The group is already gone.
+    }
+    // SIGKILL is delivered asynchronously: wait briefly until the group is gone so a closed
+    // connection leaves no running server process behind for whatever runs next.
+    const deadline = Date.now() + KILL_WAIT_MS
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      try {
+        process.kill(-group, 0)
+      } catch {
+        return
+      }
+    }
+  }
+}
+
+/** What the pool needs of a configured server (an `McpServer` row satisfies it). */
 export interface McpServerConfig {
   id: string
   name: string
@@ -38,415 +78,230 @@ export interface McpServerConfig {
   args: string[]
   url: string | null
 }
-export interface McpConnectOpts {
-  env: NodeJS.ProcessEnv
+
+/**
+ * How to open a server: the stdio process's whole environment, or the HTTP bearer token. Callers
+ * pass a function, called only when a connection has to be opened.
+ */
+export interface McpConnectOptions {
+  env?: NodeJS.ProcessEnv
   authToken?: string
-  idleMs: number
-  signal?: AbortSignal
-  /** Daemon revalidation, including after async admission and before dispatch. */
-  assertActive?: () => void
-  admittedTools?: InjectedMcpTool[]
 }
+
+/** A server's connection; it is in `resources().mcp` from first use until it is closed. */
 export interface McpConnection {
   serverId: string
-  name: string
   lastUsedAt: number
   idleMs: number
+  /** Calls in flight; the idle reaper never closes a busy connection. */
   busy: number
   client: McpClient
-  tools: InjectedMcpTool[]
+  /** Resolves once the server is initialized; rejects if it fails to start or is closed first. */
+  ready: Promise<McpConnection>
+  /** The server's tools, listed on first use and again after `notifications/tools/list_changed`. */
+  tools?: InjectedMcpTool[]
+  toolsStale: boolean
   close(): Promise<void>
 }
-interface Slot {
-  id: string
-  signature: string
-  generation: number
-  client: McpClient
-  transport?: PiTransport
-  controller: AbortController
-  retired: boolean
-  revision: number
-  dirty: boolean
-  connection?: McpConnection
-  opening?: Promise<McpConnection>
-  refreshing?: Promise<void>
-  closing?: Promise<void>
-}
-const STATE_KEY = Symbol.for('bazilion.mcp.pool')
-const globalState = globalThis as unknown as Record<
-  symbol,
-  { slots: Map<string, Slot>; stopping: boolean; generation: number; shutdownCount: number }
->
-const state = globalState[STATE_KEY] ?? {
-  slots: new Map<string, Slot>(),
-  stopping: false,
-  generation: 0,
-  shutdownCount: 0,
-}
-globalState[STATE_KEY] = state
 
-export function mcpConfigSignature(server: McpServerConfig, opts: McpConnectOpts): string {
-  const env =
-    server.transport === 'stdio'
-      ? Object.entries(opts.env)
-          .filter(([, v]) => typeof v === 'string')
-          .sort(([a], [b]) => a.localeCompare(b))
-      : undefined
-  return createHash('sha256')
-    .update(JSON.stringify([server, env, opts.authToken]))
-    .digest('hex')
+function withTimeout(promise: Promise<unknown>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    promise.then(
+      () => {},
+      () => {},
+    ),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms)
+    }),
+  ]).finally(() => clearTimeout(timer))
 }
-function required(value: string | null): string {
-  if (!value) throw new Error('Missing MCP command or URL')
+
+function required(value: string | null, what: string): string {
+  if (!value) throw new Error(`MCP server has no ${what}`)
   return value
 }
-function assertActive(opts: McpConnectOpts): void {
-  opts.signal?.throwIfAborted()
-  opts.assertActive?.()
-}
-function wait<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise
-  signal.throwIfAborted()
-  return new Promise((resolve, reject) => {
-    const abort = () => reject(new Error('MCP operation cancelled'))
-    signal.addEventListener('abort', abort, { once: true })
-    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
-  })
-}
-function retire(slot: Slot): Promise<void> {
-  slot.retired = true
-  slot.controller.abort()
-  // Install the promise before Pi's synchronous close notification can re-enter.
-  slot.closing ??= Promise.resolve()
-    .then(() => retireMcpClient(slot.client, slot.transport))
-    .then(() => {
-      if (state.slots.get(slot.id) === slot) state.slots.delete(slot.id)
-      if (resources().mcp.get(slot.id) === slot.connection) resources().mcp.delete(slot.id)
+
+function open(server: McpServerConfig, options: McpConnectOptions): McpConnection {
+  const stdio =
+    server.transport === 'stdio'
+      ? new GroupStdioTransport({
+          command: required(server.command, 'command'),
+          args: server.args,
+          env: Object.fromEntries(
+            Object.entries(options.env ?? {}).filter(
+              (pair): pair is [string, string] => typeof pair[1] === 'string',
+            ),
+          ),
+          inheritEnv: false,
+          stderr: 'pipe',
+          maxMessageBytes: MESSAGE_BYTES,
+          maxStderrBytes: 16 * 1024,
+        })
+      : undefined
+  const transport: PiTransport =
+    stdio ??
+    new StreamableHttpTransport({
+      url: required(server.url, 'URL'),
+      headers: options.authToken ? { Authorization: `Bearer ${options.authToken}` } : undefined,
+      maxMessageBytes: MESSAGE_BYTES,
+      // A redirect would carry the bearer token to another endpoint.
+      fetch: (url, init) => fetch(url, { ...init, redirect: 'error' }),
     })
-  return slot.closing
-}
-function checkSlot(slot: Slot): void {
-  if (
-    slot.retired ||
-    state.stopping ||
-    slot.generation !== state.generation ||
-    slot.client.connectionState !== 'connected'
-  )
-    throw new Error('MCP connection retired; no action dispatched')
+  const client = new McpClient({ name: 'bazilion', version: '1', requestTimeoutMs: REQUEST_MS })
+  let closing: Promise<void> | undefined
+  const conn: McpConnection = {
+    serverId: server.id,
+    lastUsedAt: Date.now(),
+    idleMs: IDLE_MS,
+    busy: 0,
+    client,
+    ready: client.connect(transport).then(
+      () => {
+        if (closing) throw new Error(`MCP server ${server.name} was closed while connecting`)
+        return conn
+      },
+      async (error: unknown) => {
+        await conn.close()
+        const stderr = stdio?.stderr.trim()
+        throw new Error(
+          `MCP server ${server.name} failed to start: ${error instanceof Error ? error.message : String(error)}${stderr ? `\n${stderr.slice(-2_000)}` : ''}`,
+        )
+      },
+    ),
+    toolsStale: false,
+    close() {
+      if (resources().mcp.get(server.id) === conn) resources().mcp.delete(server.id)
+      // Set before closing starts: Pi's close notification calls back in here synchronously. Pi's
+      // client detaches the transport before closing it, so the transport is closed directly as
+      // well; a second close of either returns at once.
+      closing ??= Promise.resolve().then(() =>
+        withTimeout(
+          Promise.allSettled([client.close(), transport.close()]),
+          CLOSE_MS + KILL_WAIT_MS,
+        ),
+      )
+      return closing
+    },
+  }
+  // The server went away (its process exited, say): close the connection as well, which kills a
+  // stdio server's whole process group, and let the next use start it again.
+  client.onClose(() => void conn.close())
+  client.onError((error) => {
+    console.warn(`mcp: server ${server.name}: ${error.message}`)
+    // The server-to-client stream found the session gone: the next use reconnects.
+    if (error instanceof McpSessionExpiredError) void conn.close()
+  })
+  client.onNotification('notifications/tools/list_changed', () => {
+    conn.toolsStale = true
+  })
+  return conn
 }
 
-async function readTools(slot: Slot, server: McpServerConfig): Promise<InjectedMcpTool[]> {
-  const signal = AbortSignal.any([slot.controller.signal, AbortSignal.timeout(REQUEST_MS)])
-  const tools: InjectedMcpTool[] = []
-  const cursors = new Set<string>()
-  const names = new Set<string>()
-  let cursor: string | undefined
-  let bytes = 0
-  // Pi handles requests; pagination here supplies bounded *admission*, not protocol/framing.
-  for (let page = 0; page < 16; page++) {
-    const result = await slot.client.request<{ tools: unknown[]; nextCursor?: string }>(
-      'tools/list',
-      cursor === undefined ? undefined : { cursor },
-      { signal },
-    )
-    if (!result || !Array.isArray(result.tools)) throw new Error('Invalid MCP tool catalog')
-    bytes += Buffer.byteLength(JSON.stringify(result))
-    if (bytes > CATALOG_BYTES || tools.length + result.tools.length > 512)
-      throw new Error('MCP tool catalog exceeds admission bounds')
-    for (const item of result.tools) {
-      if (!item || typeof item !== 'object') throw new Error('Invalid MCP tool definition')
-      const t = item as Record<string, unknown>
-      const name = t.name
-      const toolName = `mcp__${server.name}__${name}`
-      if (
-        typeof name !== 'string' ||
-        !/^[a-zA-Z0-9_-]+$/.test(name) ||
-        toolName.length > 64 ||
-        names.has(name)
-      )
-        throw new Error('Invalid or duplicate MCP tool namespace')
-      const schema = t.inputSchema
-      if (
-        !schema ||
-        typeof schema !== 'object' ||
-        Array.isArray(schema) ||
-        (schema as Record<string, unknown>).type !== 'object'
-      )
-        throw new Error('Invalid MCP tool input schema')
-      names.add(name)
+/** The server's connection, opened on first use and shared with every concurrent caller. */
+export function getMcpConnection(
+  server: McpServerConfig,
+  connect: () => McpConnectOptions,
+): Promise<McpConnection> {
+  let conn = resources().mcp.get(server.id)
+  if (!conn) {
+    conn = open(server, connect())
+    resources().mcp.set(server.id, conn)
+    ensureResourceReaper()
+  }
+  conn.lastUsedAt = Date.now()
+  return conn.ready
+}
+
+/** `getMcpConnection` for one caller: when its signal aborts it stops waiting; the connect goes on. */
+function connection(
+  server: McpServerConfig,
+  connect: () => McpConnectOptions,
+  signal: AbortSignal | undefined,
+): Promise<McpConnection> {
+  if (!signal) return getMcpConnection(server, connect)
+  if (signal.aborted) return Promise.reject(new McpAbortError())
+  const ready = getMcpConnection(server, connect)
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new McpAbortError())
+    signal.addEventListener('abort', abort, { once: true })
+    ready.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+  })
+}
+
+/** The server's tools as `mcp__<server>__<tool>`; names a model API would reject are skipped. */
+export async function listMcpTools(
+  server: McpServerConfig,
+  connect: () => McpConnectOptions,
+  signal?: AbortSignal,
+): Promise<InjectedMcpTool[]> {
+  const conn = await connection(server, connect, signal)
+  if (conn.tools && !conn.toolsStale) return conn.tools
+  conn.toolsStale = false
+  conn.busy++
+  try {
+    const tools: InjectedMcpTool[] = []
+    for (const tool of await conn.client.listTools({ signal })) {
+      const toolName = `mcp__${server.name}__${tool.name}`
+      const schema = tool.inputSchema as Record<string, unknown> | undefined
+      if (!TOOL_NAME.test(tool.name) || toolName.length > 64 || schema?.type !== 'object') {
+        console.warn(`mcp: server ${server.name}: skipped tool ${JSON.stringify(tool.name)}`)
+        continue
+      }
       tools.push({
         toolName,
         serverId: server.id,
-        rawName: name,
-        description:
-          typeof t.description === 'string'
-            ? t.description
-            : `MCP tool ${name} from ${server.name}`,
-        inputSchema: schema as Record<string, unknown>,
+        rawName: tool.name,
+        description: tool.description ?? `MCP tool ${tool.name} from ${server.name}`,
+        inputSchema: schema,
       })
     }
-    if (result.nextCursor === undefined) return tools
-    if (
-      typeof result.nextCursor !== 'string' ||
-      !result.nextCursor ||
-      result.nextCursor.length > 4096 ||
-      cursors.has(result.nextCursor)
-    )
-      throw new Error('Invalid MCP catalog pagination')
-    cursors.add(result.nextCursor)
-    cursor = result.nextCursor
-  }
-  throw new Error('MCP catalog exceeds page limit')
-}
-
-async function refresh(slot: Slot, server: McpServerConfig): Promise<void> {
-  if (!slot.dirty) return
-  if (slot.refreshing) return slot.refreshing
-  const revision = slot.revision
-  const conn = slot.connection
-  if (conn) conn.busy++
-  slot.refreshing = (async () => {
-    const tools = await readTools(slot, server)
-    checkSlot(slot)
-    if (revision !== slot.revision) throw new Error('MCP catalog changed during discovery')
-    if (slot.connection) slot.connection.tools = tools
-    slot.dirty = false
-  })()
-  try {
-    await slot.refreshing
-  } finally {
-    slot.refreshing = undefined
-    if (conn) {
-      conn.busy--
-      conn.lastUsedAt = Date.now()
-    }
-  }
-}
-
-async function connect(
-  slot: Slot,
-  server: McpServerConfig,
-  opts: McpConnectOpts,
-): Promise<McpConnection> {
-  const timeout = setTimeout(() => {
-    void retire(slot).catch(() => {})
-  }, REQUEST_MS)
-  try {
-    const transport =
-      server.transport === 'stdio'
-        ? new OwnedStdioTransport({
-            command: required(server.command),
-            args: server.args,
-            env: Object.fromEntries(
-              Object.entries(opts.env).filter(
-                (pair): pair is [string, string] => typeof pair[1] === 'string',
-              ),
-            ),
-            inheritEnv: false,
-            stderr: 'pipe',
-            maxMessageBytes: MESSAGE_BYTES,
-            maxStderrBytes: 32 * 1024,
-          })
-        : new StreamableHttpTransport({
-            url: required(server.url),
-            headers: opts.authToken ? { Authorization: `Bearer ${opts.authToken}` } : undefined,
-            maxMessageBytes: MESSAGE_BYTES,
-            // No redirects, automatic OAuth, endpoint fallback or POST retry.
-            fetch: async (url, init) => {
-              const response = await fetch(url, { ...init, redirect: 'error' })
-              const mediaType = response.headers
-                .get('content-type')
-                ?.split(';')[0]
-                ?.trim()
-                .toLowerCase()
-              if (response.ok && mediaType === 'text/event-stream') return response
-              if (!response.body) return response
-              const reader = response.body.getReader()
-              const chunks: Uint8Array[] = []
-              let bytes = 0
-              try {
-                for (;;) {
-                  const chunk = await reader.read()
-                  if (chunk.done) break
-                  bytes += chunk.value.byteLength
-                  if (bytes > MESSAGE_BYTES) throw new Error('MCP response exceeds message limit')
-                  chunks.push(chunk.value)
-                }
-              } finally {
-                await reader.cancel().catch(() => {})
-              }
-              return new Response(Buffer.concat(chunks), {
-                status: response.status,
-                headers: response.headers,
-              })
-            },
-          })
-    slot.transport = retainTransport(transport)
-    slot.client.onError(() => {
-      void retire(slot).catch(() => {})
-    })
-    slot.client.onNotification('notifications/tools/list_changed', () => {
-      slot.revision++
-      slot.dirty = true
-    })
-    slot.client.onClose(() => {
-      void retire(slot).catch(() => {})
-    })
-    await slot.client.connect(transport)
-    checkSlot(slot)
-    const conn: McpConnection = {
-      serverId: server.id,
-      name: server.name,
-      lastUsedAt: Date.now(),
-      idleMs: opts.idleMs,
-      busy: 0,
-      client: slot.client,
-      tools: [],
-      async close() {
-        await retire(slot)
-        await slot.opening?.catch(() => {})
-      },
-    }
-    slot.connection = conn
-    await refresh(slot, server)
-    checkSlot(slot)
-    resources().mcp.set(server.id, conn)
-    ensureResourceReaper()
-    return conn
-  } catch {
-    await retire(slot)
-    throw new Error('MCP connection or discovery failed; no tool action dispatched')
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
-export async function getOrCreateMcpConnection(
-  server: McpServerConfig,
-  opts: McpConnectOpts,
-): Promise<McpConnection> {
-  assertActive(opts)
-  if (state.stopping) throw new Error('MCP pool shutting down')
-  if (!/^[a-zA-Z0-9_]+$/.test(server.name) || !['stdio', 'http'].includes(server.transport))
-    throw new Error('Unsupported MCP transport or namespace')
-  if (server.transport === 'stdio' ? !server.command : !server.url)
-    throw new Error('Missing MCP command or URL')
-  // Refuse before allocating a client/slot or spawning an unowned process tree.
-  if (server.transport === 'stdio') assertStdioPlatform()
-  if (server.transport === 'http') {
-    const url = new URL(required(server.url))
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash)
-      throw new Error('Invalid MCP HTTP endpoint')
-  }
-  const signature = mcpConfigSignature(server, opts)
-  const generation = state.generation
-  let slot = state.slots.get(server.id)
-  if (slot && (slot.retired || slot.signature !== signature)) {
-    await wait(closeMcpConnection(server.id), opts.signal)
-    assertActive(opts)
-    slot = state.slots.get(server.id)
-  }
-  if (
-    state.stopping ||
-    generation !== state.generation ||
-    (slot && (slot.retired || slot.signature !== signature))
-  )
-    throw new Error('MCP admission changed; no action dispatched')
-  if (!slot) {
-    slot = {
-      id: server.id,
-      signature,
-      generation,
-      client: new McpClient({ name: 'bazilion', version: '0.22.0', requestTimeoutMs: REQUEST_MS }),
-      controller: new AbortController(),
-      retired: false,
-      revision: 0,
-      dirty: true,
-    }
-    state.slots.set(server.id, slot)
-    slot.opening = connect(slot, server, opts)
-  }
-  if (!slot.opening) throw new Error('MCP admission not initialized')
-  const conn = await wait(slot.opening, opts.signal)
-  assertActive(opts)
-  checkSlot(slot)
-  conn.lastUsedAt = Date.now()
-  conn.idleMs = opts.idleMs
-  return conn
-}
-export async function closeMcpConnection(serverId: string): Promise<void> {
-  const slot = state.slots.get(serverId)
-  if (!slot) return
-  await retire(slot)
-  await slot.opening?.catch(() => {})
-}
-export async function shutdownMcpConnections(): Promise<void> {
-  state.stopping = true
-  state.shutdownCount++
-  state.generation++
-  try {
-    const settled = await Promise.allSettled([...state.slots.keys()].map(closeMcpConnection))
-    if (settled.some((s) => s.status === 'rejected'))
-      throw new Error('MCP resources require retirement; ownership retained')
-  } finally {
-    state.shutdownCount--
-    state.stopping = state.shutdownCount > 0
-  }
-}
-export async function discoverMcpTools(
-  server: McpServerConfig,
-  opts: McpConnectOpts,
-): Promise<InjectedMcpTool[]> {
-  const conn = await getOrCreateMcpConnection(server, opts)
-  const slot = state.slots.get(server.id)
-  if (!slot || slot.connection !== conn)
-    throw new Error('MCP connection retired; no action dispatched')
-  await wait(refresh(slot, server), opts.signal)
-  assertActive(opts)
-  checkSlot(slot)
-  return structuredClone(conn.tools)
-}
-export async function callMcpTool(
-  server: McpServerConfig,
-  rawName: string,
-  args: Record<string, unknown>,
-  opts: McpConnectOpts,
-): Promise<ToolResultPart[]> {
-  const conn = await getOrCreateMcpConnection(server, opts)
-  const slot = state.slots.get(server.id)
-  if (!slot || slot.connection !== conn)
-    throw new Error('MCP connection retired; no action dispatched')
-  await wait(refresh(slot, server), opts.signal)
-  assertActive(opts)
-  checkSlot(slot)
-  const current = conn.tools.find((t) => t.rawName === rawName)
-  const admitted = opts.admittedTools?.find(
-    (t) => t.serverId === server.id && t.rawName === rawName,
-  )
-  if (!current || (opts.admittedTools && JSON.stringify(current) !== JSON.stringify(admitted)))
-    throw new Error('MCP tool unavailable or changed since admission; no action dispatched')
-  conn.busy++
-  try {
-    const signal = AbortSignal.any([
-      slot.controller.signal,
-      AbortSignal.timeout(REQUEST_MS),
-      ...(opts.signal ? [opts.signal] : []),
-    ])
-    const result = await conn.client.callTool(rawName, args, { signal })
-    if (result.isError) throw new Error('MCP server reported a tool error; action not replayed')
-    const parts = toLlmContent(result)
-    return parts.length ? parts : [{ type: 'text', text: '(no content)' }]
-  } catch {
-    // A failure is not proof the server did nothing. Never replay, even after reconnect.
-    let held = false
-    try {
-      await retire(slot)
-    } catch {
-      held = true
-    }
-    throw new McpToolUncertainError(held)
+    conn.tools = tools
+    return tools
+  } catch (error) {
+    conn.toolsStale = true // List again next time.
+    if (error instanceof McpSessionExpiredError) await conn.close()
+    throw error
   } finally {
     conn.busy--
     conn.lastUsedAt = Date.now()
   }
+}
+
+/** Call one tool. A tool error (`isError`) is thrown with the server's own text. */
+export async function callMcpTool(
+  server: McpServerConfig,
+  rawName: string,
+  args: Record<string, unknown>,
+  options: { connect: () => McpConnectOptions; signal?: AbortSignal },
+): Promise<ToolResultPart[]> {
+  const conn = await connection(server, options.connect, options.signal)
+  conn.busy++
+  try {
+    const result = await conn.client.callTool(rawName, args, { signal: options.signal })
+    const parts = toLlmContent(result)
+    if (result.isError) {
+      const text = parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
+      throw new Error(text || `MCP tool ${rawName} reported an error`)
+    }
+    return parts.length ? parts : [{ type: 'text', text: '(no content)' }]
+  } catch (error) {
+    // An HTTP server that restarted no longer knows the session: close it, so the next use
+    // reconnects. The failed call is not replayed.
+    if (error instanceof McpSessionExpiredError) await conn.close()
+    throw error
+  } finally {
+    conn.busy--
+    conn.lastUsedAt = Date.now()
+  }
+}
+
+/** Close the server's connection, including one still opening. */
+export async function closeMcpConnection(serverId: string): Promise<void> {
+  await resources().mcp.get(serverId)?.close()
+}
+
+/** Close every connection; called at daemon shutdown. */
+export async function shutdownMcpConnections(): Promise<void> {
+  await Promise.all([...resources().mcp.values()].map((conn) => conn.close()))
 }

@@ -1,19 +1,11 @@
 import type { HealthReport } from '@bazilion/api-types'
 import { afterEach, expect, test, vi } from 'vitest'
-import { projectPlatformCapabilities } from '../../src/lib/platform-capabilities.ts'
 import { miscRouter } from '../../src/routes/misc.ts'
 import * as dockerReadiness from '../../src/runtime/shell/docker.ts'
-import {
-  MAC_DOCKER_EXECUTION_UNAVAILABLE,
-  MAC_NATIVE_EXECUTION_UNAVAILABLE,
-  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
-} from '../../src/runtime/shell/platform-support.ts'
 
-const originalEnforcement = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
 const originalSandbox = process.env.BAZILION_BASH_SANDBOX
 const originalSandboxImage = process.env.BAZILION_BASH_SANDBOX_IMAGE
 const originalApproval = process.env.BAZILION_BASH_APPROVAL
-const originalAllowlist = process.env.BAZILION_BASH_SANDBOX_ENV_ALLOWLIST
 const originalBraveKey = process.env.BRAVE_API_KEY
 const originalSearxngUrl = process.env.SEARXNG_URL
 const originalLmstudioUrl = process.env.LMSTUDIO_URL
@@ -22,16 +14,12 @@ const originalOllamaUrl = process.env.OLLAMA_URL
 const originalOpenaiKey = process.env.OPENAI_API_KEY
 
 afterEach(() => {
-  if (originalEnforcement === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-  else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = originalEnforcement
   if (originalSandbox === undefined) delete process.env.BAZILION_BASH_SANDBOX
   else process.env.BAZILION_BASH_SANDBOX = originalSandbox
   if (originalSandboxImage === undefined) delete process.env.BAZILION_BASH_SANDBOX_IMAGE
   else process.env.BAZILION_BASH_SANDBOX_IMAGE = originalSandboxImage
   if (originalApproval === undefined) delete process.env.BAZILION_BASH_APPROVAL
   else process.env.BAZILION_BASH_APPROVAL = originalApproval
-  if (originalAllowlist === undefined) delete process.env.BAZILION_BASH_SANDBOX_ENV_ALLOWLIST
-  else process.env.BAZILION_BASH_SANDBOX_ENV_ALLOWLIST = originalAllowlist
   if (originalBraveKey === undefined) delete process.env.BRAVE_API_KEY
   else process.env.BRAVE_API_KEY = originalBraveKey
   if (originalSearxngUrl === undefined) delete process.env.SEARXNG_URL
@@ -46,129 +34,81 @@ afterEach(() => {
   else process.env.OPENAI_API_KEY = originalOpenaiKey
 })
 
-test('health exposes the release-ready teamPolicy management contract with enforcement off', async () => {
-  delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-  const response = await miscRouter.request('/health/details')
-  expect(response.status).toBe(200)
-  const report = (await response.json()) as {
-    teamPolicyManagement: {
-      contractVersion: number
-      enforcementRequested: boolean
-      releaseReady: boolean
-    }
+test('health lists every configured cloud provider, not a fixed subset', async () => {
+  const original = process.env.DEEPSEEK_API_KEY
+  process.env.DEEPSEEK_API_KEY = 'deepseek-key'
+  try {
+    const report = (await (await miscRouter.request('/health/details')).json()) as HealthReport
+    expect(report.providers.configured).toContain('deepseek')
+  } finally {
+    if (original === undefined) delete process.env.DEEPSEEK_API_KEY
+    else process.env.DEEPSEEK_API_KEY = original
   }
-  expect(report.teamPolicyManagement).toEqual({
-    contractVersion: 1,
-    enforcementRequested: false,
-    enforcementActive: false,
-    releaseReady: true,
-    degraded: false,
-    decisions: { allowed: 0, denied: 0 },
-  })
 })
 
-test('detailed health exposes static daemon platform support', async () => {
-  const response = await miscRouter.request('/health/details')
-  expect(response.status).toBe(200)
-  const report = (await response.json()) as HealthReport
-  expect(report.platformCapabilities).toEqual(projectPlatformCapabilities())
-})
-
-test('health reports active enforcement when requested by a release-ready build', async () => {
-  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
-  const response = await miscRouter.request('/health/details')
-  const report = (await response.json()) as {
-    teamPolicyManagement: { enforcementRequested: boolean; releaseReady: boolean }
-  }
-  expect(report.teamPolicyManagement).toMatchObject({
-    enforcementRequested: true,
-    enforcementActive: true,
-    releaseReady: true,
-    degraded: false,
-  })
-})
-
-test('native detailed health reports only passive selection and never probes Docker', async () => {
-  process.env.BAZILION_BASH_SANDBOX = 'native'
-  const probe = vi.spyOn(dockerReadiness, 'checkProtectedDockerReadiness')
+test('health reports the default-off host shell posture without probing Docker', async () => {
+  process.env.BAZILION_BASH_SANDBOX = 'off'
+  const probe = vi.spyOn(dockerReadiness, 'checkDockerImage')
   try {
     const response = await miscRouter.request('/health/details')
-    expect(response.status).toBe(200)
-    const report = (await response.json()) as HealthReport
-    if (process.platform === 'darwin') {
-      expect(report.shellSecurity).toEqual({ ok: false, error: MAC_NATIVE_EXECUTION_UNAVAILABLE })
-      expect(report.executionSecurity.configuredOperatorHttp.codingSurface).toBe('unavailable')
-      expect(report.executionSecurity.protectedUnattendedTurns).toMatchObject({
-        codingSurface: 'unavailable',
-        docker: null,
-        baseRuntimeReady: false,
-        remediation: MAC_PROTECTED_EXECUTION_UNAVAILABLE,
-      })
-      expect(report.executionSecurity.protectedUnattendedTurns).not.toHaveProperty('native')
-      expect(probe).not.toHaveBeenCalled()
-      return
+    const report = (await response.json()) as {
+      shellSecurity: unknown
     }
-    expect(report.shellSecurity).toMatchObject({
+
+    expect(report.shellSecurity).toEqual({
       ok: true,
-      sandboxMode: 'native',
-      sandboxImage: null,
-      approvalMode: 'dangerous',
-      network: 'denied-ip',
-      hostCodingTools: false,
-    })
-    expect(report.executionSecurity.protectedUnattendedTurns).toMatchObject({
-      codingSurface: 'native',
+      sandboxMode: 'off',
+      approvalMode: 'off',
+      sandboxImage: 'debian:bookworm-slim',
+      hostCodingTools: true,
+      network: 'host',
       docker: null,
-      native: { readiness: 'not_checked' },
-      baseRuntimeReady: false,
     })
-    expect(report.executionSecurity.configuredOperatorHttp.dockerImage).toBe(null)
     expect(probe).not.toHaveBeenCalled()
   } finally {
     probe.mockRestore()
   }
 })
 
-test('health reports the default-off host shell posture', async () => {
-  process.env.BAZILION_BASH_SANDBOX = 'off'
-  const response = await miscRouter.request('/health/details')
-  const report = (await response.json()) as {
-    shellSecurity: unknown
-  }
-
-  expect(report.shellSecurity).toEqual({
-    ok: true,
-    sandboxMode: 'off',
-    approvalMode: 'off',
-    sandboxImage: process.platform === 'darwin' ? null : 'debian:bookworm-slim',
-    hostCodingTools: true,
-    network: 'host',
-  })
-})
-
-test('health reports the opt-in Docker confinement posture', async () => {
+test('health reports the opt-in Docker posture with the image check and remediation', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'docker'
   process.env.BAZILION_BASH_SANDBOX_IMAGE = 'example.test/bazilion-shell:v1'
-  const response = await miscRouter.request('/health/details')
-  const report = (await response.json()) as {
-    shellSecurity: unknown
-  }
-
-  if (process.platform === 'darwin') {
-    expect(report.shellSecurity).toEqual({
+  const probe = vi
+    .spyOn(dockerReadiness, 'checkDockerImage')
+    .mockResolvedValueOnce({
       ok: false,
-      error: MAC_DOCKER_EXECUTION_UNAVAILABLE,
+      error: 'Error response from daemon: No such image: example.test/bazilion-shell:v1',
     })
-    return
+    .mockResolvedValueOnce({ ok: true })
+  try {
+    const response = await miscRouter.request('/health/details')
+    const report = (await response.json()) as {
+      shellSecurity: unknown
+    }
+
+    expect(report.shellSecurity).toEqual({
+      ok: true,
+      sandboxMode: 'docker',
+      approvalMode: 'off',
+      sandboxImage: 'example.test/bazilion-shell:v1',
+      hostCodingTools: false,
+      network: 'none',
+      docker: {
+        ready: false,
+        image: 'example.test/bazilion-shell:v1',
+        reason: 'Error response from daemon: No such image: example.test/bazilion-shell:v1',
+        remediation:
+          'Start Docker and make the image available locally (Bazilion never pulls it), e.g. `docker pull example.test/bazilion-shell:v1`.',
+      },
+    })
+    expect(probe).toHaveBeenCalledWith('example.test/bazilion-shell:v1')
+    const ready = (await (await miscRouter.request('/health/details')).json()) as HealthReport
+    expect(ready.shellSecurity).toMatchObject({
+      docker: { ready: true, reason: null, remediation: null },
+    })
+  } finally {
+    probe.mockRestore()
   }
-  expect(report.shellSecurity).toEqual({
-    ok: true,
-    sandboxMode: 'docker',
-    approvalMode: 'off',
-    sandboxImage: 'example.test/bazilion-shell:v1',
-    hostCodingTools: false,
-    network: 'none',
-  })
 })
 
 test('health reports dangerous-command approval independently from sandboxing', async () => {
@@ -186,73 +126,6 @@ test('health reports dangerous-command approval independently from sandboxing', 
   })
 })
 
-test('health separates configured operator HTTP from protected unattended execution', async () => {
-  process.env.BAZILION_BASH_SANDBOX = 'off'
-  const response = await miscRouter.request('/health/details')
-  const report = (await response.json()) as {
-    protectedWorkBaselineReady: boolean
-    executionSecurity: {
-      configuredOperatorHttp: {
-        protected: boolean
-        codingSurface: string
-        browser: string
-        mcp: string
-      }
-      protectedUnattendedTurns: {
-        baseRuntimeReady: boolean
-        codingSurface: string
-        docker: { ready: boolean; reason: string | null } | null
-        browser: string
-        mcp: string
-        openaiCodex: {
-          enabled: boolean
-          connected: boolean
-          accessCurrent: boolean
-          refreshOnNextTurn: boolean
-          baselineEligible: boolean
-        }
-        remediation: string | null
-      }
-    }
-  }
-
-  expect(report.executionSecurity.configuredOperatorHttp).toMatchObject({
-    protected: false,
-    codingSurface: 'host',
-  })
-  const protectedTurns = report.executionSecurity.protectedUnattendedTurns
-  expect(protectedTurns.codingSurface).toBe(
-    process.platform === 'darwin' ? 'unavailable' : 'docker',
-  )
-  expect(protectedTurns.browser).toBe('denied')
-  expect(protectedTurns.mcp).toBe('denied')
-  expect(typeof protectedTurns.baseRuntimeReady).toBe('boolean')
-  expect(typeof protectedTurns.openaiCodex.enabled).toBe('boolean')
-  expect(typeof protectedTurns.openaiCodex.connected).toBe('boolean')
-  expect(typeof protectedTurns.openaiCodex.accessCurrent).toBe('boolean')
-  expect(typeof protectedTurns.openaiCodex.refreshOnNextTurn).toBe('boolean')
-  expect(typeof protectedTurns.openaiCodex.baselineEligible).toBe('boolean')
-  expect(protectedTurns.openaiCodex.baselineEligible).toBe(
-    protectedTurns.openaiCodex.enabled && protectedTurns.openaiCodex.connected,
-  )
-  expect(protectedTurns.openaiCodex.refreshOnNextTurn).toBe(
-    protectedTurns.openaiCodex.connected && !protectedTurns.openaiCodex.accessCurrent,
-  )
-  // Native passive status never claims admission; retained Linux Docker reports its actual probe.
-  if (process.platform === 'darwin') {
-    expect(protectedTurns.docker).toBe(null)
-    expect(protectedTurns.baseRuntimeReady).toBe(false)
-  } else {
-    if (!protectedTurns.docker) throw new Error('Linux Docker projection missing')
-    expect(protectedTurns.baseRuntimeReady).toBe(protectedTurns.docker.ready)
-    expect(Object.keys(protectedTurns.docker).sort()).toEqual(['image', 'ready', 'reason'])
-  }
-  expect(report.protectedWorkBaselineReady).toBe(protectedTurns.baseRuntimeReady)
-  if (protectedTurns.remediation) {
-    expect(protectedTurns.remediation).not.toMatch(/bearer|api[_-]?key|token|password/i)
-  } else expect(protectedTurns.baseRuntimeReady).toBe(true)
-})
-
 test('health fails closed on an invalid shell-security mode', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'raw-shell-mode-sentinel'
   const response = await miscRouter.request('/health/details')
@@ -263,9 +136,7 @@ test('health fails closed on an invalid shell-security mode', async () => {
 
   expect(report.ok).toBe(false)
   expect(report.shellSecurity.ok).toBe(false)
-  expect(report.shellSecurity.error).toBe(
-    'Sandbox mode must be "off", "native" or "docker" (Linux only).',
-  )
+  expect(report.shellSecurity.error).toBe('Sandbox mode must be "off" or "docker".')
   expect(JSON.stringify(report)).not.toContain('raw-shell-mode-sentinel')
 })
 
@@ -286,30 +157,27 @@ test('health fails closed on an invalid dangerous-command approval policy', asyn
   expect(JSON.stringify(report)).not.toContain('raw-approval-sentinel')
 })
 
-test('health keeps structural ok separate from protected-work baseline readiness', async () => {
-  process.env.BAZILION_BASH_SANDBOX = 'off'
+test('health keeps structural ok separate from Docker readiness', async () => {
+  process.env.BAZILION_BASH_SANDBOX = 'docker'
   process.env.BAZILION_BASH_SANDBOX_IMAGE = 'bazilion-health-definitely-missing:v0'
-  const response = await miscRouter.request('/health/details')
-  const report = (await response.json()) as {
-    ok: boolean
-    protectedWorkBaselineReady: boolean
-    paths: Record<string, boolean>
-    database: { ok: boolean } | null
-    skills: { parseErrors: number }
-    shellSecurity: { ok: boolean }
-    executionSecurity: { protectedUnattendedTurns: { baseRuntimeReady: boolean } }
-  }
+  const probe = vi.spyOn(dockerReadiness, 'checkDockerImage').mockResolvedValue({
+    ok: false,
+    error: 'Error response from daemon: No such image: bazilion-health-definitely-missing:v0',
+  })
+  try {
+    const response = await miscRouter.request('/health/details')
+    const report = (await response.json()) as HealthReport
 
-  const expectedStructural =
-    Object.values(report.paths).every(Boolean) &&
-    (report.database === null || report.database.ok) &&
-    report.skills.parseErrors === 0 &&
-    report.shellSecurity.ok
-  expect(report.ok).toBe(expectedStructural)
-  expect(report.protectedWorkBaselineReady).toBe(false)
-  expect(report.protectedWorkBaselineReady).toBe(
-    report.executionSecurity.protectedUnattendedTurns.baseRuntimeReady,
-  )
+    const expectedStructural =
+      Object.values(report.paths).every(Boolean) &&
+      (report.database === null || report.database.ok) &&
+      report.skills.parseErrors === 0 &&
+      report.shellSecurity.ok
+    expect(report.ok).toBe(expectedStructural)
+    expect(report.shellSecurity).toMatchObject({ ok: true, docker: { ready: false } })
+  } finally {
+    probe.mockRestore()
+  }
 })
 
 test('public health exposes only booleans and fixed diagnostics for configured secrets and URLs', async () => {
@@ -348,9 +216,7 @@ test('public health exposes only booleans and fixed diagnostics for configured s
   })
   expect(report.providers.ollama).toEqual({ customEndpointConfigured: true })
   expect(report.webSearch).toEqual({ braveConfigured: true, searxngConfigured: true })
-  expect(report.shellSecurity.error).toBe(
-    'Sandbox mode must be "off", "native" or "docker" (Linux only).',
-  )
+  expect(report.shellSecurity.error).toBe('Sandbox mode must be "off" or "docker".')
   const serialized = JSON.stringify(report)
   for (const sentinel of sentinels) expect(serialized).not.toContain(sentinel)
   expect(serialized).not.toContain('bravePreview')
@@ -358,20 +224,11 @@ test('public health exposes only booleans and fixed diagnostics for configured s
   expect(serialized).not.toContain('baseURL')
 })
 
-test('health replaces invalid image and allowlist values with fixed diagnostics', async () => {
+test('health replaces an invalid image value with a fixed diagnostic', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'off'
   process.env.BAZILION_BASH_SANDBOX_IMAGE = 'raw image sentinel'
-  let response = await miscRouter.request('/health/details')
-  let report = (await response.json()) as { shellSecurity: { ok: false; error: string } }
+  const response = await miscRouter.request('/health/details')
+  const report = (await response.json()) as { shellSecurity: { ok: false; error: string } }
   expect(report.shellSecurity.error).toBe('Docker image must use a valid local image reference.')
   expect(JSON.stringify(report)).not.toContain('raw image sentinel')
-
-  process.env.BAZILION_BASH_SANDBOX_IMAGE = 'debian:bookworm-slim'
-  process.env.BAZILION_BASH_SANDBOX_ENV_ALLOWLIST = 'raw-allowlist-sentinel!'
-  response = await miscRouter.request('/health/details')
-  report = (await response.json()) as { shellSecurity: { ok: false; error: string } }
-  expect(report.shellSecurity.error).toBe(
-    'Shell environment allowlist contains an invalid or unsafe variable name.',
-  )
-  expect(JSON.stringify(report)).not.toContain('raw-allowlist-sentinel!')
 })

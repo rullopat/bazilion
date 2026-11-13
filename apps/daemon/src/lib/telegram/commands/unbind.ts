@@ -1,11 +1,6 @@
 // `/unbind` — topic-context command. Clears the bound agent's
-// `telegram_topic_id`, leaving the topic in Telegram as an orphan. Future
-// inbound to the orphan topic routes through routing.ts's "unknown_topic"
-// branch (replies "isn't bound to a bazilion agent…").
-//
-// Doesn't delete the Telegram topic — that's `/close` followed by a manual
-// "delete topic" tap, or `bazilion agent delete --purge-telegram` from the
-// CLI when that ships.
+// `telegram_topic_id`, leaving the topic in Telegram as an orphan (messages there get the
+// "isn't bound to a bazilion agent" hint). The topic itself stays; delete it in Telegram.
 
 import { agentRepo } from '../../../core/index.ts'
 import { notifyDirectoryDirty } from '../directory.ts'

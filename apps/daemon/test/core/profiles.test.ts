@@ -28,7 +28,8 @@ test('createProfile scaffolds dir, files, and DB row', () => {
   expect(existsSync(join(profile.dir, 'IDENTITY.md'))).toBe(true)
   expect(existsSync(join(profile.dir, 'BOOTSTRAP.md'))).toBe(true)
   expect(existsSync(join(profile.dir, 'HEARTBEAT.md'))).toBe(false)
-  expect(existsSync(join(profile.dir, 'profile.json'))).toBe(true)
+  // Settings live in the DB only; no write-only profile.json mirror.
+  expect(existsSync(join(profile.dir, 'profile.json'))).toBe(false)
 
   const fromDb = profileRepo.get(env.db, 'researcher')
   expect(fromDb?.defaultModel).toBe('anthropic:claude-opus-4-6')
@@ -149,13 +150,13 @@ test('createProfile with templates.bootstrap = null skips bootstrap file', () =>
   expect(loaded.files.bootstrap).toBeNull()
 })
 
-test('updateProfile changes DB, profile.json, and skills in lockstep', () => {
+test('updateProfile changes settings and skills', () => {
   createProfile(env.db, env.paths, {
     id: 'p',
     defaultModel: 'old:model',
     defaultSkills: ['a'],
   })
-  const updated = updateProfile(env.db, env.paths, 'p', {
+  const updated = updateProfile(env.db, 'p', {
     name: 'Renamed',
     defaultModel: 'new:model',
     defaultSkills: ['b', 'c'],
@@ -166,11 +167,17 @@ test('updateProfile changes DB, profile.json, and skills in lockstep', () => {
   const fromDb = profileRepo.get(env.db, 'p')
   expect(fromDb?.defaultModel).toBe('new:model')
   expect(profileRepo.getDefaultSkills(env.db, 'p')).toEqual(['b', 'c'])
+})
 
-  const json = JSON.parse(readFileSync(join(env.paths.profileDir('p'), 'profile.json'), 'utf8'))
-  expect(json.defaultModel).toBe('new:model')
-  expect(json.name).toBe('Renamed')
-  expect(json.defaultSkills).toEqual(['b', 'c'])
+test('creating a profile with an existing id fails and leaves its files alone', () => {
+  createProfile(env.db, env.paths, { id: 'p', defaultModel: 'm' })
+  const soul = join(env.paths.profileDir('p'), 'SOUL.md')
+  writeFileSync(soul, '# My edited soul\n')
+  expect(() => createProfile(env.db, env.paths, { id: 'p', defaultModel: 'other' })).toThrow(
+    'profile already exists: p',
+  )
+  expect(readFileSync(soul, 'utf8')).toBe('# My edited soul\n')
+  expect(profileRepo.get(env.db, 'p')?.defaultModel).toBe('m')
 })
 
 test('updateProfile skillsMode persists', () => {
@@ -180,14 +187,12 @@ test('updateProfile skillsMode persists', () => {
     defaultSkills: ['x'],
   })
   expect(profileRepo.get(env.db, 'r')?.skillsMode).toBe('selected')
-  updateProfile(env.db, env.paths, 'r', { skillsMode: 'all' })
+  updateProfile(env.db, 'r', { skillsMode: 'all' })
   expect(profileRepo.get(env.db, 'r')?.skillsMode).toBe('all')
 })
 
 test('updateProfile throws on missing profile', () => {
-  expect(() => updateProfile(env.db, env.paths, 'ghost', { name: 'x' })).toThrow(
-    /profile not found/,
-  )
+  expect(() => updateProfile(env.db, 'ghost', { name: 'x' })).toThrow(/profile not found/)
 })
 
 test('listing profiles returns insertion order', () => {

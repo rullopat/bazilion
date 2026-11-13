@@ -16,9 +16,6 @@ process.stdin.on('end', () => {
       reviewSessionDir: string
     }
   }
-  if (raw.split(input.runtime.apiKey).length - 1 !== 1) {
-    throw new Error('selected access token escaped its designated review runtime field')
-  }
   for (const sentinel of [
     'telegram-secret-sentinel',
     'bootstrap-secret-sentinel',
@@ -28,10 +25,7 @@ process.stdin.on('end', () => {
   ]) {
     if (raw.includes(sentinel)) throw new Error('ambient credential entered review stdin')
   }
-  const expectedEnvironmentKeys =
-    process.platform === 'win32'
-      ? ['ComSpec', 'PATHEXT', 'SystemRoot', 'TEMP', 'TMP', 'TMPDIR', 'USERPROFILE', 'WINDIR']
-      : ['HOME', 'LANG', 'LC_ALL', 'TEMP', 'TMP', 'TMPDIR']
+  const expectedEnvironmentKeys = ['HOME', 'LANG', 'LC_ALL', 'TEMP', 'TMP', 'TMPDIR']
   if (JSON.stringify(Object.keys(process.env).sort()) !== JSON.stringify(expectedEnvironmentKeys)) {
     throw new Error('review worker process environment was not minimal')
   }

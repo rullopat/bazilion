@@ -1,6 +1,8 @@
+import { spawn } from 'node:child_process'
 import { existsSync, writeFileSync } from 'node:fs'
-import { createServer, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { ChatFrame, CommandApproval } from '@bazilion/api-types'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { openDb, resolveAgent, resolvePaths } from '../../daemon/src/core/index.ts'
@@ -8,148 +10,13 @@ import {
   resolveConversationTarget,
   selectedConversationTarget,
 } from '../../daemon/src/lib/conversation-target.ts'
-import { countSessionMessagesForTest, seedSessionForTest } from '../../daemon/src/runtime/index.ts'
+import {
+  countSessionMessages,
+  seedSessionMessages,
+} from '../../daemon/test/fixtures/conversation.ts'
+import { type MockLlm, startLmStudioMock } from './fixtures/mock-lmstudio.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
-
-type MockHandler = unknown | ((res: ServerResponse) => void)
-
-interface MockLlm {
-  url: string
-  push(responses: MockHandler[]): void
-  reset(): void
-  callCount(): number
-  stop(): Promise<void>
-}
-
-interface CannedMessage {
-  role?: string
-  content?: string | null
-  tool_calls?: Array<{
-    id: string
-    type: string
-    function: { name: string; arguments: string }
-  }>
-}
-interface CannedChoice {
-  message: CannedMessage
-  finish_reason?: string
-}
-interface CannedResponse {
-  choices: CannedChoice[]
-  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
-}
-
-/**
- * Translate a canned non-streaming OpenAI-shaped response into OpenAI SSE
- * chunks and write them to `res`. Pi-ai's openai-completions client always
- * runs in `stream: true` mode, so LMStudio-style JSON bodies need to be
- * re-chunked into `data: {...}\n\n` lines terminated by `data: [DONE]`.
- */
-function writeSseFromCanned(res: ServerResponse, canned: CannedResponse): void {
-  res.writeHead(200, {
-    'content-type': 'text/event-stream',
-    'cache-control': 'no-cache',
-    connection: 'keep-alive',
-  })
-  const choice = canned.choices[0]
-  const message = choice?.message ?? {}
-  const finish = choice?.finish_reason ?? 'stop'
-
-  // Role delta (always first in OpenAI's SSE protocol).
-  const roleChunk = {
-    id: 'chatcmpl-mock',
-    object: 'chat.completion.chunk',
-    choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
-  }
-  res.write(`data: ${JSON.stringify(roleChunk)}\n\n`)
-
-  if (typeof message.content === 'string' && message.content.length > 0) {
-    const textChunk = {
-      id: 'chatcmpl-mock',
-      object: 'chat.completion.chunk',
-      choices: [{ index: 0, delta: { content: message.content }, finish_reason: null }],
-    }
-    res.write(`data: ${JSON.stringify(textChunk)}\n\n`)
-  }
-
-  if (message.tool_calls && message.tool_calls.length > 0) {
-    const toolChunk = {
-      id: 'chatcmpl-mock',
-      object: 'chat.completion.chunk',
-      choices: [
-        {
-          index: 0,
-          delta: {
-            tool_calls: message.tool_calls.map((tc, i) => ({
-              index: i,
-              id: tc.id,
-              type: tc.type,
-              function: { name: tc.function.name, arguments: tc.function.arguments },
-            })),
-          },
-          finish_reason: null,
-        },
-      ],
-    }
-    res.write(`data: ${JSON.stringify(toolChunk)}\n\n`)
-  }
-
-  const finalChunk = {
-    id: 'chatcmpl-mock',
-    object: 'chat.completion.chunk',
-    choices: [{ index: 0, delta: {}, finish_reason: finish }],
-    usage: canned.usage,
-  }
-  res.write(`data: ${JSON.stringify(finalChunk)}\n\n`)
-  res.write('data: [DONE]\n\n')
-  res.end()
-}
-
-/**
- * Start a node:http server that serves LMStudio-style /v1/chat/completions
- * responses from an in-memory queue. Push responses before each `agent chat`
- * turn — the server consumes them in order. Queue items may be objects
- * (OpenAI-shaped non-streaming responses, translated to SSE on the wire) or
- * functions `(res) => void` for custom behavior (e.g. a handler that never
- * responds, to exercise client-side cancellation).
- */
-function startLmStudioMock(): Promise<MockLlm> {
-  const queue: MockHandler[] = []
-  let calls = 0
-  const server = createServer((_req, res) => {
-    calls++
-    if (queue.length === 0) {
-      res.writeHead(500, { 'content-type': 'text/plain' })
-      res.end('mock response queue empty')
-      return
-    }
-    const item = queue.shift()
-    if (typeof item === 'function') {
-      ;(item as (res: ServerResponse) => void)(res)
-      return
-    }
-    writeSseFromCanned(res, item as CannedResponse)
-  })
-  return new Promise((resolve) => {
-    server.listen(0, () => {
-      const addr = server.address()
-      if (!addr || typeof addr === 'string') throw new Error('unexpected server address')
-      resolve({
-        url: `http://localhost:${addr.port}/v1`,
-        push(items) {
-          queue.push(...items)
-        },
-        reset() {
-          queue.length = 0
-          calls = 0
-        },
-        callCount: () => calls,
-        stop: () => new Promise((r) => server.close(() => r())),
-      })
-    })
-  })
-}
 
 let mock: MockLlm
 let server: TestServer
@@ -176,6 +43,22 @@ async function spawnLmStudioAgent(): Promise<string> {
   return extractAgentId(r.stdout)
 }
 
+test('provider test sends one request to an enabled provider and refuses a disabled one', async () => {
+  await spawnLmStudioAgent()
+  mock.push([
+    { choices: [{ message: { role: 'assistant', content: 'pong' }, finish_reason: 'stop' }] },
+  ])
+  const r = await server.cli(['provider', 'test', 'lmstudio:test-model', '--message', 'ping'])
+  expect(r.exitCode).toBe(0)
+  expect(r.stdout).toContain('<- pong')
+  expect(mock.callCount()).toBe(1)
+
+  const disabled = await server.cli(['provider', 'test', 'groq:llama-3.1-8b-instant'])
+  expect(disabled.exitCode).not.toBe(0)
+  expect(disabled.stderr + disabled.stdout).toMatch(/groq provider is disabled/)
+  expect(mock.callCount()).toBe(1)
+})
+
 test('agent chat --message round-trips with the provider', async () => {
   const agentId = await spawnLmStudioAgent()
   mock.push([
@@ -194,6 +77,46 @@ test('agent chat --message round-trips with the provider', async () => {
   expect(r.stdout).toContain('hello from mock')
 })
 
+test('piped agent chat runs one turn per input line and exits cleanly', async () => {
+  const agentId = await spawnLmStudioAgent()
+  mock.push([
+    {
+      choices: [{ message: { role: 'assistant', content: 'first reply' }, finish_reason: 'stop' }],
+    },
+    {
+      choices: [{ message: { role: 'assistant', content: 'second reply' }, finish_reason: 'stop' }],
+    },
+  ])
+  // Spawned by hand because runCli cannot write to stdin.
+  const entry = fileURLToPath(new URL('../src/index.ts', import.meta.url))
+  const child = spawn(process.execPath, ['--no-warnings', entry, 'agent', 'chat', agentId], {
+    // Not the checkout: the CLI saves delivered files into its working directory.
+    cwd: server.home,
+    env: {
+      ...process.env,
+      BAZILION_HOME: server.home,
+      BAZILION_SERVER: server.url,
+      BAZILION_TOKEN: server.token,
+    },
+    timeout: 30_000,
+  })
+  let stdout = ''
+  let stderr = ''
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk
+  })
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk
+  })
+  // The input ends while the first turn runs; the second line must still become a turn.
+  child.stdin.end('first\nsecond\n')
+  const exitCode = await new Promise((resolve) => child.on('close', resolve))
+  expect(exitCode, stderr).toBe(0)
+  expect(stdout).toContain('first reply')
+  expect(stdout).toContain('second reply')
+  expect(mock.callCount()).toBe(2)
+})
+
 test('large Unicode completion survives real worker exit and releases the next turn', async () => {
   const agentId = await spawnLmStudioAgent()
   const message = '日本語🌍'.repeat(40_000)
@@ -201,13 +124,10 @@ test('large Unicode completion survives real worker exit and releases the next t
     mock.push([
       { choices: [{ message: { role: 'assistant', content: 'complete' }, finish_reason: 'stop' }] },
     ])
-    const selected = (await fetch(`${server.url}/api/agents/${agentId}/conversations`, {
-      headers: authHeaders(),
-    }).then((r) => r.json())) as { selection: { conversationId: string | null; revision: number } }
     const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {
       method: 'POST',
       headers: authHeaders(true),
-      body: JSON.stringify({ message: prompt, expectedSelection: selected.selection }),
+      body: JSON.stringify({ message: prompt }),
       signal: AbortSignal.timeout(30_000),
     })
     expect(response.status).toBe(200)
@@ -312,7 +232,6 @@ async function runInteractiveBashDecision(decision: 'allow' | 'deny'): Promise<{
     body: JSON.stringify({
       message: 'run the requested command',
       bashApprovalMode: 'interactive',
-      expectedSelection: { conversationId: null, revision: 0 },
     }),
   })
   expect(response.status).toBe(200)
@@ -361,6 +280,7 @@ async function runInteractiveBashDecision(decision: 'allow' | 'deny'): Promise<{
           },
         )
         expect(approvalResponse.status).toBe(200)
+        // A second answer finds nothing pending.
         const retry = await fetch(
           `${server.url}/api/shell-approvals/${encodeURIComponent(approval.id)}`,
           {
@@ -369,7 +289,7 @@ async function runInteractiveBashDecision(decision: 'allow' | 'deny'): Promise<{
             body: JSON.stringify({ decision }),
           },
         )
-        expect(retry.status).toBe(200)
+        expect(retry.status).toBe(404)
       }
     }
   }
@@ -391,6 +311,75 @@ test('interactive HTTP chat pauses a risky command and an allow decision execute
     ),
   ).toBe(true)
   expect(existsSync(proofPath)).toBe(true)
+  expect(frames.at(-1)?.kind).toBe('done')
+})
+
+test('a web chat question waits for an answer from the CLI and the model receives it', async () => {
+  const agentId = await spawnLmStudioAgent()
+  const question = { prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] }
+  mock.push([
+    {
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_ask',
+                type: 'function',
+                function: { name: 'ask_user', arguments: JSON.stringify(question) },
+              },
+            ],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    },
+    {
+      choices: [{ message: { role: 'assistant', content: 'using JSON' }, finish_reason: 'stop' }],
+    },
+  ])
+  const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({
+      message: 'ask me first',
+      questionMode: 'web',
+    }),
+  })
+  expect(response.status).toBe(200)
+  const frames: ChatFrame[] = []
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (reader) {
+    const chunk = await reader.read()
+    if (chunk.done) break
+    buffer += decoder.decode(chunk.value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines.filter((value) => value.trim())) {
+      const frame = JSON.parse(line) as ChatFrame
+      frames.push(frame)
+      if (frame.kind !== 'event' || frame.event.type !== 'agent_question') continue
+      const id = frame.event.question.id
+      const listed = await server.cli(['question', 'list', agentId, '--json'])
+      expect(JSON.parse(listed.stdout)).toMatchObject([{ id, question }])
+      const answered = await server.cli(['question', 'answer', agentId, id, '--choice', '2'])
+      expect(answered.stdout).toContain('Answered.')
+      expect((await server.cli(['question', 'answer', agentId, id, '--skip'])).exitCode).not.toBe(0)
+    }
+  }
+  const result = frames.find(
+    (frame) =>
+      frame.kind === 'event' &&
+      frame.event.type === 'tool_result' &&
+      frame.event.name === 'ask_user',
+  )
+  expect(
+    result?.kind === 'event' && result.event.type === 'tool_result' && result.event.result,
+  ).toContain('"answer":{"kind":"choice","index":1}')
   expect(frames.at(-1)?.kind).toBe('done')
 })
 
@@ -452,7 +441,6 @@ test('cancelling a turn releases its pending approval and never executes the com
     body: JSON.stringify({
       message: 'run it',
       bashApprovalMode: 'interactive',
-      expectedSelection: { conversationId: null, revision: 0 },
     }),
   })
   const reader = response.body?.getReader()
@@ -468,7 +456,8 @@ test('cancelling a turn releases its pending approval and never executes the com
         method: 'POST',
         headers: authHeaders(),
       })
-      expect(cancel.status).toBe(204)
+      expect(cancel.status).toBe(200)
+      expect(await cancel.json()).toEqual({ cancelled: true, queuePaused: false })
       cancelled = true
     }
   }
@@ -661,7 +650,7 @@ test('failed turn surfaces an error event and leaves the agent ready for a retry
   const agentId = await spawnLmStudioAgent()
 
   mock.push([
-    (res: ServerResponse) => {
+    (_req: IncomingMessage, res: ServerResponse) => {
       res.writeHead(400, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ error: { code: 'invalid_request', message: 'bad model' } }))
     },
@@ -669,6 +658,7 @@ test('failed turn surfaces an error event and leaves the agent ready for a retry
 
   const failR = await server.cli(['agent', 'chat', agentId, '--message', 'go on'])
   expect(failR.stdout).toMatch(/\[error:/)
+  expect(failR.exitCode).toBe(1)
 
   mock.push([
     {
@@ -689,7 +679,7 @@ test('agent chat can be cancelled mid-flight via `agent cancel`', async () => {
   // until its AbortSignal fires, giving us a window to cancel the turn.
   const callCountBefore = mock.callCount()
   mock.push([
-    (_res: ServerResponse) => {
+    () => {
       // intentionally left hanging
     },
   ])
@@ -721,27 +711,26 @@ test('agent chat can be cancelled mid-flight via `agent cancel`', async () => {
   // like "Request was aborted." — accept either.
   const chatR = await chatPromise
   expect(chatR.stdout + chatR.stderr).toMatch(/cancelled|aborted/i)
+  expect(chatR.exitCode).not.toBe(0)
 })
 
 // --- chat-reset + chat-trim ---
 
 // Seed a canonical pi session file on disk with `n` synthetic user/assistant
 // messages. The on-disk JSONL is the authoritative source of conversation
-// state after migration 0004 dropped `chat_messages`; hitting tests at this
-// layer keeps them faithful to what a real worker writes. See
-// `seedSessionForTest` in runtime for the underlying pi SessionManager
-// append calls.
-function seedChatHistory(home: string, agentId: string, n: number): void {
+// state; hitting tests at this layer keeps them faithful to what a real worker
+// writes. See `seedSessionMessages` in the daemon conversation fixture.
+function seedChatHistory(home: string, agentId: string, n: number, padding = ''): void {
   const paths = resolvePaths(home)
   const db = openDb(paths.db)
   try {
     const resolved = resolveAgent(db, paths, agentId)
     const messages = Array.from({ length: n }, (_, i) =>
       i % 2 === 0
-        ? { role: 'user' as const, text: `msg ${i}` }
-        : { role: 'assistant' as const, text: `reply ${i}` },
+        ? { role: 'user' as const, text: `msg ${i}${padding}` }
+        : { role: 'assistant' as const, text: `reply ${i}${padding}` },
     )
-    seedSessionForTest(resolved, paths, messages, resolveConversationTarget(db, paths, agentId))
+    seedSessionMessages(resolved, paths, messages, resolveConversationTarget(db, paths, agentId))
   } finally {
     db.close()
   }
@@ -752,7 +741,7 @@ function readChatLen(home: string, agentId: string): number {
   const db = openDb(paths.db)
   try {
     const resolved = resolveAgent(db, paths, agentId)
-    return countSessionMessagesForTest(resolved, paths, selectedConversationTarget(db, agentId))
+    return countSessionMessages(resolved, paths, selectedConversationTarget(db, agentId))
   } finally {
     db.close()
   }
@@ -763,8 +752,9 @@ test('New conversation retains prior history while starting empty', async () => 
   seedChatHistory(server.home, agentId, 6)
   expect(readChatLen(server.home, agentId)).toBe(6)
 
-  const old = JSON.parse((await server.cli(['conversation', 'list', agentId, '--json'])).stdout)
-    .selection.conversationId
+  const old = JSON.parse(
+    (await server.cli(['conversation', 'list', agentId, '--json'])).stdout,
+  ).selectedId
   const r = await server.cli(['conversation', 'new', agentId])
   expect(r.exitCode).toBe(0)
   expect(r.stdout).toContain('Conversation')
@@ -773,16 +763,26 @@ test('New conversation retains prior history while starting empty', async () => 
   expect(readChatLen(server.home, agentId)).toBe(0)
 })
 
-test('agent chat-trim reports the before/after counts from pi branching', async () => {
+test('agent chat-trim keeps the first N messages for the next turn', async () => {
   const agentId = await spawnLmStudioAgent()
   seedChatHistory(server.home, agentId, 6)
 
   const r = await server.cli(['agent', 'chat-trim', agentId, '--keep', '3'])
   expect(r.exitCode).toBe(0)
-  // Pi's `branch()` moves the leaf pointer in-memory; the session file
-  // keeps the original entries on disk (append-only). The next turn
-  // will resume from the branched leaf. CLI output is what we assert.
   expect(r.stdout).toMatch(/6 → 3/)
+  // The file keeps every entry (append-only); what the next turn reads is the trimmed branch.
+  expect(readChatLen(server.home, agentId)).toBe(3)
+
+  mock.push([
+    { choices: [{ message: { role: 'assistant', content: 'after trim' }, finish_reason: 'stop' }] },
+  ])
+  const turn = await server.cli(['agent', 'chat', agentId, '--message', 'again'])
+  expect(turn.exitCode).toBe(0)
+  expect(readChatLen(server.home, agentId)).toBe(5)
+
+  const cleared = await server.cli(['agent', 'chat-trim', agentId, '--keep', '0'])
+  expect(cleared.stdout).toMatch(/5 → 0/)
+  expect(readChatLen(server.home, agentId)).toBe(0)
 })
 
 test('agent chat-trim rejects non-integer --keep with a clear error', async () => {
@@ -846,45 +846,30 @@ test('agent chat-context on an empty history returns zero history entries', asyn
   expect(body.totals.chars).toBeGreaterThan(0)
 })
 
-test('agent chat-compact summarizes the head via pi session.compact', async () => {
+test('agent chat-compact summarizes the old head and keeps the recent tail', async () => {
   const agentId = await spawnLmStudioAgent()
-  seedChatHistory(server.home, agentId, 10)
+  // A short history fits in what compaction keeps verbatim: nothing to summarize, no model call.
+  seedChatHistory(server.home, agentId, 4)
+  const small = await server.cli(['agent', 'chat-compact', agentId, '--force'])
+  expect(small.exitCode).toBe(1)
+  expect(small.stderr).toContain('Nothing to compact')
+  expect(mock.callCount()).toBe(0)
 
-  // Pi's session.compact() uses the agent's current model to generate the
-  // summary — the mock has to answer one LLM call.
-  mock.push([
-    {
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: 'The user sent several questions; assistant replied each time.',
-          },
-          finish_reason: 'stop',
-        },
-      ],
-    },
-  ])
-
+  // About 40k tokens of history: the oldest part becomes one summary from the Agent's model.
+  seedChatHistory(server.home, agentId, 16, 'x'.repeat(10_000))
+  mock.setFallback({
+    choices: [{ message: { role: 'assistant', content: 'SUMMARY OF EARLIER TURNS' } }],
+  })
   const r = await server.cli(['agent', 'chat-compact', agentId, '--force'])
-  // Pi may be stricter than us about when it bothers to compact; allow
-  // either a success summary or a "nothing to compact" refusal. The key
-  // thing is the endpoint runs without throwing.
-  if (r.exitCode === 0) {
-    expect(r.stdout).toMatch(/compacted:/)
-  } else {
-    // Non-zero exit is acceptable when pi declines to compact a small
-    // history. Surface the error reason for diagnostics.
-    expect(r.stderr + r.stdout).toMatch(/(error|nothing)/i)
-  }
+  expect(r.exitCode, r.stderr).toBe(0)
+  expect(r.stdout).toMatch(/compacted: \d+ → \d+ entries/)
+  expect(r.stdout).toContain('SUMMARY OF EARLIER TURNS')
+  expect(mock.callCount()).toBeGreaterThan(0)
 })
 
-test('agent chat-compact errors out on empty history', async () => {
+test('agent chat-compact refuses an Agent with no conversation yet', async () => {
   const agentId = await spawnLmStudioAgent()
   const r = await server.cli(['agent', 'chat-compact', agentId, '--force'])
-  // With no session file at all, pi either refuses or succeeds with a
-  // trivial empty compaction. We assert the command completes without a
-  // worker crash — actual exit code depends on pi's behavior for empty
-  // sessions, which can change between pi releases.
-  expect(r.stdout + r.stderr).toBeTruthy()
+  expect(r.exitCode).toBe(3)
+  expect(r.stderr).toContain('error: Start a conversation before using this action.')
 })

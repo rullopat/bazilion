@@ -1,71 +1,78 @@
-# Telegram integration
+# Telegram
 
-Telegram is an optional client surface for the same daemon-owned Agents, Team Policy, queues,
-questions and Results. It uses one configured bot and forum supergroup, with a service topic
-for management and one bound topic per Agent. It does not require exposing the daemon publicly.
+Talk to your Agents from Telegram. One bot long-polls one private forum supergroup: the
+**⚙ bazilion** service topic takes commands, and every Agent gets its own topic where messages
+become Agent turns and the replies come back. The daemon does not need to be reachable from the
+internet.
 
-## Setup and owner pairing
+## Set up
 
-1. Create a bot with BotFather and add it to a forum-enabled supergroup with the permissions
-   needed to create/manage topics and send messages.
-2. Set the token and supergroup chat ID through the web Telegram configuration or
-   `bazilion telegram config set`. The token is a stored secret, not an Agent document.
-3. Inspect `bazilion telegram health` and `bazilion telegram bot status`. Health is a real Bot API
-   preflight; do not mistake saved configuration for a successful connection.
-4. Create a one-time owner challenge through the web or `bazilion telegram pairing create`.
-   Send `/pair <code>` in the configured service topic. An unpaired installation is closed;
-   the first arbitrary Telegram sender does not become owner.
-5. Use the service topic's `/talk` or `/spawn` flow to open an Agent topic. CLI `telegram bind`,
-   `unbind` and `list` provide management fallbacks.
+1. Create a bot with BotFather (`/newbot`). Turn Privacy Mode off: `/mybots` → your bot →
+   **Bot Settings → Group Privacy → Turn off**.
+2. Create a supergroup, enable **Topics** in its settings, add the bot and make it an admin with
+   the **Manage topics** permission.
+3. Save the bot token and the supergroup chat id (`-100…`) on the web page
+   `/config/integrations/telegram`, or with
+   `bazilion telegram config set --token <token> --chat <id>`.
+4. Run the setup checks: **run preflight** on the web page, or `bazilion telegram health`. The bot
+   starts by itself, creates the service topic and pins an Agent directory there.
+5. Pair yourself as the owner: create a one-time code on the web page or with
+   `bazilion telegram pairing create`, then send `/pair <code>` in the service topic within ten
+   minutes. Until then the bot answers nobody.
 
-Pairing requires a bounded, expiring, single-use operator-created challenge and the configured
-service-topic context. Reset/re-pair is an explicit owner operation, not automatic takeover.
-See [BAZ-029](backlog/done/BAZ-029-single-owner-telegram-pairing.md).
+`bazilion telegram bot status` shows the polling state; **restart bot** on the web page or
+`bazilion telegram bot restart` restarts it. Disconnecting (clearing the credentials, or
+`bazilion telegram config clear`) stops the bot and everything it sends. When Telegram migrates the
+group to a new chat id, the web page and `bazilion telegram reconnect` switch to it.
 
-## Daily use
+## Who can use the bot
 
-- `/talk` opens or creates an existing Agent's topic; `/spawn` creates an Agent from a Profile.
-- `/spawn_team` uses a Team Template; `/list` and `/teams` show resources.
-- `/health`, `/whoami` and `/help` explain the bot/session and available commands.
-- In an Agent topic, `/close`, `/rebind`, `/unbind` and `/queue` manage the binding/follow-up path.
-- An active Agent's incoming work uses the durable follow-up queue rather than a second turn
-  executing concurrently. Inspect interrupted or paused work instead of repeatedly submitting it.
-- Assistant messages, errors and authorized tool-produced images/files mirror to the bound topic.
-  Minimal/verbose mirror settings control tool chatter; they are not permission to disclose a
-  private Result or bypass Team Policy.
+The paired owner, plus the people the owner adds: `/allow <user id>` in Telegram, the allowlist
+card on the web page, or `bazilion telegram allow <user id>`. Someone who is not on the list gets a
+reply with their user id to pass on. `/deny`, `/allowed` and `bazilion telegram deny|allowed`
+manage the list. Everyone on the list can chat with Agents, answer their questions and run the
+commands; only the owner can `/allow` and `/deny`. Removing someone also cancels the messages they
+still have waiting in a queue; resetting the pairing or clearing the credentials does so for
+everyone. Anyone else in the group can still read the topics, so keep the group to people you
+trust. Messages from other bots and from anonymous admins are ignored.
 
-Topic names reflect Team/Agent names, supported templates and human-renamed locks. Topic icons
-can use built-in profile defaults or Agent overrides. iOS deep-link behavior for private forum
-subtopics can require manual topic navigation; a bot-generated link does not guarantee client support.
+Everyone on the list drives Agents with your rights: with `BAZILION_BASH_SANDBOX=off` (the default)
+their messages can run commands on the host as the daemon's user. Set it to `docker`, and
+`BAZILION_BASH_APPROVAL=dangerous` so Telegram turns auto-deny classified commands, before you
+allow anyone else ([coding environments](coding-environments.md)).
 
-## Attachments, questions and attention
+## Service topic commands
 
-Inbound photos enter the normal image-capable turn input. Other files, including audio/video,
-are saved as file references; native audio/video understanding/transcription is not promised.
-Bounded media retrieval does not imply the selected model can interpret every attachment.
+- `/talk <agent>` opens (or creates) an Agent's topic; use `<team>/<agent>` when names clash.
+- `/spawn` creates an Agent from a Profile (interactive, or `/spawn <profile> [name] [in <team>]`).
+- `/spawn_team <template> [in <team>]` spawns a Team Template.
+- `/list`, `/teams`, `/health`, `/whoami`, `/help`.
 
-Outbound files/images are captured as durable Results and pass the same disclosure policy as web
-and CLI delivery. A pending approval is not an empty or already-shared Result.
+`bazilion telegram bind <agent>`, `unbind <agent>` and `list` do the binding from the CLI.
 
-Structured questions use bound Telegram choices/Other/Skip and daemon-owned consumption receipts;
-a callback or answer send is not proof a worker consumed it. Attention notifications are bounded
-lifecycle hints, not another transcript. See [questions](questions.md), [Results](results.md),
-[follow-up queue](follow-up-queue.md) and [notifications](attention-notifications.md).
+## In an Agent topic
 
-## Safety and lifecycle
+Plain messages, photos and files go to the Agent's follow-up queue and run one turn at a time; a
+👀 reaction shows the message was received. Photos reach the model as images; other files are
+saved for the Agent to read (up to 20 MB). If a queued message fails, is cancelled or is
+removed, the bot replies to it.
 
-- Owner/allowlist checks and Team Policy gate ingress and egress. Owner management does not widen
-  an Agent's provider/tool capabilities or let a sender bypass a held communication.
-- Bot-authored inbound is ignored. Per-Agent inbound and outbound-noise budgets bound floods;
-  essential replies/errors are distinct from verbose tool chatter. Internal Agent-to-Agent loop
-  protection is a separate causal-hop mechanism, not a Telegram-only throttle.
-- Outbound API operations use the bounded queue and handle rate limits/errors; uncertain external
-  sends must not be blindly replayed to manufacture delivery.
-- Long polling is the current ingress. `telegram bot restart` reactivates from current settings;
-  configuration failures stay visible. Chat-ID migration is surfaced through explicit reconnect,
-  not treated as authorization for an arbitrary new destination.
-- Never place bot tokens, pairing codes or private payloads in source, user stories or shared logs.
+- `/queue` lists waiting messages; `/queue drop <n|all>` removes them.
+- `/stop` cancels the running turn and, when messages are waiting, pauses the queue; `/resume`
+  continues it.
+- `/close` closes the topic, `/rebind <agent>` points it at another Agent, `/unbind` detaches it.
 
-The integration is daemon-owned under `apps/daemon/src/lib/telegram/`, with configuration/routes
-in the daemon and CLI/web management parity. Future features live in the
-[Telegram user-story roadmap](telegram-v2.md), not implied by current support.
+Replies, errors, images and delivered files are mirrored into the topic. An Agent's mirror mode
+(`bazilion agent edit <id> --mirror minimal|verbose`, or the Agent page) adds short tool-call
+lines in verbose mode; those are limited to 30 a minute per Agent.
+
+When an Agent asks a question (see [questions](questions.md)), it appears in its topic with one
+button per choice and **Skip**. Tap a button, or reply to the question message with your own
+answer. The question can be answered on the web or in the CLI just as well; the first answer wins.
+
+Topic names follow the Team (`bazilion team topic-format set <team> '<template>'`), and topic
+icons follow the Profile or the Agent's `--topic-icon`. On iOS, topic links open the topic list
+rather than the topic.
+
+Telegram can also post new Attention items to the service topic; see
+[attention notifications](attention-notifications.md).

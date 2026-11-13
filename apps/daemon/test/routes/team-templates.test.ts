@@ -1,6 +1,15 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { TeamPolicy, TeamTemplate } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 let home: string
@@ -10,7 +19,7 @@ let oldScheduler: string | undefined
 beforeEach(() => {
   oldHome = process.env.BAZILION_HOME
   oldScheduler = process.env.BAZILION_SCHEDULER
-  home = mkdtempSync(join(tmpdir(), 'bazilion-teamPolicy-template-route-'))
+  home = mkdtempSync(join(tmpdir(), 'bazilion-team-template-route-'))
   process.env.BAZILION_HOME = home
   process.env.BAZILION_SCHEDULER = 'off'
   vi.resetModules()
@@ -29,686 +38,296 @@ afterEach(async () => {
   vi.resetModules()
 })
 
-test('canonical template routes preserve stable slots, snapshots, and clone independence', async () => {
-  const { createProfile, teamTemplateRepo } = await import('../../src/core/index.ts')
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { teamTemplatesRouter } = await import('../../src/routes/team-templates.ts')
-  const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
-
-  const created = await teamTemplatesRouter.request('/', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id: 'team', name: 'Team' }),
-  })
-  expect(created.status).toBe(201)
-  expect((await created.json()) as object).toMatchObject({
-    template: { currentRevision: 1 },
-    slots: [],
-  })
-
-  const defined = await teamTemplatesRouter.request('/team/definition', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      expectedRevision: 1,
-      slots: [
-        { profileId: 'p', agentName: 'one' },
-        { profileId: 'p', agentName: 'two' },
-      ],
-      edges: [],
-    }),
-  })
-  expect(defined.status).toBe(200)
-  const body = (await defined.json()) as {
-    template: { currentRevision: number }
-    slots: Array<{ slotId: string; agentName: string }>
-  }
-  const [one, two] = body.slots
-  expect(one?.slotId).toMatch(/^[0-9a-f-]{36}$/)
-  expect(two?.slotId).toMatch(/^[0-9a-f-]{36}$/)
-
-  const reordered = await teamTemplatesRouter.request('/team/definition', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      expectedRevision: 2,
-      slots: [
-        { slotId: two?.slotId, profileId: 'p', agentName: 'two edited' },
-        { slotId: one?.slotId, profileId: 'p', agentName: 'one' },
-      ],
-      edges: [
-        { sourceKind: 'slot', sourceId: one?.slotId, targetKind: 'slot', targetId: two?.slotId },
-      ],
-    }),
-  })
-  expect(reordered.status).toBe(200)
-  expect(teamTemplateRepo.revision(ctx.db, 'team', 2)?.slots.map((slot) => slot.slotId)).toEqual([
-    one?.slotId,
-    two?.slotId,
-  ])
-  expect(teamTemplateRepo.revision(ctx.db, 'team', 3)?.slots.map((slot) => slot.slotId)).toEqual([
-    two?.slotId,
-    one?.slotId,
-  ])
-
-  const stale = await teamTemplatesRouter.request('/team/definition', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ expectedRevision: 2, slots: [], edges: [] }),
-  })
-  expect(stale.status).toBe(409)
-  expect((await stale.json()) as object).toMatchObject({
-    code: 'template_revision_conflict',
-    currentRevision: 3,
-  })
-
-  const cloned = await teamTemplatesRouter.request('/team/clone', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ templateExpectedRevision: 3, id: 'copy' }),
-  })
-  expect(cloned.status).toBe(201)
-  const cloneBody = (await cloned.json()) as {
-    template: { currentRevision: number }
-    slots: Array<{ slotId: string }>
-    edges: Array<{ sourceId: string; targetId: string }>
-  }
-  expect(cloneBody.template.currentRevision).toBe(1)
-  expect(cloneBody.slots.map((slot) => slot.slotId)).not.toEqual(
-    body.slots.map((slot) => slot.slotId),
-  )
-  expect(cloneBody.edges).toHaveLength(1)
-})
-
-test('reviewed prototype import allocates server slot ids and translates edges atomically', async () => {
-  const { createProfile, teamTemplateRepo } = await import('../../src/core/index.ts')
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { teamTemplatesRouter } = await import('../../src/routes/team-templates.ts')
-  const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
-
-  const imported = await teamTemplatesRouter.request('/import', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      id: 'imported',
-      name: 'Imported',
-      slots: [
-        { clientKey: 'prototype-a', profileId: 'p', agentName: 'one' },
-        { clientKey: 'prototype-b', profileId: 'p', agentName: 'two' },
-      ],
-      edges: [
-        {
-          sourceKind: 'slot',
-          sourceId: 'prototype-a',
-          targetKind: 'slot',
-          targetId: 'prototype-b',
-        },
-      ],
-    }),
-  })
-  expect(imported.status).toBe(201)
-  const body = (await imported.json()) as {
-    slots: Array<{ slotId: string }>
-    edges: Array<{ sourceId: string; targetId: string }>
-  }
-  expect(body.slots).toHaveLength(2)
-  expect(body.slots.map((slot) => slot.slotId)).not.toContain('prototype-a')
-  expect(body.edges).toEqual([
-    expect.objectContaining({
-      sourceId: body.slots[0]?.slotId,
-      targetId: body.slots[1]?.slotId,
-    }),
-  ])
-
-  const invalid = await teamTemplatesRouter.request('/import', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      id: 'broken-import',
-      name: 'Broken',
-      slots: [{ clientKey: 'prototype-a', profileId: 'p', agentName: 'one' }],
-      edges: [{ sourceKind: 'slot', sourceId: 'missing', targetKind: 'user' }],
-    }),
-  })
-  expect(invalid.status).toBe(400)
-  expect(teamTemplateRepo.get(ctx.db, 'broken-import')).toBeNull()
-})
-
-test('canonical routes are authenticated through the daemon app and return resolved aggregates', async () => {
-  const { providerModelRepo, providerStateRepo } = await import('../../src/core/index.ts')
+async function setup() {
+  const core = await import('../../src/core/index.ts')
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const { createApp } = await import('../../src/app.ts')
   const ctx = getCtx()
-  providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
-  providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
+  core.providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
+  core.providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
+  core.createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
   const app = createApp()
+  const call = (path: string, init: { method?: string; body?: unknown } = {}) =>
+    app.request(path, {
+      method: init.method ?? 'GET',
+      headers: {
+        authorization: `Bearer ${ctx.authToken}`,
+        'content-type': 'application/json',
+      },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+    })
+  return { core, ctx, app, call }
+}
 
-  const unauthorized = await app.request('/api/team-templates')
-  expect(unauthorized.status).toBe(401)
+const roster = {
+  name: 'Review team',
+  userMd: '# Review',
+  policyMode: 'restricted',
+  slots: [
+    { profileId: 'p', agentName: 'author' },
+    { profileId: 'p', agentName: 'reviewer', layoutPosition: { x: 10, y: 20 } },
+  ],
+  edges: [
+    { from: 0, to: 1 },
+    { from: 1, to: 0 },
+    { from: 1, to: 'outside' },
+  ],
+}
 
-  const created = await app.request('/api/team-templates', {
+test('templates are created, read, replaced and deleted as one plain document', async () => {
+  const { app, call } = await setup()
+  expect((await app.request('/api/team-templates')).status).toBe(401)
+
+  const created = await call('/api/team-templates', {
     method: 'POST',
-    headers: {
-      authorization: `Bearer ${ctx.authToken}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ id: 'team', name: 'Team' }),
+    body: { id: 'review', ...roster },
   })
   expect(created.status).toBe(201)
-  expect((await created.json()) as object).toMatchObject({
-    template: { id: 'team', currentRevision: 1 },
-    slots: [],
-    edges: [],
-    currentSnapshot: { templateId: 'team', revision: 1 },
+  expect((await created.json()) as TeamTemplate).toMatchObject({
+    id: 'review',
+    policyMode: 'restricted',
+    slots: [
+      { agentName: 'author', layoutPosition: null },
+      { agentName: 'reviewer', layoutPosition: { x: 10, y: 20 } },
+    ],
+    edges: expect.arrayContaining([{ from: 1, to: 'outside' }]),
   })
-})
+  expect(
+    (await call('/api/team-templates', { method: 'POST', body: { id: 'review', name: 'x' } }))
+      .status,
+  ).toBe(400)
 
-test('canonical definition validates edge domains and never mutates on failure', async () => {
-  const { createProfile, teamTemplateRepo } = await import('../../src/core/index.ts')
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { teamTemplatesRouter } = await import('../../src/routes/team-templates.ts')
-  const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
-  teamTemplateRepo.insertCanonical(ctx.db, { id: 'team', name: 'Team' })
-
-  const invalid = await teamTemplatesRouter.request('/team/definition', {
+  const replaced = await call('/api/team-templates/review', {
     method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      expectedRevision: 1,
-      slots: [{ slotId: 'stable', profileId: 'p', agentName: 'one' }],
-      edges: [{ sourceKind: 'user', targetKind: 'outside_team' }],
-    }),
+    body: { name: 'Solo', slots: [{ profileId: 'p', agentName: 'solo' }] },
   })
-  expect(invalid.status).toBe(400)
-  expect(teamTemplateRepo.get(ctx.db, 'team')?.currentRevision).toBe(1)
-  expect(teamTemplateRepo.slots(ctx.db, 'team')).toEqual([])
+  expect(replaced.status).toBe(200)
+  expect((await replaced.json()) as TeamTemplate).toMatchObject({
+    name: 'Solo',
+    policyMode: 'open',
+    userMd: null,
+    slots: [{ agentName: 'solo' }],
+    edges: [],
+  })
+  expect(((await (await call('/api/team-templates')).json()) as TeamTemplate[]).length).toBe(1)
+
+  expect((await call('/api/team-templates/review', { method: 'DELETE' })).status).toBe(204)
+  expect((await call('/api/team-templates/review')).status).toBe(404)
+  expect((await call('/api/team-templates/review', { method: 'DELETE' })).status).toBe(404)
 })
 
-test('Team policy replacement and canonical direct spawn are revisioned and permanently explicit', async () => {
-  const { createProfile, teamPolicyRepo, registerTeam } = await import('../../src/core/index.ts')
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { agentsRouter } = await import('../../src/routes/agents.ts')
-  const { teamsRouter } = await import('../../src/routes/teams.ts')
-  const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, {
-    id: 'p',
-    defaultModel: 'm',
-    communicationDefaults: {
-      userInput: true,
-      userOutput: true,
-      outsideTeamInput: false,
-      outsideTeamOutput: false,
-      peerDefault: 'allow_all',
-    },
-  })
-  registerTeam(ctx.db, { id: 'g' }, ctx.paths)
+test('invalid template bodies are refused without changing the stored template', async () => {
+  const { call } = await setup()
+  await call('/api/team-templates', { method: 'POST', body: { id: 'team', ...roster } })
+  for (const body of [
+    { ...roster, slots: [{ profileId: 'missing', agentName: 'x' }], edges: [] },
+    { ...roster, edges: [{ from: 0, to: 2 }] },
+    { ...roster, edges: [{ from: 0, to: 0 }] },
+    { ...roster, edges: [{ from: 'outside', to: 'outside' }] },
+    { ...roster, policyMode: 'closed' },
+    { ...roster, name: '' },
+  ]) {
+    expect((await call('/api/team-templates/team', { method: 'PUT', body })).status).toBe(400)
+  }
+  expect(((await (await call('/api/team-templates/team')).json()) as TeamTemplate).name).toBe(
+    'Review team',
+  )
+})
 
-  const removedOpenPlacement = await agentsRouter.request('/placement-preview', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      profileId: 'p',
-      teamId: 'g',
-      teamExpectedRevision: 1,
-      placement: 'open',
-    }),
-  })
-  expect(removedOpenPlacement.status).toBe(400)
+test('spawning into a new Team creates its Agents, edges, mode and USER.md', async () => {
+  const { ctx, call } = await setup()
+  await call('/api/team-templates', { method: 'POST', body: { id: 'review', ...roster } })
 
-  const placementPreview = await agentsRouter.request('/placement-preview', {
+  const spawned = await call('/api/team-templates/review/spawn', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      profileId: 'p',
-      teamId: 'g',
-      teamExpectedRevision: 1,
-      placement: 'profile_defaults',
-    }),
-  })
-  expect(placementPreview.status).toBe(200)
-  expect((await placementPreview.json()) as object).toMatchObject({
-    currentRevision: 1,
-    resultingRevision: 2,
-    symbolicAgentId: 'new-agent',
-    existingEdges: [],
-    addedEdges: expect.arrayContaining([
-      expect.objectContaining({ sourceKind: 'user', targetId: 'new-agent' }),
-      expect.objectContaining({ sourceId: 'new-agent', targetKind: 'user' }),
-    ]),
-  })
-
-  const spawned = await agentsRouter.request('/', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      profileId: 'p',
-      teamId: 'g',
-      teamExpectedRevision: 1,
-      placement: 'isolated',
-    }),
+    body: { teamId: 'fresh' },
   })
   expect(spawned.status).toBe(201)
-  const spawnedBody = (await spawned.json()) as { agent: { id: string } }
-  const agent = spawnedBody.agent
-  expect(teamPolicyRepo.get(ctx.db, 'g')).toMatchObject({
-    revision: 2,
-  })
-  expect(teamPolicyRepo.edges(ctx.db, 'g')).toEqual([])
-
-  const saved = await teamsRouter.request('/g/policy', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      expectedRevision: 2,
-      edges: [
-        { sourceKind: 'user', targetKind: 'agent', targetId: agent.id },
-        { sourceKind: 'agent', sourceId: agent.id, targetKind: 'user' },
-      ],
-    }),
-  })
-  expect(saved.status).toBe(200)
-  expect((await saved.json()) as object).toMatchObject({
-    teamPolicy: { revision: 3 },
-    edges: expect.arrayContaining([
-      expect.objectContaining({ sourceKind: 'user', targetId: agent.id }),
-    ]),
-  })
-
-  const stale = await teamsRouter.request('/g/policy', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ expectedRevision: 2, edges: [] }),
-  })
-  expect(stale.status).toBe(409)
-  expect(teamPolicyRepo.get(ctx.db, 'g')?.revision).toBe(3)
-
-  const invalid = await teamsRouter.request('/g/policy', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      expectedRevision: 3,
-      edges: [{ sourceKind: 'agent', sourceId: 'not-a-member', targetKind: 'user' }],
-    }),
-  })
-  expect(invalid.status).toBe(400)
-  expect((await invalid.json()) as object).toMatchObject({ code: 'member_not_in_group' })
-  expect(teamPolicyRepo.get(ctx.db, 'g')?.revision).toBe(3)
-})
-
-test('reviewed Team spawn initializes revision one and append preserves baseline without cross-cohort peers', async () => {
-  const { createProfile, teamTemplateRepo, teamPolicyRepo } = await import(
-    '../../src/core/index.ts'
-  )
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { teamTemplatesRouter } = await import('../../src/routes/team-templates.ts')
-  const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
-  teamTemplateRepo.insertCanonical(ctx.db, { id: 'team', name: 'Team', userMd: 'starter' })
-  teamTemplateRepo.replaceCanonicalDefinition(ctx.db, 'team', {
-    expectedRevision: 1,
-    slots: [
-      { clientKey: 'one', profileId: 'p', agentName: 'one' },
-      { clientKey: 'two', profileId: 'p', agentName: 'two' },
-    ],
-    edges: [
-      { sourceKind: 'slot', sourceId: 'one', targetKind: 'slot', targetId: 'two' },
-      { sourceKind: 'user', targetKind: 'slot', targetId: 'one' },
-    ],
-  })
-
-  const initializePreview = await teamTemplatesRouter.request('/team/spawn/preview', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      templateExpectedRevision: 2,
-      teamId: 'new-team',
-      mode: 'initialize',
-    }),
-  })
-  expect(initializePreview.status).toBe(200)
-  expect((await initializePreview.json()) as object).toMatchObject({
-    mode: 'initialize',
-    currentRevision: null,
-    resultingRevision: 1,
-    newMembers: [{ agentName: 'one' }, { agentName: 'two' }],
-    edges: [
-      expect.objectContaining({ sourceId: expect.stringMatching(/^new:/) }),
-      expect.objectContaining({ targetId: expect.stringMatching(/^new:/) }),
-    ],
-  })
-
-  const initialized = await teamTemplatesRouter.request('/team/spawn', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      templateExpectedRevision: 2,
-      teamId: 'new-team',
-      mode: 'initialize',
-    }),
-  })
-  expect(initialized.status).toBe(201)
-  const first = (await initialized.json()) as {
-    agents: Array<{ id: string }>
-    team: {
-      teamPolicy: { revision: number; baselineInstantiationId: string }
-    }
+  const { agents, team } = (await spawned.json()) as {
+    agents: Array<{ id: string; name: string }>
+    team: TeamPolicy
   }
-  expect(first.team.teamPolicy).toMatchObject({ revision: 1 })
-  expect(first.team.teamPolicy.baselineInstantiationId).toEqual(expect.any(String))
-  expect(teamPolicyRepo.bindings(ctx.db, 'new-team')).toHaveLength(2)
-  expect(teamPolicyRepo.edges(ctx.db, 'new-team')).toHaveLength(2)
-
-  const appendPreview = await teamTemplatesRouter.request('/team/spawn/preview', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      templateExpectedRevision: 2,
-      teamId: 'new-team',
-      teamExpectedRevision: 1,
-      mode: 'append',
-    }),
-  })
-  expect(appendPreview.status).toBe(200)
-  expect((await appendPreview.json()) as object).toMatchObject({
-    mode: 'append',
-    currentRevision: 1,
-    resultingRevision: 2,
-    edges: expect.arrayContaining([
-      expect.objectContaining({ sourceId: expect.stringMatching(/^new:/) }),
+  expect(agents.map((agent) => agent.name)).toEqual(['author', 'reviewer'])
+  const [author, reviewer] = agents.map((agent) => agent.id)
+  expect(team).toMatchObject({ teamId: 'fresh', mode: 'restricted' })
+  expect(team.edges).toEqual(
+    expect.arrayContaining([
+      { from: author, to: reviewer },
+      { from: reviewer, to: author },
+      { from: reviewer, to: 'outside' },
     ]),
-  })
-
-  const appended = await teamTemplatesRouter.request('/team/spawn', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      templateExpectedRevision: 2,
-      teamId: 'new-team',
-      teamExpectedRevision: 1,
-      mode: 'append',
-    }),
-  })
-  expect(appended.status).toBe(201)
-  const second = (await appended.json()) as { agents: Array<{ id: string }> }
-  expect(teamPolicyRepo.get(ctx.db, 'new-team')).toMatchObject({
-    revision: 2,
-    baselineInstantiationId: first.team.teamPolicy.baselineInstantiationId,
-  })
-  expect(teamPolicyRepo.instantiations(ctx.db, 'new-team')).toHaveLength(2)
-  expect(teamPolicyRepo.bindings(ctx.db, 'new-team')).toHaveLength(4)
-  const edges = teamPolicyRepo.edges(ctx.db, 'new-team')
-  expect(edges).toHaveLength(4)
-  expect(
-    edges.some(
-      (edge) =>
-        first.agents.some((agent) => agent.id === edge.sourceId) &&
-        second.agents.some((agent) => agent.id === edge.targetId),
-    ),
-  ).toBe(false)
+  )
+  expect(team.edges).toHaveLength(3)
+  const fresh = (await (await call('/api/teams/fresh')).json()) as { userMd: string }
+  expect(fresh.userMd).toBe('# Review')
+  expect(existsSync(ctx.paths.teamDir('fresh'))).toBe(true)
 })
 
-test('adoption requires reviewed total mapping and preview, then save-as-template leaves live revision unchanged', async () => {
-  const { createProfile, teamTemplateRepo, teamPolicyRepo, registerTeam, spawnAgent } =
-    await import('../../src/core/index.ts')
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { teamsRouter } = await import('../../src/routes/teams.ts')
-  const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, {
-    id: 'p',
-    defaultModel: 'm',
-    communicationDefaults: {
-      userInput: true,
-      userOutput: true,
-      outsideTeamInput: false,
-      outsideTeamOutput: false,
-      peerDefault: 'allow_all',
-    },
-  })
-  registerTeam(ctx.db, { id: 'g' }, ctx.paths)
-  const mapped = spawnAgent(ctx.db, ctx.paths, {
-    profileId: 'p',
-    teamId: 'g',
-    teamExpectedRevision: 1,
-    placement: 'isolated',
-  })
-  const remaining = spawnAgent(ctx.db, ctx.paths, {
-    profileId: 'p',
-    teamId: 'g',
-    teamExpectedRevision: 2,
-    placement: 'isolated',
-  })
-  teamTemplateRepo.insertCanonicalDefinition(ctx.db, {
-    id: 'source',
-    name: 'Source',
-    slots: [{ slotId: 'slot', profileId: 'p', agentName: 'mapped' }],
-    edges: [{ sourceKind: 'user', targetKind: 'slot', targetId: 'slot' }],
-  })
-  const previewEdges = [
-    { sourceKind: 'user', sourceId: null, targetKind: 'agent', targetId: mapped.id },
-    { sourceKind: 'user', sourceId: null, targetKind: 'agent', targetId: remaining.id },
-    { sourceKind: 'agent', sourceId: remaining.id, targetKind: 'user', targetId: null },
-    { sourceKind: 'agent', sourceId: remaining.id, targetKind: 'agent', targetId: mapped.id },
-    { sourceKind: 'agent', sourceId: mapped.id, targetKind: 'agent', targetId: remaining.id },
-  ].map((edge) => ({ ...edge, posture: 'allow' }))
-  const preview = await teamsRouter.request('/g/policy/adopt-template/preview', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      teamExpectedRevision: 3,
-      templateId: 'source',
-      templateExpectedRevision: 1,
-      slotMappings: [{ slotId: 'slot', agentId: mapped.id }],
-      remainingPlacements: [{ agentId: remaining.id, placement: 'profile_defaults' }],
-    }),
-  })
-  expect(preview.status).toBe(200)
-  expect((await preview.json()) as object).toEqual({
-    edges: expect.arrayContaining(previewEdges),
-  })
-  const adopted = await teamsRouter.request('/g/policy/adopt-template', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      teamExpectedRevision: 3,
-      templateId: 'source',
-      templateExpectedRevision: 1,
-      slotMappings: [{ slotId: 'slot', agentId: mapped.id }],
-      remainingPlacements: [{ agentId: remaining.id, placement: 'profile_defaults' }],
-      previewEdges,
-    }),
-  })
-  expect(adopted.status).toBe(200)
-  expect(teamPolicyRepo.get(ctx.db, 'g')).toMatchObject({
-    revision: 4,
-  })
-  expect(teamPolicyRepo.bindings(ctx.db, 'g')).toEqual([
-    expect.objectContaining({ agentId: mapped.id, sourceSlotId: 'slot' }),
-  ])
-  expect(teamPolicyRepo.edges(ctx.db, 'g')).toHaveLength(previewEdges.length)
+test('spawning into an existing Team appends with unique names and keeps its mode', async () => {
+  const { call } = await setup()
+  await call('/api/team-templates', { method: 'POST', body: { id: 'review', ...roster } })
+  await call('/api/team-templates/review/spawn', { method: 'POST', body: { teamId: 'shared' } })
+  await call('/api/teams/shared/policy', { method: 'PATCH', body: { mode: 'open' } })
 
-  const saved = await teamsRouter.request('/g/policy/save-as-template', {
+  const again = await call('/api/team-templates/review/spawn', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ expectedRevision: 4, id: 'saved', name: 'Saved' }),
+    body: { teamId: 'shared' },
+  })
+  expect(again.status).toBe(201)
+  const policy = (await (await call('/api/teams/shared/policy')).json()) as TeamPolicy
+  expect(policy.mode).toBe('open')
+  expect(policy.members.map((agent) => agent.name).sort()).toEqual([
+    'author',
+    'author-2',
+    'reviewer',
+    'reviewer-2',
+  ])
+  expect(policy.edges).toHaveLength(6)
+})
+
+test('a failed spawn leaves no new Team or Agent directories behind', async () => {
+  const { ctx, call } = await setup()
+  await call('/api/team-templates', { method: 'POST', body: { id: 'review', ...roster } })
+  ctx.db.raw.run("UPDATE team_template_slots SET agent_name = '' WHERE position = 1")
+  ctx.db.raw.run('DROP TABLE team_policy_edges')
+  const failed = await call('/api/team-templates/review/spawn', {
+    method: 'POST',
+    body: { teamId: 'broken' },
+  })
+  // The dropped table makes the spawn fail inside the daemon.
+  expect(failed.status).toBe(500)
+  expect(existsSync(ctx.paths.teamDir('broken'))).toBe(false)
+  expect(ctx.db.raw.query('SELECT id FROM agents').all()).toEqual([])
+  expect(readdirSync(ctx.paths.agentsDir)).toEqual([])
+})
+
+test('a refused spawn target is never removed from disk', async () => {
+  const { ctx, call } = await setup()
+  await call('/api/team-templates', { method: 'POST', body: { id: 'review', ...roster } })
+  const before = readdirSync(ctx.paths.home).sort()
+
+  const escaping = await call('/api/team-templates/review/spawn', {
+    method: 'POST',
+    body: { teamId: '..' },
+  })
+  expect(escaping.status).toBe(400)
+  expect(((await escaping.json()) as { error: string }).error).toContain('invalid slug')
+  expect(readdirSync(ctx.paths.home).sort()).toEqual(before)
+  expect(existsSync(ctx.paths.db)).toBe(true)
+  expect(existsSync(ctx.paths.authFile)).toBe(true)
+
+  // A slot already on disk without a Team row belongs to someone else: refuse, keep it.
+  mkdirSync(ctx.paths.teamDir('stale'), { recursive: true })
+  writeFileSync(join(ctx.paths.teamDir('stale'), 'notes.md'), 'keep me')
+  const occupied = await call('/api/team-templates/review/spawn', {
+    method: 'POST',
+    body: { teamId: 'stale' },
+  })
+  expect(occupied.status).toBe(400)
+  expect(((await occupied.json()) as { error: string }).error).toContain('already on disk')
+  expect(readFileSync(join(ctx.paths.teamDir('stale'), 'notes.md'), 'utf8')).toBe('keep me')
+  expect(ctx.db.raw.query('SELECT id FROM agents').all()).toEqual([])
+  expect(readdirSync(ctx.paths.agentsDir)).toEqual([])
+})
+
+test('a live Team is saved as a template with its members, edges, mode and USER.md', async () => {
+  const { call } = await setup()
+  await call('/api/team-templates', { method: 'POST', body: { id: 'review', ...roster } })
+  await call('/api/team-templates/review/spawn', { method: 'POST', body: { teamId: 'live' } })
+
+  const saved = await call('/api/teams/live/policy/save-as-template', {
+    method: 'POST',
+    body: { id: 'copy', name: 'Copy' },
   })
   expect(saved.status).toBe(201)
-  expect((await saved.json()) as object).toMatchObject({
-    template: { currentRevision: 1 },
-    slots: [{ profileId: 'p' }, { profileId: 'p' }],
+  expect((await saved.json()) as TeamTemplate).toMatchObject({
+    id: 'copy',
+    name: 'Copy',
+    userMd: '# Review',
+    policyMode: 'restricted',
+    slots: [{ agentName: 'author' }, { agentName: 'reviewer' }],
+    edges: expect.arrayContaining([
+      { from: 0, to: 1 },
+      { from: 1, to: 0 },
+      { from: 1, to: 'outside' },
+    ]),
   })
-  expect(teamPolicyRepo.get(ctx.db, 'g')?.revision).toBe(4)
-  expect(teamTemplateRepo.edges(ctx.db, 'saved')).toHaveLength(previewEdges.length)
+  expect(
+    (
+      await call('/api/teams/live/policy/save-as-template', {
+        method: 'POST',
+        body: { id: 'copy', name: 'Again' },
+      })
+    ).status,
+  ).toBe(400)
 })
 
-test('update-source transfers selected cohort bindings, prunes only emptied cohort, and preserves live edges', async () => {
-  const { createProfile, teamTemplateRepo, teamPolicyRepo } = await import(
-    '../../src/core/index.ts'
-  )
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { teamsRouter } = await import('../../src/routes/teams.ts')
-  const { teamTemplatesRouter } = await import('../../src/routes/team-templates.ts')
-  const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
-  teamTemplateRepo.insertCanonicalDefinition(ctx.db, {
-    id: 'source',
-    name: 'Source',
-    slots: [{ slotId: 'slot', profileId: 'p', agentName: 'one' }],
-    edges: [{ sourceKind: 'user', targetKind: 'slot', targetId: 'slot' }],
-  })
-  await teamTemplatesRouter.request('/source/spawn', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      templateExpectedRevision: 1,
-      teamId: 'g',
-      mode: 'initialize',
-    }),
-  })
-  const appendResponse = await teamTemplatesRouter.request('/source/spawn', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      templateExpectedRevision: 1,
-      teamId: 'g',
-      teamExpectedRevision: 1,
-      mode: 'append',
-    }),
-  })
-  const appended = (await appendResponse.json()) as { agents: Array<{ id: string }> }
-  const beforeEdges = teamPolicyRepo.edges(ctx.db, 'g')
-  const beforeBaseline = teamPolicyRepo.get(ctx.db, 'g')?.baselineInstantiationId
+test('the policy route sets the mode and edges, last write wins', async () => {
+  const { core, ctx, call } = await setup()
+  core.registerTeam(ctx.db, { id: 'team' }, ctx.paths)
+  const a = core.spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'team' })
+  const b = core.spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'team' })
 
-  const updated = await teamsRouter.request('/g/policy/update-source', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      teamExpectedRevision: 2,
-      templateExpectedRevision: 1,
-      includeAgentIds: appended.agents.map((agent) => agent.id),
-    }),
+  const shown = (await (await call('/api/teams/team/policy')).json()) as TeamPolicy
+  expect(shown).toMatchObject({ teamId: 'team', mode: 'open', edges: [] })
+  expect(shown.members.map((agent) => agent.id).sort()).toEqual([a.id, b.id].sort())
+
+  const updated = await call('/api/teams/team/policy', {
+    method: 'PATCH',
+    body: { mode: 'restricted', edges: [{ from: a.id, to: b.id }] },
   })
   expect(updated.status).toBe(200)
-  expect(teamTemplateRepo.get(ctx.db, 'source')?.currentRevision).toBe(2)
-  expect(teamPolicyRepo.get(ctx.db, 'g')).toMatchObject({
-    revision: 3,
-    baselineInstantiationId: beforeBaseline,
+  expect((await updated.json()) as TeamPolicy).toMatchObject({
+    mode: 'restricted',
+    edges: [{ from: a.id, to: b.id }],
   })
-  expect(teamPolicyRepo.edges(ctx.db, 'g')).toEqual(beforeEdges)
-  expect(teamPolicyRepo.instantiations(ctx.db, 'g')).toHaveLength(1)
-  expect(teamPolicyRepo.bindings(ctx.db, 'g')).toHaveLength(2)
+  const modeOnly = await call('/api/teams/team/policy', { method: 'PATCH', body: { mode: 'open' } })
+  expect((await modeOnly.json()) as TeamPolicy).toMatchObject({
+    mode: 'open',
+    edges: [{ from: a.id, to: b.id }],
+  })
   expect(
-    teamPolicyRepo
-      .bindings(ctx.db, 'g')
-      .every((binding) => binding.instantiationId === beforeBaseline),
-  ).toBe(true)
-
-  teamTemplateRepo.updateCanonicalMetadata(ctx.db, 'source', {
-    expectedRevision: 2,
-    name: 'diverged',
-  })
-  const diverged = await teamsRouter.request('/g/policy/update-source', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      teamExpectedRevision: 3,
-      templateExpectedRevision: 3,
-      includeAgentIds: [],
-    }),
-  })
-  expect(diverged.status).toBe(409)
-  expect((await diverged.json()) as object).toMatchObject({ code: 'source_diverged' })
-  expect(teamPolicyRepo.get(ctx.db, 'g')?.revision).toBe(3)
+    (await call('/api/teams/team/policy', { method: 'PATCH', body: { mode: 'closed' } })).status,
+  ).toBe(400)
+  expect(
+    (
+      await call('/api/teams/team/policy', {
+        method: 'PATCH',
+        body: { edges: [{ from: a.id, to: 'someone-else' }] },
+      })
+    ).status,
+  ).toBe(400)
+  expect((await call('/api/teams/missing/policy')).status).toBe(404)
 })
 
-test('canonical move and delete update both explicit Teams exactly once through permanent Agent URLs', async () => {
-  const { createProfile, teamPolicyRepo, registerTeam, spawnAgent } = await import(
-    '../../src/core/index.ts'
-  )
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { agentsRouter } = await import('../../src/routes/agents.ts')
-  const { teamsRouter } = await import('../../src/routes/teams.ts')
-  const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, {
-    id: 'p',
-    defaultModel: 'm',
-    communicationDefaults: {
-      userInput: true,
-      userOutput: true,
-      outsideTeamInput: false,
-      outsideTeamOutput: false,
-      peerDefault: 'allow_all',
-    },
-  })
-  registerTeam(ctx.db, { id: 'source' }, ctx.paths)
-  registerTeam(ctx.db, { id: 'destination' }, ctx.paths)
-  const agent = spawnAgent(ctx.db, ctx.paths, {
-    profileId: 'p',
-    teamId: 'source',
-    teamExpectedRevision: 1,
-    placement: 'profile_defaults',
-  })
-
-  const movePreview = await agentsRouter.request(`/${agent.id}/team/preview`, {
+test('spawn, move and delete need no revision; moved Agents leave their edges behind', async () => {
+  const { core, ctx, call } = await setup()
+  core.registerTeam(ctx.db, { id: 'source' }, ctx.paths)
+  core.registerTeam(ctx.db, { id: 'destination' }, ctx.paths)
+  const spawned = await call('/api/agents', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      teamId: 'destination',
-      sourceExpectedRevision: 2,
-      destinationExpectedRevision: 1,
-      placement: 'isolated',
-    }),
+    body: { profileId: 'p', teamId: 'source' },
   })
-  expect(movePreview.status).toBe(200)
-  expect((await movePreview.json()) as object).toMatchObject({
-    source: { currentRevision: 2, resultingRevision: 3, removedEdges: expect.any(Array) },
-    destination: {
-      currentRevision: 1,
-      resultingRevision: 2,
-      existingEdges: [],
-      addedEdges: [],
-    },
+  expect(spawned.status).toBe(201)
+  const { agent } = (await spawned.json()) as { agent: { id: string; dir: string } }
+  const peer = core.spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'source' })
+  core.teamPolicyRepo.update(ctx.db, 'source', {
+    edges: [
+      { from: agent.id, to: peer.id },
+      { from: peer.id, to: 'outside' },
+    ],
   })
 
-  const moved = await agentsRouter.request(`/${agent.id}/team`, {
+  const moved = await call(`/api/agents/${agent.id}/team`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      teamId: 'destination',
-      sourceExpectedRevision: 2,
-      destinationExpectedRevision: 1,
-      placement: 'isolated',
-    }),
+    body: { teamId: 'destination' },
   })
   expect(moved.status).toBe(200)
-  expect(teamPolicyRepo.get(ctx.db, 'source')).toMatchObject({
-    revision: 3,
-  })
-  expect(teamPolicyRepo.get(ctx.db, 'destination')).toMatchObject({
-    revision: 2,
-  })
-  expect(teamPolicyRepo.edges(ctx.db, 'source')).toEqual([])
-  expect(teamPolicyRepo.edges(ctx.db, 'destination')).toEqual([])
+  expect(core.teamPolicyRepo.edges(ctx.db, 'source')).toEqual([{ from: peer.id, to: 'outside' }])
+  expect(core.agentRepo.get(ctx.db, agent.id)?.teamId).toBe('destination')
 
-  const staleDelete = await agentsRouter.request(`/${agent.id}?expectedTeamRevision=1`, {
-    method: 'DELETE',
-  })
-  expect(staleDelete.status).toBe(409)
-  expect(teamPolicyRepo.get(ctx.db, 'destination')?.revision).toBe(2)
-
-  const deleted = await agentsRouter.request(`/${agent.id}?expectedTeamRevision=2`, {
-    method: 'DELETE',
-  })
-  expect(deleted.status).toBe(204)
-  expect(teamPolicyRepo.get(ctx.db, 'destination')).toMatchObject({
-    revision: 3,
-  })
-
-  const deletedGroup = await teamsRouter.request('/destination?expectedTeamPolicyRevision=3', {
-    method: 'DELETE',
-  })
-  expect(deletedGroup.status).toBe(204)
-  expect(teamPolicyRepo.get(ctx.db, 'destination')).toBeNull()
+  expect((await call(`/api/agents/${agent.id}`, { method: 'DELETE' })).status).toBe(204)
+  expect((await call('/api/teams/destination', { method: 'DELETE' })).status).toBe(204)
+  expect(core.teamPolicyRepo.get(ctx.db, 'destination')).toBeNull()
+  expect((await call('/api/teams/source', { method: 'DELETE' })).status).toBe(400)
 })

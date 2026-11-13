@@ -54,7 +54,7 @@ globalThis.fetch = async (input, init) => {
         response: {
           id: 'codex-fixture',
           status: 'completed',
-          ...(prompt === 'Illustration version 6' ? {} : { output: [] }),
+          ...(prompt === 'Illustration version 4' ? {} : { output: [] }),
         },
       },
     ]

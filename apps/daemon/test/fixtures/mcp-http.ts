@@ -18,10 +18,10 @@ export async function mcpHttpFixture() {
   let response: unknown = { content: [{ type: 'text', text: 'hello' }] }
   let status = 200
   let redirect: string | undefined
-  let oversize: { method: string; type: string; status: number } | undefined
   let delayMethod: string | undefined
-  let initializeVersion: string | undefined
   let release: (() => void) | undefined
+  let session = 'fixture-session'
+  let restarts = 0
   const streams = new Set<ServerResponse>()
   const requests: Array<{
     method: string
@@ -29,8 +29,15 @@ export async function mcpHttpFixture() {
     authorization?: string
     session?: string
   }> = []
+  // A restarted server no longer knows the session it handed out before.
+  const unknownSession = (req: IncomingMessage) =>
+    req.headers['mcp-session-id'] !== undefined && req.headers['mcp-session-id'] !== session
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (req.method === 'GET') {
+      if (unknownSession(req)) {
+        res.writeHead(404).end()
+        return
+      }
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.write(': fixture stream\n\n')
       streams.add(res)
@@ -39,10 +46,6 @@ export async function mcpHttpFixture() {
     }
     if (req.method === 'DELETE') {
       requests.push({ method: 'DELETE' })
-      if (delayMethod === 'DELETE')
-        await new Promise<void>((resolve) => {
-          release = resolve
-        })
       res.writeHead(204).end()
       return
     }
@@ -55,6 +58,10 @@ export async function mcpHttpFixture() {
       authorization: req.headers.authorization,
       session: req.headers['mcp-session-id'] as string | undefined,
     })
+    if (unknownSession(req)) {
+      res.writeHead(404).end()
+      return
+    }
     if (msg.method === delayMethod)
       await new Promise<void>((resolve) => {
         release = resolve
@@ -64,26 +71,10 @@ export async function mcpHttpFixture() {
       res.writeHead(202).end()
       return
     }
-    if (oversize && oversize.method === msg.method) {
-      res.writeHead(oversize.status, { 'content-type': oversize.type })
-      res.end(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          id: msg.id,
-          result: {
-            protocolVersion: msg.params?.protocolVersion,
-            capabilities: { tools: {} },
-            serverInfo: { name: 'fixture', version: '1' },
-            padding: 'x'.repeat(9 * 1024 * 1024),
-          },
-        }),
-      )
-      return
-    }
     let result: unknown
     if (msg.method === 'initialize') {
       result = {
-        protocolVersion: initializeVersion ?? msg.params.protocolVersion,
+        protocolVersion: msg.params.protocolVersion,
         capabilities: { tools: { listChanged: true } },
         serverInfo: { name: 'fixture', version: '1' },
       }
@@ -106,7 +97,7 @@ export async function mcpHttpFixture() {
     } else {
       result = {}
     }
-    res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 'fixture-session' })
+    res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': session })
     res.end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }))
   })
   server.listen(0, '127.0.0.1')
@@ -116,9 +107,6 @@ export async function mcpHttpFixture() {
   return {
     url: `http://127.0.0.1:${address.port}/mcp`,
     requests,
-    oversized(method: string, type: string, status: number) {
-      oversize = { method, type, status }
-    },
     setResponse(value: unknown) {
       response = value
     },
@@ -127,9 +115,6 @@ export async function mcpHttpFixture() {
     },
     setRedirect(value: string) {
       redirect = value
-    },
-    initVersion(version: string) {
-      initializeVersion = version
     },
     delay(method: string) {
       delayMethod = method
@@ -148,6 +133,11 @@ export async function mcpHttpFixture() {
     },
     get streamCount() {
       return streams.size
+    },
+    /** Forget the session and drop the open streams, as a restarted server would. */
+    restart() {
+      session = `fixture-session-${++restarts}`
+      for (const stream of streams) stream.destroy()
     },
     async close() {
       release?.()

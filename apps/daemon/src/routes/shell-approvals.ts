@@ -3,11 +3,11 @@ import type {
   CommandApprovalDecisionResponse,
   ListCommandApprovalsResponse,
 } from '@bazilion/api-types'
-import { Hono } from 'hono'
 import { commandApprovalRegistry } from '../lib/bash-approval.ts'
+import { jsonBody, newRouter } from './http.ts'
 
-/** Ephemeral shell-command approvals; intentionally separate from /api/approvals. */
-export const shellApprovalsRouter = new Hono()
+/** Ephemeral shell-command approvals. */
+export const shellApprovalsRouter = newRouter()
 
 shellApprovalsRouter.get('/', (c) => {
   const agentId = c.req.query('agentId')?.trim()
@@ -19,25 +19,13 @@ shellApprovalsRouter.get('/', (c) => {
 })
 
 shellApprovalsRouter.post('/:id', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as CommandApprovalDecisionRequest | null
-  if (!body || (body.decision !== 'allow' && body.decision !== 'deny')) {
+  const body = await jsonBody<CommandApprovalDecisionRequest>(c)
+  const decision = body?.decision
+  if (decision !== 'allow' && decision !== 'deny') {
     return c.json({ error: 'body must be {"decision":"allow"|"deny"}' }, 400)
   }
-
-  const result = commandApprovalRegistry.respond(c.req.param('id'), body.decision)
-  if (result.kind === 'not_found') {
-    return c.json({ error: 'shell approval not found', code: 'shell_approval_not_found' }, 404)
-  }
-  if (result.kind === 'conflict') {
-    return c.json(
-      {
-        error: `shell approval already decided: ${result.approval.status}`,
-        code: 'shell_approval_already_decided',
-      },
-      409,
-    )
-  }
-
-  const response: CommandApprovalDecisionResponse = { approval: result.approval }
+  const approval = commandApprovalRegistry.respond(c.req.param('id'), decision)
+  if (!approval) return c.json({ error: 'no pending shell approval with this id' }, 404)
+  const response: CommandApprovalDecisionResponse = { approval }
   return c.json(response)
 })

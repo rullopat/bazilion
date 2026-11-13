@@ -1,269 +1,200 @@
-import { createServer, type ServerResponse } from 'node:http'
-import { describe, expect, test, vi } from 'vitest'
-import {
-  createWebSearchHost,
-  isWebSearchConfigured,
-  WEB_SEARCH_URL_ENV,
-} from '../../src/lib/web-search.ts'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { expect, test, vi } from 'vitest'
+import { responsesStream } from '../../src/lib/openai-responses.ts'
+import { createWebSearchHost, searchRoute, searchStatus } from '../../src/lib/web-search.ts'
+import { webSearchTool } from '../../src/runtime/tools/web.ts'
+import type { WebSearchOutput } from '../../src/runtime/worker/ipc-protocol.ts'
 
-interface SearxngFixture {
-  url: string
-  queries: string[]
-  respond: (res: ServerResponse, status: number, body: unknown) => void
-  close: () => Promise<void>
-  /** When set, every request is aborted by the client before any response. */
-}
+const brave = { BRAVE_API_KEY: 'brave-key' }
+const searx = { SEARXNG_URL: 'http://127.0.0.1:8888/' }
 
-function startSearxng(handler?: (res: ServerResponse) => void): Promise<SearxngFixture> {
-  const queries: string[] = []
-  const server = createServer((req, res) => {
-    queries.push(new URL(req.url ?? '/', 'http://x').searchParams.get('q') ?? '')
-    if (handler) return handler(res)
-    res.writeHead(200, { 'content-type': 'application/json' })
-    res.end(
-      JSON.stringify({
-        results: [
-          { title: 'First result', url: 'https://example.com/1', content: 'Useful snippet' },
-          { title: 'Second result', url: 'https://example.com/2', content: 'Another snippet' },
-        ],
-      }),
-    )
+test('auto picks Brave, then SearXNG, then the hosted search of an OpenAI or ChatGPT model', () => {
+  expect(searchRoute({ ...brave, ...searx }, 'lmstudio:m', false)).toEqual({ backend: 'brave' })
+  expect(searchRoute(searx, 'openai:gpt-5', false)).toEqual({ backend: 'searxng' })
+  expect(searchRoute({ OPENAI_API_KEY: 'sk' }, 'openai:gpt-5', false)).toEqual({
+    backend: 'openai',
   })
-  return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
-      const addr = server.address()
-      if (!addr || typeof addr === 'string') throw new Error('no address')
-      resolve({
-        url: `http://127.0.0.1:${addr.port}`,
-        queries,
-        respond: (res, status, body) => {
-          res.writeHead(status, { 'content-type': 'application/json' })
-          res.end(JSON.stringify(body))
-        },
-        close: () => new Promise((r) => server.close(() => r())),
-      })
-    })
+  expect(searchRoute({}, 'openai-codex:gpt-6-astra', true)).toEqual({ backend: 'openai-codex' })
+  expect(searchRoute({}, 'lmstudio:m', true).backend).toBeNull()
+  expect(searchRoute({ ...brave, BAZILION_WEB_SEARCH_ROUTE: 'off' }, 'lmstudio:m', false)).toEqual({
+    backend: null,
+    reason: 'Web search is off.',
   })
-}
-
-const env = (over: Record<string, string>) => ({ [WEB_SEARCH_URL_ENV]: over[WEB_SEARCH_URL_ENV] })
-
-describe('BAZ-067 web search host', () => {
-  test('is unconfigured without a URL and rejects invalid URLs', () => {
-    expect(isWebSearchConfigured({})).toBe(false)
-    expect(isWebSearchConfigured(env({ [WEB_SEARCH_URL_ENV]: ' ' }))).toBe(false)
-    expect(isWebSearchConfigured(env({ [WEB_SEARCH_URL_ENV]: 'not a url' }))).toBe(false)
-    // Plain http is only allowed for loopback.
-    expect(isWebSearchConfigured(env({ [WEB_SEARCH_URL_ENV]: 'http://searx.example.com' }))).toBe(
+  expect(searchRoute({ BAZILION_WEB_SEARCH_ROUTE: 'searxng' }, 'm:m', false).backend).toBeNull()
+  expect(
+    searchRoute(
+      { ...brave, OPENAI_API_KEY: 'sk', BAZILION_WEB_SEARCH_ROUTE: 'native' },
+      'openai:x',
       false,
+    ),
+  ).toEqual({ backend: 'openai' })
+  expect(searchStatus(brave)).toBe('Web search uses brave.')
+  expect(searchStatus({})).toContain('OpenAI or ChatGPT')
+})
+
+test('Brave and SearXNG results come back as readable links', async () => {
+  const fetcher = vi.fn<typeof fetch>(async (url) =>
+    String(url).startsWith('https://api.search.brave.com')
+      ? Response.json({
+          web: { results: [{ title: 'NASA', url: 'https://nasa.gov', description: 'Space' }] },
+        })
+      : Response.json({
+          results: [{ title: 'Docs', url: 'https://example.com', content: 'Text' }],
+        }),
+  )
+  const host = (backend: 'brave' | 'searxng') =>
+    createWebSearchHost({
+      backend,
+      env: () => ({ ...brave, ...searx }),
+      model: 'lmstudio:m',
+      codexToken: async () => '',
+      signal: new AbortController().signal,
+      fetch: fetcher,
+    })
+  expect(await host('brave').search({ query: 'artemis', count: 3 })).toEqual({
+    backend: 'brave',
+    results: [{ title: 'NASA', url: 'https://nasa.gov', snippet: 'Space' }],
+  })
+  const [braveUrl, braveInit] = fetcher.mock.calls[0] ?? []
+  expect(String(braveUrl)).toBe('https://api.search.brave.com/res/v1/web/search?q=artemis&count=3')
+  expect(new Headers(braveInit?.headers).get('x-subscription-token')).toBe('brave-key')
+  const searxng = await host('searxng').search({ query: 'docs' })
+  expect(String(fetcher.mock.calls[1]?.[0])).toBe('http://127.0.0.1:8888/search?q=docs&format=json')
+  const text = await webSearchTool({ search: async () => searxng }).invoke({ query: 'docs' })
+  expect(text).toBe('Results (searxng):\n1. Docs\n   https://example.com\n   Text')
+  await expect(host('brave').search({ query: '' })).rejects.toThrow('1–512')
+})
+
+test('hosted search returns the model’s answer and its cited sources', async () => {
+  const answer = {
+    type: 'message',
+    role: 'assistant',
+    content: [
+      {
+        type: 'output_text',
+        text: 'Artemis II flies four astronauts around the Moon.',
+        annotations: [
+          { type: 'url_citation', title: 'NASA', url: 'https://www.nasa.gov/artemis-ii/' },
+          { type: 'url_citation', title: 'NASA', url: 'https://www.nasa.gov/artemis-ii/' },
+        ],
+      },
+    ],
+  }
+  const stream = (completedOutput: unknown[]) =>
+    new Response(
+      [
+        { type: 'response.output_item.done', output_index: 0, item: answer },
+        { type: 'response.completed', response: { output: completedOutput } },
+      ]
+        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+        .join(''),
     )
-    expect(isWebSearchConfigured(env({ [WEB_SEARCH_URL_ENV]: 'https://searx.example.com' }))).toBe(
-      true,
+  const fetcher = vi.fn<typeof fetch>(async () => stream([answer]))
+  const host = (backend: 'openai' | 'openai-codex') =>
+    createWebSearchHost({
+      backend,
+      env: () => ({ OPENAI_API_KEY: 'sk-search' }),
+      model: `${backend}:gpt-6-astra`,
+      codexToken: async () => 'codex-token',
+      signal: new AbortController().signal,
+      fetch: fetcher,
+    })
+  const output = await host('openai').search({ query: 'Artemis II' })
+  expect(output).toEqual({
+    backend: 'openai',
+    answer: 'Artemis II flies four astronauts around the Moon.',
+    results: [{ title: 'NASA', url: 'https://www.nasa.gov/artemis-ii/', snippet: '' }],
+  } satisfies WebSearchOutput)
+  const [url, init] = fetcher.mock.calls[0] ?? []
+  expect(url).toBe('https://api.openai.com/v1/responses')
+  expect(new Headers(init?.headers).get('authorization')).toBe('Bearer sk-search')
+  expect(JSON.parse(String(init?.body))).toMatchObject({
+    model: 'gpt-6-astra',
+    tools: [{ type: 'web_search' }],
+  })
+  // The ChatGPT backend may end with an empty output; the streamed items are the answer then.
+  fetcher.mockResolvedValueOnce(stream([]))
+  expect((await host('openai-codex').search({ query: 'Artemis II' })).answer).toContain('Artemis')
+  expect(String(fetcher.mock.calls[1]?.[0])).toBe('https://chatgpt.com/backend-api/codex/responses')
+  // Searches run side by side.
+  const both = await Promise.all([
+    host('openai').search({ query: 'a' }),
+    host('openai').search({ query: 'b' }),
+  ])
+  expect(both).toHaveLength(2)
+  const text = await webSearchTool({ search: async () => output }).invoke({ query: 'x' })
+  expect(text).toContain('Answer (openai search):')
+  expect(text).toContain('Sources:\n1. NASA\n   https://www.nasa.gov/artemis-ii/')
+})
+
+test('a backend error carries the provider’s own status and message', async () => {
+  const host = createWebSearchHost({
+    backend: 'openai',
+    env: () => ({ OPENAI_API_KEY: 'sk' }),
+    model: 'openai:gpt-6-astra',
+    codexToken: async () => '',
+    signal: new AbortController().signal,
+    fetch: async () =>
+      new Response('{"error":{"message":"Hosted search is not enabled for this model"}}', {
+        status: 400,
+      }),
+  })
+  await expect(host.search({ query: 'x' })).rejects.toThrow(
+    /web_search \(openai\): HTTP 400: .*not enabled for this model/,
+  )
+})
+
+async function localServer(
+  handler: (request: IncomingMessage, response: ServerResponse) => void,
+): Promise<{ url: string; hits: () => number; close: () => Promise<void> }> {
+  let hits = 0
+  const server = createServer((request, response) => {
+    hits++
+    handler(request, response)
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address() as AddressInfo
+  return {
+    url: `http://127.0.0.1:${port}`,
+    hits: () => hits,
+    close: () => new Promise((resolve) => server.close(() => resolve())),
+  }
+}
+
+test('credentialed backend requests never follow a redirect, and oversized bodies are refused', async () => {
+  const destination = await localServer((_request, response) => response.end('{}'))
+  const redirecting = await localServer((_request, response) => {
+    response.writeHead(302, { location: `${destination.url}/search` }).end()
+  })
+  const oversized = await localServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(`{"results":"${'x'.repeat(2 * 1024 * 1024)}"}`)
+  })
+  const searxng = (url: string) =>
+    createWebSearchHost({
+      backend: 'searxng',
+      env: () => ({ SEARXNG_URL: url }),
+      model: 'lmstudio:m',
+      codexToken: async () => '',
+      signal: new AbortController().signal,
+    })
+  try {
+    await expect(searxng(redirecting.url).search({ query: 'x' })).rejects.toThrow('web_search')
+    await expect(
+      responsesStream(
+        redirecting.url,
+        { authorization: 'Bearer sk-secret' },
+        {},
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow()
+    expect(redirecting.hits()).toBe(2)
+    expect(destination.hits()).toBe(0)
+    await expect(searxng(oversized.url).search({ query: 'x' })).rejects.toThrow(
+      'larger than 2097152 bytes',
     )
-    expect(isWebSearchConfigured(env({ [WEB_SEARCH_URL_ENV]: 'http://127.0.0.1:8888' }))).toBe(true)
-    expect(isWebSearchConfigured(env({ [WEB_SEARCH_URL_ENV]: 'http://localhost:8888' }))).toBe(true)
-  })
-
-  test('credentialed query-bearing and fragmented backend URLs are refused before dispatch', async () => {
-    const fetcher = vi.spyOn(globalThis, 'fetch')
-    try {
-      for (const url of [
-        'https://user:password@search.example/',
-        'https://search.example/?tenant=x',
-        'https://search.example/#fixture',
-      ]) {
-        const config = env({ [WEB_SEARCH_URL_ENV]: url })
-        expect(isWebSearchConfigured(config)).toBe(false)
-        await expect(
-          createWebSearchHost({ env: () => config }).search({ query: 'synthetic' }),
-        ).rejects.toThrow(/No web search backend/)
-      }
-      expect(fetcher).not.toHaveBeenCalled()
-    } finally {
-      fetcher.mockRestore()
-    }
-  })
-
-  test('returns bounded results from the configured backend', async () => {
-    const fixture = await startSearxng()
-    const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-    const output = await host.search({ query: 'orchid care', count: 2 })
-    expect(output.backend).toBe('searxng')
-    expect(output.results).toHaveLength(2)
-    expect(output.results[0]).toEqual({
-      title: 'First result',
-      url: 'https://example.com/1',
-      snippet: 'Useful snippet',
-    })
-    expect(fixture.queries[0]).toBe('orchid care')
-    await fixture.close()
-  })
-
-  test('caps oversized queries, counts and fields', async () => {
-    const fixture = await startSearxng()
-    const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-    const huge = 'x'.repeat(10_000)
-    const output = await host.search({ query: huge, count: 999 })
-    expect(output.results.length).toBeLessThanOrEqual(8)
-    for (const r of output.results) {
-      expect(r.title.length).toBeLessThanOrEqual(200)
-      expect(r.url.length).toBeLessThanOrEqual(2048)
-      expect(r.snippet.length).toBeLessThanOrEqual(300)
-    }
-    const sent = fixture.queries[0] ?? ''
-    expect(sent.length).toBeLessThanOrEqual(512)
-    await fixture.close()
-  })
-
-  test('names the operator action when unconfigured, even mid-turn', async () => {
-    const fixture = await startSearxng()
-    let url: string | null = fixture.url
-    const host = createWebSearchHost({ env: () => (url ? env({ [WEB_SEARCH_URL_ENV]: url }) : {}) })
-    await expect(host.search({ query: 'x' })).resolves.toBeTruthy()
-    // Configuration drift: the operator unsets the backend mid-turn.
-    url = null
-    await expect(host.search({ query: 'x' })).rejects.toThrow(/No web search backend is configured/)
-    await fixture.close()
-  })
-
-  test('reports backend failures without echoing the URL or response body', async () => {
-    const fixture = await startSearxng((res) => {
-      res.writeHead(503).end('secret backend details')
-    })
-    const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-    await expect(host.search({ query: 'x' })).rejects.toThrow(/status 503/)
-    await expect(host.search({ query: 'x' })).rejects.not.toThrow(/secret/)
-    await fixture.close()
-  })
-
-  test('rejects malformed and non-array backend responses', async () => {
-    for (const body of [null, { results: 'nope' }, 'not json']) {
-      const fixture = await startSearxng((res) => {
-        res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(typeof body === 'string' ? body : JSON.stringify(body))
-      })
-      const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-      await expect(host.search({ query: 'x' })).rejects.toThrow(/invalid response/)
-      await fixture.close()
-    }
-  })
-
-  test('one request per invocation, no internal retry; unreachable backend reports cleanly', async () => {
-    const fixture = await startSearxng()
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-    const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-    await host.search({ query: 'once' })
-    expect(fixture.queries).toHaveLength(1)
-    fetchSpy.mockRestore()
-
-    const dead = await startSearxng()
-    await dead.close()
-    const deadHost = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: dead.url }) })
-    await expect(deadHost.search({ query: 'x' })).rejects.toThrow(/unreachable/)
-    expect(dead.queries).toHaveLength(0)
-  })
-
-  test('backend redirects are refused without contacting their destination', async () => {
-    const destination = await startSearxng()
-    const fixture = await startSearxng((res) =>
-      res.writeHead(302, { location: `${destination.url}/search` }).end(),
-    )
-    try {
-      const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-      await expect(host.search({ query: 'synthetic redirect' })).rejects.toThrow(/status 302/)
-      expect(fixture.queries).toHaveLength(1)
-      expect(destination.queries).toHaveLength(0)
-    } finally {
-      await fixture.close()
-      await destination.close()
-    }
-  })
-
-  test('oversized streamed backend bodies are refused before JSON parsing', async () => {
-    const fixture = await startSearxng((res) => {
-      res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(`{"results":[]}${' '.repeat(2 * 1024 * 1024)}`)
-    })
-    try {
-      const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-      await expect(host.search({ query: 'synthetic bound' })).rejects.toThrow(
-        /^Web search backend response exceeded limit$/,
-      )
-      expect(fixture.queries).toHaveLength(1)
-    } finally {
-      await fixture.close()
-    }
-  })
-
-  test('cancellation during backend body reading remains a closed cancellation', async () => {
-    const fixture = await startSearxng((res) => {
-      res.writeHead(200)
-      res.write('{"results":[')
-    })
-    const controller = new AbortController()
-    const originalFetch = globalThis.fetch
-    let headersReady: () => void = () => {}
-    const ready = new Promise<void>((resolve) => {
-      headersReady = resolve
-    })
-    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (...args) => {
-      const response = await originalFetch(...args)
-      headersReady()
-      return response
-    })
-    try {
-      const host = createWebSearchHost({
-        env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }),
-        signal: controller.signal,
-      })
-      const result = expect(host.search({ query: 'synthetic cancellation' })).rejects.toThrow(
-        /^Web search was cancelled$/,
-      )
-      await ready
-      await new Promise((resolve) => setTimeout(resolve, 10))
-      controller.abort()
-      await result
-      expect(fixture.queries).toHaveLength(1)
-    } finally {
-      controller.abort()
-      spy.mockRestore()
-      await fixture.close()
-    }
-  })
-
-  test('invalid backend result entries fail with closed diagnostics', async () => {
-    const fixture = await startSearxng((res) => res.end(JSON.stringify({ results: [null] })))
-    try {
-      const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-      await expect(host.search({ query: 'synthetic null row' })).rejects.toThrow(
-        /^Web search backend returned an invalid response$/,
-      )
-    } finally {
-      await fixture.close()
-    }
-  })
-
-  test('nonfinite and fractional search counts are refused before dispatch', async () => {
-    const fetcher = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () => Response.json({ results: [] }))
-    try {
-      const host = createWebSearchHost({
-        env: () => env({ [WEB_SEARCH_URL_ENV]: 'https://search.example/' }),
-      })
-      for (const count of [NaN, Infinity, 1.5])
-        await expect(host.search({ query: 'synthetic', count })).rejects.toThrow(/count/)
-      expect(fetcher).not.toHaveBeenCalled()
-    } finally {
-      fetcher.mockRestore()
-    }
-  })
-
-  test('an empty query is refused before any backend contact', async () => {
-    const fixture = await startSearxng()
-    const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
-    await expect(host.search({ query: '   ' })).rejects.toThrow(/non-empty query/)
-    expect(fixture.queries).toHaveLength(0)
-    await fixture.close()
-  })
+  } finally {
+    await Promise.all([destination.close(), redirecting.close(), oversized.close()])
+  }
 })

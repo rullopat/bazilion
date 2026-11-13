@@ -13,9 +13,6 @@ interface RawReview {
   input_characters: number
   turns_reviewed: number
   proposal_count: number
-  attempt_count: number
-  next_attempt_at: number
-  lease_expires_at: number | null
   started_at: number | null
   finished_at: number | null
   last_error: string | null
@@ -35,9 +32,6 @@ function toReview(row: RawReview): AgentReview {
     inputCharacters: row.input_characters,
     turnsReviewed: row.turns_reviewed,
     proposalCount: row.proposal_count,
-    attemptCount: row.attempt_count,
-    nextAttemptAt: row.next_attempt_at,
-    leaseExpiresAt: row.lease_expires_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     lastError: row.last_error,
@@ -56,9 +50,9 @@ function insert(
   db.raw.run(
     `INSERT INTO agent_reviews
        (id, agent_id, status, trigger_kind, input_characters, turns_reviewed,
-        proposal_count, attempt_count, next_attempt_at, created_at, updated_at)
-     VALUES (?, ?, 'pending', ?, 0, 0, 0, 0, ?, ?, ?)`,
-    [id, agentId, trigger, now, now, now],
+        proposal_count, created_at, updated_at)
+     VALUES (?, ?, 'pending', ?, 0, 0, 0, ?, ?)`,
+    [id, agentId, trigger, now, now],
   )
   const review = get(db, id)
   if (!review) throw new Error('agent review enqueue failed')
@@ -70,11 +64,11 @@ export function get(db: BazilionDb, id: string): AgentReview | null {
   return row ? toReview(row) : null
 }
 
-export function getOpenForAgent(db: BazilionDb, agentId: string): AgentReview | null {
+function getOpenForAgent(db: BazilionDb, agentId: string): AgentReview | null {
   const row = db.raw
     .query<RawReview, [string]>(
       `SELECT * FROM agent_reviews WHERE agent_id = ?
-       AND status IN ('pending','running','retrying') LIMIT 1`,
+       AND status IN ('pending','running') LIMIT 1`,
     )
     .get(agentId)
   return row ? toReview(row) : null
@@ -113,46 +107,35 @@ export function recordSuccessfulUserTurn(
   })()
 }
 
-export function listClaimable(db: BazilionDb, now = Date.now()): AgentReview[] {
+export function listPending(db: BazilionDb): AgentReview[] {
   return db.raw
-    .query<RawReview, [number, number]>(
-      `SELECT * FROM agent_reviews
-       WHERE (status IN ('pending','retrying') AND next_attempt_at <= ?)
-          OR (status = 'running' AND lease_expires_at <= ?)
-       ORDER BY created_at ASC`,
+    .query<RawReview, []>(
+      `SELECT * FROM agent_reviews WHERE status = 'pending' ORDER BY created_at ASC`,
     )
-    .all(now, now)
+    .all()
     .map(toReview)
 }
 
-export function claim(
-  db: BazilionDb,
-  id: string,
-  options: { now?: number; leaseMs?: number } = {},
-): AgentReview | null {
-  const now = options.now ?? Date.now()
-  const leaseExpiresAt = now + (options.leaseMs ?? 5 * 60_000)
+/** Take a pending review for this daemon's dispatcher; it runs once, until it finishes. */
+export function claim(db: BazilionDb, id: string, now = Date.now()): AgentReview | null {
   return db.raw.transaction(() => {
     const result = db.raw.run(
-      `UPDATE agent_reviews SET status = 'running', attempt_count = attempt_count + 1,
-       lease_expires_at = ?, started_at = ?, finished_at = NULL, updated_at = ?
-       WHERE id = ? AND (
-         (status IN ('pending','retrying') AND next_attempt_at <= ?)
-         OR (status = 'running' AND lease_expires_at <= ?)
-       )`,
-      [leaseExpiresAt, now, now, id, now, now],
+      `UPDATE agent_reviews SET status = 'running', started_at = ?, updated_at = ?
+       WHERE id = ? AND status = 'pending'`,
+      [now, now, id],
     )
     return Number(result.changes) === 1 ? get(db, id) : null
   })()
 }
 
-export function defer(db: BazilionDb, id: string, nextAttemptAt = Date.now() + 1_000): void {
+export const INTERRUPTED = 'interrupted: the daemon stopped during this review'
+
+/** Boot sweep: a review still marked running was interrupted by a daemon stop. */
+export function failInterrupted(db: BazilionDb, now = Date.now()): void {
   db.raw.run(
-    `UPDATE agent_reviews SET status = 'pending',
-     attempt_count = CASE WHEN attempt_count > 0 THEN attempt_count - 1 ELSE 0 END,
-     next_attempt_at = ?, lease_expires_at = NULL, started_at = NULL, updated_at = ?
-     WHERE id = ? AND status = 'running'`,
-    [nextAttemptAt, Date.now(), id],
+    `UPDATE agent_reviews SET status = 'failed', finished_at = ?, last_error = ?, updated_at = ?
+     WHERE status = 'running'`,
+    [now, INTERRUPTED, now],
   )
 }
 
@@ -200,42 +183,26 @@ export function complete(
   now = Date.now(),
 ): void {
   db.raw.run(
-    `UPDATE agent_reviews SET status = 'completed', proposal_count = ?, lease_expires_at = NULL,
-     finished_at = ?, last_error = NULL, updated_at = ? WHERE id = ? AND status = 'running'`,
+    `UPDATE agent_reviews SET status = 'completed', proposal_count = ?, finished_at = ?,
+     last_error = NULL, updated_at = ? WHERE id = ? AND status = 'running'`,
     [proposalCount, now, now, id],
   )
 }
 
 export function cancel(db: BazilionDb, id: string, reason: string, now = Date.now()): void {
   db.raw.run(
-    `UPDATE agent_reviews SET status = 'cancelled', lease_expires_at = NULL, finished_at = ?,
-     last_error = ?, updated_at = ? WHERE id = ? AND status IN ('pending','running','retrying')`,
+    `UPDATE agent_reviews SET status = 'cancelled', finished_at = ?, last_error = ?,
+     updated_at = ? WHERE id = ? AND status IN ('pending','running')`,
     [now, reason.slice(0, 2_000), now, id],
   )
 }
 
-export function fail(
-  db: BazilionDb,
-  id: string,
-  error: string,
-  options: { now?: number; maxAttempts?: number; retryDelayMs?: number } = {},
-): void {
-  const now = options.now ?? Date.now()
-  const current = get(db, id)
-  if (current?.status !== 'running') return
-  const terminal = current.attemptCount >= (options.maxAttempts ?? 3)
-  const retryDelay = (options.retryDelayMs ?? 5_000) * 2 ** Math.max(0, current.attemptCount - 1)
+/** A failed review is not retried; the next one is due at the Agent's cadence or on request. */
+export function fail(db: BazilionDb, id: string, error: string, now = Date.now()): void {
   db.raw.run(
-    `UPDATE agent_reviews SET status = ?, next_attempt_at = ?, lease_expires_at = NULL,
-     finished_at = ?, last_error = ?, updated_at = ? WHERE id = ? AND status = 'running'`,
-    [
-      terminal ? 'failed' : 'retrying',
-      terminal ? now : now + retryDelay,
-      terminal ? now : null,
-      error.slice(0, 2_000),
-      now,
-      id,
-    ],
+    `UPDATE agent_reviews SET status = 'failed', finished_at = ?, last_error = ?, updated_at = ?
+     WHERE id = ? AND status = 'running'`,
+    [now, error.slice(0, 2_000), now, id],
   )
 }
 

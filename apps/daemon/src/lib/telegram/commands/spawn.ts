@@ -10,7 +10,7 @@
 //                                  auto-name as `<profile-id>-<N>`.
 //
 // Any typed form may end with ` in <team-slug>` to target a non-default
-// team (Phase 6). The keyboard flow stays default-only by design.
+// team. The keyboard flow always spawns into the default team.
 
 import type { Profile } from '@bazilion/api-types'
 import type { InlineKeyboardMarkup } from 'grammy/types'
@@ -34,7 +34,7 @@ export const handle: CommandHandler = async (ctx) => {
   // Form 1: no args → keyboard picker.
   if (!args) return renderProfilePicker(ctx)
 
-  // Pull an optional trailing ` in <team-slug>` (Phase 6 cross-team spawn).
+  // Pull an optional trailing ` in <team-slug>`.
   let teamSlug: string | null = null
   const inMatch = args.match(/\s+in\s+(\S+)$/i)
   if (inMatch) {

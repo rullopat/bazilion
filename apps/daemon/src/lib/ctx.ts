@@ -1,34 +1,20 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import {
+  agentReviewRepo,
   type BazilionDb,
+  initSchema,
   openDb,
   type Paths,
   readAuthFile,
-  refreshDefaultProfileTemplates,
   resolvePaths,
-  runMigrations,
+  triggerDispatchRepo,
   webTokenRepo,
 } from '../core/index.ts'
-import { interruptCodingCommands } from '../core/repos/coding-commands.ts'
-import { recoverInterrupted as recoverInterruptedNotifications } from '../core/repos/notifications.ts'
-import { recoverExpiredPublications } from '../core/repos/publications.ts'
-import { recoverInterrupted as recoverInterruptedQuestions } from '../core/repos/questions.ts'
-import { recoverInterruptedReviewAttempts } from '../core/repos/review-packets.ts'
-import {
-  reconcileApprovalHolds,
-  recoverInterrupted as recoverInterruptedQueue,
-} from '../core/repos/user-queue.ts'
-import { recoverInterruptedVerificationAttempts } from '../core/repos/verification-requests.ts'
-import { reconcilePrivateResults, recoverInterruptedResultDeliveries } from './result-retention.ts'
-import { startScheduler } from './scheduler.ts'
-import { assertTeamPolicyEnforcementReleaseReady } from './team-policy-contract.ts'
-import { VERIFICATION_DISPATCH_OWNER } from './verification/admission.ts'
+import { recoverInterrupted as recoverInterruptedQueue } from '../core/repos/user-queue.ts'
 
 let _db: BazilionDb | null = null
 let _paths: Paths | null = null
 let _authToken: string | null = null
-let _schedulerStarted = false
 
 export const INCOMPATIBLE_BOOTSTRAP_IDENTITY_MESSAGE =
   'Bazilion cannot start because auth.json does not match an active bootstrap credential in ' +
@@ -36,7 +22,7 @@ export const INCOMPATIBLE_BOOTSTRAP_IDENTITY_MESSAGE =
   'keeping bazilion.db and auth.json together. Then perform the reset with ' +
   '`bazilion uninstall --yes` (from the repository root of a source checkout: ' +
   '`pnpm tsx apps/cli/src/index.ts uninstall --yes`) and start Bazilion again. ' +
-  'Use `--all` only if you also want to remove logs and installed skills.'
+  'Use `--all` only if you also want to remove installed skills.'
 
 export class IncompatibleBootstrapIdentityError extends Error {
   constructor() {
@@ -63,7 +49,8 @@ export interface DaemonCtx {
  * plaintext into auth.json only when neither half of that identity exists.
  */
 function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
-  mkdirSync(paths.home, { recursive: true })
+  // Transcripts, token hashes and the encrypted secrets are the owner's alone.
+  mkdirSync(paths.home, { recursive: true, mode: 0o700 })
 
   // auth.json is both the plaintext bootstrap credential and the PBKDF2 seed
   // for encrypted DB rows. Treat it and bazilion.db as an inseparable pair:
@@ -76,31 +63,19 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
     throw new IncompatibleBootstrapIdentityError()
   }
 
-  for (const d of [
-    paths.profilesDir,
-    paths.agentsDir,
-    paths.skillsDir,
-    paths.teamsDir,
-    paths.logsDir,
-  ]) {
+  for (const d of [paths.profilesDir, paths.agentsDir, paths.skillsDir, paths.teamsDir]) {
     mkdirSync(d, { recursive: true })
   }
 
   const db = openDb(paths.db)
+  // SQLite gives the -wal and -shm files the database file's mode.
+  if (!databaseExists) chmodSync(paths.db, 0o600)
   try {
-    runMigrations(db, {
-      // Before the first forward migration of an existing home, preserve the
-      // pre-upgrade state beside the database. A failed migration then leaves
-      // a restorable copy instead of a half-migrated home.
-      preMigrationSnapshotPath: join(
-        dirname(paths.db),
-        `bazilion.pre-migration-${new Date().toISOString().replace(/[-:T]/g, '').replace(/\..*/, '')}.db`,
-      ),
-    })
+    initSchema(db)
 
     // When both artifacts existed at entry, validate the plaintext credential
-    // against the active bootstrap row before refreshing templates or starting
-    // any background service. The lookup is read-only and never records use.
+    // against the active bootstrap row before touching anything else. The
+    // lookup is read-only and never records use.
     let existingAuthToken: string | null = null
     if (authFileExists) {
       try {
@@ -114,42 +89,18 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
       }
     }
 
+    // Work a daemon stop cut short fails and is not run again: a trigger run, a learning review,
+    // a follow-up (whose queue is paused).
+    triggerDispatchRepo.failInterrupted(db)
+    agentReviewRepo.failInterrupted(db)
     recoverInterruptedQueue(db)
-    recoverInterruptedQuestions(db)
-    recoverInterruptedNotifications(db)
-    interruptCodingCommands(db)
-    // BAZ-044: a verification attempt left open by another process is settled as uncertain here, so a
-    // restart never leaves a request claimed-but-unrunnable (the one-open-attempt index would block it).
-    recoverInterruptedVerificationAttempts(db, VERIFICATION_DISPATCH_OWNER)
-    // BAZ-043: the same rule for a packet's reviewer turn — an interrupted attempt becomes uncertain and
-    // is never replayed, and the packet returns to `open` for an explicit decision.
-    recoverInterruptedReviewAttempts(db, Date.now())
-    // BAZ-046: an interrupted publication becomes `uncertain` rather than failed, because a push that was
-    // already in flight may have landed. Nothing here retries it: the operator checks the host first.
-    recoverExpiredPublications(db)
-    reconcileApprovalHolds(db)
-    recoverInterruptedResultDeliveries(db)
-    reconcilePrivateResults(db)
-
-    // The `default` profile is bazilion-managed — keep its on-disk
-    // template files in sync with the shipped defaults on every boot. Custom
-    // profiles are never touched. No-op on fresh installs (seedDefaults writes
-    // the current templates when the profile is first created).
-    const refreshed = refreshDefaultProfileTemplates(paths)
-    if (refreshed.length) {
-      console.log(`bazilion: refreshed default profile templates — [${refreshed.join(', ')}]`)
-    }
 
     if (existingAuthToken === null) {
       const created = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
       writeFileSync(paths.authFile, `${JSON.stringify({ token: created.token }, null, 2)}\n`, {
         mode: 0o600,
       })
-      try {
-        chmodSync(paths.authFile, 0o600)
-      } catch {
-        // Windows: chmod is a no-op
-      }
+      chmodSync(paths.authFile, 0o600)
       console.log(`bazilion auto-bootstrapped at ${paths.home}`)
       console.log(`bootstrap token written to ${paths.authFile}`)
       return { db, authToken: created.token }
@@ -169,14 +120,9 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
 export function getCtx(): DaemonCtx {
   if (!_paths) _paths = resolvePaths()
   if (!_db || _authToken === null) {
-    assertTeamPolicyEnforcementReleaseReady()
     const result = bootstrap(_paths)
     _db = result.db
     _authToken = result.authToken
-  }
-  if (!_schedulerStarted && process.env.BAZILION_SCHEDULER !== 'off') {
-    _schedulerStarted = true
-    startScheduler()
   }
   return { db: _db, paths: _paths, authToken: _authToken }
 }

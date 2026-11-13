@@ -1,35 +1,33 @@
-# Product documentation
+# Documentation
 
-## Architecture and boundaries
+Start with the [README](../README.md): install, first run and the CLI.
 
-- [Architecture](architecture.md) — processes, state ownership, admission and communication
-- [Agent engine](agent-engine.md) — turn execution, IPC, sessions and cancellation
-- [Embedded Pi](pi-runtime.md) — SDK configuration and daemon-owned integration
-- [Agent files](agent-files.md) — canonical storage surfaces
-- [Team Policy](harness-policy-handoff.md) — roster, directed communication and approvals
-- [Domain decisions](adr/0001-production-harness-domain.md) and [federation scope](adr/0002-defer-a2a-federation.md)
+## How it works
 
-## Operating Bazilion
+- [Architecture](architecture.md): processes, state on disk, authentication and secrets
+- [Agent engine](agent-engine.md): how a turn runs, the worker, tools, Pi and the scheduler
 
-- [Quickstart and CLI](../README.md)
-- [Upgrades and preservation](upgrades.md)
-- [Growth and retention](growth-and-retention.md)
-- [Private gateway](private-gateway.md)
-- [Security boundaries and acceptance command](security-acceptance.md)
-- [Releases and support limits](releases.md)
+## Running Bazilion
 
-## Agent capabilities
+- [Private gateway](private-gateway.md): reach the web UI from other devices over Tailscale
+- [Backup, restore and reset](backup.md)
+- [Upgrades](upgrades.md)
+- [What grows in a home](growth-and-retention.md)
 
-- [Conversations](conversations.md), [follow-up queue](follow-up-queue.md), [questions](questions.md)
-- [Attention](attention-notifications.md) and [Telegram](telegram.md)
-- [Results and private images](results.md), [image generation](image-generation.md)
-- [Web research](web-research.md), [managed browsers](browser-research.md), [MCP](mcp.md)
-- [Repository context](repository-context.md), [coding environments](coding-environments.md)
-- [Coding evidence](coding-evidence.md), [workspace recovery](workspace-recovery.md)
-- [Operator-controlled publication](publication.md)
+## Working with Agents
+
+- [Conversations](conversations.md), the [follow-up queue](follow-up-queue.md) and
+  [questions](questions.md)
+- [Reviewed learning](backlog/done/BAZ-003-reviewed-learning.md): lessons an Agent proposes from
+  its conversations, used only after you approve them
+- [Team Policy and Team templates](team-policy.md)
+- [Coding](coding-environments.md): shell, Docker sandbox, repository instructions
+- [Change review and live tool output](change-review.md)
+- [Results](results.md) and [image generation](image-generation.md)
+- [Web research](web-research.md), the [managed browser](browser-research.md) and [MCP](mcp.md)
+- [Telegram](telegram.md) and [Attention notifications](attention-notifications.md)
 
 ## Product work
 
-[User stories](backlog/README.md) contain scope, acceptance criteria, unresolved work and As-built
-summaries. The [content-Team example](../examples/content-team/README.md) is an experimental recipe,
-not a qualified live/human journey. [Telegram future stories](telegram-v2.md) are uncommitted scope.
+[User stories](backlog/README.md) record what each shipped feature does and what it leaves out.
+[`examples/`](../examples/) holds a sample content Team and a Docker image for coding.

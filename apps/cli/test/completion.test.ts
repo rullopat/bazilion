@@ -21,7 +21,7 @@ test('completion bash prints a sourceable function + complete directive', async 
   expect(res.stdout).toContain('"agent")')
   expect(res.stdout).toContain('"agent chat")')
   expect(res.stdout).toContain('"team-template import")')
-  expect(res.stdout).toContain('"team policy blocks")')
+  expect(res.stdout).toContain('"team policy mode")')
   // Flag enumeration (at least one known flag)
   expect(res.stdout).toContain('--profile')
 })

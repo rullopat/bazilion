@@ -1,8 +1,13 @@
 import type { AgentLessonProposal } from '@bazilion/api-types'
+import { DomainError } from '../core/errors.ts'
 import { agentLessonProposalRepo, type BazilionDb } from '../core/index.ts'
 import type { MemoryBackend } from '../runtime/memory/types.ts'
 
-export class LessonProposalConflictError extends Error {}
+class LessonProposalConflictError extends DomainError {
+  constructor(message: string) {
+    super(409, message)
+  }
+}
 
 function conflict(): never {
   throw new LessonProposalConflictError('proposal changed or is no longer eligible')

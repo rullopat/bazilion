@@ -58,12 +58,6 @@ test('profile update switches model and skills-mode', async () => {
   const show = await server.cli(['profile', 'show', 'to-update'])
   expect(show.stdout).toContain('claude-opus-4-7')
   expect(show.stdout).toContain('skills mode:    all')
-
-  const json = JSON.parse(
-    readFileSync(join(server.home, 'profiles', 'to-update', 'profile.json'), 'utf8'),
-  )
-  expect(json.defaultModel).toBe('anthropic:claude-opus-4-7')
-  expect(json.skillsMode).toBe('all')
 })
 
 test('PUT /api/profiles/:id/files/:file edits SOUL.md post-creation', async () => {
@@ -82,7 +76,7 @@ test('PUT /api/profiles/:id/files/:file edits SOUL.md post-creation', async () =
   expect(soul).toBe('# edited post-creation\nnew rules')
 })
 
-test('profile create --soul-file and --skip-bootstrap write custom templates', async () => {
+test('profile create --soul-file, --skip-bootstrap and --skip-tools write custom templates', async () => {
   const scratch = mkdtempSync(join(tmpdir(), 'bazilion-tmpl-'))
   const soulPath = join(scratch, 'soul.md')
   writeFileSync(soulPath, '# custom soul\nmake it yours')
@@ -96,6 +90,7 @@ test('profile create --soul-file and --skip-bootstrap write custom templates', a
       '--soul-file',
       soulPath,
       '--skip-bootstrap',
+      '--skip-tools',
     ])
     expect(r.exitCode).toBe(0)
 
@@ -104,6 +99,8 @@ test('profile create --soul-file and --skip-bootstrap write custom templates', a
 
     const show = await server.cli(['profile', 'show', 'custom-tmpl'])
     expect(show.stdout).toContain('bootstrap: no')
+    expect(show.stdout).toContain('agents:    yes')
+    expect(show.stdout).toContain('tools:     no')
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }

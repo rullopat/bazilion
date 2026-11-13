@@ -12,7 +12,6 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import { isSetupComplete } from '../../src/core/availableModels.ts'
 import { ensureSetupSeeded } from '../../src/core/profile/seed.ts'
 import { DEFAULT_USER_MD } from '../../src/core/profile/templates.ts'
-import * as profileCommunicationDefaultsRepo from '../../src/core/repos/profileCommunicationDefaults.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as providerModelRepo from '../../src/core/repos/providerModels.ts'
 import * as providerStateRepo from '../../src/core/repos/providerState.ts'
@@ -39,13 +38,7 @@ test('ensureSetupSeeded creates the default profile + team once a provider is co
   expect(result?.profile.id).toBe('default')
   expect(result?.team.id).toBe('default')
   expect(profileRepo.get(env.db, 'default')).not.toBeNull()
-  expect(profileCommunicationDefaultsRepo.get(env.db, 'default')).toEqual({
-    userInput: true,
-    userOutput: true,
-    outsideTeamInput: false,
-    outsideTeamOutput: false,
-    peerDefault: 'allow_all',
-  })
+  expect(result?.team.policyMode).toBe('open')
 })
 
 test('the seeded default profile ships the default-on template files', () => {
@@ -69,8 +62,7 @@ test("the seeded default team's user_md is DEFAULT_USER_MD", () => {
 test('ensureSetupSeeded is idempotent across repeat calls', () => {
   providerStateRepo.setEnabled(env.db, 'anthropic', true)
   providerModelRepo.replace(env.db, 'anthropic', ['claude-opus-4-6'])
-  const first = ensureSetupSeeded(env.db, env.paths)
-  expect(first?.profileCreated).toBe(true)
+  expect(ensureSetupSeeded(env.db, env.paths)).not.toBeNull()
 
   // Second call: the default profile already exists, no-op (returns null per
   // the ensureSetupSeeded contract).

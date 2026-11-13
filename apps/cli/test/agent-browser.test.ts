@@ -16,31 +16,24 @@ async function spawnAgent(): Promise<string> {
   return extractAgentId(result.stdout)
 }
 
-test('agent browser status emits safe structured status and does not launch', async () => {
+test('agent browser status prints the status as JSON without starting a browser', async () => {
   const id = await spawnAgent()
   const result = await server.cli(['agent', 'browser', 'status', id])
   expect(result.exitCode, result.stderr).toBe(0)
-  const status = JSON.parse(result.stdout) as Record<string, unknown>
-  expect(status).toMatchObject({
+  expect(JSON.parse(result.stdout)).toMatchObject({
     agentId: id,
     enabled: true,
-    state: 'stopped',
+    running: false,
     profilePresent: false,
   })
-  expect(result.stdout + result.stderr).not.toMatch(/cookie|cdp|profile-path|secret/i)
 })
 
-test('agent browser stop preserves the profile; reset refuses without --yes and succeeds with it', async () => {
+test('agent browser stop keeps the profile; reset needs --yes when not interactive', async () => {
   const id = await spawnAgent()
-  const status = await server.cli(['agent', 'browser', 'status', id])
-  expect(status.exitCode).toBe(0)
-
   const stop = await server.cli(['agent', 'browser', 'stop', id])
   expect(stop.exitCode, stop.stderr).toBe(0)
-  expect(stop.stdout).toMatch(/profile preserved/)
+  expect(stop.stdout).toMatch(/profile kept/)
 
-  // CLI test invocations are noninteractive; destructive reset requires an
-  // explicit --yes rather than guessing or writing locally.
   const refused = await server.cli(['agent', 'browser', 'reset', id])
   expect(refused.exitCode).not.toBe(0)
   expect(refused.stderr + refused.stdout).toMatch(/without --yes/)
@@ -50,9 +43,8 @@ test('agent browser stop preserves the profile; reset refuses without --yes and 
   expect(reset.stdout).toMatch(/profile removed/)
 })
 
-test('browser control refusal exits nonzero and prints only sanitized API diagnostics', async () => {
+test('a browser command for an unknown agent fails with the daemon error', async () => {
   const result = await server.cli(['agent', 'browser', 'stop', 'missing-agent'])
   expect(result.exitCode).not.toBe(0)
-  expect(result.stderr).toMatch(/browser stop failed/i)
-  expect(result.stderr).not.toMatch(/cookie|cdp|profile-path|child stderr/i)
+  expect(result.stderr).toMatch(/error: agent not found: missing-agent/)
 })

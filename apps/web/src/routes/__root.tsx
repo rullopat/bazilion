@@ -1,10 +1,10 @@
 import {
+  createRootRoute,
   HeadContent,
   Link,
   Outlet,
-  Scripts,
-  createRootRoute,
   redirect,
+  Scripts,
   useRouterState,
 } from '@tanstack/react-router'
 import '@fontsource/dm-sans/latin-400.css'
@@ -16,8 +16,7 @@ import '@fontsource/jetbrains-mono/latin-400.css'
 import '@fontsource/jetbrains-mono/latin-500.css'
 import { Footer } from '../components/Footer'
 import { TopNav } from '../components/TopNav'
-import { PUBLIC_PATHS, fetchAuthState, isSetupOpen } from '../lib/auth'
-import { installCsrfFetch } from '../lib/csrf-fetch'
+import { fetchAuthState, isSetupOpen, PUBLIC_PATHS } from '../lib/auth'
 import appCss from '../styles.css?url'
 
 // Sync, runs in <head> before paint. Reads 'baziu-theme' from localStorage
@@ -28,8 +27,6 @@ import appCss from '../styles.css?url'
 // disabled storage) just falls through to light.
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('baziu-theme');var sd=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;var d=t==='dark'||((t===null||t==='system')&&sd);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`
 
-installCsrfFetch()
-
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
     const path = location.pathname
@@ -39,10 +36,7 @@ export const Route = createRootRoute({
     if (path.startsWith('/api/')) return
 
     const auth = await fetchAuthState()
-    if (!auth.authed) {
-      const resultId = /^\/results\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/.exec(path)?.[1]
-      throw redirect({ to: '/login', search: { resultId } })
-    }
+    if (!auth.authed) throw redirect({ to: '/login' })
     if (!isSetupOpen(path) && !auth.setupComplete) {
       throw redirect({ to: '/welcome' })
     }
@@ -99,6 +93,7 @@ function RootComponent() {
     <html lang="en" data-layout={isWorkspace ? 'workspace' : 'page'} suppressHydrationWarning>
       <head>
         {/* Runs before paint to apply the user's theme choice without FOUC. */}
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a constant script, no input. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
@@ -118,7 +113,11 @@ function RootComponent() {
             <div className="px-3 sm:px-5">
               <TopNav />
             </div>
-            <main id="main-content" tabIndex={-1} className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-hidden px-3 pb-3 sm:px-5 sm:pb-5">
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-hidden px-3 pb-3 sm:px-5 sm:pb-5"
+            >
               <Outlet />
             </main>
           </div>
@@ -127,7 +126,11 @@ function RootComponent() {
             <div className="px-3 sm:px-5">
               <TopNav />
             </div>
-            <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-9 sm:px-6 sm:py-12">
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-9 sm:px-6 sm:py-12"
+            >
               <Outlet />
             </main>
             <div className="px-4 sm:px-6">

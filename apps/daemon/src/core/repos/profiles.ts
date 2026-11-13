@@ -1,21 +1,21 @@
+import { join } from 'node:path'
 import type { Profile, SkillsMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 
 interface RawProfile {
   id: string
   name: string
-  dir: string
   default_model: string
   skills_mode: string
   created_at: number
   updated_at: number
 }
 
-function toProfile(r: RawProfile): Profile {
+function toProfile(db: BazilionDb, r: RawProfile): Profile {
   return {
     id: r.id,
     name: r.name,
-    dir: r.dir,
+    dir: join(db.home, 'profiles', r.id),
     defaultModel: r.default_model,
     skillsMode: r.skills_mode as SkillsMode,
     createdAt: r.created_at,
@@ -23,26 +23,29 @@ function toProfile(r: RawProfile): Profile {
   }
 }
 
-export function insert(db: BazilionDb, p: Omit<Profile, 'createdAt' | 'updatedAt'>): Profile {
+export function insert(
+  db: BazilionDb,
+  p: Omit<Profile, 'dir' | 'createdAt' | 'updatedAt'>,
+): Profile {
   const now = Date.now()
   db.raw.run(
-    `INSERT INTO profiles (id, name, dir, default_model, skills_mode, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [p.id, p.name, p.dir, p.defaultModel, p.skillsMode, now, now],
+    `INSERT INTO profiles (id, name, default_model, skills_mode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [p.id, p.name, p.defaultModel, p.skillsMode, now, now],
   )
-  return { ...p, createdAt: now, updatedAt: now }
+  return { ...p, dir: join(db.home, 'profiles', p.id), createdAt: now, updatedAt: now }
 }
 
 export function get(db: BazilionDb, id: string): Profile | null {
   const row = db.raw.query<RawProfile, [string]>('SELECT * FROM profiles WHERE id = ?').get(id)
-  return row ? toProfile(row) : null
+  return row ? toProfile(db, row) : null
 }
 
 export function list(db: BazilionDb): Profile[] {
   return db.raw
     .query<RawProfile, []>('SELECT * FROM profiles ORDER BY created_at ASC')
     .all()
-    .map(toProfile)
+    .map((row) => toProfile(db, row))
 }
 
 export function remove(db: BazilionDb, id: string): void {

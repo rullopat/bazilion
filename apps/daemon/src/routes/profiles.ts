@@ -1,18 +1,19 @@
-// /api/profiles/* — profile CRUD + per-profile template files.
+// /api/profiles: Agent templates (profiles) and their template files.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type {
-  CreateProfileRequest,
-  FileContentResponse,
-  ProfileCommunicationDefaults,
-  ProfileFileName,
-  PutFileRequest,
-  SkillsMode,
-  UpdateProfileRequest,
+import {
+  type CreateProfileRequest,
+  type FileContentResponse,
+  PROFILE_FILES,
+  type ProfileFileName,
+  type ProfileSummary,
+  type ProfileTemplates,
+  type PutFileRequest,
+  type SkillsMode,
+  type UpdateProfileRequest,
 } from '@bazilion/api-types'
-import { PROFILE_FILES } from '@bazilion/api-types'
-import { Hono } from 'hono'
+import type { Context } from 'hono'
 import {
   agentRepo,
   createProfile,
@@ -24,68 +25,60 @@ import {
   DEFAULT_USER_MD,
   deleteProfile,
   loadProfile,
-  profileCommunicationDefaultsRepo,
   profileRepo,
   updateProfile,
 } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { jsonBody, newRouter } from './http.ts'
 
-export const profilesRouter = new Hono()
+export const profilesRouter = newRouter()
 
 profilesRouter.get('/', (c) => {
   const { db } = getCtx()
-  const profiles = profileRepo.list(db)
-  // Hydrate with the per-profile fields the listing UI needs (agent counts,
-  // default-skill list) so callers don't fan out to extra endpoints per row.
-  const hydrated = profiles.map((p) => ({
-    ...p,
-    agentCount: agentRepo.countByProfile(db, p.id),
-    defaultSkills: profileRepo.getDefaultSkills(db, p.id),
-    communicationDefaults: profileCommunicationDefaultsRepo.get(db, p.id),
-  }))
-  return c.json(hydrated)
+  // Each profile carries what the list shows (agent count, default skills), so the UI needs no
+  // request per row.
+  const profiles = profileRepo.list(db).map(
+    (p): ProfileSummary => ({
+      ...p,
+      agentCount: agentRepo.countByProfile(db, p.id),
+      defaultSkills: profileRepo.getDefaultSkills(db, p.id),
+    }),
+  )
+  return c.json(profiles)
 })
 
-// /api/profiles/_/templates — built-in defaults for every seeded markdown file.
-// Underscore prefix avoids clashing with the `:id` route. Consumed by the
-// profile create form and the Team Template create form (userMd).
-profilesRouter.get('/_/templates', (c) => {
-  return c.json({
+// Built-in defaults for every seeded markdown file; the underscore keeps it clear of `/:id`.
+// Read by the profile and Team Template create forms.
+profilesRouter.get('/_/templates', (c) =>
+  c.json({
     soul: DEFAULT_SOUL,
     identity: DEFAULT_IDENTITY,
     bootstrap: DEFAULT_BOOTSTRAP,
     agents: DEFAULT_AGENTS,
     tools: DEFAULT_TOOLS,
     userMd: DEFAULT_USER_MD,
-  })
-})
+  } satisfies ProfileTemplates),
+)
+
+function toSkillsMode(v: unknown): SkillsMode | undefined {
+  return v === 'all' || v === 'selected' ? v : undefined
+}
+
+function stringList(v: unknown): string[] | undefined {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : undefined
+}
 
 profilesRouter.post('/', async (c) => {
-  const raw = (await c.req.json().catch(() => null)) as
-    | (Record<string, unknown> & Partial<CreateProfileRequest>)
-    | null
-  if (!raw) return c.json({ error: 'invalid JSON body' }, 400)
-  const id = typeof raw.id === 'string' ? raw.id : ''
-  const defaultModel =
-    typeof raw.defaultModel === 'string'
-      ? raw.defaultModel
-      : typeof raw.model === 'string'
-        ? raw.model
-        : ''
-  if (!id || !defaultModel) return c.json({ error: 'id and model are required' }, 400)
-  const name = typeof raw.name === 'string' ? raw.name : undefined
-
-  const skillsMode = toSkillsMode(raw.skillsMode) ?? 'selected'
-  const defaultSkills = csvToArray(raw.defaultSkills ?? raw.skills)
-  const communicationDefaults = parseCommunicationDefaults(raw.communicationDefaults)
-  if (communicationDefaults === 'invalid') {
-    return c.json({ error: 'invalid communicationDefaults' }, 400)
+  const body = await jsonBody<CreateProfileRequest>(c)
+  if (!body) return c.json({ error: 'invalid JSON body' }, 400)
+  const { id, defaultModel } = body
+  if (typeof id !== 'string' || !id || typeof defaultModel !== 'string' || !defaultModel) {
+    return c.json({ error: 'id and defaultModel are required' }, 400)
   }
 
-  // Tri-state per optional file: a non-empty string overrides, `null` skips the
-  // file, and omitting it (undefined) lets createProfile write the default.
-  // AGENTS/TOOLS are default-on, so the UI prefills the editors and passes
-  // `null` only when the operator explicitly opts out.
+  // Per optional file: a non-empty string overrides, `null` skips the file, and omitting it lets
+  // createProfile write the default. AGENTS/TOOLS are default-on, so the UI prefills the editors
+  // and passes `null` only when the operator opts out.
   const templates: {
     soul?: string
     identity?: string
@@ -93,173 +86,72 @@ profilesRouter.post('/', async (c) => {
     agents?: string | null
     tools?: string | null
   } = {}
-  if (typeof raw.soul === 'string' && raw.soul.length > 0) templates.soul = raw.soul
-  if (typeof raw.identity === 'string' && raw.identity.length > 0) templates.identity = raw.identity
-  if (raw.skipBootstrap === true || raw.bootstrap === null) templates.bootstrap = null
-  else if (typeof raw.bootstrap === 'string' && raw.bootstrap.length > 0)
-    templates.bootstrap = raw.bootstrap
-  if (raw.agents === null) templates.agents = null
-  else if (typeof raw.agents === 'string' && raw.agents.length > 0) templates.agents = raw.agents
-  if (raw.tools === null) templates.tools = null
-  else if (typeof raw.tools === 'string' && raw.tools.length > 0) templates.tools = raw.tools
+  if (typeof body.soul === 'string' && body.soul) templates.soul = body.soul
+  if (typeof body.identity === 'string' && body.identity) templates.identity = body.identity
+  for (const key of ['bootstrap', 'agents', 'tools'] as const) {
+    const value = body[key]
+    if (value === null) templates[key] = null
+    else if (typeof value === 'string' && value) templates[key] = value
+  }
 
   const { db, paths } = getCtx()
-  try {
-    const profile = createProfile(db, paths, {
-      id,
-      name,
-      defaultModel,
-      skillsMode,
-      defaultSkills,
-      ...(communicationDefaults ? { communicationDefaults } : {}),
-      ...(Object.keys(templates).length > 0 ? { templates } : {}),
-    })
-    return c.json(profile, 201)
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
-  }
+  const profile = createProfile(db, paths, {
+    id,
+    name: typeof body.name === 'string' ? body.name : undefined,
+    defaultModel,
+    skillsMode: toSkillsMode(body.skillsMode) ?? 'selected',
+    defaultSkills: stringList(body.defaultSkills),
+    ...(Object.keys(templates).length > 0 ? { templates } : {}),
+  })
+  return c.json(profile, 201)
 })
 
-profilesRouter.get('/:id', (c) => {
-  const { db } = getCtx()
-  try {
-    const loaded = loadProfile(db, c.req.param('id'))
-    return c.json({
-      ...loaded,
-      profile: {
-        ...loaded.profile,
-        communicationDefaults: profileCommunicationDefaultsRepo.get(db, loaded.profile.id),
-      },
-    })
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 404)
-  }
-})
+profilesRouter.get('/:id', (c) => c.json(loadProfile(getCtx().db, c.req.param('id'))))
 
 profilesRouter.patch('/:id', async (c) => {
-  const raw = (await c.req.json().catch(() => null)) as
-    | (UpdateProfileRequest & Record<string, unknown>)
-    | null
-  if (!raw) return c.json({ error: 'invalid JSON body' }, 400)
-
+  const body = await jsonBody<UpdateProfileRequest>(c)
+  if (!body) return c.json({ error: 'invalid JSON body' }, 400)
   const input: UpdateProfileRequest = {}
-  if (typeof raw.name === 'string') input.name = raw.name
-  if (typeof raw.defaultModel === 'string' && raw.defaultModel.length > 0)
-    input.defaultModel = raw.defaultModel
-  if (raw.skillsMode === 'all' || raw.skillsMode === 'selected') {
-    input.skillsMode = raw.skillsMode
+  if (typeof body.name === 'string') input.name = body.name
+  if (typeof body.defaultModel === 'string' && body.defaultModel) {
+    input.defaultModel = body.defaultModel
   }
-  const rawSkills: unknown = raw.defaultSkills
-  if (Array.isArray(rawSkills)) {
-    input.defaultSkills = rawSkills.filter((s): s is string => typeof s === 'string')
-  } else if (typeof rawSkills === 'string') {
-    input.defaultSkills = rawSkills
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  }
-  if (Object.hasOwn(raw, 'communicationDefaults')) {
-    if (raw.communicationDefaults === null) input.communicationDefaults = null
-    else {
-      const defaults = parseCommunicationDefaults(raw.communicationDefaults)
-      if (!defaults || defaults === 'invalid') {
-        return c.json({ error: 'invalid communicationDefaults' }, 400)
-      }
-      input.communicationDefaults = defaults
-    }
-  }
-  const { db, paths } = getCtx()
-  try {
-    return c.json(updateProfile(db, paths, c.req.param('id'), input))
-  } catch (err) {
-    const msg = (err as Error).message
-    return c.json({ error: msg }, msg.startsWith('profile not found') ? 404 : 400)
-  }
+  const skillsMode = toSkillsMode(body.skillsMode)
+  if (skillsMode) input.skillsMode = skillsMode
+  const defaultSkills = stringList(body.defaultSkills)
+  if (defaultSkills) input.defaultSkills = defaultSkills
+  return c.json(updateProfile(getCtx().db, c.req.param('id'), input))
 })
 
 profilesRouter.delete('/:id', (c) => {
-  const { db } = getCtx()
-  try {
-    deleteProfile(db, c.req.param('id'))
-    return c.body(null, 204)
-  } catch (err) {
-    const message = (err as Error).message
-    return c.json(
-      {
-        error: message,
-        ...(message.startsWith('profile_in_use:') ? { code: 'profile_in_use' } : {}),
-      },
-      message.startsWith('profile_in_use:') ? 409 : 400,
-    )
-  }
-})
-
-profilesRouter.get('/:id/files/:file', (c) => {
-  const { db, paths } = getCtx()
-  if (!profileRepo.get(db, c.req.param('id')))
-    return c.json({ error: `profile not found: ${c.req.param('id')}` }, 404)
-  const path = resolveFilePath(paths.profilesDir, c.req.param('id'), c.req.param('file'))
-  if (!path) return c.json({ error: `unsupported file: ${c.req.param('file')}` }, 400)
-  if (!existsSync(path)) return c.json({ error: `file not present: ${c.req.param('file')}` }, 404)
-  const body: FileContentResponse = { content: readFileSync(path, 'utf8') }
-  return c.json(body)
-})
-
-profilesRouter.put('/:id/files/:file', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as PutFileRequest | null
-  if (!body || typeof body.content !== 'string')
-    return c.json({ error: 'content is required' }, 400)
-  const { db, paths } = getCtx()
-  if (!profileRepo.get(db, c.req.param('id')))
-    return c.json({ error: `profile not found: ${c.req.param('id')}` }, 404)
-  const path = resolveFilePath(paths.profilesDir, c.req.param('id'), c.req.param('file'))
-  if (!path) return c.json({ error: `unsupported file: ${c.req.param('file')}` }, 400)
-  writeFileSync(path, body.content)
+  deleteProfile(getCtx().db, c.req.param('id'))
   return c.body(null, 204)
 })
 
-function resolveFilePath(profilesDir: string, id: string, file: string): string | null {
-  if (!(PROFILE_FILES as readonly string[]).includes(file)) return null
-  return join(profilesDir, id, file as ProfileFileName)
+/** The template file `:file` of the existing profile `:id`, or an error response. */
+function profileFile(c: Context): string | Response {
+  const { db, paths } = getCtx()
+  const id = c.req.param('id') ?? ''
+  const file = c.req.param('file') ?? ''
+  if (!profileRepo.get(db, id)) return c.json({ error: `profile not found: ${id}` }, 404)
+  if (!(PROFILE_FILES as readonly string[]).includes(file)) {
+    return c.json({ error: `unsupported file: ${file}` }, 400)
+  }
+  return join(paths.profilesDir, id, file as ProfileFileName)
 }
 
-function csvToArray(v: unknown): string[] | undefined {
-  if (Array.isArray(v)) return v.filter((s): s is string => typeof s === 'string')
-  if (typeof v === 'string' && v.length > 0) {
-    return v
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  }
-  return undefined
-}
+profilesRouter.get('/:id/files/:file', (c) => {
+  const path = profileFile(c)
+  if (typeof path !== 'string') return path
+  if (!existsSync(path)) return c.json({ error: `file not present: ${c.req.param('file')}` }, 404)
+  return c.json({ content: readFileSync(path, 'utf8') } satisfies FileContentResponse)
+})
 
-function toSkillsMode(v: unknown): SkillsMode | undefined {
-  return v === 'all' || v === 'selected' ? v : undefined
-}
-
-function parseCommunicationDefaults(
-  value: unknown,
-): ProfileCommunicationDefaults | 'invalid' | undefined {
-  if (value === undefined) return undefined
-  if (!value || typeof value !== 'object') return 'invalid'
-  const raw = value as Record<string, unknown>
-  if (
-    typeof raw.userInput !== 'boolean' ||
-    typeof raw.userOutput !== 'boolean' ||
-    typeof raw.outsideTeamInput !== 'boolean' ||
-    typeof raw.outsideTeamOutput !== 'boolean' ||
-    (raw.peerDefault !== 'inherit_team_policy' &&
-      raw.peerDefault !== 'allow_all' &&
-      raw.peerDefault !== 'deny_all')
-  ) {
-    return 'invalid'
-  }
-  return {
-    userInput: raw.userInput,
-    userOutput: raw.userOutput,
-    outsideTeamInput: raw.outsideTeamInput,
-    outsideTeamOutput: raw.outsideTeamOutput,
-    peerDefault: raw.peerDefault,
-  }
-}
+profilesRouter.put('/:id/files/:file', async (c) => {
+  const body = await jsonBody<PutFileRequest>(c)
+  if (typeof body?.content !== 'string') return c.json({ error: 'content is required' }, 400)
+  const path = profileFile(c)
+  if (typeof path !== 'string') return path
+  writeFileSync(path, body.content)
+  return c.body(null, 204)
+})

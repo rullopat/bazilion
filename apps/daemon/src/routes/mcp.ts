@@ -1,19 +1,18 @@
 // /api/mcp-servers — CRUD + connection test for MCP servers.
 //
-// Servers are configured globally (v0.4.0): every enabled server's tools are
-// admitted only to ordinary interactive turns, namespaced `mcp__<name>__<tool>`. The bearer
-// token for HTTP transports is write-only — it's stored in the encrypted
-// secrets table under `MCP_TOKEN_<id>` and never returned. Any mutation closes
-// the live pooled connection so the next turn reconnects with fresh config.
+// Servers are configured globally: every enabled server's tools are offered to every Agent turn,
+// namespaced `mcp__<name>__<tool>`. The bearer token for HTTP transports is write-only — it's
+// stored in the encrypted secrets table under `MCP_TOKEN_<id>` and never returned. Any mutation
+// closes the live connection so the next use reconnects with the new configuration.
 
 import type { McpServerInput, McpToolInfo, McpTransport } from '@bazilion/api-types'
-import { Hono } from 'hono'
-import { mcpServerRepo, mergeSecretsIntoEnv, openSecrets } from '../core/index.ts'
+import { mcpServerRepo, openSecrets } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
-import { closeMcpConnection, discoverMcpTools, type McpServerConfig } from '../lib/mcp/pool.ts'
-import { mcpTokenSecretKey } from '../lib/mcp/resolve.ts'
+import { closeMcpConnection, listMcpTools } from '../lib/mcp/pool.ts'
+import { mcpConnectOptions, mcpTokenSecretKey } from '../lib/mcp/resolve.ts'
+import { jsonBody, newRouter } from './http.ts'
 
-export const mcpRouter = new Hono()
+export const mcpRouter = newRouter()
 
 const TRANSPORTS = new Set<McpTransport>(['stdio', 'http'])
 
@@ -24,8 +23,7 @@ function validate(input: McpServerInput): string | null {
   if (!input.name || !/^[a-zA-Z0-9_]+$/.test(input.name)) {
     return 'name is required and must match [a-zA-Z0-9_]+ (letters, digits, underscore)'
   }
-  if (!TRANSPORTS.has(input.transport))
-    return 'transport must be stdio or http (Streamable HTTP); legacy SSE is unsupported'
+  if (!TRANSPORTS.has(input.transport)) return 'transport must be stdio or http'
   if (input.transport === 'stdio') {
     if (!input.command) return 'stdio transport requires a command'
   } else {
@@ -41,31 +39,13 @@ function validate(input: McpServerInput): string | null {
   return null
 }
 
-function toConfig(s: {
-  id: string
-  name: string
-  transport: McpTransport
-  command: string | null
-  args: string[]
-  url: string | null
-}): McpServerConfig {
-  return {
-    id: s.id,
-    name: s.name,
-    transport: s.transport,
-    command: s.command,
-    args: s.args,
-    url: s.url,
-  }
-}
-
 mcpRouter.get('/', (c) => {
   const { db } = getCtx()
   return c.json({ servers: mcpServerRepo.list(db) })
 })
 
 mcpRouter.post('/', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as McpServerInput | null
+  const body = (await jsonBody<McpServerInput>(c)) as McpServerInput | null
   if (!body) return c.json({ error: 'invalid JSON body' }, 400)
   const err = validate(body)
   if (err) return c.json({ error: err }, 400)
@@ -98,7 +78,7 @@ mcpRouter.get('/:id', (c) => {
 
 mcpRouter.patch('/:id', async (c) => {
   const id = c.req.param('id')
-  const body = (await c.req.json().catch(() => null)) as Partial<McpServerInput> | null
+  const body = await jsonBody<McpServerInput>(c)
   if (!body) return c.json({ error: 'invalid JSON body' }, 400)
   const { db, authToken } = getCtx()
   const existing = mcpServerRepo.get(db, id)
@@ -157,17 +137,10 @@ mcpRouter.post('/:id/test', async (c) => {
   const { db, authToken } = getCtx()
   const server = mcpServerRepo.get(db, id)
   if (!server) return c.json({ error: 'MCP server not found' }, 404)
-  const env = mergeSecretsIntoEnv(db, authToken)
-  const token =
-    server.transport === 'stdio' ? undefined : openSecrets(db, authToken).get(mcpTokenSecretKey(id))
-  // Force a fresh connection so the test reflects current config.
+  // Force a fresh connection so the test reflects the current configuration.
   await closeMcpConnection(id)
   try {
-    const tools = await discoverMcpTools(toConfig(server), {
-      env,
-      authToken: token,
-      idleMs: 900_000,
-    })
+    const tools = await listMcpTools(server, () => mcpConnectOptions(db, authToken, server))
     const info: McpToolInfo[] = tools.map((t) => ({ name: t.rawName, description: t.description }))
     return c.json({ ok: true, tools: info })
   } catch (err) {

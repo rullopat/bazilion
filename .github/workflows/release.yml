@@ -50,9 +50,10 @@ jobs:
 
       # Two modes, decided by the action based on repo state:
       #   - Pending changesets present → opens/updates the "Version Packages" PR
-      #     (runs `pnpm version-packages`, commits bumped package.jsons + CHANGELOG)
-      #   - No pending changesets, versions ahead of npm → runs `pnpm release`
-      #     (which is `pnpm build && changeset publish`) and tags the commit
+      #     (runs `pnpm version-packages`, commits the bumped apps/cli/package.json + CHANGELOG)
+      #   - No pending changesets, version ahead of npm → runs `pnpm release`
+      #     (which is `pnpm build && changeset publish`) and tags the commit.
+      #     Only the `bazilion` CLI package is published; every other workspace package is private.
       - name: Create release PR or publish to npm
         id: changesets
         uses: changesets/action@v1
@@ -61,11 +62,9 @@ jobs:
           publish: pnpm release
           commit: 'chore(release): version packages'
           title: 'chore(release): version packages'
-          # Suppress the auto per-package GitHub Releases
-          # (`bazilion@0.2.1`, `@bazilion/client@0.2.1`, …). The
-          # Releases page only shows the hand-crafted umbrella tags
-          # (`v0.2.1`, `v0.2.0`, …) we author with `gh release create`
-          # after each publish.
+          # Suppress the automatic `bazilion@x.y.z` GitHub Release. The Releases page only
+          # shows the hand-crafted umbrella tags (`v0.2.1`, …) authored with
+          # `gh release create` after each publish.
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,13 +74,9 @@ jobs:
           # "Built and signed on GitHub Actions" badge on npmjs.com.
           NPM_CONFIG_PROVENANCE: 'true'
 
-      # `changeset publish` creates per-package annotated tags locally
-      # (`bazilion@0.2.1`, `@bazilion/client@0.2.1`, …). When
-      # `createGithubReleases: true`, changesets/action pushes them as
-      # part of the release-creation code path. With releases disabled
-      # we have to push them ourselves — otherwise the tags only exist
-      # on the runner and disappear when the job ends, as happened on
-      # 0.2.1 (recovered by pushing them by hand).
-      - name: Push per-package git tags
+      # `changeset publish` creates the `bazilion@x.y.z` tag locally. With GitHub Releases
+      # disabled, changesets/action does not push it, so push it here; otherwise the tag only
+      # exists on the runner and disappears when the job ends.
+      - name: Push the release tag
         if: steps.changesets.outputs.published == 'true'
         run: git push --tags

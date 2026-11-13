@@ -1,30 +1,20 @@
-import {
-  type ImageGenerationInput,
-  type ImageGenerationOutput,
-  imageGenerationRouteLabel,
-} from '@bazilion/api-types'
+import type { ImageGenerationHost } from '../worker/ipc-protocol.ts'
 import type { ToolHandler } from './types.ts'
 
-/** Never return raw images as tool content: only the existing file egress authorizer may release them. */
-export function imageGenerateTool(
-  generate: (input: ImageGenerationInput) => Promise<ImageGenerationOutput>,
-  sessionId: string,
-): ToolHandler {
+/** The image is saved as a result by the daemon; the tool returns its reference, not its bytes. */
+export function imageGenerateTool(host: ImageGenerationHost): ToolHandler {
   return {
     def: {
       name: 'image_generate',
       description:
-        'Generate original images from a text prompt using the operator-selected image route/model (API billing or ChatGPT subscription usage). Saved Results are delivered subject to Team Policy. Rework is a new generation, not a pixel edit. Do not automatically retry a failed or uncertain request; it may already have been billed. No social publication.',
+        'Generate an image from a text prompt with the image model the operator selected. The image is saved to the Team results and shown to the user. Each call is a new paid generation; at most four per turn.',
       parameters: {
         type: 'object',
         properties: {
-          prompt: {
-            type: 'string',
-            description: 'Describe the desired image. Maximum 8 KiB UTF-8.',
-          },
+          prompt: { type: 'string', description: 'Describe the image. At most 8 KiB.' },
           name: {
             type: 'string',
-            description: 'Optional display filename, not a path (ASCII, maximum 120 characters).',
+            description: 'Optional file name without a path (letters, digits, space, _ . -).',
           },
         },
         required: ['prompt'],
@@ -32,32 +22,20 @@ export function imageGenerateTool(
       },
     },
     async invoke(args, context) {
-      if (!context?.toolCallId || !sessionId)
-        throw new Error('image_generate: missing source operation')
-      if (
-        typeof args.prompt !== 'string' ||
-        (args.name !== undefined && typeof args.name !== 'string') ||
-        Object.keys(args).some((key) => !['prompt', 'name'].includes(key))
-      ) {
-        throw new Error('image_generate: invalid arguments')
-      }
-      const output = await generate({
-        sessionId,
+      if (!context?.toolCallId) throw new Error('image_generate: missing tool call id')
+      const output = await host.generate({
         toolCallId: context.toolCallId,
-        prompt: args.prompt,
-        ...(args.name === undefined ? {} : { name: args.name }),
+        prompt: String(args.prompt ?? ''),
+        ...(typeof args.name === 'string' ? { name: args.name } : {}),
       })
       return {
         content: [
           {
             type: 'text',
-            text: `Saved ${output.files.length} image(s) via ${imageGenerationRouteLabel(output.model)} (selected: ${output.model}). Delivery is subject to Team Policy. ${output.files.map((file) => `${file.name}: ${file.result.resultId}`).join('; ')}`,
+            text: `Generated with ${output.model}: saved ${output.files.map((file) => `"${file.name}" as result ${file.result.resultId}`).join(', ')}.`,
           },
         ],
-        results: output.files.map((file) => file.result),
-        ...(output.outputSource === 'terminal' || output.outputSource === 'completed_stream'
-          ? { imageEvidence: { outputSource: output.outputSource } }
-          : {}),
+        details: { results: output.files.map((file) => file.result) },
       }
     },
   }

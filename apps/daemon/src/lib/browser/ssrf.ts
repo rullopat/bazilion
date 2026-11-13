@@ -1,15 +1,7 @@
-// SSRF guard for the headless browser.
-//
-// `web_fetch` routes through undici with a pinned-DNS dispatcher (see
-// `runtime/tools/web-ssrf.ts`). A headless browser bypasses all of that — it
-// opens its own sockets — so we re-apply the same loopback/private/link-local
-// classification at the Playwright `context.route` layer. Every navigation and
-// subresource request is screened before it leaves the machine.
-//
-// Unless `allowPrivate` is set (local-dev escape hatch), a request to a
-// blocked hostname, a private IP literal, or a hostname that *resolves* to a
-// private IP is aborted. The DNS re-resolution closes the rebinding hole the
-// browser would otherwise open.
+// Check a URL before the browser navigates to it. All browser traffic goes
+// through the SSRF proxy (`proxy.ts`), but schemes such as file: never reach a
+// proxy, and a private http(s) target gets a clear error here instead of a
+// bare proxy refusal. `allowPrivate` (BROWSER_ALLOW_PRIVATE_NETWORK) skips it.
 
 import { lookup as dnsLookup } from 'node:dns/promises'
 import { isBlockedHostname, isPrivateIpAddress } from '../../runtime/tools/web-ssrf.ts'

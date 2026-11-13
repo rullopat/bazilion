@@ -33,13 +33,13 @@ test('review configuration, enqueue, proposal editing, and private approval are 
   const { createProfile, registerTeam, spawnAgent, agentLessonProposalRepo, agentReviewRepo } =
     await import('../../src/core/index.ts')
   const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { agentsRouter } = await import('../../src/routes/agents.ts')
+  const { agentLearningRouter } = await import('../../src/routes/agent-learning.ts')
   const ctx = getCtx()
   const team = registerTeam(ctx.db, { id: 'g', name: 'team' }, ctx.paths)
   createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'lmstudio:test' })
   const agent = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: team.id })
 
-  const configured = await agentsRouter.request(`/${agent.id}/review-config`, {
+  const configured = await agentLearningRouter.request(`/${agent.id}/review-config`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ enabled: true, everyNTurns: 4, reasoningLevel: 'medium' }),
@@ -47,7 +47,7 @@ test('review configuration, enqueue, proposal editing, and private approval are 
   expect(configured.status).toBe(200)
   expect(await configured.json()).toMatchObject({ enabled: true, everyNTurns: 4 })
 
-  const enqueued = await agentsRouter.request(`/${agent.id}/reviews`, { method: 'POST' })
+  const enqueued = await agentLearningRouter.request(`/${agent.id}/reviews`, { method: 'POST' })
   expect(enqueued.status).toBe(202)
   const review = agentReviewRepo.listForAgent(ctx.db, agent.id)[0]
   expect(review).toBeDefined()
@@ -59,13 +59,13 @@ test('review configuration, enqueue, proposal editing, and private approval are 
     evidence: [{ sessionId: 's', entryOrdinal: 1 }],
   })
 
-  const edited = await agentsRouter.request(`/${agent.id}/lesson-proposals/${proposal.id}`, {
+  const edited = await agentLearningRouter.request(`/${agent.id}/lesson-proposals/${proposal.id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ version: 1, text: 'Approved lesson' }),
   })
   expect(edited.status).toBe(200)
-  const approved = await agentsRouter.request(
+  const approved = await agentLearningRouter.request(
     `/${agent.id}/lesson-proposals/${proposal.id}/approve`,
     {
       method: 'POST',

@@ -14,20 +14,16 @@ export interface Paths {
    *   its loopback bearer.
    * - `remote` (set via `bazilion login`) is a CLI-only override pointing at
    *   a remote daemon. The local daemon ignores this field.
-   *
-   * One file replaces the previous `config.json` + `secrets.enc` split:
-   * encrypted secrets and plaintext config now live as DB rows.
    */
   authFile: string
   profilesDir: string
   agentsDir: string
   skillsDir: string
   teamsDir: string
-  logsDir: string
   /**
    * Managed browser profiles, one owner-only slot per Agent. This sits
-   * OUTSIDE both Agent inputs and Team workspaces (BAZ-069 D1) so a browser
-   * profile can never be mounted into a protected/restricted turn or exposed
+   * OUTSIDE both Agent inputs and Team workspaces so a browser
+   * profile can never be mounted into a Docker sandbox or exposed
    * through Team file browsing. It may contain live site cookies/session
    * state and is excluded from backup/export.
    */
@@ -51,7 +47,6 @@ export function resolvePaths(home?: string): Paths {
     agentsDir: join(root, 'agents'),
     skillsDir: join(root, 'skills'),
     teamsDir: join(root, 'teams'),
-    logsDir: join(root, 'logs'),
     browsersDir: join(root, 'browsers'),
     profileDir(id) {
       return join(root, 'profiles', id)
@@ -78,7 +73,7 @@ export function resolvePaths(home?: string): Paths {
  * `realpathSync(dir) === dir` guards against symlink escapes — so a home
  * reached through a symlinked segment (macOS ships /tmp and /var as symlinks
  * to /private/…) would turn every derived path non-canonical and fail closed
- * on every worker spawn and session read (BAZ-049). Resolving once, here,
+ * on every worker spawn and session read. Resolving once, here,
  * makes every derived path canonical for the process lifetime.
  */
 function canonicalHome(root: string): string {

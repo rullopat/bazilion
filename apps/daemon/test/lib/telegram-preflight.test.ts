@@ -84,8 +84,8 @@ describe('runPreflight', () => {
       'getChatMember',
       'getChatMemberCount',
     ])
-    expect(api.calls[1]!.body).toEqual({ chat_id: -1009999 })
-    expect(api.calls[2]!.body).toEqual({ chat_id: -1009999, user_id: 42 })
+    expect(api.calls[1]?.body).toEqual({ chat_id: -1009999 })
+    expect(api.calls[2]?.body).toEqual({ chat_id: -1009999, user_id: 42 })
   })
 
   test('team owner ("creator") is treated as having manage_topics implicitly', async () => {
@@ -197,6 +197,6 @@ describe('runPreflight', () => {
       },
     })
     await runPreflight({ botToken: TOKEN, chatId: '@myforum', fetchFn: api.fetchFn })
-    expect(api.calls[1]!.body).toEqual({ chat_id: '@myforum' })
+    expect(api.calls[1]?.body).toEqual({ chat_id: '@myforum' })
   })
 })

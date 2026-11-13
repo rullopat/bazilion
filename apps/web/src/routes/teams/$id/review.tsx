@@ -1,82 +1,93 @@
-// Per-Team Git change review (BAZ-042). Read-only: this panel lists changes since an explicit
-// baseline, shows one file's diff on request, and captures bounded source snapshots. It never
-// stages, commits or checks anything out, and a snapshot stores paths and digests — not content.
+// The Team workspace's Git changes since a baseline: the file list, one file's diff on request,
+// and feedback about a file queued for an Agent. It never stages, commits or checks anything out.
 
-import type { SourceSnapshot } from '@bazilion/api-types'
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { RecoveryState } from '../../../components/RecoveryState'
+import type { Agent, RepositoryReviewResponse, ReviewFeedbackResponse } from '@bazilion/api-types'
+import { ApiClientError } from '@bazilion/client'
+import { createFileRoute } from '@tanstack/react-router'
+import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
-import { PageShell } from '../../../components/Page'
-import { TeamTabs } from '../../../components/TeamTabs'
-import { PublicationPanel } from '../../../components/PublicationPanel'
-import { ReviewPacketPanel } from '../../../components/ReviewPacketPanel'
-import { fetchTeamReviewPackets } from '../../../lib/review-packets'
-import {
-  baseLabel,
-  changeSummary,
-  referenceLabel,
-  snapshotLabel,
-  unavailableMessage,
-} from '../../../lib/git-review-presentation'
-import {
-  captureTeamSnapshot,
-  fetchFileDiff,
-  fetchTeamReview,
-  fetchTeamSnapshot,
-  prepareReviewFeedback,
-  sendReviewFeedback,
-  type ComposedFeedback,
-  type FileDiffView,
-} from '../../../lib/git-review'
+import { ApiError, api, errorMessage } from '../../../lib/api'
+import { daemonClient } from '../../../lib/daemon-client'
+import { baseLabel, changeSummary, unavailableMessage } from '../../../lib/git-review-presentation'
+
+interface Unavailable {
+  code: string | undefined
+  message: string
+}
+
+interface FileDiff {
+  path: string
+  patch: string | null
+  truncated: boolean
+  omitted: string | null
+}
+
+function reviewPath(teamId: string, params: Record<string, string> = {}): string {
+  const query = new URLSearchParams(params).toString()
+  return `/api/teams/${encodeURIComponent(teamId)}/review${query ? `?${query}` : ''}`
+}
+
+const fetchReview = createServerFn({ method: 'GET' })
+  .validator((data: { id: string }) => data)
+  .handler(async ({ data }) => {
+    const client = daemonClient()
+    const agents = await client.get<Agent[]>('/api/agents')
+    const members = agents
+      .filter((agent) => agent.teamId === data.id)
+      .map((agent) => ({ id: agent.id, name: agent.name }))
+    try {
+      const review = await client.get<RepositoryReviewResponse>(reviewPath(data.id))
+      return { review, unavailable: null, members }
+    } catch (error) {
+      if (!(error instanceof ApiClientError)) throw error
+      const body = error.body as { error?: string; code?: string }
+      const unavailable: Unavailable = {
+        code: body.code,
+        message: body.error ?? 'This Team cannot be reviewed right now.',
+      }
+      return { review: null, unavailable, members }
+    }
+  })
 
 export const Route = createFileRoute('/teams/$id/review')({
-  errorComponent: ({ error, reset }) => <RecoveryState title="Change review unavailable" error={error} reset={reset} fallbackHref="/teams" />,
-  loader: async ({ params }) => {
-    const [data, packets] = await Promise.all([
-      fetchTeamReview({ data: { id: params.id } }),
-      fetchTeamReviewPackets({ data: { id: params.id } }),
-    ])
-    if (!data) throw redirect({ to: '/teams' })
-    return { ...data, packets }
-  },
+  loader: ({ params }) => fetchReview({ data: { id: params.id } }),
   component: ReviewPage,
 })
 
 function ReviewPage() {
   const loaded = Route.useLoaderData()
-  const teamId = loaded.team.id
+  const { id: teamId } = Route.useParams()
   const [base, setBase] = useState('')
   const [appliedBase, setAppliedBase] = useState('')
   const [review, setReview] = useState(loaded.review)
-  const [unavailable, setUnavailable] = useState(loaded.unavailable)
-  const [snapshots, setSnapshots] = useState(loaded.snapshots)
+  const [unavailable, setUnavailable] = useState<Unavailable | null>(loaded.unavailable)
   const [selected, setSelected] = useState<string | null>(null)
-  const [diff, setDiff] = useState<FileDiffView | null>(null)
-  const [snapshot, setSnapshot] = useState<SourceSnapshot | null>(null)
-  const [latestSnapshotId, setLatestSnapshotId] = useState(
-    () => loaded.snapshots[0]?.snapshotId ?? null,
-  )
+  const [diff, setDiff] = useState<FileDiff | null>(null)
   const [note, setNote] = useState('')
-  const [agentId, setAgentId] = useState(() => loaded.members[0]?.id ?? '')
-  const [composed, setComposed] = useState<ComposedFeedback | null>(null)
-  const [status, setStatus] = useState<{ kind: 'info' | 'error'; message: string } | null>(null)
+  const [agentId, setAgentId] = useState(loaded.members[0]?.id ?? '')
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  const [status, setStatus] = useState<{ error: boolean; message: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const baseParam = (value: string): Record<string, string> => (value ? { base: value } : {})
 
   async function load(nextBase = appliedBase) {
     setBusy(true)
-    setStatus({ kind: 'info', message: 'Loading changes…' })
+    setStatus({ error: false, message: 'Loading changes…' })
     try {
-      const data = await fetchTeamReview({ data: { id: teamId, ...(nextBase ? { base: nextBase } : {}) } })
-      if (!data) return
-      setReview(data.review)
-      setUnavailable(data.unavailable)
-      setSnapshots(data.snapshots)
+      setReview(await api<RepositoryReviewResponse>(reviewPath(teamId, baseParam(nextBase))))
+      setUnavailable(null)
+    } catch (cause) {
+      setReview(null)
+      setUnavailable({
+        code: cause instanceof ApiError ? cause.code : undefined,
+        message: errorMessage(cause),
+      })
+    } finally {
       setAppliedBase(nextBase)
       setSelected(null)
       setDiff(null)
       setStatus(null)
-    } finally {
       setBusy(false)
     }
   }
@@ -84,89 +95,66 @@ function ReviewPage() {
   async function openDiff(path: string) {
     setSelected(path)
     setDiff(null)
-    setStatus({ kind: 'info', message: 'Loading diff…' })
-    const loadedDiff = await fetchFileDiff({
-      data: { id: teamId, path, ...(appliedBase ? { base: appliedBase } : {}) },
-    })
-    setDiff(loadedDiff)
-    setStatus(null)
-  }
-
-  async function capture() {
-    setBusy(true)
-    setStatus({ kind: 'info', message: 'Capturing a source snapshot…' })
-    const result = await captureTeamSnapshot({ data: { id: teamId } })
-    if ('reference' in result) {
-      setStatus({ kind: 'info', message: `Captured ${referenceLabel(result.reference)}` })
-      await load()
-    } else {
-      setStatus({ kind: 'error', message: unavailableMessage(result.code, result.message) })
+    setQueuedMessage(null)
+    try {
+      const response = await api<RepositoryReviewResponse>(
+        reviewPath(teamId, { patches: '1', path, ...baseParam(appliedBase) }),
+      )
+      const change = response.changes.changes.find((entry) => entry.path === path)
+      setDiff({
+        path,
+        patch: change?.patch ?? null,
+        truncated: change?.patchTruncated ?? false,
+        omitted: change?.contentOmitted ?? null,
+      })
+    } catch (cause) {
+      setStatus({ error: true, message: errorMessage(cause) })
     }
-    setBusy(false)
-  }
-
-  async function prepare() {
-    if (!selected) return
-    setBusy(true)
-    setStatus({ kind: 'info', message: 'Preparing feedback…' })
-    const result = await prepareReviewFeedback({
-      data: {
-        id: teamId,
-        path: selected,
-        ...(latestSnapshotId ? { snapshotId: latestSnapshotId } : {}),
-        ...(note.trim() ? { note } : {}),
-      },
-    })
-    if ('message' in result && 'reference' in result) {
-      setComposed(result)
-      setStatus(null)
-    } else {
-      setStatus({ kind: 'error', message: unavailableMessage(result.code, result.message) })
-    }
-    setBusy(false)
   }
 
   async function send() {
-    if (!composed || !agentId) return
+    if (!selected || !agentId) return
     setBusy(true)
-    const result = await sendReviewFeedback({ data: { agentId, message: composed.message } })
-    setStatus(
-      'queued' in result
-        ? { kind: 'info', message: 'Feedback queued for the Agent. It runs as the next turn.' }
-        : { kind: 'error', message: unavailableMessage(result.code, result.message) },
-    )
-    if ('queued' in result) setComposed(null)
-    setBusy(false)
-  }
-
-  async function openSnapshot(snapshotId: string) {
-    setStatus({ kind: 'info', message: 'Loading snapshot…' })
-    const loadedSnapshot = await fetchTeamSnapshot({ data: { id: teamId, snapshotId } })
-    setSnapshot(loadedSnapshot)
-    setStatus(loadedSnapshot ? null : { kind: 'error', message: 'That snapshot is no longer retained.' })
+    setStatus({ error: false, message: 'Queueing feedback…' })
+    try {
+      const result = await api<ReviewFeedbackResponse>(
+        `/api/teams/${encodeURIComponent(teamId)}/review/feedback`,
+        {
+          body: {
+            path: selected,
+            agentId,
+            ...(note.trim() ? { note } : {}),
+            ...baseParam(appliedBase),
+          },
+        },
+      )
+      setQueuedMessage(result.message)
+      setNote('')
+      setStatus({ error: false, message: 'Feedback queued; the Agent runs it as its next turn.' })
+    } catch (cause) {
+      const code = cause instanceof ApiError ? cause.code : undefined
+      setStatus({ error: true, message: unavailableMessage(code, errorMessage(cause)) })
+    } finally {
+      setBusy(false)
+    }
   }
 
   const changes = review?.changes
 
   return (
-    <PageShell>
-      <header>
-        <h1>{loaded.team.name || loaded.team.id} review</h1>
-        <p>
-          Changes since a pinned baseline, and the source snapshots taken for them. Inspection is
-          read-only — nothing here stages, commits or reverts anything.
-        </p>
-      </header>
-      <TeamTabs teamId={teamId} />
+    <div className="space-y-6">
+      <p className="text-sm text-muted-foreground">
+        Changes since a baseline commit, read-only: nothing here stages, commits or reverts
+        anything.
+      </p>
 
       <section className="space-y-2" aria-label="Comparison base">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <label className="flex min-w-0 flex-1 flex-col gap-1">
-            <span>Comparison base</span>
+          <label className="m-0 min-w-0 flex-1">
+            Comparison base
             <input
-              className="input"
               value={base}
-              placeholder="HEAD"
+              placeholder="HEAD, main, HEAD~1…"
               onChange={(event) => setBase(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void load(base)
@@ -184,29 +172,32 @@ function ReviewPage() {
         </div>
         {changes && <p className="text-sm opacity-80">{baseLabel(changes.identity, changes)}</p>}
         <p className="text-xs opacity-70">
-          A branch name is resolved to a concrete commit when the review loads, so a moving tip cannot
-          rewrite what you are looking at.
+          A branch name resolves to a commit when the review loads, so a moving branch cannot change
+          what you are looking at.
         </p>
       </section>
 
       {status && (
-        <p role={status.kind === 'error' ? 'alert' : 'status'} className="text-sm">
+        <p role={status.error ? 'alert' : 'status'} className="text-sm">
           {status.message}
         </p>
       )}
 
       {unavailable && (
-        <section className="rounded-sm border border-fawn bg-ivory p-3" aria-label="Review unavailable">
+        <section
+          className="rounded-sm border border-fawn bg-ivory p-3"
+          aria-label="Review unavailable"
+        >
           <p role="alert">{unavailableMessage(unavailable.code, unavailable.message)}</p>
-          {unavailable.code && <p className="text-xs opacity-70">code: {unavailable.code}</p>}
         </section>
       )}
 
       {changes && (
         <section className="space-y-2" aria-label="Changes since baseline">
           <h2>Changes since baseline</h2>
-          {changes.changes.length === 0 && <p>No changes since this baseline.</p>}
-          {changes.changes.length > 0 && (
+          {changes.changes.length === 0 ? (
+            <p>No changes since this baseline.</p>
+          ) : (
             <ul className="divide-y divide-fawn rounded-sm border border-fawn">
               {changes.changes.map((change) => (
                 <li key={`${change.status}:${change.path}`}>
@@ -217,10 +208,11 @@ function ReviewPage() {
                     className="flex w-full flex-col gap-1 px-3 py-2 text-left hover:bg-sapphire-glow focus:bg-sapphire-glow"
                   >
                     <span className="break-all font-mono text-sm">
-                      {change.previousPath ? `${change.previousPath} → ${change.path}` : change.path}
+                      {change.previousPath
+                        ? `${change.previousPath} → ${change.path}`
+                        : change.path}
                     </span>
                     <span className="text-xs opacity-80">
-                      {/* `changeSummary` already leads with the status label. */}
                       {changeSummary(change)}
                       {change.patchTruncated ? ' · diff truncated' : ''}
                     </span>
@@ -231,13 +223,13 @@ function ReviewPage() {
           )}
           {changes.truncated && (
             <p className="text-sm">
-              This list is incomplete: more files changed than the review limit allows.
+              This list is incomplete: more files changed than the review shows.
             </p>
           )}
           {(changes.withheld.excluded > 0 || changes.withheld.untracked > 0) && (
             <p className="text-xs opacity-80">
-              {changes.withheld.excluded} excluded and {changes.withheld.untracked} untracked path(s)
-              withheld by scope policy.
+              {changes.withheld.excluded} excluded and {changes.withheld.untracked} untracked
+              path(s) are not shown.
             </p>
           )}
           {changes.issues.map((issue) => (
@@ -263,28 +255,19 @@ function ReviewPage() {
               <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-[rgba(42,31,22,0.04)] p-3 font-mono text-xs">
                 {diff.patch}
               </pre>
-              {diff.truncated && <p className="text-xs">This diff was truncated at the patch limit.</p>}
+              {diff.truncated && <p className="text-xs">This diff was truncated.</p>}
             </>
           )}
 
           <div className="space-y-2 rounded-sm border border-fawn p-3">
             <h3>Send feedback about this file</h3>
-            <label className="flex flex-col gap-1">
-              <span>Note (optional)</span>
-              <textarea
-                className="input"
-                rows={2}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-              />
+            <label>
+              Note (optional)
+              <textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
             </label>
-            <label className="flex flex-col gap-1">
-              <span>Agent</span>
-              <select
-                className="input"
-                value={agentId}
-                onChange={(event) => setAgentId(event.target.value)}
-              >
+            <label>
+              Agent
+              <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
                 {loaded.members.map((member) => (
                   <option key={member.id} value={member.id}>
                     {member.name}
@@ -292,102 +275,20 @@ function ReviewPage() {
                 ))}
               </select>
             </label>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="ghost" disabled={busy} onClick={() => void prepare()}>
-                Preview message
-              </Button>
-              <Button variant="primary" disabled={busy || !composed || !agentId} onClick={() => void send()}>
-                Queue for Agent
-              </Button>
-            </div>
-            {latestSnapshotId ? (
-              <p className="text-xs opacity-70">
-                Referenced snapshot: {latestSnapshotId.slice(0, 12)}. It is rechecked now, and the
-                verdict is stated in the message.
-              </p>
-            ) : (
-              <p className="text-xs opacity-70">
-                No snapshot captured for this Team yet, so the feedback will say its source identity is
-                unknown rather than implying the lines still match.
-              </p>
-            )}
-            {composed && (
-              <>
-                <p className="text-sm">
-                  {composed.applicability === 'current'
-                    ? 'This file is unchanged since the snapshot.'
-                    : composed.applicability === 'stale'
-                      ? 'This file changed since the snapshot — the selected lines may have moved.'
-                      : `Source identity unknown (${composed.applicabilityReason}).`}
-                </p>
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-[rgba(42,31,22,0.04)] p-3 font-mono text-xs">
-                  {composed.message}
-                </pre>
-              </>
+            <Button variant="primary" disabled={busy || !agentId} onClick={() => void send()}>
+              Queue for Agent
+            </Button>
+            <p className="text-xs opacity-70">
+              The Agent gets the file, its change, a diff excerpt and your note as its next turn.
+            </p>
+            {queuedMessage && (
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-[rgba(42,31,22,0.04)] p-3 font-mono text-xs">
+                {queuedMessage}
+              </pre>
             )}
           </div>
         </section>
       )}
-
-      <section className="space-y-2" aria-label="Source snapshots">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2>Source snapshots</h2>
-          <Button variant="ghost" disabled={busy} onClick={() => void capture()}>
-            Capture snapshot
-          </Button>
-        </div>
-        <p className="text-xs opacity-70">
-          A snapshot records HEAD, the index and digests of changed files — never file content.
-          Untracked content is only included when a path is named explicitly.
-        </p>
-        {snapshots.length === 0 && <p>No retained snapshots for this Team.</p>}
-        {snapshots.length > 0 && (
-          <ul className="divide-y divide-fawn rounded-sm border border-fawn">
-            {snapshots.map((entry) => (
-              <li key={entry.snapshotId}>
-                <button
-                  type="button"
-                  onClick={() => void openSnapshot(entry.snapshotId)}
-                  className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-sapphire-glow focus:bg-sapphire-glow"
-                >
-                  {snapshotLabel(entry)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {snapshot && (
-          <div className="space-y-1">
-            <p className="text-sm">
-              {snapshot.id.slice(0, 12)} · {snapshot.complete ? 'complete' : 'incomplete — applicability unknown'} ·
-              head {snapshot.head?.slice(0, 12) ?? '(unborn)'}
-            </p>
-            {snapshot.entries.length > 0 && (
-              <ul className="space-y-1 font-mono text-xs">
-                {snapshot.entries.map((entry) => (
-                  <li key={`${entry.layer}:${entry.path}`}>
-                    {entry.layer} · {entry.kind} · {entry.path}
-                    {entry.bytes === null ? '' : ` · ${entry.bytes}B`}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {snapshot.exclusions.length > 0 && (
-              <p className="text-xs opacity-80">
-                withheld: {snapshot.exclusions.map((item) => `${item.path} (${item.reason})`).join(', ')}
-              </p>
-            )}
-          </div>
-        )}
-      </section>
-
-      {loaded.packets ? (
-        <>
-          <ReviewPacketPanel teamId={teamId} view={loaded.packets} />
-          {/* A publication is a decision about a reviewed packet, so it lives beside the packets. */}
-          <PublicationPanel teamId={teamId} />
-        </>
-      ) : null}
-    </PageShell>
+    </div>
   )
 }

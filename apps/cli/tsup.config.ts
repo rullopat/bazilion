@@ -1,75 +1,37 @@
-import {
-  copyFileSync,
-  cpSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { copyFileSync, cpSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { defineConfig } from 'tsup'
 
-// ESM payloads, plus guarded cli.js/daemon.js launchers written below.
-// The public launchers check the runtime before dynamically linking application
-// dependencies; a banner alone cannot run before static external ESM imports.
-// Payloads and resources remain siblings in dist/, preserving relative paths.
-// tsup auto-externalizes package.json dependencies (including native modules);
-// workspace client/wire packages stay bundled inline.
+// ESM payloads. Payloads and resources remain siblings in dist/, preserving relative paths.
+// tsup externalizes package.json dependencies; everything else, including the workspace
+// packages, is bundled.
 export default defineConfig({
   entry: {
-    'cli-main': 'src/main.ts',
-    'daemon-main': '../daemon/src/main.ts',
-    'runtime-version': 'src/runtime-version.ts',
+    cli: 'src/index.ts',
+    daemon: '../daemon/src/index.ts',
     worker: '../daemon/src/runtime/worker/entry.ts',
-    'browser-keychain': '../daemon/src/lib/browser/darwin-keychain-entry.mjs',
-    'native-linux-entry': '../daemon/src/runtime/shell/native/linux-entry.ts',
-    'native-darwin-entry': '../daemon/src/runtime/shell/native/darwin-entry.ts',
     'web-server': 'src/web-server.ts',
   },
   format: ['esm'],
-  target: 'node24',
+  target: 'node26',
   banner: { js: '#!/usr/bin/env node' },
-  noExternal: ['@bazilion/api-types', '@bazilion/client'],
   splitting: false,
   sourcemap: true,
   clean: true,
-  // esbuild's hardcoded known-builtins list predates `node:sqlite`
-  // (Node 22+), and its `node:` auto-externalize pass bypasses plugin
-  // onResolve hooks before the prefix-stripping pass at print time —
-  // so the only reliable place to put the `node:` back is after the
-  // bundle is written. The published package crashes without this:
-  // `ERR_MODULE_NOT_FOUND: Cannot find package 'sqlite'`.
+  // Keep `node:` on builtin imports: `node:sqlite` only exists under that prefix.
+  removeNodeProtocol: false,
   async onSuccess() {
     const distDir = join(process.cwd(), 'dist')
 
-    // Restore the `node:` prefix esbuild stripped from `node:sqlite`.
-    for (const file of readdirSync(distDir)) {
-      if (!file.endsWith('.js')) continue
-      const path = join(distDir, file)
-      const src = readFileSync(path, 'utf8')
-      const fixed = src.replace(/from "sqlite"/g, 'from "node:sqlite"')
-      if (fixed !== src) writeFileSync(path, fixed)
-    }
-
-    for (const name of ['cli', 'daemon']) {
-      writeFileSync(
-        join(distDir, `${name}.js`),
-        `#!/usr/bin/env node\nimport './runtime-version.js'\n\nawait import('./${name}-main.js')\n`,
-        { mode: 0o755 },
-      )
-    }
-
-    // Copy SQL migrations next to the bundled daemon payload. `migrate.ts`
-    // resolves them relative to `import.meta.url`, which lands at
-    // `dist/daemon-main.js`; tsup only emits JS, so stage SQL here manually.
-    const migrationsSrc = join(process.cwd(), '../daemon/src/core/db/migrations')
-    const migrationsDst = join(distDir, 'migrations')
-    mkdirSync(migrationsDst, { recursive: true })
-    for (const file of readdirSync(migrationsSrc)) {
-      if (!file.endsWith('.sql')) continue
-      copyFileSync(join(migrationsSrc, file), join(migrationsDst, file))
-    }
+    // Copy the database schema next to the bundled payloads. `schema.ts`
+    // resolves it relative to `import.meta.url`, which lands in `dist/`;
+    // tsup only emits JS, so stage the SQL here manually.
+    copyFileSync(
+      join(process.cwd(), '../daemon/src/core/db/schema.sql'),
+      join(distDir, 'schema.sql'),
+    )
+    // The published package ships the repository's licence text.
+    copyFileSync(join(process.cwd(), '../../LICENSE'), join(distDir, 'LICENSE'))
 
     // Copy the production TanStack Start build into the published CLI package.
     // `bazilion dashboard` spawns dist/web-server.js with BAZILION_WEB_DIST

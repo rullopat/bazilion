@@ -1,355 +1,139 @@
-import { codingSecrets } from '../../lib/coding-environment/diagnostics.ts'
-import { readCanonicalSessionFile } from '../../lib/result-source.ts'
-import type { AskUser } from '../tools/ask-user.ts'
-import { codingTools } from './coding.ts'
-import type { CodingHost } from './coding-contract.ts'
-import { type RepositoryContextHost, repositoryContextIntegration } from './repository-context.ts'
-// Bazilion → pi-coding-agent session bridge.
-//
-// `createBazilionSession` returns a fully-wired `AgentSession` suitable for
-// calling `session.prompt(text)` / `session.compact(instructions)` / etc.
-//
-// What we take ownership of (and hand to pi):
-//   - cwd: the agent's team workspace path. With shell security off, Pi's
-//     built-in coding tools use it as their working directory. With Docker
-//     isolation on, Bazilion exposes only a same-name containerized `bash`
-//     replacement and hides every host-backed coding file tool.
-//   - agentDir: `<bazilion-home>/pi` — pi writes transient state here
-//     (settings overrides, resource caches). We don't share it with the
-//     user's global `~/.pi/agent` so a Bazilion install never clobbers an
-//     independent pi CLI install.
-//   - authStorage: `InMemoryAuthStorageBackend` pre-seeded with the resolved
-//     API key for the agent's current provider. We never let pi read/write
-//     its own auth file — secrets live in the daemon-owned `secrets` table
-//     and reach us via `opts.apiKey` (initial) + `opts.refreshApiKey`
-//     (OAuth refresher for long turns).
-//   - modelRegistry: in-memory. Native providers (anthropic/openai/google/…)
-//     come from pi's bundled catalog. For Bazilion-only providers
-//     (`lmstudio`, `ollama`) we call `registerProvider(name, {baseUrl,
-//     api: 'openai-completions', authHeader: false})` — matches the
-//     openai-completions shim our pi-adapter has been using.
-//   - sessionManager: `SessionManager.create(cwd, <agentDir>/sessions)`
-//     writing JSONL to `~/.bazilion/agents/<id>/sessions/<sessionId>.jsonl`.
-//     Crash-survival, append-only, branching, compaction entries — all owned
-//     by pi now. Replaces our `agents.chat_messages` blob.
-//   - settingsManager: in-memory. Bazilion controls auto-compaction
-//     (disabled — we compact manually on user request via /compact) and
-//     retry (enabled with Bazilion-tuned caps).
-//
-// What stays outside pi's purview:
-//   - spawning agents / profiles / skills discovery (core/)
-//   - workspaces registry & mount tracking (core/)
-//   - inter-agent messaging, triggers, scheduler (core + apps/web)
-//   - memory backend (we wrap it as a pi customTool via `createBazilionCustomTools`)
+// Builds Pi `AgentSession`s. Pi owns the agent loop, the JSONL transcript, compaction and provider
+// retries; Bazilion supplies the model (credentials in memory only), the appended system prompt,
+// the tool list and the explicit conversation file. Nothing is discovered from disk: no Pi
+// extensions, skills, prompt templates, themes or context files, so a repository's `.pi/` cannot
+// run code. Pi's scratch state lives in `<home>/pi`, apart from any `~/.pi` of the operator.
 
-import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import type { ResolvedAgent } from '@bazilion/api-types'
+import type { ConversationTarget, ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
-import {
-  type AssistantMessage,
-  type AssistantMessageEvent,
-  createAssistantMessageEventStream,
-} from '@earendil-works/pi-ai'
 import {
   type AgentSession,
   buildSessionContext,
   createAgentSession,
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createFindToolDefinition,
+  createGrepToolDefinition,
+  createLsToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
   DefaultResourceLoader,
+  estimateTokens,
   SessionManager,
   SettingsManager,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
-import type { BazilionDb, Paths } from '../../core/index.ts'
-import { providerStateRepo } from '../../core/index.ts'
+import type { Paths } from '../../core/index.ts'
+import { parseModelString, piProviderName } from '../../core/providers.ts'
 import type { MemoryBackend } from '../memory/types.ts'
+import { createPiModel, type PiModelSpec } from '../providers/pi-runtime.ts'
 import {
-  createBazilionPiRuntime,
-  createProtectedPiRuntime,
-  piProviderName,
-  providerApiKey,
-  providerBaseUrl,
-  resolvePiModel,
-} from '../providers/pi-runtime.ts'
-import { createProviderRegistry, loadProviderConfigFromEnv } from '../providers/registry.ts'
-import { buildSystemPrompt, loadPromptSkills } from '../session/prompt.ts'
+  type BuildSystemPromptOptions,
+  buildSystemPrompt,
+  buildSystemPromptSections,
+  loadPromptSkills,
+  type PromptSection,
+} from '../session/prompt.ts'
 import type { BashApprovalHost } from '../shell/approval.ts'
-import { codingContainerCwd } from '../shell/coding.ts'
-import type { ProtectedDockerRuntime } from '../shell/docker.ts'
-import {
-  createNativeSessionShellTools,
-  type NativeSessionExecution,
-  snapshotNativeSessionExecution,
-} from '../shell/native-tooling.ts'
-import {
-  MAC_NATIVE_EXECUTION_UNAVAILABLE,
-  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
-} from '../shell/platform-support.ts'
-import { resolveShellSecurityConfig } from '../shell/security.ts'
-import { createProtectedSessionShellTools, createSessionShellTools } from '../shell/tooling.ts'
+import { containerWorkdir, homeContainerPrefix } from '../shell/docker.ts'
+import { createSessionShellTools, type DockerTurn } from '../shell/tooling.ts'
+import type { AskUser } from '../tools/ask-user.ts'
+import type { FileSink } from '../tools/deliver-file.ts'
 import type {
   BrowserHost,
+  ImageGenerationHost,
   InjectedMcpTool,
   McpHost,
   MessagingHost,
   UserMdHost,
+  WebSearchHost,
 } from '../worker/ipc-protocol.ts'
 import type {
   MinimalWorkerScratch,
-  ProtectedProviderWorkerRuntime,
-  ProtectedWorkerPaths,
+  RepositoryInstructions,
+  ReviewProviderRuntime,
 } from '../worker/runtime.ts'
-import { protectedRuntimeSecrets, redactJsonValue } from '../worker/runtime.ts'
-import { createBazilionCustomTools, createProtectedBazilionCustomTools } from './tools.ts'
+import { envSecretValues, reviewRuntimeSecrets } from '../worker/runtime.ts'
+import { readSessionFile, readSessionHeader } from './session-file.ts'
+import { createBazilionCustomTools } from './tools.ts'
 
 export interface CreateBazilionSessionOptions {
-  nativeExecution?: NativeSessionExecution
-  dockerLifecycle?: import('../shell/docker.ts').DockerResourceLifecycle
-  preparedDocker?: ProtectedDockerRuntime
-  repositoryContext?: import('@bazilion/api-types').RepositoryContextReport
-  codingHost?: CodingHost
-  repositoryContextHost?: RepositoryContextHost
   agent: ResolvedAgent
   paths: Paths
-  /** Merged env (process.env + secrets) — produced via `mergeSecretsIntoEnv`. */
+  /** The explicit conversation file; there is no "latest session" fallback. */
+  conversation: ConversationTarget
+  /** Merged env (process.env + secrets), from `mergeSecretsIntoEnv`. */
   env: NodeJS.ProcessEnv
-  /** BAZ-044: the requester-side verification capability, present in ordinary coding turns only. */
-  verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
-  /** BAZ-043: the requester-side review capability, present in ordinary coding turns only. */
-  reviewRequestHost?: import('../tools/review.ts').ReviewRequestHost
   memory: MemoryBackend
-  /**
-   * Names of providers the user has explicitly enabled in /config.
-   * Empty set means "no per-provider gating configured" — all providers pass.
-   * Pre-computed by the daemon and handed in so the session never has to
-   * touch the SQLite `provider_state` table itself.
-   */
-  enabledProviders: Set<string>
-  /**
-   * Optional host for inter-agent messaging. Wired from the worker's IPC
-   * channel back to the daemon — workers no longer hold a SQLite handle of
-   * their own. Omit to disable the messaging tools entirely (e.g. unit
-   * tests that don't exercise inbox flows).
-   */
+  /** The turn's Docker settings when BAZILION_BASH_SANDBOX is docker. */
+  docker?: DockerTurn
+  /** Workspace AGENTS.md files (Team-relative paths), given to Pi as project instructions. */
+  repositoryInstructions?: RepositoryInstructions
+  // Optional hosts: each enables its tools; a worker turn reaches them over IPC.
   messagingHost?: MessagingHost
-  /**
-   * Optional host for the team-shared USER.md append tool. Like
-   * `messagingHost`, this is wired via the worker's IPC channel. Omit to
-   * disable the `user_md_append` tool.
-   */
   userMdHost?: UserMdHost
-  /**
-   * Optional browser pool surface for the `browser_*` tools. Wired from the
-   * worker's IPC channel back to the daemon (the Playwright session lives in
-   * the daemon, persistent across turns). Omit to disable browser automation.
-   */
   browserHost?: BrowserHost
-  /**
-   * Optional MCP connection-pool surface for proxied MCP tools, paired with
-   * `mcpTools`. Wired via the worker's IPC channel. Omit when no MCP servers
-   * are enabled.
-   */
+  /** MCP tools discovered daemon-side, proxied through `mcpHost`. */
   mcpHost?: McpHost
-  /** MCP tools discovered daemon-side, exposed as proxy tools alongside `mcpHost`. */
   mcpTools?: InjectedMcpTool[]
-  /** If provided, enables the `deliver_file` tool — the agent's outbound file channel. */
   askUser?: AskUser
-  imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
-  fileSink?: import('../tools/deliver-file.ts').FileSink
-  webSearchHost?: import('../worker/ipc-protocol.ts').WebSearchHost
-  /** Turn-scoped bridge for dangerous bash commands. Omit to fail closed. */
+  imageGenerationHost?: ImageGenerationHost
+  /** Enables `deliver_file`, the agent's outbound file channel. */
+  fileSink?: FileSink
+  webSearchHost?: WebSearchHost
+  /** Turn-scoped bridge for dangerous bash commands. Omit to deny them. */
   bashApprovalHost?: BashApprovalHost
-  /**
-   * Optional explicit API key for the agent's provider. Wins over any value
-   * derived from `env`. Required for OAuth-backed providers (`openai-codex`)
-   * since their credentials live in the daemon-owned `secrets` table, not
-   * in env vars.
-   */
+  /** Wins over the key in `env`: the ChatGPT access token (OAuth keys are not env values). */
   apiKey?: string
-  /**
-   * Optional callback for OAuth-backed providers whose access tokens may
-   * expire mid-turn. When provided, pi calls it to refresh the JWT during
-   * long tool-execution loops. Daemon-side callers (compact/context/truncate)
-   * wire this directly against the secrets repo; worker turns call the same
-   * daemon-owned refresher through their private, turn-scoped IPC channel.
-   */
+  /** Refreshes an OAuth access token that expires during a long turn. */
   refreshApiKey?: (providerName: string) => Promise<string>
-  conversation?: import('@bazilion/api-types').ConversationTarget
-  /** Internal restricted mode used by the learning reviewer. */
-  restricted?: {
-    systemPrompt: string
-    tools: ToolDefinition[]
-    sessionDir: string
-    reasoningLevel: ResolvedAgent['reasoningLevel']
-  }
 }
 
 export interface BazilionSessionHandle {
   session: AgentSession
+  /**
+   * Credential values redacted from tool output before it reaches a client. Mutable: a token
+   * refreshed mid-turn joins it before the next output is translated.
+   */
+  redactionSecrets: readonly string[]
   /** Call when done — disposes listeners + closes the pi session. */
   dispose(): void
 }
 
-export interface CreateProtectedBazilionSessionOptions {
-  nativeExecution?: NativeSessionExecution
-  dockerLifecycle?: import('../shell/docker.ts').DockerResourceLifecycle
-  repositoryContext?: import('@bazilion/api-types').RepositoryContextReport
-  codingHost?: CodingHost
-  repositoryContextHost?: RepositoryContextHost
-  conversation: import('@bazilion/api-types').ConversationTarget
-  agent: ResolvedAgent
-  runtime: ProtectedProviderWorkerRuntime
-  paths: ProtectedWorkerPaths
-  scratch: MinimalWorkerScratch
-  docker?: ProtectedDockerRuntime
-  memory: MemoryBackend
-  messagingHost: MessagingHost
-  userMdHost: UserMdHost
-  askUser?: AskUser
-  imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
-  /** BAZ-067: discovery host present only when the operator configured a backend. */
-  webSearchHost?: import('../worker/ipc-protocol.ts').WebSearchHost
-  fileSink: import('../tools/deliver-file.ts').FileSink
-  bashApprovalHost: BashApprovalHost
-  refreshApiKey: (providerName: string) => Promise<string>
-  /** BAZ-044: the requester-side verification capability, present in ordinary coding turns only. */
-  verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
-  /** BAZ-043: the requester-side review capability, present in ordinary coding turns only. */
-  reviewRequestHost?: import('../tools/review.ts').ReviewRequestHost
-}
-
 export interface CreateRestrictedReviewSessionOptions {
-  runtime: ProtectedProviderWorkerRuntime
+  runtime: ReviewProviderRuntime
   scratch: MinimalWorkerScratch
   systemPrompt: string
   tools: ToolDefinition[]
-  refreshApiKey: (providerName: string) => Promise<string>
+  /** The ChatGPT token refresher; static credentials stay in Pi's in-memory store. */
+  refreshApiKey?: (providerName: string) => Promise<string>
 }
 
-const PROTECTED_MODEL_CWD = '/workspace'
-const REVIEW_MODEL_CWD = '/review'
-const PROTECTED_NATIVE_BASE_SYSTEM_PROMPT = `You are an assistant operating inside Bazilion's protected
-Agent runtime. Use only the tools exposed for this turn. Coding commands execute through the
-daemon-admitted native OS sandbox in the Team workspace. Team memory and admitted inputs are
-read-only. TCP/UDP, including localhost, are denied; pipes and private per-job pathname Unix IPC
-are available. Direct host coding tools, Docker and VM fallback are unavailable. Show the native
-workspace paths clearly and report missing tools or unavailable protection rather than bypassing it.`
-const PROTECTED_BASE_SYSTEM_PROMPT = `You are an assistant operating inside Bazilion's protected
-Agent runtime. Use only the tools exposed for this turn. Coding commands execute in an ephemeral,
-network-disabled Docker container whose Team workspace is /workspace. Host paths and host tools are
-not available. Be concise and show container paths clearly when working with files.`
+interface PiSessionSpec {
+  model: PiModelSpec
+  reasoningLevel: string
+  /** The working directory the model is told about. */
+  cwd: string
+  piAgentDir: string
+  sessionManager: SessionManager
+  /** Replaces Pi's base prompt; otherwise `appendSystemPrompt` is appended to it. */
+  systemPrompt?: string
+  appendSystemPrompt?: string
+  agentsFiles?: Array<{ path: string; content: string }>
+  tools: ToolDefinition[]
+  /** Pi's own (host-backed) coding tools to enable alongside `tools`. */
+  hostToolNames?: readonly string[]
+  redactionSecrets: string[]
+  refreshApiKey?: (providerName: string) => Promise<string>
+}
 
-/**
- * Build a pi `AgentSession` using Bazilion's resolved agent + provider state.
- * The returned session is ready for `prompt()` / `compact()` / `reset()`.
- */
-export async function createBazilionSession(
-  opts: CreateBazilionSessionOptions,
-): Promise<BazilionSessionHandle> {
-  if (process.platform === 'darwin' && opts.nativeExecution !== undefined)
-    throw new Error(MAC_NATIVE_EXECUTION_UNAVAILABLE)
-  const native =
-    opts.nativeExecution === undefined
-      ? undefined
-      : snapshotNativeSessionExecution(opts.nativeExecution)
-  if (
-    native &&
-    (opts.restricted ||
-      opts.preparedDocker ||
-      opts.dockerLifecycle ||
-      resolveShellSecurityConfig(opts.env).sandboxMode === 'docker')
-  )
-    throw new Error('Native session rejects another execution backend or restricted mode')
-  const {
-    agent,
-    paths,
-    env,
-    memory,
-    enabledProviders,
-    messagingHost,
-    userMdHost,
-    browserHost,
-    mcpHost,
-    mcpTools,
-    fileSink,
-    askUser,
-    bashApprovalHost,
-    refreshApiKey,
-    restricted,
-  } = opts
-
-  const { providerName, modelId } = splitModelString(agent.model)
-
-  // Enabled-set gate — mirrors createProviderRegistry's check. We keep the
-  // Bazilion-side enabled/disabled /config toggles authoritative even though
-  // pi does its own provider resolution: we simply refuse to build a session
-  // for a disabled provider. The set is pre-computed by the daemon (the
-  // worker has no SQLite handle of its own).
-  if (enabledProviders.size > 0 && !enabledProviders.has(providerName)) {
-    throw new Error(`${providerName} provider is disabled — enable it on the /config page`)
-  }
-
-  // One public Pi runtime owns provider aliases, credentials, catalog lookup,
-  // local-provider registration and arbitrary-model fallback for both direct
-  // Provider.chat calls and full coding-agent sessions.
-  const apiKey = opts.apiKey ?? providerApiKey(providerName, env)
-  const baseUrl = providerBaseUrl(providerName, env)
-  const modelRuntime = await createBazilionPiRuntime({
-    providerName,
-    env,
-    ...(apiKey ? { apiKey } : {}),
-    ...(baseUrl ? { baseUrl } : {}),
-    modelId,
-  })
-  const model = resolvePiModel(modelRuntime, providerName, modelId, baseUrl)
-
-  // cwd is the agent's team directory. Every agent belongs to exactly one
-  // team; the team's filesystem root is where work product lives. In host
-  // mode Pi uses this as the coding tools' working directory (not a security
-  // boundary). In Docker mode only the containerized bash is exposed and the
-  // directory is its sole read/write bind mount. Private identity/soul files
-  // live in `agent.dir` and are reached through scoped `home_*` tools.
-  const cwd = native ? realpathSync(agent.team.path) : agent.team.path
-  const modelCwd = native ? join(cwd, native.cwd) : cwd
-  if (!existsSync(cwd)) mkdirSync(cwd, { recursive: true })
-
-  const promptSkills = restricted ? [] : loadPromptSkills(paths.skillsDir, agent.skills)
-  const uploadsDir = join(agent.agent.dir, 'uploads')
-  const shellTools = restricted
-    ? null
-    : native
-      ? {
-          ...createNativeSessionShellTools(modelCwd, native.cwd, native.host),
-          config: { sandboxMode: 'native' as const, approvalMode: 'dangerous' as const },
-        }
-      : createSessionShellTools(cwd, env, {
-          preparedDocker: opts.preparedDocker,
-          dockerLifecycle: opts.dockerLifecycle,
-          ...(existsSync(uploadsDir) ? { inputsDir: uploadsDir } : {}),
-          skillMounts: promptSkills.map((skill) => ({
-            source: skill.hostDir,
-            target: skill.sandboxDir,
-          })),
-          approvalHost: bashApprovalHost,
-        })
-
-  // Session file under the agent's own directory. Keeping it under
-  // `agents/<id>/sessions/` makes `bazilion uninstall` (reset tier) already
-  // clean them up without changes.
-  //
-  // Normal sessions use the exact daemon-admitted target. Reviews remain private.
-  const sessionDir = restricted?.sessionDir ?? join(paths.agentDir(agent.agent.id), 'sessions')
-  mkdirSync(sessionDir, { recursive: true })
-  const existing = restricted ? null : explicitConversationFile(sessionDir, opts.conversation)
-  const sessionManager = existing
-    ? SessionManager.open(existing, sessionDir, modelCwd)
-    : SessionManager.create(modelCwd, sessionDir)
-
-  // In-memory settings: auto-compaction off (we trigger compaction manually
-  // via /compact), retry on with Bazilion-tuned caps matching what withRetry
-  // used to apply before pi-adoption.
+async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle> {
+  const { runtime: modelRuntime, model } = await createPiModel(spec.model)
   const settingsManager = SettingsManager.inMemory({
-    // Auxiliary provider requests must be explicitly admitted by Bazilion, not idle/streaming warming.
+    // Provider requests happen only for turns: no cache warming, and compaction runs only on
+    // request (/compact).
     cacheWarming: 'off',
     compaction: { enabled: false },
     retry: {
@@ -359,366 +143,220 @@ export async function createBazilionSession(
       provider: { maxRetryDelayMs: 8_000 },
     },
   })
-
-  // Bazilion-authored system prompt becomes an `appendSystemPrompt` entry.
-  // Pi keeps its default base (which lists built-in tools + guidelines), our
-  // profile content (SOUL.md / IDENTITY.md / workspaces / memory hint) is
-  // concatenated after it. This is the same injection hook pi extensions use.
-  const bazilionPrompt =
-    restricted?.systemPrompt ??
-    buildSystemPrompt(agent, {
-      skills: promptSkills,
-      sandboxMode: shellTools?.config.sandboxMode ?? 'off',
-      ...(native ? { modelWorkspace: cwd } : {}),
-      // Guide iff the browser tools are admitted — the same host presence
-      // that registers `browser_*` in createBazilionCustomTools (T10).
-      ...(opts.browserHost ? { browserGuide: true } : {}),
-      ...(opts.webSearchHost ? { searchGuide: true } : {}),
-    })
-  const repository =
-    !restricted && opts.repositoryContext && opts.repositoryContextHost
-      ? repositoryContextIntegration(
-          opts.repositoryContext,
-          opts.repositoryContextHost,
-          shellTools?.config.sandboxMode === 'docker' ? '/workspace' : cwd,
-        )
-      : undefined
   const resourceLoader = new DefaultResourceLoader({
-    cwd: modelCwd,
-    agentDir: join(paths.home, 'pi'),
+    cwd: spec.cwd,
+    agentDir: spec.piAgentDir,
     settingsManager,
     noExtensions: true,
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    appendSystemPrompt: bazilionPrompt ? [bazilionPrompt] : undefined,
+    ...(spec.systemPrompt !== undefined ? { systemPrompt: spec.systemPrompt } : {}),
+    ...(spec.appendSystemPrompt ? { appendSystemPrompt: [spec.appendSystemPrompt] } : {}),
+    agentsFilesOverride: () => ({ agentsFiles: spec.agentsFiles ?? [] }),
   })
-  if (repository) resourceLoader.getAgentsFiles = repository.files
   await resourceLoader.reload()
 
-  // Tool allowlist: pi's `tools` option is exclusive when provided — only
-  // the listed names are enabled, regardless of what's in `customTools`.
-  // So we enumerate the host-backed Pi tools allowed by the shell policy and
-  // every Bazilion custom tool we want the LLM to see. Docker mode contributes
-  // a custom same-name `bash` and zero host tools; missing its name (or any
-  // memory/messaging/web/bootstrap name) would silently drop it.
-  const bazilionTools = restricted
-    ? restricted.tools
-    : createBazilionCustomTools({
-        agent,
-        memory,
-        messagingHost,
-        userMdHost,
-        browserHost,
-        mcpHost,
-        mcpTools,
-        fileSink,
-        imageGenerationHost: opts.imageGenerationHost,
-        webSearchHost: opts.webSearchHost,
-        askUser,
-        sessionId: sessionManager.getSessionId(),
-        env,
-        verificationRequestHost: opts.verificationRequestHost,
-        reviewRequestHost: opts.reviewRequestHost,
-      })
-  if (repository) bazilionTools.push(repository.tool)
-  if (
-    repository &&
-    opts.codingHost &&
-    shellTools &&
-    shellTools.config.sandboxMode === 'docker' &&
-    !opts.preparedDocker
-  )
-    throw new Error('Coding commands require the admitted Docker runtime')
-  // One mutable redaction set shared by the coding tools and the provider
-  // refresher: a token refreshed mid-turn is added here before the next command
-  // builds its diagnostics, so live and retained output can never leak it.
-  const redactionSecrets = uniqueSecrets(codingSecrets(env))
-  if (repository && opts.codingHost && shellTools)
-    bazilionTools.push(
-      ...codingTools({
-        host: opts.codingHost,
-        root: cwd,
-        context: repository.resolve,
-        docker: opts.preparedDocker,
-        native: native?.host,
-        lifecycle: opts.dockerLifecycle,
-        approval: shellTools.config.approvalMode === 'dangerous',
-        approvalHost: bashApprovalHost,
-        secrets: () => redactionSecrets,
-      }),
-    )
-  const customTools = shellTools?.customBash
-    ? [...bazilionTools, shellTools.customBash]
-    : bazilionTools
-  const allowedTools = [...(shellTools?.hostToolNames ?? []), ...customTools.map((t) => t.name)]
-
+  // Pi's `tools` list is exclusive: a tool missing from it is disabled even when defined.
   const { session } = await createAgentSession({
-    cwd: modelCwd,
-    agentDir: join(paths.home, 'pi'),
+    cwd: spec.cwd,
+    agentDir: spec.piAgentDir,
     model,
-    thinkingLevel: toPiThinkingLevel(restricted?.reasoningLevel ?? agent.reasoningLevel),
-    tools: allowedTools,
-    customTools,
-    sessionManager,
+    thinkingLevel: toPiThinkingLevel(spec.reasoningLevel),
+    tools: [...(spec.hostToolNames ?? []), ...spec.tools.map((tool) => tool.name)],
+    customTools: spec.tools,
+    sessionManager: spec.sessionManager,
     settingsManager,
     modelRuntime,
     resourceLoader,
   })
 
-  repository?.bind(session, allowedTools)
-
-  // OAuth providers: wire pi's per-request `getApiKey` callback so the JWT
-  // gets refreshed *during* a long tool-execution loop, not just at the
-  // start of the turn. This is exactly the use case pi-agent-core's doc
-  // calls out for this hook ("short-lived OAuth tokens that may expire
-  // during long-running tool execution phases"). Caller supplies the
-  // refresher because only they have access to the secrets table.
+  const { refreshApiKey, redactionSecrets } = spec
   if (refreshApiKey) {
+    const providerName = spec.model.providerName
+    // Pi asks before every provider request, so a token that expires mid-turn is replaced.
     session.agent.getApiKey = async (requestedProvider) => {
       if (requestedProvider !== piProviderName(providerName)) return undefined
       try {
         const token = await refreshApiKey(providerName)
         if (token && !redactionSecrets.includes(token)) redactionSecrets.push(token)
-        return token
+        return token || undefined
       } catch {
-        // Stale/removed credentials mid-session → return undefined so pi
-        // surfaces a "no auth" error cleanly instead of us throwing out of
-        // the provider callback (which would drag down the whole turn).
+        // Let Pi report a clean "no auth" error instead of throwing out of its callback.
         return undefined
       }
     }
   }
-
-  return {
-    session,
-    dispose() {
-      session.dispose()
-    },
-  }
+  return { session, redactionSecrets, dispose: () => session.dispose() }
 }
 
-/** Build a closed protected session using exactly one daemon-admitted execution backend. */
-export async function createProtectedBazilionSession(
-  opts: CreateProtectedBazilionSessionOptions,
-): Promise<BazilionSessionHandle> {
-  if (process.platform === 'darwin') throw new Error(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
-  const native =
-    opts.nativeExecution === undefined
-      ? undefined
-      : snapshotNativeSessionExecution(opts.nativeExecution)
-  if (Boolean(native) === Boolean(opts.docker) || (native && opts.dockerLifecycle))
-    throw new Error('Protected session requires exactly one execution backend')
-  const { providerName, modelId } = splitModelString(opts.agent.model)
-  if (providerName !== opts.runtime.providerName || modelId !== opts.runtime.modelId) {
-    throw new Error('protected Agent model does not match the prepared provider runtime')
-  }
-  if (opts.agent.agent.dir !== opts.paths.agentDir || opts.agent.team.path !== opts.paths.teamDir) {
-    throw new Error('protected session paths do not match the resolved Agent')
-  }
-  if (!existsSync(opts.paths.teamDir)) {
-    throw new Error('protected Team workspace is unavailable')
-  }
+type TurnOptions = Omit<CreateBazilionSessionOptions, 'conversation'>
 
-  const modelRuntime = await createProtectedPiRuntime({
-    providerName: opts.runtime.providerName,
-    modelId: opts.runtime.modelId,
-    apiKey: opts.runtime.apiKey,
-    baseUrl: opts.runtime.baseUrl,
-    credentialEnv: materializeProtectedCredentialFile(opts.runtime, opts.scratch),
+/** The tools and prompt a turn of this Agent gets, given the hosts in `opts`. */
+function turnSurface(opts: TurnOptions) {
+  const { agent, paths, env } = opts
+  const cwd = agent.team.path
+  const promptSkills = loadPromptSkills(paths.skillsDir, agent.skills)
+  const shellTools = createSessionShellTools(cwd, env, {
+    docker: opts.docker,
+    containerPrefix: homeContainerPrefix(paths.home),
+    inputsDir: join(agent.agent.dir, 'uploads'),
+    skillMounts: promptSkills.map((skill) => ({ source: skill.hostDir, target: skill.sandboxDir })),
+    approvalHost: opts.bashApprovalHost,
   })
-  const model = resolvePiModel(
-    modelRuntime,
-    opts.runtime.providerName,
-    opts.runtime.modelId,
-    opts.runtime.baseUrl,
-  )
-  const nativeRoot = native ? realpathSync(opts.paths.teamDir) : opts.paths.teamDir
-  const docker = opts.docker
-  let shellTools:
-    | ReturnType<typeof createNativeSessionShellTools>
-    | ReturnType<typeof createProtectedSessionShellTools>
-  let modelCwd: string
-  if (native) {
-    modelCwd = join(nativeRoot, native.cwd)
-    shellTools = createNativeSessionShellTools(modelCwd, native.cwd, native.host)
-  } else if (docker) {
-    modelCwd = codingContainerCwd(docker.coding?.cwd ?? '.')
-    shellTools = createProtectedSessionShellTools(
-      opts.paths.teamDir,
-      docker,
-      opts.bashApprovalHost,
-      opts.dockerLifecycle,
-    )
-  } else {
-    throw new Error('Protected execution backend is unavailable')
-  }
-
-  mkdirSync(opts.paths.sessionDir, { recursive: true })
-  const existing = explicitConversationFile(opts.paths.sessionDir, opts.conversation)
-  const sessionManager = existing
-    ? SessionManager.open(existing, opts.paths.sessionDir, native ? modelCwd : opts.paths.teamDir)
-    : SessionManager.create(native ? modelCwd : opts.paths.teamDir, opts.paths.sessionDir)
-  const settingsManager = createInMemorySettingsManager()
-  const bazilionPrompt = redactJsonValue(
-    buildSystemPrompt(opts.agent, {
-      skills: opts.paths.skills,
-      sandboxMode: native ? 'native' : 'docker',
-      ...(native ? { modelWorkspace: nativeRoot } : {}),
-      homeDocuments: opts.paths.homeDocuments,
-    }),
-    protectedRuntimeSecrets(opts.runtime),
-  )
-  const repository =
-    opts.repositoryContext && opts.repositoryContextHost
-      ? repositoryContextIntegration(
-          redactJsonValue(opts.repositoryContext, protectedRuntimeSecrets(opts.runtime)),
-          opts.repositoryContextHost,
-          native ? nativeRoot : PROTECTED_MODEL_CWD,
-        )
-      : undefined
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: modelCwd,
-    agentDir: opts.scratch.piAgentDir,
-    settingsManager,
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    systemPrompt: native ? PROTECTED_NATIVE_BASE_SYSTEM_PROMPT : PROTECTED_BASE_SYSTEM_PROMPT,
-    appendSystemPrompt: bazilionPrompt ? [bazilionPrompt] : undefined,
-  })
-  if (repository) resourceLoader.getAgentsFiles = repository.files
-  await resourceLoader.reload()
-
-  const bazilionTools = createProtectedBazilionCustomTools({
-    agent: opts.agent,
+  const docker = shellTools.config.sandboxMode === 'docker'
+  const customTools = createBazilionCustomTools({
+    agent,
     memory: opts.memory,
     messagingHost: opts.messagingHost,
     userMdHost: opts.userMdHost,
+    browserHost: opts.browserHost,
+    mcpHost: opts.mcpHost,
+    mcpTools: opts.mcpTools,
     fileSink: opts.fileSink,
-    webSearchHost: opts.webSearchHost,
     imageGenerationHost: opts.imageGenerationHost,
+    webSearchHost: opts.webSearchHost,
     askUser: opts.askUser,
-    sessionId: sessionManager.getSessionId(),
-    verificationRequestHost: opts.verificationRequestHost,
-    reviewRequestHost: opts.reviewRequestHost,
+    env,
   })
-  if (repository) bazilionTools.push(repository.tool)
-  // Shared with the protected credential boundary below: refreshed tokens are
-  // appended there and observed here before each command builds its diagnostics.
-  const redactionSecrets = uniqueSecrets(protectedRuntimeSecrets(opts.runtime))
-  if (repository && opts.codingHost)
-    bazilionTools.push(
-      ...codingTools({
-        host: opts.codingHost,
-        root: nativeRoot ?? opts.paths.teamDir,
-        context: repository.resolve,
-        docker,
-        native: native?.host,
-        lifecycle: opts.dockerLifecycle,
-        approval: true,
-        approvalHost: opts.bashApprovalHost,
-        secrets: () => redactionSecrets,
-      }),
-    )
-  if (!shellTools.customBash) throw new Error('protected bash tool is unavailable')
-  const customTools = [...bazilionTools, shellTools.customBash]
-  const { session } = await createAgentSession({
-    cwd: modelCwd,
-    agentDir: opts.scratch.piAgentDir,
-    model,
-    thinkingLevel: toPiThinkingLevel(opts.runtime.reasoningLevel),
-    tools: customTools.map((tool) => tool.name),
-    customTools,
-    sessionManager,
-    settingsManager,
-    modelRuntime,
-    resourceLoader,
-  })
-  repository?.bind(
-    session,
-    customTools.map((tool) => tool.name),
-  )
-  installProtectedCredentialBoundary(
-    session,
-    opts.runtime.providerName,
-    redactionSecrets,
-    opts.refreshApiKey,
-  )
-  return sessionHandle(session)
+  const promptOptions: BuildSystemPromptOptions = {
+    skills: promptSkills,
+    sandboxMode: shellTools.config.sandboxMode,
+    // The guides ride along exactly when their tools are admitted.
+    ...(opts.browserHost ? { browserGuide: true } : {}),
+    ...(opts.webSearchHost ? { searchGuide: true } : {}),
+  }
+  return {
+    cwd,
+    // In Docker mode the host Team path does not exist where bash runs, so the model is given
+    // the container's working directory instead.
+    modelCwd: docker ? containerWorkdir(opts.docker?.cwd ?? '.') : cwd,
+    docker,
+    tools: shellTools.customBash ? [...customTools, shellTools.customBash] : customTools,
+    hostToolNames: shellTools.hostToolNames,
+    promptOptions,
+  }
 }
 
-/** Build a scratch-only reviewer with exactly the caller-supplied proposal tool. */
+/** A Pi session for one Agent turn (worker) or for `/compact` (daemon). */
+export async function createBazilionSession(
+  opts: CreateBazilionSessionOptions,
+): Promise<BazilionSessionHandle> {
+  const { agent, paths } = opts
+  const { providerName, modelId } = parseModelString(agent.model)
+  // The Team directory is the workspace: Pi's host coding tools work there; in Docker mode it is
+  // bash's only read/write mount. Private identity files are reached through `home_*` tools.
+  if (!existsSync(agent.team.path)) mkdirSync(agent.team.path, { recursive: true })
+  mkdirSync(join(paths.agentDir(agent.agent.id), 'sessions'), { recursive: true })
+  const sessionManager = openConversation(agent, paths, opts.conversation)
+  const turn = turnSurface(opts)
+  return openPiSession({
+    model: {
+      providerName,
+      modelId,
+      env: opts.env,
+      ...(opts.apiKey ? { apiKey: opts.apiKey } : {}),
+    },
+    reasoningLevel: agent.reasoningLevel,
+    cwd: turn.modelCwd,
+    piAgentDir: join(paths.home, 'pi'),
+    sessionManager,
+    appendSystemPrompt: buildSystemPrompt(agent, turn.promptOptions),
+    agentsFiles: (opts.repositoryInstructions ?? []).map((file) => ({
+      path: `${turn.docker ? '/workspace' : turn.cwd}/${file.path}`,
+      content: file.content,
+    })),
+    tools: turn.tools,
+    hostToolNames: turn.hostToolNames,
+    redactionSecrets: [...new Set(envSecretValues(opts.env).filter(Boolean))],
+    refreshApiKey: opts.refreshApiKey,
+  })
+}
+
+/** What the model is told about a tool. */
+type ToolDescription = Pick<ToolDefinition, 'name' | 'description' | 'parameters'>
+
+const HOST_TOOL_DEFINITIONS: Record<string, (cwd: string) => ToolDescription> = {
+  read: createReadToolDefinition,
+  bash: createBashToolDefinition,
+  edit: createEditToolDefinition,
+  write: createWriteToolDefinition,
+  grep: createGrepToolDefinition,
+  find: createFindToolDefinition,
+  ls: createLsToolDefinition,
+}
+
+/**
+ * The prompt sections and tools a turn would get, for the context report. Builds no model
+ * runtime and no session.
+ */
+export function describeTurn(opts: TurnOptions): {
+  systemPrompt: string
+  promptSections: PromptSection[]
+  tools: ToolDescription[]
+} {
+  const turn = turnSurface(opts)
+  const hostTools = turn.hostToolNames.flatMap((name) => {
+    const define = HOST_TOOL_DEFINITIONS[name]
+    return define ? [define(turn.modelCwd)] : []
+  })
+  return {
+    systemPrompt: buildSystemPrompt(opts.agent, turn.promptOptions),
+    promptSections: buildSystemPromptSections(opts.agent, turn.promptOptions),
+    tools: [...hostTools, ...turn.tools],
+  }
+}
+
+/** Counts and Pi's token estimate (chars / 4) for what a conversation's branch sends the model. */
+export function conversationUsage(conversation: SessionManager): {
+  messageEntries: number
+  compactionEntries: number
+  tokens: number
+} {
+  const branch = conversation.getBranch()
+  return {
+    messageEntries: branch.filter(
+      (entry) => entry.type === 'message' && entry.message.role !== 'system',
+    ).length,
+    compactionEntries: branch.filter((entry) => entry.type === 'compaction').length,
+    tokens: conversation
+      .buildSessionContext()
+      .messages.reduce((total, message) => total + estimateTokens(message), 0),
+  }
+}
+
+/** The scratch-only learning reviewer: exactly the caller's proposal tool, no workspace. */
 export async function createRestrictedReviewSession(
   opts: CreateRestrictedReviewSessionOptions,
 ): Promise<BazilionSessionHandle> {
-  // Closed reviewer tools never admit shell/coding execution; native shell deferral does not
-  // disable this existing provider-minimal capability surface.
-  const modelRuntime = await createProtectedPiRuntime({
-    providerName: opts.runtime.providerName,
-    modelId: opts.runtime.modelId,
-    apiKey: opts.runtime.apiKey,
-    baseUrl: opts.runtime.baseUrl,
-    credentialEnv: materializeProtectedCredentialFile(opts.runtime, opts.scratch),
-  })
-  const model = resolvePiModel(
-    modelRuntime,
-    opts.runtime.providerName,
-    opts.runtime.modelId,
-    opts.runtime.baseUrl,
-  )
-  const settingsManager = createInMemorySettingsManager()
-  const sessionManager = SessionManager.create(
-    opts.scratch.reviewCwd,
-    opts.scratch.reviewSessionDir,
-  )
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: REVIEW_MODEL_CWD,
-    agentDir: opts.scratch.piAgentDir,
-    settingsManager,
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
+  const { runtime, scratch } = opts
+  return openPiSession({
+    model: {
+      providerName: runtime.providerName,
+      modelId: runtime.modelId,
+      env: reviewCredentialEnv(runtime, scratch),
+      ...(runtime.apiKey ? { apiKey: runtime.apiKey } : {}),
+      ...(runtime.baseUrl ? { baseUrl: runtime.baseUrl } : {}),
+    },
+    reasoningLevel: runtime.reasoningLevel,
+    cwd: '/review',
+    piAgentDir: scratch.piAgentDir,
+    sessionManager: SessionManager.create(scratch.reviewCwd, scratch.reviewSessionDir),
     systemPrompt: opts.systemPrompt,
+    tools: opts.tools,
+    redactionSecrets: [...new Set(reviewRuntimeSecrets(runtime))],
+    refreshApiKey: opts.refreshApiKey,
   })
-  await resourceLoader.reload()
-
-  const { session } = await createAgentSession({
-    cwd: REVIEW_MODEL_CWD,
-    agentDir: opts.scratch.piAgentDir,
-    model,
-    thinkingLevel: toPiThinkingLevel(opts.runtime.reasoningLevel),
-    tools: opts.tools.map((tool) => tool.name),
-    customTools: opts.tools,
-    sessionManager,
-    settingsManager,
-    modelRuntime,
-    resourceLoader,
-  })
-  installProtectedCredentialBoundary(
-    session,
-    opts.runtime.providerName,
-    uniqueSecrets(protectedRuntimeSecrets(opts.runtime)),
-    opts.refreshApiKey,
-  )
-  return sessionHandle(session)
 }
 
-/** Dedupe credential values once, preserving the mutable identity callers share. */
-function uniqueSecrets(values: readonly string[]): string[] {
-  return [...new Set(values.filter(Boolean))]
-}
-
-function materializeProtectedCredentialFile(
-  runtime: ProtectedProviderWorkerRuntime,
+/** The review's projected credential fields; Vertex JSON becomes a 0600 file in its scratch. */
+function reviewCredentialEnv(
+  runtime: ReviewProviderRuntime,
   scratch: MinimalWorkerScratch,
-): Array<{ name: string; value: string }> | undefined {
-  const fields = [...(runtime.credentialEnv ?? [])]
+): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const field of runtime.credentialEnv ?? []) env[field.name] = field.value
   if (runtime.credentialFile) {
     const path = join(scratch.tempDir, 'provider-credential.json')
     writeFileSync(path, runtime.credentialFile.content, {
@@ -726,148 +364,9 @@ function materializeProtectedCredentialFile(
       mode: 0o600,
       flag: 'wx',
     })
-    fields.push({ name: runtime.credentialFile.envName, value: path })
+    env[runtime.credentialFile.envName] = path
   }
-  return fields.length > 0 ? fields : undefined
-}
-
-// --- helpers ---
-
-function createInMemorySettingsManager(): SettingsManager {
-  return SettingsManager.inMemory({
-    cacheWarming: 'off',
-    compaction: { enabled: false },
-    retry: {
-      enabled: true,
-      maxRetries: 2,
-      baseDelayMs: 500,
-      provider: { maxRetryDelayMs: 8_000 },
-    },
-  })
-}
-
-export function installProtectedCredentialBoundary(
-  session: AgentSession,
-  providerName: string,
-  /** Mutable: refreshed tokens are appended so every redaction site sees them. */
-  activeTokens: string[],
-  refreshApiKey: (providerName: string) => Promise<string>,
-): void {
-  session.agent.state.messages = redactJsonValue(session.agent.state.messages, activeTokens)
-  const originalStream = session.agent.streamFunction
-  session.agent.streamFunction = async (model, context, options) => {
-    let upstream: Awaited<ReturnType<typeof originalStream>>
-    try {
-      upstream = await originalStream(model, context, options)
-    } catch (error) {
-      throw credentialSafeError(error, activeTokens)
-    }
-    const sanitized = createAssistantMessageEventStream()
-    void (async () => {
-      let latestPartial: AssistantMessage | undefined
-      try {
-        for await (const event of upstream) {
-          const safeEvent = redactJsonValue(event, activeTokens) as AssistantMessageEvent
-          if ('partial' in safeEvent) latestPartial = safeEvent.partial
-          sanitized.push(safeEvent)
-        }
-      } catch (error) {
-        const safeError = credentialSafeError(error, activeTokens)
-        sanitized.push({
-          type: 'error',
-          reason: 'error',
-          error: credentialSafeAssistantError(model, latestPartial, safeError, activeTokens),
-        })
-      } finally {
-        sanitized.end()
-      }
-    })()
-    return sanitized
-  }
-
-  const originalAfterToolCall = session.agent.afterToolCall
-  session.agent.afterToolCall = async (context, signal) => {
-    let prior: Awaited<ReturnType<NonNullable<typeof originalAfterToolCall>>> | undefined
-    try {
-      prior = await originalAfterToolCall?.(context, signal)
-    } catch (error) {
-      throw credentialSafeError(error, activeTokens)
-    }
-    return {
-      ...prior,
-      content: redactJsonValue(prior?.content ?? context.result.content, activeTokens),
-      details: redactJsonValue(prior?.details ?? context.result.details, activeTokens),
-    }
-  }
-
-  session.agent.getApiKey = async (requestedProvider) => {
-    if (requestedProvider !== piProviderName(providerName)) return undefined
-    try {
-      const token = await refreshApiKey(providerName)
-      if (token && !activeTokens.includes(token)) activeTokens.push(token)
-      return token || undefined
-    } catch {
-      return undefined
-    }
-  }
-}
-
-function credentialSafeError(error: unknown, activeTokens: readonly string[]): Error {
-  const message = error instanceof Error ? error.message : String(error)
-  return new Error(redactJsonValue(message, activeTokens))
-}
-
-function credentialSafeAssistantError(
-  model: {
-    api: AssistantMessage['api']
-    provider: AssistantMessage['provider']
-    id: string
-  },
-  latestPartial: AssistantMessage | undefined,
-  error: Error,
-  activeTokens: readonly string[],
-): AssistantMessage {
-  const safePartial = latestPartial
-    ? redactJsonValue(latestPartial, activeTokens)
-    : {
-        role: 'assistant' as const,
-        content: [],
-        api: model.api,
-        provider: model.provider,
-        model: model.id,
-        usage: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        },
-        timestamp: Date.now(),
-      }
-  return {
-    ...safePartial,
-    stopReason: 'error',
-    errorMessage: error.message,
-    timestamp: Date.now(),
-  }
-}
-
-function sessionHandle(session: AgentSession): BazilionSessionHandle {
-  return {
-    session,
-    dispose() {
-      session.dispose()
-    },
-  }
-}
-
-function splitModelString(s: string): { providerName: string; modelId: string } {
-  const idx = s.indexOf(':')
-  if (idx === -1) {
-    throw new Error(`invalid model string "${s}": expected "provider:model"`)
-  }
-  return { providerName: s.slice(0, idx), modelId: s.slice(idx + 1) }
+  return env
 }
 
 function toPiThinkingLevel(level: string): ThinkingLevel {
@@ -885,46 +384,33 @@ function toPiThinkingLevel(level: string): ThinkingLevel {
 }
 
 /**
- * Re-exported for callers that want to check whether a provider is
- * Bazilion-enabled before even trying to spawn a session (e.g. /context
- * endpoint which builds a session just to enumerate tools).
+ * Open an Agent's conversation file for reading or moving its leaf, without a model or session.
+ * Throws when the target is not a valid canonical session file of this Agent.
  */
-export function isProviderEnabled(db: BazilionDb, providerName: string): boolean {
-  const enabled = providerStateRepo.listEnabled(db)
-  return enabled.size === 0 || enabled.has(providerName)
+export function openConversation(
+  agent: ResolvedAgent,
+  paths: Paths,
+  target: ConversationTarget,
+): SessionManager {
+  const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
+  return SessionManager.open(
+    explicitConversationFile(sessionDir, target),
+    sessionDir,
+    agent.team.path,
+  )
 }
 
 /**
- * Escape hatch for callers that need the raw provider registry (e.g. the
- * current /api/providers/test endpoint). Keeps that one endpoint on our
- * existing non-pi path until we migrate it in a follow-up.
- */
-export function loadEnabledRegistry(db: BazilionDb, authToken: string, env: NodeJS.ProcessEnv) {
-  return createProviderRegistry(loadProviderConfigFromEnv(env, { db, authToken }), {
-    enabledSet: providerStateRepo.listEnabled(db),
-  })
-}
-
-/**
- * Read the most recent session file for an agent *without* spawning a full
- * AgentSession, and return the resolved provider-message view. Used for SSR
- * page loads that only need to render the canonical transcript — no need
- * to boot pi just to inspect the transcript.
- *
- * Returns an empty array when the agent has no prior session (fresh spawn,
- * or post-/reset).
+ * The resolved message view of an Agent's conversation, read straight from its file. Empty when
+ * there is no conversation yet.
  */
 export function loadInitialMessages(
   agent: ResolvedAgent,
   paths: Paths,
-  target?: import('@bazilion/api-types').ConversationTarget | null,
+  target?: ConversationTarget | null,
 ): AgentMessage[] {
   if (!target) return []
-  const entries = readCanonicalSessionFile(
-    join(paths.agentDir(agent.agent.id), 'sessions'),
-    target.filename,
-    target.id,
-  )
+  const entries = readSessionFile(join(paths.agentDir(agent.agent.id), 'sessions'), target.id)
   return buildSessionContext(entries.filter((entry) => entry.type !== 'session')).messages
 }
 
@@ -954,7 +440,7 @@ export function loadSessionMessages(
 export function loadSessionHead(
   agent: ResolvedAgent,
   paths: Paths,
-  target?: import('@bazilion/api-types').ConversationTarget | null,
+  target?: ConversationTarget | null,
 ): { file: string | null; size: number } {
   const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
   if (!existsSync(sessionDir)) return { file: null, size: 0 }
@@ -968,88 +454,13 @@ export function loadSessionHead(
   }
 }
 
-/**
- * Test helper: seed a pi session file for an agent with `n` synthetic
- * user/assistant message pairs. Writes a real JSONL entry tree via
- * SessionManager so round-tripping through pi's own reader stays honest.
- * Exported from runtime rather than lived in tests because tests in apps/cli
- * can't directly import pi packages (not a direct dep).
- */
-export function seedSessionForTest(
-  agent: ResolvedAgent,
-  paths: Paths,
-  messages: Array<{ role: 'user' | 'assistant'; text: string }>,
-  conversation: import('@bazilion/api-types').ConversationTarget,
-): void {
-  const cwd = agent.team.path
-  if (!existsSync(cwd)) mkdirSync(cwd, { recursive: true })
-  const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
-  mkdirSync(sessionDir, { recursive: true })
-  const sm = SessionManager.open(
-    explicitConversationFile(sessionDir, conversation),
-    sessionDir,
-    cwd,
-  )
-  const now = Date.now()
-  messages.forEach((m, i) => {
-    if (m.role === 'user') {
-      sm.appendMessage({
-        role: 'user',
-        content: [{ type: 'text', text: m.text }],
-        timestamp: now + i,
-      })
-    } else {
-      sm.appendMessage({
-        role: 'assistant',
-        content: [{ type: 'text', text: m.text }],
-        api: 'openai-completions',
-        provider: 'lmstudio',
-        model: 'test-model',
-        usage: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        },
-        stopReason: 'stop',
-        timestamp: now + i,
-      })
-    }
-  })
-}
-
-/**
- * Test helper: count message entries on the current leaf's branch of the
- * agent's explicitly selected session file. Returns 0 when no session file exists.
- */
-export function countSessionMessagesForTest(
-  agent: ResolvedAgent,
-  paths: Paths,
-  conversation: import('@bazilion/api-types').ConversationTarget | null | undefined,
-): number {
-  const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
-  if (!conversation) return 0
-  const recent = explicitConversationFile(sessionDir, conversation)
-  const cwd = agent.team.path
-  try {
-    const sm = SessionManager.open(recent, sessionDir, cwd)
-    return sm.getBranch().filter((e) => e.type === 'message').length
-  } catch {
-    return 0
-  }
-}
-
 /** Never fall back to directory activity when an admitted session is unavailable. */
 function explicitConversationFile(
   directory: string,
-  target: import('@bazilion/api-types').ConversationTarget | undefined,
+  target: ConversationTarget | undefined,
 ): string {
-  if (!target || !/^[0-9a-f-]{36}$/i.test(target.id) || target.filename !== `${target.id}.jsonl`)
-    throw new Error('Explicit conversation target is required')
-  const file = join(directory, target.filename)
-  // Validate bounded bytes before Pi can repair or recreate a session.
-  readCanonicalSessionFile(directory, target.filename, target.id)
-  return file
+  if (!target) throw new Error('Explicit conversation target is required')
+  // Check the id and the header before Pi can repair or recreate a session.
+  readSessionHeader(directory, target.id)
+  return join(directory, `${target.id}.jsonl`)
 }

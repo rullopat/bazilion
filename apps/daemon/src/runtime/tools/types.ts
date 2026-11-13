@@ -12,22 +12,22 @@ export type ToolResultPart =
   | { type: 'image'; data: string; mimeType: string }
 
 /**
- * What a tool handler returns. A bare string is shorthand for a single text
- * block — every legacy tool (memory_*, messaging, web_*, …) uses it. Tools
- * that emit images return an explicit part array.
+ * Structured data a tool result carries next to its content. Pi stores it with the result in the
+ * transcript; the model never sees it.
+ */
+export interface ToolResultDetails {
+  /** Files the tool saved as results. */
+  results?: ResultReference[]
+}
+
+/**
+ * What a tool handler returns: a string (one text block), content parts (text and images), or
+ * content with details.
  */
 export type ToolOutput =
   | string
   | ToolResultPart[]
-  | { content: ToolResultPart[]; result: ResultReference }
-  | {
-      content: ToolResultPart[]
-      results: ResultReference[]
-      imageEvidence?: { outputSource: 'terminal' | 'completed_stream' }
-    }
-  | { content: ToolResultPart[]; questionReceipt: string }
-  | { content: ToolResultPart[]; webSearch: import('@bazilion/api-types').WebSearchOutput }
-  | { content: ToolResultPart[]; webFetch: import('@bazilion/api-types').WebFetchEvidence }
+  | { content: ToolResultPart[]; details: ToolResultDetails }
 
 export interface ToolHandler {
   def: ToolDef
@@ -35,11 +35,4 @@ export interface ToolHandler {
     args: Record<string, unknown>,
     context?: { toolCallId: string; signal?: AbortSignal },
   ): Promise<ToolOutput>
-}
-
-export interface ToolRegistry {
-  list(): ToolDef[]
-  has(name: string): boolean
-  /** invoke a tool with JSON-serialized arguments; returns text or multimodal output */
-  invoke(name: string, jsonArgs: string): Promise<ToolOutput>
 }

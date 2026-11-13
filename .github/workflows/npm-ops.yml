@@ -1,5 +1,4 @@
-# Manual npm registry maintenance that cannot run locally (publishing is
-# CI-only by design — npm credentials exist nowhere else).
+# Manual npm dist-tag maintenance. The npm token exists only in CI, so these run here.
 name: npm ops
 
 on:
@@ -11,91 +10,50 @@ on:
         options:
           - remove-dist-tag
           - add-dist-tag
-          - publish-ref-as-version
         required: true
       package:
-        description: 'Package name (bazilion, @bazilion/client, @bazilion/api-types)'
+        description: 'Package name'
         required: true
+        default: 'bazilion'
       tag:
         description: 'remove-dist-tag: the dist-tag to remove. add-dist-tag: the dist-tag to create.'
-        required: false
-      ref:
-        description: 'publish-ref-as-version: the git ref to publish from.'
-        required: false
+        required: true
       version:
-        description: 'publish-ref-as-version: the version to publish it as.'
+        description: 'add-dist-tag: the published version the tag points at.'
         required: false
-      npm-tag:
-        description: 'publish-ref-as-version: the npm dist-tag (default latest; use an explicit tag to avoid moving latest).'
-        required: false
-        default: 'latest'
 
 permissions:
   contents: read
-  id-token: write
-
-env:
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
 jobs:
   remove-dist-tag:
     if: inputs.action == 'remove-dist-tag'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '26.12.1'
           registry-url: https://registry.npmjs.org
+      # Inputs reach the shell as environment variables, never as interpolated script text.
       - name: Remove dist-tag
-        run: npm dist-tag rm "${{ inputs.package }}" "${{ inputs.tag }}"
+        run: npm dist-tag rm "$PACKAGE" "$TAG"
         env:
+          PACKAGE: ${{ inputs.package }}
+          TAG: ${{ inputs.tag }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   add-dist-tag:
     if: inputs.action == 'add-dist-tag'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '26.12.1'
           registry-url: https://registry.npmjs.org
       - name: Add dist-tag
-        run: npm dist-tag add "${{ inputs.package }}@${{ inputs.version }}" "${{ inputs.tag }}"
+        run: npm dist-tag add "$PACKAGE@$VERSION" "$TAG"
         env:
+          PACKAGE: ${{ inputs.package }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  publish-ref-as-version:
-    if: inputs.action == 'publish-ref-as-version'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '26.12.1'
-          registry-url: https://registry.npmjs.org
-          cache: pnpm
-      - name: Set the target version
-        run: |
-          set -euo pipefail
-          for pkg in apps/cli/package.json packages/client/package.json packages/api-types/package.json; do
-            node -e "
-              const fs = require('fs');
-              const p = '$pkg';
-              const d = JSON.parse(fs.readFileSync(p, 'utf8'));
-              d.version = '${{ inputs.version }}';
-              fs.writeFileSync(p, JSON.stringify(d, null, 2) + '\n');
-            "
-          done
-      - run: pnpm install --frozen-lockfile || pnpm install
-      - run: pnpm build
-      - name: Publish each public package
-        run: |
-          for pkg in apps/cli packages/client packages/api-types; do
-            (cd "$pkg" && pnpm publish --access public --tag "${{ inputs.npm-tag }}" --no-git-checks)
-          done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: 'true'

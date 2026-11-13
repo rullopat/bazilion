@@ -10,14 +10,14 @@ beforeEach(() => {
 })
 afterEach(() => env.cleanup())
 
-test('add + get + isAllowed + count round-trip', () => {
-  expect(acl.count(env.db)).toBe(0)
+test('add + get + isAllowed + list round-trip', () => {
+  expect(acl.list(env.db)).toHaveLength(0)
   expect(acl.isAllowed(env.db, 1)).toBe(false)
 
   const u = acl.add(env.db, { userId: 1, username: 'pat', label: 'Pat', role: 'owner' })
   expect(u.role).toBe('owner')
   expect(acl.isAllowed(env.db, 1)).toBe(true)
-  expect(acl.count(env.db)).toBe(1)
+  expect(acl.list(env.db)).toHaveLength(1)
   expect(acl.get(env.db, 1)?.username).toBe('pat')
 })
 

@@ -1,98 +1,7 @@
-import { randomUUID } from 'node:crypto'
-import { createServer, type ServerResponse } from 'node:http'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
+import { type MockLlm, startLmStudioMock } from './fixtures/mock-lmstudio.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
-
-interface MockLlm {
-  url: string
-  push(responses: unknown[]): void
-  reset(): void
-  stop(): Promise<void>
-  callCount(): number
-}
-
-interface Canned {
-  choices: Array<{
-    message: { role?: string; content?: string | null }
-    finish_reason?: string
-  }>
-}
-
-function writeSse(res: ServerResponse, canned: Canned): void {
-  res.writeHead(200, {
-    'content-type': 'text/event-stream',
-    'cache-control': 'no-cache',
-    connection: 'keep-alive',
-  })
-  const msg = canned.choices[0]?.message ?? {}
-  const finish = canned.choices[0]?.finish_reason ?? 'stop'
-  res.write(
-    `data: ${JSON.stringify({
-      id: 'mock',
-      object: 'chat.completion.chunk',
-      choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
-    })}\n\n`,
-  )
-  if (typeof msg.content === 'string' && msg.content.length > 0) {
-    res.write(
-      `data: ${JSON.stringify({
-        id: 'mock',
-        object: 'chat.completion.chunk',
-        choices: [{ index: 0, delta: { content: msg.content }, finish_reason: null }],
-      })}\n\n`,
-    )
-  }
-  res.write(
-    `data: ${JSON.stringify({
-      id: 'mock',
-      object: 'chat.completion.chunk',
-      choices: [{ index: 0, delta: {}, finish_reason: finish }],
-    })}\n\n`,
-  )
-  res.write('data: [DONE]\n\n')
-  res.end()
-}
-
-function startLmStudioMock(): Promise<MockLlm> {
-  const queue: unknown[] = []
-  let calls = 0
-  const server = createServer((_req, res) => {
-    calls++
-    if (queue.length === 0) {
-      // Default response so we never block — the scheduler may fire more times
-      // than the test pushed responses for, and we don't want to deadlock.
-      writeSse(res, {
-        choices: [
-          { message: { role: 'assistant', content: 'default-pong' }, finish_reason: 'stop' },
-        ],
-      })
-      return
-    }
-    const item = queue.shift() as Canned
-    writeSse(res, item)
-  })
-  return new Promise((resolve) => {
-    server.listen(0, () => {
-      const addr = server.address()
-      if (!addr || typeof addr === 'string') throw new Error('unexpected server address')
-      resolve({
-        url: `http://localhost:${addr.port}/v1`,
-        push(items) {
-          queue.push(...items)
-        },
-        reset() {
-          queue.length = 0
-          calls = 0
-        },
-        stop: () => new Promise<void>((r) => server.close(() => r())),
-        callCount: () => calls,
-      })
-    })
-  })
-}
 
 let mock: MockLlm
 let server: TestServer
@@ -101,9 +10,7 @@ beforeAll(async () => {
   mock = await startLmStudioMock()
   server = await startTestServer({
     LMSTUDIO_URL: mock.url,
-    // This fixture exercises missing Docker even on hosts with a working engine.
-    DOCKER_HOST: `unix://${join(tmpdir(), randomUUID(), 'docker.sock')}`,
-    DOCKER_CONTEXT: '',
+    BAZILION_BASH_SANDBOX: 'off',
     // Drive the scheduler fast so the test doesn't wait 5s per tick.
     BAZILION_SCHEDULER_TICK_MS: '200',
   })
@@ -118,6 +25,8 @@ afterAll(async () => {
 beforeEach(() => {
   server.reset()
   mock.reset()
+  // The scheduler may fire more turns than a test expects; answer every one of them.
+  mock.setFallback({ choices: [{ message: { role: 'assistant', content: 'default-pong' } }] })
 })
 
 async function spawnAgent(): Promise<string> {
@@ -189,7 +98,7 @@ test('trigger rm deletes the trigger', async () => {
   expect(list.stdout).toContain('(no triggers)')
 })
 
-test('configured-provider interval trigger materializes but fails closed without protected Docker', async () => {
+test('interval trigger runs its Agent turn on the host when the sandbox is off', async () => {
   const agentId = await spawnAgent()
 
   // intervalSec=1 → first fire happens ~1s after creation, scheduler ticks every 200ms.
@@ -217,16 +126,15 @@ test('configured-provider interval trigger materializes but fails closed without
     await new Promise((r) => setTimeout(r, 100))
   }
   expect(fired).toBe(true)
+  // Unattended turns follow BAZILION_BASH_SANDBOX like chat: no Docker is needed when it is off.
   let history = await server.cli(['trigger', 'history', triggerId])
-  for (let i = 0; i < 50 && !history.stdout.includes('retrying'); i++) {
-    await new Promise((r) => setTimeout(r, 50))
+  for (let i = 0; i < 150 && !history.stdout.includes('succeeded'); i++) {
+    await new Promise((r) => setTimeout(r, 100))
     history = await server.cli(['trigger', 'history', triggerId])
   }
   expect(history.exitCode).toBe(0)
-  expect(history.stdout).toContain('retrying')
-  expect(history.stdout).toContain('attempts: 1')
-  expect(history.stdout).toContain('Protected Docker runtime is unavailable (engine).')
-  expect(mock.callCount()).toBe(0)
+  expect(history.stdout).toContain('succeeded')
+  expect(mock.callCount()).toBeGreaterThan(0)
 })
 
 test('cron trigger with invalid expression is rejected', async () => {

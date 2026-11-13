@@ -134,14 +134,6 @@ export function update(db: BazilionDb, id: string, input: UpdateMcpServerInput):
   return get(db, id)
 }
 
-export function setEnabled(db: BazilionDb, id: string, enabled: boolean): void {
-  db.raw.run('UPDATE mcp_servers SET enabled = ?, updated_at = ? WHERE id = ?', [
-    enabled ? 1 : 0,
-    Date.now(),
-    id,
-  ])
-}
-
 export function remove(db: BazilionDb, id: string): void {
   db.raw.run('DELETE FROM mcp_servers WHERE id = ?', [id])
 }

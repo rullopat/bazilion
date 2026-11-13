@@ -30,6 +30,16 @@ test('token create mints a token and prints the plaintext exactly once', async (
   expect(res.stdout).toMatch(/label:\s+laptop/)
   expect(res.stdout).toMatch(/token: [0-9a-f]{48}/)
   expect(res.stdout).toMatch(/id: /)
+  // No expiry unless asked for.
+  expect(res.stdout).toContain('expires: (never)')
+
+  const expiring = await server.cli(['token', 'create', 'phone', '--expires-days', '30'])
+  expect(expiring.exitCode).toBe(0)
+  const expires = Date.parse(expiring.stdout.match(/expires: (\S+)/)?.[1] ?? '')
+  expect(expires - Date.now()).toBeGreaterThan(29 * 86_400_000)
+  expect(expires - Date.now()).toBeLessThanOrEqual(30 * 86_400_000)
+  const invalid = await server.cli(['token', 'create', 'bad', '--expires-days', '0'])
+  expect(invalid.exitCode).not.toBe(0)
 })
 
 test('token list shows active tokens and hides revoked by default', async () => {
@@ -55,6 +65,23 @@ test('a minted token authenticates subsequent API calls', async () => {
 
   const res = await fetch(`${server.url}/api/profiles`, {
     headers: { authorization: `Bearer ${token}` },
+  })
+  expect(res.status).toBe(200)
+})
+
+test('the bootstrap token cannot be revoked', async () => {
+  const list = await fetch(`${server.url}/api/tokens`, {
+    headers: { authorization: `Bearer ${server.token}` },
+  })
+  const { tokens } = (await list.json()) as { tokens: { id: string; kind: string }[] }
+  const bootstrap = tokens.find((token) => token.kind === 'bootstrap')
+  expect(bootstrap).toBeDefined()
+
+  const revoke = await server.cli(['token', 'revoke', bootstrap?.id as string])
+  expect(revoke.exitCode).toBe(3)
+  expect(revoke.stderr).toContain('cannot revoke the bootstrap token')
+  const res = await fetch(`${server.url}/api/profiles`, {
+    headers: { authorization: `Bearer ${server.token}` },
   })
   expect(res.status).toBe(200)
 })
@@ -108,14 +135,9 @@ test('login --clear removes the stored remote', async () => {
   expect(after.remote).toBeUndefined()
 })
 
-test('public health is liveness + posture only; detailed health requires authentication', async () => {
+test('public health is liveness only; detailed health requires authentication', async () => {
   const publicResponse = await fetch(`${server.url}/api/health`)
-  const publicBody = (await publicResponse.json()) as {
-    ok: boolean
-    auth: { required: boolean }
-  }
-  // BAZ-055: public posture is intentional and secret-free.
-  expect(publicBody).toMatchObject({ ok: true, auth: { required: true } })
+  expect(await publicResponse.json()).toEqual({ ok: true })
   expect(await fetch(`${server.url}/api/health/details`)).toHaveProperty('status', 401)
   const detailed = await fetch(`${server.url}/api/health/details`, {
     headers: { authorization: `Bearer ${server.token}` },
@@ -123,13 +145,20 @@ test('public health is liveness + posture only; detailed health requires authent
   expect(detailed.status).toBe(200)
 })
 
-test('browser login rejects bootstrap and exchanges a device token for bounded session cookies', async () => {
+test('browser login exchanges the bootstrap or a device token for session cookies', async () => {
   const bootstrapLogin = await fetch(`${server.url}/api/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ token: server.token }),
   })
-  expect(bootstrapLogin.status).toBe(401)
+  expect(bootstrapLogin.status).toBe(200)
+  expect(bootstrapLogin.headers.getSetCookie().join('\n')).not.toContain(server.token)
+  const rejected = await fetch(`${server.url}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: 'not-a-token' }),
+  })
+  expect(rejected.status).toBe(401)
 
   const create = await server.cli(['token', 'create', 'browser'])
   const token = create.stdout.match(/token:\s+([0-9a-f]+)/)?.[1] as string

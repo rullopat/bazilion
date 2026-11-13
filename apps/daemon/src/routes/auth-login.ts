@@ -1,61 +1,50 @@
 // /api/auth/openai/* — ChatGPT OAuth provider connection state.
 // /api/providers/test — model smoke-test.
-// /api/login — device-token exchange for bounded browser session cookies.
+// /api/login — token exchange for browser session cookies.
 
-import type {
-  AuthenticatedOwnerResponse,
-  CreatePairingCodeRequest,
-  CreatePairingCodeResponse,
-  DeviceTokenScope,
-  ListSessionsResponse,
-  PairingExchangeRequest,
-  PairingExchangeResponse,
-  ProviderTestRequest,
-  ProviderTestResponse,
+import {
+  type AuthenticatedOwnerResponse,
+  type ListSessionsResponse,
+  type ProviderTestRequest,
+  type ProviderTestResponse,
+  publicOriginConfig,
 } from '@bazilion/api-types'
-import { ALL_DEVICE_TOKEN_SCOPES, DEVICE_TOKEN_SCOPES } from '@bazilion/api-types'
-import { Hono } from 'hono'
 import { deleteCookie, setCookie } from 'hono/cookie'
 import {
   ensureSetupSeeded,
   isSetupComplete,
   mergeSecretsIntoEnv,
-  providerStateRepo,
-  webPairingTokenRepo,
   webSessionRepo,
-  webTokenRepo,
 } from '../core/index.ts'
+import { parseModelString } from '../core/providers.ts'
+import { assertProviderReady } from '../lib/api-key.ts'
 import { type AuthVariables, authenticateToken } from '../lib/auth.ts'
 import { getCtx } from '../lib/ctx.ts'
 import {
-  acquireWebOpenAILogin,
   answerWebOpenAIPrompt,
-  createWebOpenAILoginLifetime,
   launchOpenAICodexBrowser,
   preflightOpenAICodexCallback,
+  WEB_OPENAI_LOGIN_TIMEOUT_MS,
+  webOpenAILoginError,
 } from '../lib/openai-oauth-prompt.ts'
-import { resolvePublicOrigin } from '../lib/public-origin.ts'
 import {
   clearOpenAICodexCredentials,
-  createProviderRegistry,
   getOpenAICodexStatus,
-  loadProviderConfigFromEnv,
+  loadOpenAICodexAccessToken,
   loginOpenAICodex,
   saveOpenAICodexLoginCredentials,
+  testProviderModel,
 } from '../runtime/index.ts'
+import { jsonBody, newRouter } from './http.ts'
 
-export const authRouter = new Hono<{ Variables: AuthVariables }>()
+export const authRouter = newRouter<{ Variables: AuthVariables }>()
 
 // ─── Auth probe ──────────────────────────────────────────────────────────
 
 /**
- * Cheap session validator. Web SSR middleware calls this once per request
- * to translate "is the cookie still good?" + "has setup been finished?"
- * into JSON-status pairs that the Astro middleware turns into redirects.
- *
- * Reaching this handler at all means auth passed (the daemon's own
- * middleware-auth would have 401'd otherwise). The body just exposes the
- * setup-complete bit so the web layer can route accordingly.
+ * Cheap session validator. The web root route calls this on every page load
+ * and turns "is the cookie still good?" + "has setup been finished?" into its
+ * login and welcome redirects. Reaching this handler means auth passed.
  */
 authRouter.get('/auth/whoami', (c) => {
   const { db } = getCtx()
@@ -63,7 +52,7 @@ authRouter.get('/auth/whoami', (c) => {
   return c.json({
     authenticated: true,
     setupComplete: isSetupComplete(db),
-    publicOrigin: resolvePublicOrigin().origin,
+    publicOrigin: publicOriginConfig(process.env.BAZILION_PUBLIC_ORIGIN).origin,
     principal,
   } satisfies AuthenticatedOwnerResponse)
 })
@@ -76,11 +65,7 @@ authRouter.get('/auth/openai', (c) => {
 })
 
 authRouter.put('/auth/openai', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as {
-    refresh?: unknown
-    access?: unknown
-    expires?: unknown
-  } | null
+  const body = await jsonBody<{ refresh: unknown; access: unknown; expires: unknown }>(c)
   if (
     !body ||
     typeof body.refresh !== 'string' ||
@@ -107,61 +92,70 @@ authRouter.delete('/auth/openai', (c) => {
   return c.json({ connected: false, expiresAt: null, accountId: null })
 })
 
+// One web login at a time: a second one could not bind the callback port anyway.
+let webOpenAILoginActive = false
+
 authRouter.post('/auth/openai/login', async (c) => {
+  if (webOpenAILoginActive) {
+    return c.json({ error: 'An OpenAI browser login is already in progress.' }, 409)
+  }
+  webOpenAILoginActive = true
   const { db, authToken } = getCtx()
-  const lifetime = createWebOpenAILoginLifetime(c.req.raw.signal)
-  let releaseLogin: (() => void) | undefined
+  const launchFailed = new AbortController()
+  const signal = AbortSignal.any([
+    c.req.raw.signal,
+    AbortSignal.timeout(WEB_OPENAI_LOGIN_TIMEOUT_MS),
+    launchFailed.signal,
+  ])
   try {
-    releaseLogin = await acquireWebOpenAILogin(lifetime.signal)
-    if (lifetime.signal.aborted) throw lifetime.signal.reason
     await preflightOpenAICodexCallback()
-    if (lifetime.signal.aborted) throw lifetime.signal.reason
+    signal.throwIfAborted()
     const creds = await loginOpenAICodex({
-      signal: lifetime.signal,
+      signal,
       notify: (event) => {
         if (event.type === 'auth_url') {
-          launchOpenAICodexBrowser(event.url, (error) => lifetime.abort(error))
+          launchOpenAICodexBrowser(event.url, (error) => launchFailed.abort(error))
         }
       },
-      prompt: (prompt) => answerWebOpenAIPrompt(prompt, lifetime.signal),
+      prompt: (prompt) => answerWebOpenAIPrompt(prompt, signal),
     })
-    if (lifetime.signal.aborted) throw lifetime.signal.reason
+    signal.throwIfAborted()
     saveOpenAICodexLoginCredentials(db, authToken, creds)
     return c.json(getOpenAICodexStatus(db, authToken))
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
+    return c.json({ error: webOpenAILoginError(err, signal) }, 400)
   } finally {
-    releaseLogin?.()
-    lifetime.dispose()
+    webOpenAILoginActive = false
   }
 })
 
 // ─── Provider model smoke-test ───────────────────────────────────────────
 
 authRouter.post('/providers/test', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as ProviderTestRequest | null
+  const body = await jsonBody<ProviderTestRequest>(c)
   if (!body || typeof body.model !== 'string' || !body.model) {
     return c.json({ error: 'model is required' }, 400)
   }
   const message = typeof body.message === 'string' && body.message ? body.message : 'say hi briefly'
-  const { db, authToken } = getCtx()
-  const env = mergeSecretsIntoEnv(db, authToken)
-  const reg = createProviderRegistry(loadProviderConfigFromEnv(env, { db, authToken }), {
-    enabledSet: providerStateRepo.listEnabled(db),
-  })
+  const { db, authToken, paths } = getCtx()
   try {
-    const { provider, model } = reg.resolve(body.model)
-    const res = await provider.chat({
-      model,
-      messages: [{ role: 'user', content: message }],
-      maxTokens: 256,
+    assertProviderReady(db, authToken, body.model)
+    const { providerName, modelId } = parseModelString(body.model)
+    const res = await testProviderModel({
+      providerName,
+      modelId,
+      env: mergeSecretsIntoEnv(db, authToken),
+      ...(providerName === 'openai-codex'
+        ? { apiKey: await loadOpenAICodexAccessToken(db, authToken) }
+        : {}),
+      message,
+      signal: c.req.raw.signal,
     })
     // Provider setup mutations may already have crossed the readiness
     // threshold; repeat the idempotent seed after a real successful request
     // so first-run completion can be coupled to this proof without a race.
-    ensureSetupSeeded(db, getCtx().paths)
-    const out: ProviderTestResponse = { content: res.content, usage: res.usage }
-    return c.json(out)
+    ensureSetupSeeded(db, paths)
+    return c.json(res satisfies ProviderTestResponse)
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400)
   }
@@ -169,71 +163,53 @@ authRouter.post('/providers/test', async (c) => {
 
 // ─── Browser login ───────────────────────────────────────────────────────
 
+/** Browsers cap cookie lifetimes at 400 days; the daemon decides when a session ends. */
+const COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60
+
 /**
- * Browser-session login. Two body shapes accepted:
+ * Browser-session login with any active token — the bootstrap token from
+ * auth.json or a device token. Two body shapes accepted:
  *   - `application/json`: `{ token: "<value>" }` → returns `{ ok: true }` on
- *     success, sets bounded browser session and CSRF cookies.
+ *     success, sets the session and CSRF cookies.
  *   - `application/x-www-form-urlencoded`: `token=<value>` → 302 to `/` on
  *     success or `/login?error=token` on failure. Used by the web login form.
  *
- * Normally the submitted credential must be a revocable device token. During
- * first-run only, the non-revocable bootstrap credential may authorize one
- * bounded setup session. That session is attached to an internal expiring,
- * revocable device row; neither the bootstrap secret nor the generated device
- * secret is retained by the browser.
+ * The browser keeps only the session cookie, never the token. The session
+ * expires once unused for 30 days (SESSION_TTL_MS); the cookie itself is kept
+ * for the browser's maximum so that sliding expiry is decided by the daemon.
  */
 authRouter.post('/login', async (c) => {
   const ct = c.req.header('content-type') ?? ''
   let token: string | null = null
-  let resultId: string | null = null
 
   if (ct.startsWith('application/json')) {
-    const body = (await c.req.json().catch(() => null)) as { token?: unknown } | null
+    const body = await jsonBody<{ token: unknown }>(c)
     if (body && typeof body.token === 'string') token = body.token
   } else {
     const form = await c.req.formData().catch(() => null)
     const v = form?.get('token')
     if (typeof v === 'string') token = v
-    const destination = form?.get('resultId')
-    if (
-      typeof destination === 'string' &&
-      /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(destination)
-    ) {
-      resultId = destination
-    }
   }
 
   const ctx = getCtx()
   const principal = token ? authenticateToken(token) : null
-  let deviceTokenId = principal?.kind === 'device' ? principal.tokenId : null
-  if (principal?.kind === 'bootstrap' && !isSetupComplete(ctx.db)) {
-    deviceTokenId = webTokenRepo.create(ctx.db, 'first-run browser session', {
-      expiresAt: Date.now() + webSessionRepo.SESSION_ABSOLUTE_MS,
-    }).meta.id
-  }
-  if (!deviceTokenId) {
+  if (!principal) {
     if (ct.startsWith('application/json')) {
       return c.json({ error: 'invalid token' }, 401)
     }
-    return c.redirect(`/login?error=token${resultId ? `&resultId=${resultId}` : ''}`, 302)
+    return c.redirect('/login?error=token', 302)
   }
 
-  const created = webSessionRepo.create(ctx.db, deviceTokenId)
-  const origin = resolvePublicOrigin()
-  setCookie(c, origin.sessionCookie, created.cookieValue, {
+  const created = webSessionRepo.create(ctx.db, principal.tokenId)
+  const origin = publicOriginConfig(process.env.BAZILION_PUBLIC_ORIGIN)
+  const cookie = {
     path: '/',
-    httpOnly: true,
     secure: origin.production,
-    sameSite: 'Strict',
-    maxAge: 7 * 24 * 60 * 60,
-  })
-  setCookie(c, origin.csrfCookie, created.csrfToken, {
-    path: '/',
-    httpOnly: false,
-    secure: origin.production,
-    sameSite: 'Strict',
-    maxAge: 7 * 24 * 60 * 60,
-  })
+    sameSite: 'Strict' as const,
+    maxAge: COOKIE_MAX_AGE_SECONDS,
+  }
+  setCookie(c, origin.sessionCookie, created.cookieValue, { ...cookie, httpOnly: true })
+  setCookie(c, origin.csrfCookie, created.csrfToken, { ...cookie, httpOnly: false })
 
   if (ct.startsWith('application/json')) {
     return c.json({ ok: true })
@@ -241,10 +217,7 @@ authRouter.post('/login', async (c) => {
   // Skip an avoidable redirect through the locked root on a fresh install.
   // Setup mutations seed the defaults synchronously, so completed installs
   // can still enter the workspace directly.
-  return c.redirect(
-    isSetupComplete(ctx.db) ? (resultId ? `/results/${resultId}` : '/') : '/welcome',
-    302,
-  )
+  return c.redirect(isSetupComplete(ctx.db) ? '/' : '/welcome', 302)
 })
 
 authRouter.post('/logout', (c) => {
@@ -253,7 +226,7 @@ authRouter.post('/logout', (c) => {
     return c.json({ error: 'browser session required' }, 400)
   }
   webSessionRepo.revoke(getCtx().db, principal.sessionId)
-  const origin = resolvePublicOrigin()
+  const origin = publicOriginConfig(process.env.BAZILION_PUBLIC_ORIGIN)
   deleteCookie(c, origin.sessionCookie, { path: '/', secure: origin.production })
   deleteCookie(c, origin.csrfCookie, { path: '/', secure: origin.production })
   return c.json({ ok: true })
@@ -268,68 +241,7 @@ authRouter.get('/sessions', (c) => {
 
 authRouter.delete('/sessions/:id', (c) => {
   if (!webSessionRepo.revoke(getCtx().db, c.req.param('id'))) {
-    return c.json({ error: 'session not found or already revoked' }, 409)
+    return c.json({ error: 'session not found' }, 404)
   }
   return c.body(null, 204)
-})
-
-// ─── Pairing setup codes (BAZ-055 slice 2) ──────────────────────────────
-
-/**
- * Mint a pairing setup code. `admin`-gated (the scope table routes /api/pair
- * there): the code carries the scopes its device credential will get.
- * The setup URL is shown once, like the credential it eventually mints.
- */
-authRouter.post('/pair/codes', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as CreatePairingCodeRequest | null
-  let scopes: DeviceTokenScope[] = [...ALL_DEVICE_TOKEN_SCOPES]
-  if (body?.scopes !== undefined) {
-    if (
-      !Array.isArray(body.scopes) ||
-      body.scopes.length === 0 ||
-      body.scopes.some((s) => !(DEVICE_TOKEN_SCOPES as readonly string[]).includes(s))
-    ) {
-      return c.json(
-        { error: `scopes must be a non-empty subset of: ${DEVICE_TOKEN_SCOPES.join(', ')}` },
-        400,
-      )
-    }
-    scopes = [...new Set(body.scopes)]
-  }
-  const created = webPairingTokenRepo.create(getCtx().db, { scopes })
-  // The public origin (gateway HTTPS) is what remote devices reach; fall back
-  // to the request origin for loopback development.
-  const serverOrigin = process.env.BAZILION_PUBLIC_ORIGIN?.replace(/\/$/, '')
-  const setupUrl = `bazilion-pair://pair?server=${encodeURIComponent(serverOrigin ?? new URL(c.req.url).origin)}&code=${encodeURIComponent(created.code)}`
-  return c.json(
-    { code: created.code, meta: created.meta, setupUrl } satisfies CreatePairingCodeResponse,
-    201,
-  )
-})
-
-/**
- * Exchange a setup code for a durable scoped device credential. Public path
- * (like /api/login): the code itself is the secret. Single-use under a
- * transaction — a code cannot mint two credentials.
- */
-authRouter.post('/pair/exchange', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as PairingExchangeRequest | null
-  if (!body || typeof body.code !== 'string' || !body.code.trim()) {
-    return c.json({ error: 'code is required' }, 400)
-  }
-  const { db } = getCtx()
-  const outcome = db.raw.transaction(() => {
-    const result = webPairingTokenRepo.exchange(db, body.code.trim())
-    if (!result.ok) return result
-    const minted = webTokenRepo.create(db, 'paired device', { scopes: result.scopes })
-    webPairingTokenRepo.completeExchange(db, body.code.trim(), minted.meta.id)
-    return { ok: true as const, minted }
-  })()
-  if (!outcome.ok) {
-    return c.json({ error: `pairing code ${outcome.reason}` }, 400)
-  }
-  return c.json(
-    { token: outcome.minted.token, meta: outcome.minted.meta } satisfies PairingExchangeResponse,
-    201,
-  )
 })

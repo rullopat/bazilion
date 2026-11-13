@@ -1,77 +1,52 @@
 import type { ServiceCard, ServiceConfigResponse } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
-import { RecoveryState } from '../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { ConfigPage } from '../../components/ConfigPage'
 import { FieldRow } from '../../components/FieldRow'
 import { EmptyState, StatusBadge } from '../../components/Page'
 import { daemonClient } from '../../lib/daemon-client'
 
-const UNGROUPED_LABEL = 'Other'
+const OTHER = 'Other'
 
 const fetchServices = createServerFn({ method: 'GET' }).handler(() =>
   daemonClient().get<ServiceConfigResponse>('/api/config/services'),
 )
 
 export const Route = createFileRoute('/config/services')({
-  errorComponent: ({ error, reset }) => <RecoveryState title="Services unavailable" error={error} reset={reset} fallbackHref="/config" />,
   loader: () => fetchServices(),
   component: ServicesPage,
 })
 
-/**
- * Bucket services into teams while preserving the order each team first
- * appears in the daemon's SERVICES list. Cards without a `team` field land
- * in an "Other" bucket at the end.
- */
-function groupServices(services: ServiceCard[]): { team: string; items: ServiceCard[] }[] {
-  const buckets = new Map<string, ServiceCard[]>()
-  for (const s of services) {
-    const key = s.team ?? UNGROUPED_LABEL
-    const bucket = buckets.get(key) ?? []
-    bucket.push(s)
-    buckets.set(key, bucket)
+/** Services by group, in the order the daemon lists them; ungrouped ones go last. */
+function groupServices(services: ServiceCard[]): { group: string; items: ServiceCard[] }[] {
+  const groups = new Map<string, ServiceCard[]>()
+  for (const service of services) {
+    // The wire calls a service's group `team`.
+    const group = service.team ?? OTHER
+    groups.set(group, [...(groups.get(group) ?? []), service])
   }
-  const entries = Array.from(buckets, ([team, items]) => ({ team, items }))
-  if (entries.length > 1) {
-    entries.sort((a, b) => {
-      if (a.team === UNGROUPED_LABEL) return 1
-      if (b.team === UNGROUPED_LABEL) return -1
-      return 0
-    })
-  }
-  return entries
+  return Array.from(groups, ([group, items]) => ({ group, items })).sort(
+    (a, b) => Number(a.group === OTHER) - Number(b.group === OTHER),
+  )
 }
 
 function ServicesPage() {
   const { services } = Route.useLoaderData()
-  const grouped = groupServices(services)
   return (
     <ConfigPage
-      active="services"
       title="Services"
-      description={
-        <>
-          Connect optional tools such as web search and crawlers. Secret values are encrypted;
-          endpoint details remain inspectable and editable on this device.
-        </>
-      }
+      description="Optional tools such as web search, crawlers and the browser. Secret values are stored encrypted."
     >
       {services.length === 0 && (
         <EmptyState
           title="No optional services"
-          description="This Bazilion build has no additional service connectors registered."
+          description="This Bazilion build has no service connectors."
         />
       )}
 
-      {grouped.map(({ team, items }) => (
-        <section key={team} className="space-y-3">
-          <div>
-            <h2 className="m-0 font-body text-base font-semibold text-foreground">{team}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Open only the service you want to configure.
-            </p>
-          </div>
+      {groupServices(services).map(({ group, items }) => (
+        <section key={group} className="space-y-3">
+          <h2 className="m-0 font-body text-base font-semibold text-foreground">{group}</h2>
           {items.map((service) => {
             const configured = service.fields.filter((field) => field.set).length
             return (
@@ -82,7 +57,9 @@ function ServicesPage() {
               >
                 <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 marker:hidden sm:px-5">
                   <span className="min-w-0 flex-1">
-                    <span className="block font-semibold text-foreground">{service.displayName}</span>
+                    <span className="block font-semibold text-foreground">
+                      {service.displayName}
+                    </span>
                     <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
                       {service.id}
                     </span>
@@ -97,7 +74,11 @@ function ServicesPage() {
                   {service.hint && (
                     <p className="mb-2 text-sm text-muted-foreground">{service.hint}</p>
                   )}
-                  {service.status && <p role="status" className="mb-2 text-sm">{service.status}</p>}
+                  {service.status && (
+                    <p role="status" className="mb-2 text-sm">
+                      {service.status}
+                    </p>
+                  )}
                   {service.fields.map((field) => (
                     <FieldRow key={field.envVar} field={field} />
                   ))}

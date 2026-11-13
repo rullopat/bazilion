@@ -34,13 +34,14 @@ export class BashApprovalDeniedError extends Error {
 
 type BashToolDefinition = ReturnType<typeof createBashToolDefinition>
 
-export async function requireBashApproval(
+async function requireBashApproval(
   command: string,
   toolCallId: string,
   signal?: AbortSignal,
   host?: BashApprovalHost,
+  workspace?: string,
 ): Promise<void> {
-  const risks = classifyBashCommand(command)
+  const risks = classifyBashCommand(command, workspace)
   if (!risks.length) return
   const decision = host
     ? await host.requestApproval({ toolCallId, command, risks, signal })
@@ -52,14 +53,20 @@ export async function requireBashApproval(
  * Wrap Pi's bash ToolDefinition at the tool-call boundary, where the stable
  * toolCallId is available. BashOperations is deliberately left untouched so
  * approval always happens before either the host or Docker backend executes.
+ * Paths inside `workspace` (the Team directory as the command sees it) count as
+ * project-local, like relative paths.
  */
-export function createApprovalGatedBashTool(base: BashToolDefinition, host?: BashApprovalHost) {
+export function createApprovalGatedBashTool(
+  base: BashToolDefinition,
+  host?: BashApprovalHost,
+  workspace?: string,
+) {
   return defineTool({
     ...base,
     description: `${base.description} Commands classified as dangerous require operator approval before execution.`,
     executionMode: 'sequential',
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      await requireBashApproval(params.command, toolCallId, signal, host)
+      await requireBashApproval(params.command, toolCallId, signal, host, workspace)
 
       return base.execute(toolCallId, params, signal, onUpdate, ctx)
     },

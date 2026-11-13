@@ -1,5 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import type { TelegramPairingStatus } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { DomainError } from '../errors.ts'
 import { add } from './telegram-acl.ts'
 
 const TTL_MS = 10 * 60_000
@@ -7,14 +9,6 @@ const TTL_MS = 10 * 60_000
 interface PairingRow {
   digest: string
   expires_at: number
-  created_at: number
-}
-
-export interface TelegramPairingStatus {
-  paired: boolean
-  challengeActive: boolean
-  challengeExpiresAt: number | null
-  ownerUserId: number | null
 }
 
 function digest(code: string): Buffer {
@@ -22,16 +16,13 @@ function digest(code: string): Buffer {
 }
 
 export function create(db: BazilionDb): { code: string; expiresAt: number } {
-  if (status(db).paired) throw new Error('Telegram already has a paired owner')
+  if (status(db).paired) throw new DomainError(409, 'Telegram already has a paired owner')
   const code = randomBytes(16).toString('base64url')
-  const now = Date.now()
-  const expiresAt = now + TTL_MS
+  const expiresAt = Date.now() + TTL_MS
   db.raw.run(
-    `INSERT INTO telegram_pairing_challenge (singleton, digest, expires_at, created_at)
-     VALUES (1, ?, ?, ?)
-     ON CONFLICT(singleton) DO UPDATE SET
-       digest = excluded.digest, expires_at = excluded.expires_at, created_at = excluded.created_at`,
-    [digest(code).toString('hex'), expiresAt, now],
+    `INSERT INTO telegram_pairing_challenge (singleton, digest, expires_at) VALUES (1, ?, ?)
+     ON CONFLICT(singleton) DO UPDATE SET digest = excluded.digest, expires_at = excluded.expires_at`,
+    [digest(code).toString('hex'), expiresAt],
   )
   return { code, expiresAt }
 }
@@ -55,7 +46,7 @@ export function status(db: BazilionDb): TelegramPairingStatus {
     .get()
   const row = db.raw
     .query<PairingRow, []>(
-      'SELECT digest, expires_at, created_at FROM telegram_pairing_challenge WHERE singleton = 1',
+      'SELECT digest, expires_at FROM telegram_pairing_challenge WHERE singleton = 1',
     )
     .get()
   const active = row !== null && row.expires_at > Date.now()
@@ -76,7 +67,7 @@ export function consume(
     if (status(db).paired) return false
     const row = db.raw
       .query<PairingRow, []>(
-        'SELECT digest, expires_at, created_at FROM telegram_pairing_challenge WHERE singleton = 1',
+        'SELECT digest, expires_at FROM telegram_pairing_challenge WHERE singleton = 1',
       )
       .get()
     if (!row || row.expires_at <= Date.now()) {

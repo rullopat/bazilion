@@ -62,8 +62,6 @@ function readCredentials(db: BazilionDb, authToken: string): StoredCredentials |
       parsed.access.length > 0 &&
       typeof parsed.expires === 'number'
     ) {
-      // Older Bazilion rows predate Pi's type discriminator. Normalizing here
-      // keeps those rows readable while preserving all provider-specific fields.
       return { ...parsed, type: 'oauth' } as StoredCredentials
     }
     return null
@@ -150,7 +148,7 @@ async function refreshExpiredAccessToken(db: BazilionDb, authToken: string): Pro
   if (!creds) throw credentialsMissingError()
   if (creds.expires > Date.now() + REFRESH_MARGIN_MS) return creds.access
 
-  // BAZ-051: a failed refresh must be actionable, not a raw upstream error
+  // A failed refresh must be actionable, not a raw upstream error
   // (a revoked or expired refresh token otherwise surfaces as an opaque
   // provider 4xx mid-turn). Name the re-login action.
   let next: StoredCredentials

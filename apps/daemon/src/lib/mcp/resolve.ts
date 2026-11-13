@@ -1,130 +1,96 @@
-// Per-turn MCP resolution.
-//
-// Before a worker spawns, the daemon discovers the tools of every enabled MCP
-// server (connecting + `tools/list`, reusing pooled connections) and builds the
-// `McpHost` the worker proxies through. A server that fails to connect is
-// logged and skipped — one broken server never blocks a turn.
-//
-// Auth: stdio servers inherit the merged secrets env (their child process picks
-// up GITHUB_TOKEN etc. from the normal secrets table). HTTP servers read a
-// bearer token from the encrypted secrets table under `MCP_TOKEN_<id>`.
+// Per-turn MCP tools. Before a worker spawns, the daemon lists the tools of every enabled server
+// (connecting on first use) and builds the host the worker's proxy tools call through. Servers are
+// asked side by side, and a server that cannot answer within DISCOVERY_MS is logged and skipped
+// (its connect goes on for later turns): one broken server delays a turn by at most that.
 
-import { type BazilionDb, mcpServerRepo, openSecrets } from '../../core/index.ts'
-import type { InjectedMcpTool, McpHost } from '../../runtime/index.ts'
-import { createMcpHost } from './host.ts'
 import {
-  discoverMcpTools,
-  type McpConnectOpts,
-  type McpServerConfig,
-  mcpConfigSignature,
-} from './pool.ts'
+  type BazilionDb,
+  mcpServerRepo,
+  mergeSecretsIntoEnv,
+  openSecrets,
+} from '../../core/index.ts'
+import type { InjectedMcpTool, McpHost } from '../../runtime/index.ts'
+import { toolEnvironment } from '../../runtime/shell/security.ts'
+import { callMcpTool, listMcpTools, type McpConnectOptions, type McpServerConfig } from './pool.ts'
+
+/** How long a turn waits for the enabled servers' tool lists before it starts without them. */
+const DISCOVERY_MS = 10_000
 
 /** Encrypted-secrets key holding a server's HTTP bearer token. */
 export function mcpTokenSecretKey(id: string): string {
   return `MCP_TOKEN_${id.replace(/-/g, '').toUpperCase()}`
 }
 
-function toConfig(s: {
-  id: string
-  name: string
-  transport: McpServerConfig['transport']
-  command: string | null
-  args: string[]
-  url: string | null
-}): McpServerConfig {
-  return {
-    id: s.id,
-    name: s.name,
-    transport: s.transport,
-    command: s.command,
-    args: s.args,
-    url: s.url,
-  }
-}
-
-export interface ResolvedMcp {
-  tools: InjectedMcpTool[]
-  host: McpHost
-}
-
-const MCP_IDLE_MS = Number.parseInt(process.env.BAZILION_MCP_IDLE_MS ?? '', 10) || 900_000
-
 /**
- * Resolve MCP tools + host for a turn. Returns null when no servers are
- * enabled (so callers skip wiring the host entirely).
+ * How the daemon opens a server: a stdio server's environment is the daemon's merged environment
+ * without Bazilion's own credentials; an HTTP server gets its stored bearer token.
  */
+export function mcpConnectOptions(
+  db: BazilionDb,
+  authToken: string,
+  server: McpServerConfig,
+): McpConnectOptions {
+  if (server.transport === 'stdio')
+    return { env: toolEnvironment(mergeSecretsIntoEnv(db, authToken), authToken) }
+  const token = openSecrets(db, authToken).get(mcpTokenSecretKey(server.id))
+  return token ? { authToken: token } : {}
+}
+
+/** The MCP tools and host for one turn; null when no server is enabled. */
 export async function resolveMcpForTurn(
   db: BazilionDb,
-  env: NodeJS.ProcessEnv,
   authToken: string,
   signal?: AbortSignal,
-): Promise<ResolvedMcp | null> {
-  const enabled = mcpServerRepo.listEnabled(db)
-  if (enabled.length === 0) return null
+): Promise<{ tools: InjectedMcpTool[]; host: McpHost } | null> {
+  const servers = mcpServerRepo.listEnabled(db)
+  if (servers.length === 0) return null
 
-  const secrets = openSecrets(db, authToken)
-  const servers = new Map<string, McpServerConfig>()
-  const options = new Map<string, McpConnectOpts>()
-  const optsFor = (server: McpServerConfig): McpConnectOpts => {
-    const opts = options.get(server.id)
-    if (!opts) throw new Error('MCP server not admitted')
-    return opts
-  }
-
+  const deadline = new AbortController()
+  const timer = setTimeout(() => deadline.abort(), DISCOVERY_MS)
+  const discovery = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal
+  const listed = await Promise.allSettled(
+    servers.map((server) =>
+      listMcpTools(server, () => mcpConnectOptions(db, authToken, server), discovery),
+    ),
+  ).finally(() => clearTimeout(timer))
+  signal?.throwIfAborted()
   const tools: InjectedMcpTool[] = []
-  for (const s of enabled) {
-    const cfg = toConfig(s)
-    const opts: McpConnectOpts = {
-      env,
-      authToken: cfg.transport === 'stdio' ? undefined : secrets.get(mcpTokenSecretKey(cfg.id)),
-      idleMs: MCP_IDLE_MS,
-      signal,
-      assertActive: () => {
-        signal?.throwIfAborted()
-        const current = mcpServerRepo.get(db, cfg.id)
-        if (
-          !current?.enabled ||
-          mcpConfigSignature(toConfig(current), {
-            env,
-            idleMs: MCP_IDLE_MS,
-            authToken:
-              current.transport === 'stdio' ? undefined : secrets.get(mcpTokenSecretKey(cfg.id)),
-          }) !== signature
-        )
-          throw new Error('MCP configuration changed since turn admission')
-      },
+  const names = new Set<string>()
+  for (const [index, server] of servers.entries()) {
+    const result = listed[index]
+    if (result?.status !== 'fulfilled') {
+      const error: unknown = result?.reason
+      const reason =
+        error instanceof Error && error.name === 'AbortError'
+          ? `no answer within ${DISCOVERY_MS / 1000} s`
+          : error instanceof Error
+            ? error.message
+            : String(error)
+      console.warn(`mcp: server ${server.name} is unavailable: ${reason}`)
+      continue
     }
-    const signature = mcpConfigSignature(cfg, opts)
-    try {
-      const discovered = await discoverMcpTools(cfg, opts)
-      servers.set(cfg.id, cfg)
-      options.set(cfg.id, opts)
-      tools.push(...discovered)
-    } catch {
-      signal?.throwIfAborted()
-      // Do not log remote errors, URLs, stderr or credentials.
-      console.warn(`mcp: connection/discovery failed for server ${s.id}`)
+    for (const tool of result.value) {
+      if (names.has(tool.toolName)) {
+        console.warn(`mcp: ${tool.toolName} from server ${server.name} repeats a name; skipped`)
+        continue
+      }
+      names.add(tool.toolName)
+      tools.push(tool)
     }
   }
 
-  // The separator can also occur in a server/tool name; refuse ambiguous global namespaces.
-  const byName = new Map<string, string>()
-  const collisions = new Set<string>()
-  for (const tool of tools) {
-    const other = byName.get(tool.toolName)
-    if (other) {
-      collisions.add(other)
-      collisions.add(tool.serverId)
-    }
-    byName.set(tool.toolName, tool.serverId)
+  const host: McpHost = {
+    async invoke(serverId, toolName, args) {
+      if (!tools.some((tool) => tool.serverId === serverId && tool.rawName === toolName))
+        throw new Error(`MCP tool ${toolName} is not available in this turn`)
+      // Disabling or deleting a server stops a running turn from calling it.
+      const server = mcpServerRepo.get(db, serverId)
+      if (!server?.enabled) throw new Error('This MCP server has been disabled or removed')
+      return callMcpTool(server, toolName, args, {
+        connect: () => mcpConnectOptions(db, authToken, server),
+        signal,
+      })
+    },
   }
-  if (collisions.size) {
-    for (const id of collisions) {
-      servers.delete(id)
-      options.delete(id)
-    }
-    console.warn('mcp: ambiguous tool namespaces; affected servers not admitted')
-  }
-  const admitted = tools.filter((t) => !collisions.has(t.serverId))
-  return { tools: admitted, host: createMcpHost({ servers, tools: admitted, optsFor }) }
+  return { tools, host }
 }

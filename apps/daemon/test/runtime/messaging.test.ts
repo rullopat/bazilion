@@ -3,75 +3,15 @@
 // tests are about tool *behaviour* — DB side effects, polling, error paths —
 // not about round-tripping through pi's agent loop.
 
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import {
-  agentRepo,
-  type BazilionDb,
-  createProfile,
-  messageRepo,
-  openInMemoryDb,
-  type Paths,
-  registerTeam,
-  resolveAgent,
-  resolvePaths,
-  runMigrations,
-  spawnAgent,
-} from '../../src/core/index.ts'
+import { createProfile, messageRepo, resolveAgent, spawnAgent } from '../../src/core/index.ts'
+import { createDbMessagingHost } from '../../src/lib/messaging-host.ts'
 import { messagingTools } from '../../src/runtime/tools/messaging.ts'
 import type { ToolHandler } from '../../src/runtime/tools/types.ts'
-import type { MessagingHost } from '../../src/runtime/worker/ipc-protocol.ts'
+import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
-function dbHost(db: BazilionDb): MessagingHost {
-  return {
-    agentExists: (id) => agentRepo.get(db, id) !== null,
-    sendMessage: (input) => ({ messageId: messageRepo.send(db, input).id }),
-    listInbox: (id, opts) => messageRepo.listInbox(db, id, opts),
-    markRead: (id) => messageRepo.markRead(db, id),
-    findReplies: (id, replyTo) => messageRepo.findReplies(db, id, replyTo),
-    approvalStatus: () => null,
-  }
-}
-
-interface Env {
-  home: string
-  paths: Paths
-  db: BazilionDb
-  teamId: string
-  cleanup(): void
-}
-
-function makeEnv(): Env {
-  const home = mkdtempSync(join(tmpdir(), 'bazilion-msg-'))
-  const paths = resolvePaths(home)
-  for (const d of [
-    paths.profilesDir,
-    paths.agentsDir,
-    paths.skillsDir,
-    paths.logsDir,
-    paths.teamsDir,
-  ]) {
-    mkdirSync(d, { recursive: true })
-  }
-  const db = openInMemoryDb()
-  runMigrations(db)
-  const g = registerTeam(db, { id: 'test-team', name: 'test' }, paths)
-  return {
-    home,
-    paths,
-    db,
-    teamId: g.id,
-    cleanup() {
-      db.close()
-      rmSync(home, { recursive: true, force: true })
-    },
-  }
-}
-
-function makeAgent(env: Env, name: string): ResolvedAgent {
+function makeAgent(env: TestEnv, name: string): ResolvedAgent {
   const a = spawnAgent(env.db, env.paths, {
     profileId: 'p',
     name,
@@ -86,9 +26,9 @@ function findHandler(handlers: ToolHandler[], name: string): ToolHandler {
   return h
 }
 
-let env: Env
+let env: TestEnv
 beforeEach(() => {
-  env = makeEnv()
+  env = makeTestEnv()
   createProfile(env.db, env.paths, {
     id: 'p',
     defaultModel: 'mock:m',
@@ -99,7 +39,7 @@ afterEach(() => env.cleanup())
 test('send_message tool inserts a row addressed to the recipient', async () => {
   const a = makeAgent(env, 'A')
   const b = makeAgent(env, 'B')
-  const handlers = messagingTools(dbHost(env.db), a.agent.id)
+  const handlers = messagingTools(createDbMessagingHost(env.db), a.agent.id)
   const send = findHandler(handlers, 'send_message')
 
   await send.invoke({ to: b.agent.id, text: 'hi B, this is A' })
@@ -126,7 +66,7 @@ test('read_inbox returns unread messages and marks them read', async () => {
     payload: JSON.stringify({ text: 'second' }),
   })
 
-  const handlers = messagingTools(dbHost(env.db), b.agent.id)
+  const handlers = messagingTools(createDbMessagingHost(env.db), b.agent.id)
   const read = findHandler(handlers, 'read_inbox')
   const result = await read.invoke({})
   expect(result).toContain('first')
@@ -142,7 +82,7 @@ test('send_message + read_inbox round-trip preserves reply_to pointer', async ()
   const b = makeAgent(env, 'B')
 
   // A sends B a question
-  const aHandlers = messagingTools(dbHost(env.db), a.agent.id)
+  const aHandlers = messagingTools(createDbMessagingHost(env.db), a.agent.id)
   const aSend = findHandler(aHandlers, 'send_message')
   await aSend.invoke({ to: b.agent.id, text: 'B, what is 2+2?' })
 
@@ -152,7 +92,7 @@ test('send_message + read_inbox round-trip preserves reply_to pointer', async ()
   expect(originalMsgId).toBeDefined()
 
   // B replies with reply_to pointer
-  const bHandlers = messagingTools(dbHost(env.db), b.agent.id)
+  const bHandlers = messagingTools(createDbMessagingHost(env.db), b.agent.id)
   const bSend = findHandler(bHandlers, 'send_message')
   await bSend.invoke({ to: a.agent.id, text: '4', reply_to: originalMsgId })
 
@@ -183,7 +123,7 @@ test('wait_for_reply resolves when a reply arrives', async () => {
     })
   }, 100)
 
-  const handlers = messagingTools(dbHost(env.db), a.agent.id)
+  const handlers = messagingTools(createDbMessagingHost(env.db), a.agent.id)
   const wait = findHandler(handlers, 'wait_for_reply')
   const result = await wait.invoke({ message_id: sent.id, timeout_ms: 2000, poll_ms: 50 })
   clearTimeout(reply)
@@ -200,7 +140,7 @@ test('wait_for_reply times out cleanly when no reply arrives', async () => {
     payload: JSON.stringify({ text: 'ping' }),
   })
 
-  const handlers = messagingTools(dbHost(env.db), a.agent.id)
+  const handlers = messagingTools(createDbMessagingHost(env.db), a.agent.id)
   const wait = findHandler(handlers, 'wait_for_reply')
   const result = await wait.invoke({ message_id: sent.id, timeout_ms: 200, poll_ms: 50 })
   expect(result).toContain('no reply within')
@@ -208,7 +148,7 @@ test('wait_for_reply times out cleanly when no reply arrives', async () => {
 
 test('send_message rejects unknown recipient', async () => {
   const a = makeAgent(env, 'A')
-  const handlers = messagingTools(dbHost(env.db), a.agent.id)
+  const handlers = messagingTools(createDbMessagingHost(env.db), a.agent.id)
   const send = findHandler(handlers, 'send_message')
   await expect(send.invoke({ to: 'nope', text: 'hi' })).rejects.toThrow()
 })

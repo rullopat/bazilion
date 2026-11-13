@@ -8,12 +8,12 @@ import {
   LogOut,
   MessageCircle,
   Settings2,
-  ShieldCheck,
   Sparkles,
   UsersRound,
 } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { useEffect, useState } from 'react'
+import { api, errorMessage } from '../lib/api'
 import { BaziuLogo } from './BaziuLogo'
 import { ThemeToggle } from './ThemeToggle'
 
@@ -21,21 +21,6 @@ const PRIMARY_LINKS = [
   { to: '/', label: 'Chat', icon: MessageCircle },
   { to: '/agents', label: 'Agents', icon: Bot },
   { to: '/teams', label: 'Teams', icon: UsersRound },
-] as const
-
-const OPERATIONS_LINKS = [
-  {
-    href: '/approvals',
-    label: 'Approvals',
-    description: 'Decide whether one captured action may proceed.',
-    icon: ShieldCheck,
-  },
-  {
-    href: '/attention',
-    label: 'Attention',
-    description: 'Inspect failures, warnings, lessons, and open signals.',
-    icon: BellRing,
-  },
 ] as const
 
 const MANAGE_LINKS = [
@@ -67,23 +52,24 @@ export function TopNav() {
   useEffect(() => {
     if (pathname === '/login' || pathname === '/welcome') return
     const controller = new AbortController()
-    fetch('/api/attention/summary', { signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((body: AttentionSummary | null) => setAttention(body))
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return
+    api<AttentionSummary>('/api/attention/summary', { signal: controller.signal })
+      .then(setAttention)
+      .catch(() => {
+        // The badge keeps its last count; the Attention page shows the error.
       })
     return () => controller.abort()
   }, [pathname])
 
+  const attentionActive = pathname === '/attention' || pathname.startsWith('/attention/')
+  const openAttention = attention?.openTotal ?? 0
+
   async function logout() {
     setLogoutError(null)
     try {
-      const response = await fetch('/api/logout', { method: 'POST' })
-      if (!response.ok) throw new Error(`Log out failed (${response.status})`)
+      await api('/api/logout', { method: 'POST' })
       window.location.assign('/login')
     } catch (error) {
-      setLogoutError(error instanceof Error ? error.message : String(error))
+      setLogoutError(errorMessage(error))
     }
   }
 
@@ -95,12 +81,10 @@ export function TopNav() {
       <Link
         to="/"
         aria-label="Bazilion home"
-        className="logo team flex min-w-0 items-center gap-2 rounded-lg text-charcoal transition-opacity hover:text-charcoal hover:opacity-80"
+        className="group flex min-w-0 items-center gap-2 rounded-lg text-charcoal transition-opacity hover:text-charcoal hover:opacity-80"
       >
-        <BaziuLogo className="logo-paw h-8 w-8 shrink-0 transition-transform duration-300 team-hover:rotate-[-8deg] team-hover:scale-[1.08]" />
-        <span className="truncate font-display text-[1.35rem] tracking-[-0.02em]">
-          bazilion
-        </span>
+        <BaziuLogo className="h-8 w-8 shrink-0 transition-transform duration-300 group-hover:rotate-[-8deg] group-hover:scale-[1.08]" />
+        <span className="truncate font-display text-[1.35rem] tracking-[-0.02em]">bazilion</span>
       </Link>
 
       <div className="col-span-2 row-start-2 flex min-w-0 items-center gap-1 overflow-x-auto pb-0.5 md:col-auto md:row-auto md:ml-4 md:flex-1 md:overflow-visible md:pb-0">
@@ -123,18 +107,29 @@ export function TopNav() {
           )
         })}
 
-        <NavMenu
-          label="Operations"
-          compactLabel="Ops"
-          icon={BellRing}
-          links={OPERATIONS_LINKS}
-          pathname={pathname}
-          badge={attention?.openTotal ?? 0}
-          itemBadges={{
-            '/approvals': attention?.byKind.communication_approval ?? 0,
-            '/attention': attention?.openTotal ?? 0,
-          }}
-        />
+        <Link
+          to="/attention"
+          aria-current={attentionActive ? 'page' : undefined}
+          className={navButtonClass(attentionActive)}
+        >
+          <BellRing className="hidden size-4 shrink-0 sm:block" aria-hidden="true" />
+          <span>Attention</span>
+          {openAttention > 0 && (
+            <>
+              <span
+                className="size-2 shrink-0 rounded-full bg-danger sm:hidden"
+                aria-hidden="true"
+              />
+              <span
+                className="hidden min-w-5 items-center justify-center rounded-full bg-danger px-1.5 py-0.5 text-xs font-semibold leading-4 text-primary-foreground sm:inline-flex"
+                aria-hidden="true"
+              >
+                {openAttention > 99 ? '99+' : openAttention}
+              </span>
+              <span className="sr-only">, {openAttention} open items</span>
+            </>
+          )}
+        </Link>
         <NavMenu
           label="Manage"
           icon={Settings2}
@@ -178,21 +173,15 @@ interface NavMenuLink {
 
 function NavMenu({
   label,
-  compactLabel,
   icon: Icon,
   links,
   pathname,
-  badge = 0,
-  itemBadges = {},
   align = 'start',
 }: {
   label: string
-  compactLabel?: string
   icon: typeof Bot
   links: readonly NavMenuLink[]
   pathname: string
-  badge?: number
-  itemBadges?: Record<string, number>
   align?: 'start' | 'end'
 }) {
   const active = links.some(
@@ -204,19 +193,7 @@ function NavMenu({
       <DropdownMenuPrimitive.Trigger asChild>
         <button type="button" className={navButtonClass(active)} aria-label={`${label} menu`}>
           <Icon className="hidden size-4 shrink-0 sm:block" aria-hidden="true" />
-          <span className={compactLabel ? 'sm:hidden' : undefined}>{compactLabel ?? label}</span>
-          {compactLabel && <span className="hidden sm:inline">{label}</span>}
-          {badge > 0 && (
-            <>
-              <span
-                className="size-2 shrink-0 rounded-full bg-danger sm:hidden"
-                aria-label={`${badge} open items`}
-              />
-              <span className="hidden sm:inline-flex">
-                <CountBadge value={badge} label={`${badge} open items`} />
-              </span>
-            </>
-          )}
+          <span>{label}</span>
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
         </button>
       </DropdownMenuPrimitive.Trigger>
@@ -246,15 +223,7 @@ function NavMenu({
                     <ItemIcon className="size-3.5" aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      {link.label}
-                      {(itemBadges[link.href] ?? 0) > 0 && (
-                        <CountBadge
-                          value={itemBadges[link.href] ?? 0}
-                          label={`${itemBadges[link.href]} open ${link.label.toLowerCase()} items`}
-                        />
-                      )}
-                    </span>
+                    <span className="block text-sm font-semibold">{link.label}</span>
                     <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
                       {link.description}
                     </span>
@@ -266,17 +235,6 @@ function NavMenu({
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>
-  )
-}
-
-function CountBadge({ value, label }: { value: number; label: string }) {
-  return (
-    <span
-      className="inline-flex min-w-5 items-center justify-center rounded-full bg-danger px-1.5 py-0.5 text-xs font-semibold leading-4 text-primary-foreground"
-      aria-label={label}
-    >
-      {value > 99 ? '99+' : value}
-    </span>
   )
 }
 

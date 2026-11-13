@@ -1,252 +1,108 @@
-# Coding during an Agent task
+# Coding with Agents
 
-Ask an Agent to do the work: **“Fix this bug and run the relevant test.”** There is no Team
-checklist to fill out first.
+Agents work on code with the `bash` tool and, when the sandbox is off, Pi's file tools. Ask for
+the work ("fix this bug and run the relevant test") and the Agent runs what it needs. Output
+streams into the chat while a command runs; the result carries the output and the exit code, and
+a non-zero exit is a result to investigate. To work on an existing project, register a Team on it:
+`bazilion team add my-app --link /path/to/my-app` (or the Teams page); the Team directory is the
+Agent's working directory. Review the changes on the Team **Review** page
+([change review](change-review.md)).
 
-The Agent receives root repository instructions when its turn starts. It can inspect a deeper
-scope, discover source-backed commands, check the actual execution environment, prepare missing
-prerequisites from available local artifacts, and run a finite command. Results appear alongside
-that work in chat, with expandable output. A failed test is a result to investigate; it does not
-send you to a configuration dashboard.
+## Repository instructions
 
-## What the Agent can do
+When a turn starts, the daemon reads `AGENTS.md` in the Team workspace root and, in Docker mode,
+in each directory down to the Team's working directory. Pi gets them as project instructions, at
+the path the model sees (`/workspace/...` in Docker). The system prompt adds that an `AGENTS.md`
+governs its directory and everything below it, so the Agent reads deeper ones before editing
+there.
 
-| Tool | Purpose |
+A file is used when it is a regular file of at most 128 KiB whose real path stays inside the Team
+workspace; a link to another workspace file (such as `AGENTS.md -> CLAUDE.md`) is fine. Anything
+else is skipped with a line in the daemon log, never an error. The Agent's own documents (its
+`AGENTS.md`, `SOUL.md`, …) are separate and labelled Agent instructions. Pi's own discovery of
+extensions, skills, context files and prompt templates stays off, so a repository's `.pi/` runs
+nothing. Learning reviews get no repository instructions.
+
+## Host or Docker
+
+`BAZILION_BASH_SANDBOX` applies to every turn: chat, Telegram, follow-ups, schedules and inbox.
+Set it on `/config/services` (**Agent Runtime → Agent Shell Security**) or with
+`bazilion config set BAZILION_BASH_SANDBOX docker`.
+
+| Setting | What runs |
 | --- | --- |
-| `repository_context` | Resolve applicable instructions, Git state and suggested commands for a scope |
-| `coding_environment` | Describe this turn's admitted host/Docker/native/protected posture, directory and restrictions |
-| `coding_command` | Execute a task-selected runtime, dependency, preparation, build or test command |
-| `coding_receipt` | Read retained command evidence and check whether its recorded inputs still apply |
+| `off` (default) | `bash` and Pi's file tools (`read`, `edit`, `write`, `grep`, `find`, `ls`) run on the host as the daemon's user, in the Team directory. Nothing is isolated. |
+| `docker` | Only `bash`, each command in a fresh container. The file tools are hidden, because they take host paths. |
 
-Commands use the turn's admitted shell backend, approval policy, cancellation and resource cleanup.
-They have a 1–300 second timeout. They do not start independent jobs or acquire another workspace
-lease. No tool accepts a caller-selected Team or host execution override.
+In Docker mode every command is one `docker run --rm` with:
 
-Pi owns the model/tool loop and canonical session transcript. Bazilion supplies bounded repository
-context and the execution adapter. Existing Bazilion-managed skills remain available; this change
-does not activate ambient Pi extensions or repository-provided executable plugins.
+- no network;
+- the Team directory read/write at `/workspace`, with its `memory/` store read-only;
+- the Agent's uploaded files read-only at `/inputs` and attached skills read-only under `/skills`;
+- a read-only root filesystem and a 64 MiB `/tmp` that does not persist between commands;
+- the daemon user's uid/gid, no capabilities, `no-new-privileges` and at most 256 processes;
+- nothing from the host environment (`HOME` and `TMPDIR` are `/tmp`);
+- the local image only: Bazilion never pulls.
 
-## Trusted Mac host execution and explicit Linux isolation (0.25 alpha)
+Cancelling a turn removes its running container; containers a killed worker or a stopped daemon
+left behind are removed at the end of the turn and when the daemon starts. If Docker or the image
+is missing, the command fails and the Agent sees the error; nothing falls back to the host.
+`bazilion doctor` and `/config` show whether the configured image is available.
 
-| Platform/posture | Current behavior |
-| --- | --- |
-| Mac operator work, `off` | Trusted **unisolated host execution**; commands use the OS user's filesystem/network permissions |
-| Mac native/Docker selection | Refuses; generic native Mac isolation is deferred/unqualified and Mac Docker remains removed |
-| Mac isolation-required protected coding or specialist checks | Unavailable; never downgraded to host execution |
-| Linux `native` | Bubblewrap plus mandatory seccomp and per-turn owned admission |
-| Linux `docker` | Independently selected retained backend; never a prerequisite/fallback for native |
+## The image
 
-Select `off` explicitly through Agent Shell Security / `bazilion config set BAZILION_BASH_SANDBOX off`
-for trusted host work. Approvals and tool guards are not an OS sandbox. Stored native/Docker choices
-are not rewritten as host execution. Team defaults alone do not select a backend; on Mac, optional
-isolation defaults cannot be saved/activated and existing choices remain visible as unavailable.
-
-Mac protected normal turns (including isolation-required schedules, inbox, Telegram and approval
-delivery) and command-executing specialist verification refuse before execution. Existing closed
-reviewer-only workers admit no shell/coding capability and retain their own provider-minimal and
-fixed-tool contract; background invocation alone does not make a new shell-isolation requirement.
-Ordinary MCP/browser and guarded Git keep their independent admission/ownership protections.
-
-The native behavior below applies to supported **Linux** execution. The retained Seatbelt design is
-[deferred development history](native-execution-design.md), not supported Mac containment. Missing
-Linux mechanisms, toolchain drift or unsafe inputs refuse; arbitrary host tools or whole host library
-trees are not implied.
-
-Native `bash` and `coding_command` share one daemon-owned executor. Host-backed file tools are hidden;
-Team memory, skills and admitted uploads are read-only to commands. Only closed Team environment
-flags enter commands, never provider credentials or the Docker environment allowlist. TCP/UDP,
-including localhost, are denied; explicitly admitted private job Unix IPC is not a localhost exception.
-Native always uses dangerous-command approval: interactive turns may approve once, unattended turns
-auto-deny. Ordinary separately admitted browser/MCP capabilities are not confined by the coding
-sandbox; protected/restricted workers still deny them.
-
-On Linux, health, doctor and Config report native selection as **Not checked** until real per-turn admission,
-not an image or readiness badge. Unknown ownership/cleanup retains the resource and writer; persisted
-receipts do not authorize signalling. Agent-requested native verification uses its bound producing
-turn and the two-tool specialist. Operator capture through the existing HTTP/CLI/web verification
-surface on Linux runs fixed readiness probes and positively retires them before storing native facts;
-it does not execute the captured checks. JSON cannot supply environment facts or impersonate an Agent.
-Capture is fenced/drained during shutdown. Backend changes refuse rather than substituting legacy
-host/Docker execution; completed history is not rewritten. CLI/web distinguish captured native facts
-from current readiness.
-
-Native Bash failures retain bounded native retirement facts in the canonical transcript and error
-text when available: phase, boolean observations and at most two census verdicts. These are
-troubleshooting metadata, not process identity, cleanup authority or a successful check. An uncertain
-attempt is never converted into success merely because later same-live-owner teardown retires its resources;
-never replay its effects merely because a later capture is empty.
-
-Queued operator input keeps its configured posture; approved deliveries and bound Telegram queue
-input require their protected backend. They refuse on Mac when isolation is required; they do not
-reuse ordinary host admission. Communication approval grants the captured input, not a shell
-risk exemption: queued dangerous commands still auto-deny. Holds, pause and duplicate/denied decisions
-cannot execute the input. Topic/owner/credential rebinding refuses delayed Telegram execution.
-Cancellation reporting recognizes known abort messages only after an actual worker cancellation
-signal; unconfirmed cleanup still requires recovery rather than a cancellation/success claim.
-
-Historical native Mac source trials exercised configured workers, scheduled/inbox ticks and shutdown,
-but did not qualify Mac isolation; failed CI and uncertain cleanup remain failed evidence. Current
-Mac coverage exercises trusted host execution, protected refusal and retained independent boundaries.
-Linux retains actual native execution checks. Installed Mac 27.0.1 arm64 / Node 26.12.1 and Linux
-native/protected command and main-process lifecycle trials supply bounded actual evidence. The
-0.25 alpha accepts the tested Mac 27.x major line; Mac headed/desktop qualification is deferred,
-not a pass or an extra release gate. Synthetic loopback providers remain distinct from unobserved
-live-provider/generated-image acceptance; public browser PNGs are not a substitute.
-
-## Missing prerequisites
-
-In a Docker-selected turn, every command runs in a fresh network-disabled container. Workspace
-files persist; temporary files do not. The root filesystem and Team memory are read-only to shell
-commands. There are no ambient host credentials or package caches.
-
-The Agent can install from workspace-local artifacts or an available offline package store under
-its existing authority. If a package must be downloaded, a service is unavailable, or the image
-lacks a required tool, it should name the missing prerequisite and yield. It cannot silently switch
-to host execution. Network-enabled dependency provisioning is outside this feature.
-
-Docker execution is **Linux-only**. macOS isolation-required protected work is unavailable because
-native Mac isolation is deferred/unqualified. Explicit/stored native or Docker selections refuse,
-never silently convert to trusted host execution. No Docker Desktop, Colima or Linux VM is restored,
-required or authorized for Mac support.
-
-A local toolchain image is an installation prerequisite for Linux Docker execution, not a per-task
-checklist. The supplied [Dockerfile](../examples/coding-environment/Dockerfile) contains Node and
-pnpm. Build it explicitly from a source checkout:
+The default image is `debian:bookworm-slim` (`docker pull debian:bookworm-slim`). Any local image
+with `/bin/bash` works; select it with `BAZILION_BASH_SANDBOX_IMAGE`. The example
+[Dockerfile](../examples/coding-environment/Dockerfile) adds Node and pnpm:
 
 ```sh
-docker build --pull=false -t bazilion-coding:node26-pnpm12 examples/coding-environment
+docker build -t bazilion-coding:node26-pnpm12 examples/coding-environment
+bazilion config set BAZILION_BASH_SANDBOX_IMAGE bazilion-coding:node26-pnpm12
 ```
 
-The image build requires its base image and package-manager artifacts to be available. Set
-`BAZILION_BASH_SANDBOX_IMAGE=bazilion-coding:node26-pnpm12` for the installation. Ordinary Agent
-turns use Docker when `BAZILION_BASH_SANDBOX=docker`; protected turns always use their protected
-runtime. Host execution remains host execution under its existing policy.
+There is no network inside the container, so dependencies must already be in the image or in the
+workspace (for example an offline package store).
 
-Historical 0.25 development trials recorded local ARM Docker coverage on **macOS 27.0.1 arm64**
-with Node **24.22.0 / 26.4.0**, including approvals, scheduled/inbox workers, captured verification
-and settlement. That is not native-backend or current Node 26.12.1 qualification. The approved
-replacement and its integration limits are described in [native execution](native-execution-design.md).
-Those Mac Docker trials remain historical only: the backend and its private qualification VM have
-been removed from macOS support. Linux Docker still requires a responsive local Unix socket, admitted
-local image and accessible mounts. Historical failures and unfinished installed/native acceptance
-remain distinct in [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
+## Team defaults
 
-Docker admission gives each OCI **create** and isolated **probe-start** operation a fixed
-**five-second** budget on every supported platform; metadata inspection keeps its separate
-two-second bound. The probe runs only the fixed `true` command through the required shell/env
-under the protected mount/network/environment policy, before any model invocation. Caller
-cancellation interrupts create/start and still waits for exact-container cleanup; unconfirmed
-cleanup retains ownership. Cleanup bounds/retries are unchanged. This admission budget neither
-extends a coding command's declared timeout nor enables startup retries, host fallback or CI-only
-overrides.
-
-A known protected-runtime admission refusal returns HTTP **409** with
-`code: "protected_execution_unavailable"` and daemon-authored remediation. CLI and web share this
-response; a closed `engine`, `create`, `start` or `cleanup` phase may identify the failed Docker
-boundary; a daemon timer may add `: timeout`. Neither label proves execution or settlement.
-Raw Docker errors and credential material are
-not forwarded. No model turn is started
-and there is no host fallback. A required repository-context refusal instead returns **422** with
-the actual guarded-read issue code, not a blanket Linux-only claim. Resolve the reported boundary;
-do not bypass unsafe paths or uncertain workspace ownership.
-
-## Working with teammates
-
-An Agent may send a scoped request to an existing teammate through `send_message`. If the teammate
-needs the same workspace, the sender ends its turn so the workspace can be released. The existing
-inbox scheduler then admits the teammate, which performs the work and replies. Waiting for that
-reply while holding the same workspace is rejected with handoff guidance.
-
-A producer can include `coding-receipt:<id>` in its message. The recipient supplies that message ID
-when reading the evidence. Merely belonging to the same Team is insufficient: the producer message,
-current communication policy and current Team membership must all permit access. Old recipes in
-Team memory can help choose commands; they are not fresh evidence.
-
-## Reading results
-
-A command records its purpose, exact command, scope, admitted posture/image, observed exit, time
-and bounded diagnostic output. Terminal states distinguish success, failure, block, timeout,
-cancellation and interruption. Success means that command exited zero then; it does not certify
-later edits or the whole repository.
-
-Receipt applicability compares bounded instruction, manifest and lockfile identities, runtime
-selection and workspace identity. It expires after fifteen minutes. It does not recursively hash
-installed dependencies or code. Restart/restore invalidates input evidence; reads never rerun work.
-Already-delivered cards stay visible in the open chat after the turn completes. Reloading the page
-does not independently republish their private output; the Agent can retrieve retained evidence in
-a new authorized turn. Canonical Pi transcripts retain the private result. Public history projections
-do not bypass the
-existing transport approval by independently republishing it.
-
-Diagnostics retain a secret-redacted tail of at most 64 KiB per command. A Team retains at most
-twenty terminal receipts for seven days; active commands are not evicted. A turn permits at most
-64 command receipts. This is bounded execution evidence, not a new general runs/events system.
-
-## Optional defaults and diagnostics
-
-The Team page has collapsed **Advanced repository diagnostics** and optional runtime defaults.
-Use these for troubleshooting or a repository-specific local image/directory override. There are
-no named checks, readiness badges, probe history or review/run workflow.
-
-The CLI and authenticated API expose the same optional settings:
+A Team can name its own image and a working directory inside the Team; both apply only in Docker
+mode. On the web, open the Team page and expand **Docker sandbox defaults**. From the CLI:
 
 ```sh
-bazilion team environment show default
-bazilion team environment configure default --file environment.json
+bazilion team environment show <team>
+bazilion team environment set <team> --image bazilion-coding:node26-pnpm12 --cwd app
+bazilion team environment set <team> --image ''   # back to the installation image
 ```
 
-```json
-{
-  "expectedRevision": 0,
-  "config": {
-    "backend": "docker",
-    "image": "bazilion-coding:node24-pnpm10",
-    "cwd": ".",
-    "env": { "CI": "true", "NO_COLOR": "1", "TZ": "UTC" }
-  }
-}
-```
+The API is `GET`/`PUT /api/teams/:id/coding-environment` with `{"image": "…" | null, "cwd": "app"}`.
+The directory must exist when it is saved, and neither it nor a parent inside the Team may be a
+symbolic link.
 
-`GET/PUT /api/teams/:id/coding-environment` reads/saves these defaults. Later writes require the
-current revision. Saving never executes commands. Allowed environment values are only
-`CI=true|false`, `NO_COLOR=0|1` and `TZ=UTC`; arbitrary credentials/startup hooks are rejected.
-Defaults do not change an explicitly unprotected host turn's cwd or environment.
+## Credentials
 
-Linux native configuration uses a distinct explicit choice, with no image:
+Bazilion's own credentials are kept out of the environment of shell commands and MCP stdio
+servers: the ChatGPT sign-in (`OPENAI_CODEX_OAUTH`), MCP bearer tokens (`MCP_TOKEN_*`), the
+Telegram bot token and the bootstrap or CLI token (`BAZILION_TOKEN`). On the host, the provider
+API keys and other secrets saved on `/config` are in the commands' environment, and a command runs
+as the daemon's user: it can read the Bazilion home, including `auth.json` and the database whose
+secrets that token decrypts. In Docker only the Team directory, the uploads and the attached skills
+are mounted and no host environment is passed, so those stay out of reach.
 
-```json
-{
-  "expectedRevision": 1,
-  "config": {
-    "backend": "native",
-    "cwd": ".",
-    "env": { "CI": "true", "NO_COLOR": "1", "TZ": "UTC" }
-  }
-}
-```
+## Dangerous-command approval
 
-CLI, API and web accept the same backend/directory/environment fields. A native config containing
-`image` is refused, as is a Docker config consumed by native admission (and vice versa). Storing
-native defaults is not runtime readiness and does not by itself select native execution;
-turn preparation/captured verification remain under integration. There is no host or Docker
-fallback from a native request. The alpha clean-install contract has no importer for earlier
-image-only defaults: missing `backend` fails closed rather than reinterpreting an old image. Use a
-clean current-schema bootstrap; no existing operator choice is rewritten automatically.
+With `BAZILION_BASH_APPROVAL=dangerous`, commands a classifier flags pause for a decision:
+credential paths, recursive deletes or permission changes outside the Team, piping a download into
+a shell, uploads to remote hosts, `sudo` and environment dumps. The web chat shows **Allow once** /
+**Deny**; a CLI chat in a terminal asks on stdin. An unanswered request is denied after two
+minutes. Turns with nobody to ask (Telegram, schedules, inbox wakes, queued follow-ups, piped CLI)
+deny flagged commands. Paths inside the Team (or under `/workspace` in Docker) count as local.
 
-## Ownership and recovery
+The classifier is a tripwire, not a sandbox: a determined command can get around it. Pending
+approvals are listed at `GET /api/shell-approvals?agentId=…` and answered with
+`POST /api/shell-approvals/:id` and `{"decision": "allow" | "deny"}`.
 
-Canonical workspace ownership covers aliases and overlapping roots, including Teams without
-saved defaults. Commands keep their Agent turn's ownership until process/container cleanup is
-confirmed. Cancellation is not proof of cleanup. Uncertain cleanup leaves the workspace blocked
-for recovery and never records a fabricated success. A readiness probe also retains its private
-bind-source scratch when exact-container cleanup is unconfirmed; failed readiness is not proof
-that its resources are absent.
+## Limits
 
-A lost host worker may leave separate process groups; restarting the daemon alone cannot prove
-those commands stopped. The same-boot workspace remains blocked when cleanup is uncertain. A host
-restart proves the old local processes are gone. Docker recovery uses recorded container identities.
-
-Restore never adopts copied process/container records as permission to terminate the original
-home's resources. A backup containing active work remains recovery-blocked after restore. Prefer
-backups taken after all Agent turns finish. This uses the canonical clean-install schema:
-no legacy probe tables, routes or data importers are retained.
+- Bind mounts use `bind-recursive=disabled`, which needs Docker Engine 25 or later.
+- A process a command detaches from the worker's process group is not tracked.
+- The Docker sandbox is used on Linux; elsewhere it is untested.

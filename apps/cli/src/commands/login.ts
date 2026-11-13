@@ -37,7 +37,7 @@ export const loginCommand = defineCommand({
   args: {
     server: { type: 'string', description: 'Remote server URL (http[s]://...)' },
     token: { type: 'string', description: 'Token issued by `bazilion token create`' },
-    skipVerify: { type: 'boolean', description: "Don't verify /api/auth/whoami before saving" },
+    'skip-verify': { type: 'boolean', description: "Don't verify /api/auth/whoami before saving" },
     clear: { type: 'boolean', description: 'Remove the stored remote instead of setting one' },
   },
   async run({ args }) {
@@ -66,7 +66,7 @@ export const loginCommand = defineCommand({
       )
     }
     const server = normalizeServer(args.server)
-    if (!args.skipVerify) {
+    if (!args['skip-verify']) {
       await verifyToken(server, args.token)
     }
     auth.remote = { server, token: args.token }

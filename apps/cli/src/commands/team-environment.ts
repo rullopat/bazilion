@@ -1,37 +1,54 @@
-import { readFileSync } from 'node:fs'
-import type { ConfigureCodingEnvironmentRequest } from '@bazilion/api-types'
+import type { CodingEnvironmentStatus } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
+import { jsonFlag, printJson, teamArg } from '../command-helpers.ts'
 
-const args = { id: { type: 'positional', required: true, description: 'Team slug' } } as const
+function print(status: CodingEnvironmentStatus): void {
+  console.log(
+    `sandbox: ${status.sandboxMode}${status.sandboxMode === 'off' ? ' (defaults unused)' : ''}`,
+  )
+  console.log(`image:   ${status.image ?? `${status.defaultImage} (installation default)`}`)
+  console.log(`cwd:     ${status.cwd}`)
+}
+
 export const teamEnvironmentCommand = defineCommand({
   meta: {
     name: 'environment',
-    description: 'Optional Team runtime defaults; Agents discover and run commands during tasks',
+    description: "A Team's Docker sandbox defaults: local image and working directory",
   },
   subCommands: {
     show: defineCommand({
-      args,
+      meta: { name: 'show', description: "Show a Team's Docker sandbox defaults" },
+      args: { team: teamArg, json: jsonFlag },
       async run({ args }) {
-        console.log(JSON.stringify(await createClient().codingEnvironment.show(args.id), null, 2))
+        const status = await createClient().codingEnvironment.show(args.team)
+        if (args.json) printJson(status)
+        else print(status)
       },
     }),
-    configure: defineCommand({
+    set: defineCommand({
+      meta: { name: 'set', description: "Set a Team's Docker sandbox defaults" },
       args: {
-        ...args,
-        file: {
+        team: teamArg,
+        image: {
           type: 'string',
-          required: true,
-          description:
-            'JSON {expectedRevision,config:{backend:"native"|"docker",cwd,env,image?}}; image is Docker-only',
+          description: 'Local Docker image (empty for the installation image)',
+        },
+        cwd: {
+          type: 'string',
+          description: "Working directory inside the Team ('.' for its root)",
         },
       },
       async run({ args }) {
-        const input = JSON.parse(
-          readFileSync(args.file, 'utf8'),
-        ) as ConfigureCodingEnvironmentRequest
-        console.log(
-          JSON.stringify(await createClient().codingEnvironment.configure(args.id, input), null, 2),
+        if (args.image === undefined && args.cwd === undefined)
+          throw new Error('Pass --image and/or --cwd')
+        const client = createClient()
+        const current = await client.codingEnvironment.show(args.team)
+        print(
+          await client.codingEnvironment.set(args.team, {
+            image: args.image === undefined ? current.image : args.image || null,
+            cwd: args.cwd ?? current.cwd,
+          }),
         )
       },
     }),

@@ -1,5 +1,4 @@
-import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -8,10 +7,11 @@ import {
   captureRepositoryGit,
   findRepositoryRoot,
 } from '../../src/lib/git/capture.ts'
+import { ContextDirectory } from '../../src/lib/git/context-directory.ts'
 import { attachPatches, listChanges, readChangePatch } from '../../src/lib/git-review/changes.ts'
 import { readRepositoryIdentity, resolveComparisonBase } from '../../src/lib/git-review/identity.ts'
 import { reviewScope } from '../../src/lib/git-review/scope.ts'
-import { ContextDirectory } from '../../src/lib/repository-context/files.ts'
+import { runGit } from '../fixtures/git.ts'
 
 // BAZ-042 slice 3: bounded change inventory and diffs.
 
@@ -24,21 +24,7 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(parent, { recursive: true, force: true }))
 
-function git(...args: string[]): string {
-  return execFileSync('git', ['-C', root, ...args], {
-    encoding: 'utf8',
-    env: {
-      PATH: '/usr/bin:/bin',
-      HOME: parent,
-      GIT_CONFIG_NOSYSTEM: '1',
-      GIT_CONFIG_GLOBAL: '/dev/null',
-      GIT_AUTHOR_NAME: 'Test',
-      GIT_AUTHOR_EMAIL: 'test@example.invalid',
-      GIT_COMMITTER_NAME: 'Test',
-      GIT_COMMITTER_EMAIL: 'test@example.invalid',
-    },
-  }).trim()
-}
+const git = (...args: string[]) => runGit(root, parent, ...args)
 
 function baseRepo(): string {
   git('init', '-q', '-b', 'main')
@@ -80,9 +66,13 @@ test('the inventory reports every change kind with truthful counts', async () =>
   writeFileSync(join(root, 'untracked.txt'), 'new\n')
   writeFileSync(join(root, '.gitignore'), 'ignored.txt\n')
   writeFileSync(join(root, 'ignored.txt'), 'ignored\n')
+  mkdirSync(join(root, 'memory'))
+  writeFileSync(join(root, 'memory', 'note.md'), 'team memory\n')
 
   await review(async (captured, base) => {
     const report = await listChanges(captured, base, await readRepositoryIdentity(captured))
+    // The Team's memory store is neither listed nor counted as withheld project content.
+    expect(report.withheld.untracked).toBe(0)
     const byPath = new Map(report.changes.map((change) => [change.path, change]))
     expect([...byPath.keys()].sort()).toEqual([
       '.gitignore',
@@ -108,7 +98,7 @@ test('the inventory reports every change kind with truthful counts', async () =>
     })
     expect(byPath.get('untracked.txt')).toMatchObject({
       status: 'untracked',
-      contentOmitted: 'untracked_not_selected',
+      contentOmitted: null,
     })
     // An ignored file is never listed; `del.txt` was deleted, so it is.
     expect(byPath.has('ignored.txt')).toBe(false)
@@ -155,7 +145,7 @@ test('a patch is bounded, truncated with a visible marker, and never runs for ex
   })
 })
 
-test('binary and untracked entries never receive content', async () => {
+test('binary entries never receive content and untracked files diff as added files', async () => {
   baseRepo()
   writeFileSync(join(root, 'bin.dat'), Buffer.from([0, 1, 2, 3]))
   git('add', 'bin.dat')
@@ -179,11 +169,55 @@ test('binary and untracked entries never receive content', async () => {
       truncated: false,
       omitted: 'binary',
     })
-    expect(untracked.contentOmitted).toBe('untracked_not_selected')
-    expect(
-      (await attachPatches(captured, report)).changes.find((c) => c.path === 'untracked.txt')
-        ?.patch,
-    ).toBeNull()
+    expect(untracked.contentOmitted).toBeNull()
+    const patch = (await attachPatches(captured, report)).changes.find(
+      (c) => c.path === 'untracked.txt',
+    )?.patch
+    expect(patch).toBe(
+      'diff --git a/untracked.txt b/untracked.txt\nnew file mode 100644\n' +
+        '--- /dev/null\n+++ b/untracked.txt\n@@ -0,0 +1 @@\n+new\n',
+    )
+  })
+})
+
+test('untracked files diff like Git: missing final newline, executable and binary', async () => {
+  baseRepo()
+  mkdirSync(join(root, 'bin'))
+  writeFileSync(join(root, 'bin', 'run.sh'), '#!/bin/sh\necho hi', { mode: 0o755 })
+  writeFileSync(join(root, 'blob.bin'), Buffer.from([1, 0, 2]))
+  await review(async (captured, base) => {
+    const report = await attachPatches(
+      captured,
+      await listChanges(captured, base, await readRepositoryIdentity(captured)),
+    )
+    const byPath = new Map(report.changes.map((change) => [change.path, change]))
+    expect(byPath.get('bin/run.sh')?.patch).toBe(
+      'diff --git a/bin/run.sh b/bin/run.sh\nnew file mode 100755\n' +
+        '--- /dev/null\n+++ b/bin/run.sh\n@@ -0,0 +1,2 @@\n+#!/bin/sh\n+echo hi\n' +
+        '\\ No newline at end of file\n',
+    )
+    expect(byPath.get('blob.bin')).toMatchObject({ patch: null, contentOmitted: 'binary' })
+  })
+})
+
+test('an untracked file is never read through a symlink swapped into its path', async () => {
+  baseRepo()
+  mkdirSync(join(root, 'notes'))
+  writeFileSync(join(root, 'notes', 'todo.txt'), 'mine\n')
+  const outside = join(parent, 'outside')
+  mkdirSync(outside)
+  writeFileSync(join(outside, 'todo.txt'), 'host secret\n')
+  await review(async (captured, base) => {
+    const report = await listChanges(captured, base, await readRepositoryIdentity(captured))
+    const todo = report.changes.find((change) => change.path === 'notes/todo.txt')
+    if (!todo) throw new Error('fixture change missing')
+    rmSync(join(root, 'notes'), { recursive: true })
+    symlinkSync(outside, join(root, 'notes'))
+    expect(await readChangePatch(captured, base, todo)).toEqual({
+      patch: null,
+      truncated: false,
+      omitted: 'unavailable',
+    })
   })
 })
 

@@ -1,25 +1,12 @@
-import { type AskUser, askUserTool } from '../tools/ask-user.ts'
-// Adapter: Bazilion ToolHandler → pi-coding-agent ToolDefinition.
-//
-// Pi expects tools to return `AgentToolResult<TDetails>` =
-// `{ content: (TextContent | ImageContent)[]; details: TDetails; terminate?: boolean }`.
-// Our handlers return plain strings. The adapter wraps the string into a single
-// text content block with empty details — the same fidelity we had before.
-//
-// Pi's tool execute contract: throw on failure. The agent loop wraps thrown
-// errors as tool-result messages with `isError: true`. We preserve this shape
-// directly because our handlers already throw on bad args / runtime failures.
-//
-// What's in this module:
-//   - `ourToolToPiTool` — single-handler wrapper.
-//   - `createBazilionCustomTools` — composed suite of the Bazilion-specific
-//     tools (memory_*, messaging, bootstrap_done, web_search/fetch). File I/O
-//     tools are *not* here — pi's createCodingTools(cwd, …) replaces them.
+// Bazilion's own tools as Pi tool definitions. Pi's file and shell tools (read, bash, edit, …)
+// come from Pi itself; see runtime/shell/tooling.ts. A handler throws on failure, which Pi turns
+// into an error tool result.
 
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import type { MemoryBackend } from '../memory/types.ts'
+import { type AskUser, askUserTool } from '../tools/ask-user.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
 import { deliverFileTool, type FileSink } from '../tools/deliver-file.ts'
@@ -28,32 +15,22 @@ import { imageGenerateTool } from '../tools/image-generate.ts'
 import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
-import { type ReviewRequestHost, reviewRequestTool } from '../tools/review.ts'
-import type { ToolHandler, ToolOutput } from '../tools/types.ts'
+import type { ToolHandler, ToolResultPart } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
-import { type VerificationRequestHost, verificationRequestTool } from '../tools/verification.ts'
-import {
-  ordinaryWebSearchTool,
-  protectedWebFetchTool,
-  protectedWebSearchTool,
-  webTools,
-} from '../tools/web.ts'
+import { webFetchTool, webSearchTool } from '../tools/web.ts'
 import type {
   BrowserHost,
+  ImageGenerationHost,
   InjectedMcpTool,
   McpHost,
   MessagingHost,
   UserMdHost,
+  WebSearchHost,
 } from '../worker/ipc-protocol.ts'
 
 /**
- * Wrap a Bazilion `ToolHandler` as a pi `ToolDefinition` so it can be passed
- * through `customTools` to `createAgentSession`.
- *
- * Design note: we keep the same tool name + description + parameter JSON schema
- * that the handler already declares. Pi wants a `TypeBox` schema; we pass the
- * JSONSchema through `Type.Unsafe` so the LLM validation happens on pi's side
- * without us having to re-author schemas in typebox syntax.
+ * Wrap a `ToolHandler` as a Pi tool. Its JSON schema passes through `Type.Unsafe`, so Pi
+ * validates arguments without the schema being rewritten in TypeBox.
  */
 export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
   return {
@@ -63,108 +40,48 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
     parameters: Type.Unsafe<Record<string, unknown>>(h.def.parameters as Record<string, unknown>),
     async execute(toolCallId, params, signal) {
       const out = await h.invoke(params as Record<string, unknown>, { toolCallId, signal })
-      return {
-        content: toPiContent(out),
-        details:
-          typeof out === 'object' && !Array.isArray(out)
-            ? 'result' in out
-              ? { result: out.result }
-              : 'results' in out
-                ? {
-                    results: out.results,
-                    ...(out.imageEvidence ? { imageEvidence: out.imageEvidence } : {}),
-                  }
-                : 'webSearch' in out
-                  ? { webSearch: out.webSearch }
-                  : 'webFetch' in out
-                    ? { webFetch: out.webFetch }
-                    : { questionReceipt: out.questionReceipt }
-            : {},
-      }
+      if (typeof out === 'string') return { content: [{ type: 'text', text: out }], details: {} }
+      if (Array.isArray(out)) return { content: out.map(toPiPart), details: {} }
+      return { content: out.content.map(toPiPart), details: out.details }
     },
   }
 }
 
-/**
- * Map a Bazilion `ToolOutput` to pi's `(TextContent | ImageContent)[]`. A bare
- * string becomes a single text block (the legacy shape); a part array maps
- * 1:1 — pi's content blocks have the same field names.
- */
-function toPiContent(
-  out: ToolOutput,
-): Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> {
-  if (typeof out === 'string') return [{ type: 'text', text: out }]
-  return (Array.isArray(out) ? out : out.content).map((p) =>
-    p.type === 'text'
-      ? { type: 'text', text: p.text }
-      : { type: 'image', data: p.data, mimeType: p.mimeType },
-  )
+function toPiPart(
+  part: ToolResultPart,
+): { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string } {
+  return part.type === 'text'
+    ? { type: 'text', text: part.text }
+    : { type: 'image', data: part.data, mimeType: part.mimeType }
 }
 
 export interface BazilionCustomToolsOpts {
-  askUser?: AskUser
   agent: ResolvedAgent
   memory: MemoryBackend
-  /** If provided, enables inter-agent messaging tools. */
+  // Each optional host enables its tools.
   messagingHost?: MessagingHost
-  /** If provided, enables the `user_md_append` tool. */
   userMdHost?: UserMdHost
-  /** If provided, enables the `browser_*` tools (proxied to the daemon pool). */
   browserHost?: BrowserHost
-  /** If provided alongside `mcpTools`, enables the discovered MCP proxy tools. */
+  /** MCP tools discovered daemon-side, proxied through `mcpHost`. */
   mcpHost?: McpHost
-  /** MCP tools discovered daemon-side, exposed as proxy tools. */
   mcpTools?: InjectedMcpTool[]
-  /** If provided, enables the `deliver_file` tool (emits a `file` event). */
-  sessionId?: string
   fileSink?: FileSink
-  imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
-  /** Ordinary discovery is daemon-owned; absent means no web_search, not env fallback. */
-  webSearchHost?: import('../worker/ipc-protocol.ts').WebSearchHost
+  imageGenerationHost?: ImageGenerationHost
+  /** Daemon-run search; absent means no web_search tool. */
+  webSearchHost?: WebSearchHost
+  askUser?: AskUser
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
-  /** BAZ-044: present only in an ordinary coding turn, and only when the daemon bound it. */
-  verificationRequestHost?: VerificationRequestHost
-  /** BAZ-043: the same, for asking a teammate to review the change. */
-  reviewRequestHost?: ReviewRequestHost
 }
 
-export interface ProtectedBazilionCustomToolsOpts {
-  askUser?: AskUser
-  agent: ResolvedAgent
-  memory: MemoryBackend
-  messagingHost: MessagingHost
-  userMdHost: UserMdHost
-  sessionId?: string
-  fileSink: FileSink
-  imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
-  /** BAZ-067: present only when the operator configured discovery. */
-  webSearchHost?: import('../worker/ipc-protocol.ts').WebSearchHost
-  /** BAZ-044: present only in an ordinary protected coding turn. */
-  verificationRequestHost?: VerificationRequestHost
-  /** BAZ-043: present only in an ordinary protected coding turn. */
-  reviewRequestHost?: ReviewRequestHost
-}
-
-/**
- * Build the list of Bazilion-specific custom tools in the shape pi expects.
- *
- * Excludes file-I/O tools (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`) —
- * those come from pi's `createCodingTools(cwd, …)` now that we've adopted the
- * richer toolset. Also excludes the legacy `workspace_list/read/write`
- * triumvirate: pi's tools work against a single cwd (the agent's default
- * workspace), and mounted non-default workspaces are reachable via absolute
- * paths through pi's `bash`/`read`/`edit`.
- */
+/** Bazilion's tools for one session: memory, home, web, plus those whose host is present. */
 export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDefinition[] {
   const handlers: ToolHandler[] = [
     ...memoryTools(opts.memory),
     ...homeTools(opts.agent.agent.dir),
     bootstrapTool(opts.agent.agent.dir),
-    ...webTools({ env: opts.env, sourceReceipt: true }).filter(
-      (tool) => tool.def.name !== 'web_search',
-    ),
-    ...(opts.webSearchHost ? [ordinaryWebSearchTool(opts.webSearchHost)] : []),
+    webFetchTool({ env: opts.env }),
+    ...(opts.webSearchHost ? [webSearchTool(opts.webSearchHost)] : []),
   ]
   if (opts.messagingHost) {
     handlers.push(...messagingTools(opts.messagingHost, opts.agent.agent.id))
@@ -178,73 +95,8 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.mcpHost && opts.mcpTools && opts.mcpTools.length > 0) {
     handlers.push(...mcpProxyTools(opts.mcpHost, opts.mcpTools))
   }
-  if (opts.fileSink) {
-    handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink, opts.sessionId))
-  }
-  if (opts.imageGenerationHost) {
-    handlers.push(
-      imageGenerateTool(
-        opts.imageGenerationHost.generate.bind(opts.imageGenerationHost),
-        opts.sessionId ?? '',
-      ),
-    )
-  }
-  if (opts.verificationRequestHost) {
-    // The requester's half of specialist verification. It asks; it never approves or executes.
-    handlers.push(verificationRequestTool(opts.verificationRequestHost))
-  }
-  if (opts.reviewRequestHost) {
-    // The requester's half of review. It asks; the reviewer runs nothing.
-    handlers.push(reviewRequestTool(opts.reviewRequestHost))
-  }
-  if (opts.askUser) handlers.push(askUserTool(opts.askUser))
-  return handlers.map(ourToolToPiTool)
-}
-
-/**
- * Closed normal-turn capability set. No environment is accepted, so search,
- * Firecrawl, browser, MCP, and provider/tool credentials cannot be restored by
- * configuration inside a protected worker.
- */
-export function createProtectedBazilionCustomTools(
-  opts: ProtectedBazilionCustomToolsOpts,
-): ToolDefinition[] {
-  const handlers: ToolHandler[] = [
-    ...memoryTools(opts.memory),
-    ...homeTools(opts.agent.agent.dir),
-    bootstrapTool(opts.agent.agent.dir),
-    protectedWebFetchTool(),
-    ...(opts.webSearchHost
-      ? [
-          protectedWebSearchTool({
-            search: (args) => {
-              const host = opts.webSearchHost
-              if (!host) throw new Error('web search host disappeared mid-turn')
-              return host.search(args)
-            },
-          }),
-        ]
-      : []),
-    ...messagingTools(opts.messagingHost, opts.agent.agent.id),
-    ...userMdTools(opts.userMdHost, opts.agent.team.id),
-    deliverFileTool(opts.agent.team.path, opts.fileSink, opts.sessionId),
-  ]
-  if (opts.imageGenerationHost) {
-    handlers.push(
-      imageGenerateTool(
-        opts.imageGenerationHost.generate.bind(opts.imageGenerationHost),
-        opts.sessionId ?? '',
-      ),
-    )
-  }
-  if (opts.verificationRequestHost) {
-    // The requester's half of specialist verification. It asks; it never approves or executes.
-    handlers.push(verificationRequestTool(opts.verificationRequestHost))
-  }
-  if (opts.reviewRequestHost) {
-    // The requester's half of review. It asks; the reviewer runs nothing.
-    handlers.push(reviewRequestTool(opts.reviewRequestHost))
-  }
+  if (opts.fileSink) handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink))
+  if (opts.imageGenerationHost) handlers.push(imageGenerateTool(opts.imageGenerationHost))
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   return handlers.map(ourToolToPiTool)
 }

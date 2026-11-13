@@ -1,5 +1,14 @@
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -8,11 +17,12 @@ import {
   captureRepositoryGit,
   findRepositoryRoot,
 } from '../../src/lib/git/capture.ts'
-import { ContextDirectory, ContextReadError } from '../../src/lib/repository-context/files.ts'
+import { ContextDirectory, ContextReadError } from '../../src/lib/git/context-directory.ts'
+import { runGit } from '../fixtures/git.ts'
 
-// BAZ-042 reads diffs through the same hardened capture BAZ-039 uses for status. These tests cover
-// the capability that BAZ-039 never exercised: a *second* read-only invocation, and the guarantee
-// that repository-configured executables cannot run during it.
+// BAZ-042 reads diffs through this hardened capture: a read-only copy of the metadata with a
+// Bazilion-authored config. These tests cover repeated read-only invocations, the guarantee that
+// repository-configured executables cannot run, and the metadata the capture refuses.
 
 let parent: string
 let root: string
@@ -23,21 +33,7 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(parent, { recursive: true, force: true }))
 
-function git(...args: string[]): string {
-  return execFileSync('git', ['-C', root, ...args], {
-    encoding: 'utf8',
-    env: {
-      PATH: '/usr/bin:/bin',
-      HOME: parent,
-      GIT_CONFIG_NOSYSTEM: '1',
-      GIT_CONFIG_GLOBAL: '/dev/null',
-      GIT_AUTHOR_NAME: 'Test',
-      GIT_AUTHOR_EMAIL: 'test@example.invalid',
-      GIT_COMMITTER_NAME: 'Test',
-      GIT_COMMITTER_EMAIL: 'test@example.invalid',
-    },
-  }).trim()
-}
+const git = (...args: string[]) => runGit(root, parent, ...args)
 
 function repo(): void {
   git('init', '-q', '-b', 'main')
@@ -87,7 +83,7 @@ test('diff reads cannot execute repository-configured helpers', async () => {
   // Every mechanism that could let repository state run code during a diff. These keys are not
   // carried into the neutral inspection config, so they are dropped rather than honoured.
   // (`filter.*` is stronger still: it makes the capture refuse the repository outright — see
-  // apps/daemon/test/core/repository-context.test.ts.)
+  // the unsupported-configuration test below.)
   git('config', 'diff.external', helper)
   git('config', 'core.fsmonitor', helper)
   git('config', 'diff.evil.textconv', helper)
@@ -126,6 +122,30 @@ test('a non-repository has no capture root', () => {
   }
 })
 
+test('a repository above the Team root is never used', () => {
+  repo()
+  const folder = join(root, 'folder')
+  mkdirSync(folder)
+  const directory = new ContextDirectory(folder)
+  try {
+    expect(findRepositoryRoot([directory])).toBeNull()
+  } finally {
+    directory.close()
+  }
+})
+
+test('local filemode and excludes keep ordinary Git status semantics', async () => {
+  repo()
+  git('config', 'core.filemode', 'false')
+  chmodSync(join(root, 'code.txt'), 0o755)
+  writeFileSync(join(root, '.git', 'info', 'exclude'), 'local-ignored\n')
+  writeFileSync(join(root, 'local-ignored'), 'local data')
+  expect(git('status', '--porcelain')).toBe('')
+  await withCapture(async (captured) => {
+    expect((await captured.runGit(['status', '--porcelain'])).trim()).toBe('')
+  })
+})
+
 test('an unsupported metadata layout is refused', async () => {
   repo()
   // A linked worktree records its git-dir elsewhere; the capture refuses it outright.
@@ -137,6 +157,56 @@ test('an unsupported metadata layout is refused', async () => {
     if (!found) throw new Error('fixture is not a repository')
     await expect(captureRepositoryGit(found)).rejects.toThrow(ContextReadError)
     await expect(captureRepositoryGit(found)).rejects.toThrow('unsupported_git_metadata')
+  } finally {
+    directory.close()
+  }
+})
+
+/** The capture's refusal code for the current repository state. */
+async function refusal(): Promise<string> {
+  const directory = new ContextDirectory(root)
+  try {
+    const found = findRepositoryRoot([directory])
+    if (!found) throw new Error('fixture is not a repository')
+    const captured = await captureRepositoryGit(found).catch((error: unknown) => error)
+    if (!(captured instanceof ContextReadError)) {
+      ;(captured as CapturedGit).cleanup()
+      throw new Error('capture was not refused')
+    }
+    return captured.code
+  } finally {
+    directory.close()
+  }
+}
+
+test.each([
+  'include.path',
+  'filter.external.clean',
+  'core.excludesFile',
+])('unsupported configuration %s is refused, never executed or followed', async (key) => {
+  repo()
+  git('config', key, '/private/unavailable')
+  expect(await refusal()).toBe('unsupported_git_configuration')
+})
+
+test('external object links and alternates are refused', async () => {
+  repo()
+  writeFileSync(join(root, '.git', 'objects', 'info', 'alternates'), '/private/objects\n')
+  await expect(refusal()).resolves.toBeTruthy()
+  unlinkSync(join(root, '.git', 'objects', 'info', 'alternates'))
+  symlinkSync(parent, join(root, '.git', 'objects', 'escape'))
+  await expect(refusal()).resolves.toBeTruthy()
+})
+
+test('a .git file pointing at metadata elsewhere is refused', async () => {
+  repo()
+  const folder = join(root, 'folder')
+  mkdirSync(folder)
+  writeFileSync(join(folder, '.git'), `gitdir: ${join(root, '.git')}\n`)
+  const directory = new ContextDirectory(folder)
+  try {
+    const found = findRepositoryRoot([directory])
+    if (found) await expect(captureRepositoryGit(found)).rejects.toThrow(ContextReadError)
   } finally {
     directory.close()
   }

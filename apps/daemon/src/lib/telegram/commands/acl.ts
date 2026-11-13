@@ -1,8 +1,6 @@
-// `/allow`, `/deny`, `/allowed` — manage the per-user allowlist from Telegram
-// (Phase 7). /allow and /deny require the caller to be an owner; /allowed (the
-// listing) is available to any allowlisted user. User ids come from /whoami —
-// username resolution isn't available (Telegram doesn't expose a username→id
-// lookup to bots), so these take numeric ids.
+// `/allow`, `/deny`, `/allowed` — manage the allowlist from Telegram. /allow and /deny are
+// owner-only; /allowed works for anyone on the list. They take numeric user ids (bots cannot look
+// up a username): a new member's id is shown in the bot's "not authorized" reply, or by /whoami.
 
 import { telegramAclRepo } from '../../../core/index.ts'
 import { htmlEscape } from '../html.ts'

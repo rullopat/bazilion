@@ -1,63 +1,61 @@
 // Worker ↔ daemon IPC protocol.
 //
-// The daemon is the single owner of `~/.bazilion`. Worker subprocesses run
-// agent turns without their own SQLite handle: anything that needs DB access
-// during a turn (currently the `send_message` / `read_inbox` /
-// `wait_for_reply` tools) is delegated to the parent over Node's built-in
-// `process.send` / `child.send` IPC channel (set up via `stdio: 'ipc'`).
-//
-// Wire format: one JSON object per `send`, with a stable `type` discriminator
-// and a correlation `id` for matching replies. The shape stays narrow on
-// purpose — daemon-owned tools and command approval talk over IPC. Agent
-// resolution, provider gate, and merged env are pre-computed in the daemon and
-// handed to the worker on stdin (see `WorkerInput` in `worker/entry.ts`).
+// The daemon is the single owner of `~/.bazilion`. A worker runs one turn without a database
+// handle: every tool that needs daemon state (messaging, USER.md, results, browser, MCP, search,
+// images, questions, shell approval, OAuth refresh) calls the daemon over the Node IPC channel
+// (`stdio: 'ipc'`). One call is `{type: 'rpc', id, method, args}`; the daemon answers
+// `{type: 'rpc-reply', id, ok, result | error}`. `RpcMethods` is the whole protocol.
 
 import type {
+  AgentQuestion,
+  AgentQuestionInput,
+  AgentQuestionToolResult,
   BashApprovalMode,
   CommandApproval,
   CommandRisk,
-  CommunicationApproval,
   Message,
+  ResultReference,
 } from '@bazilion/api-types'
 import type { ToolResultPart } from '../tools/types.ts'
 
-export type RpcMethod =
-  | 'nativeExecute'
-  | 'nativeCancel'
-  | 'coding'
-  | 'repositoryContext'
-  | 'webSearch'
-  | 'containerBeforeCreate'
-  | 'containerAfterCreate'
-  | 'containerAfterRemove'
-  | 'questionConsumed'
-  | 'askUser'
-  | 'agentExists'
-  | 'sendMessage'
-  | 'listInbox'
-  | 'markRead'
-  | 'findReplies'
-  | 'approvalStatus'
-  | 'userMdGet'
-  | 'userMdWrite'
-  | 'browserInvoke'
-  | 'mcpInvoke'
-  | 'reviewPacketCapture'
-  | 'reviewPacketRead'
-  | 'reviewPathRead'
-  | 'reviewFindingAdd'
-  | 'reviewConclusion'
-  | 'verificationCapture'
-  | 'verificationRead'
-  | 'verificationRun'
-  | 'refreshApiKey'
-  | 'bashApproval'
-  | 'publishResult'
-  | 'generateImages'
-
-export interface AgentExistsArgs {
-  agentId: string
+/** Every worker-to-daemon call: its arguments and the daemon's answer. */
+export interface RpcMethods {
+  askUser: { args: { question: AgentQuestionInput }; result: AgentQuestionToolResult }
+  publishResult: { args: PublishResultArgs; result: ResultReference }
+  generateImages: { args: ImageGenerationInput; result: ImageGenerationOutput }
+  webSearch: { args: WebSearchArgs; result: WebSearchOutput }
+  agentExists: { args: { agentId: string }; result: boolean }
+  sendMessage: { args: SendMessageArgs; result: { messageId: string } }
+  listInbox: { args: { agentId: string; unreadOnly: boolean }; result: Message[] }
+  markRead: { args: { messageId: string }; result: null }
+  findReplies: { args: { agentId: string; replyTo: string }; result: Message[] }
+  userMdGet: { args: { teamId: string }; result: UserMdGetResult }
+  userMdWrite: {
+    args: { teamId: string; content: string; ifMatch: string }
+    result: UserMdWriteResult
+  }
+  browserInvoke: {
+    args: { agentId: string; action: string; args: Record<string, unknown> }
+    result: ToolResultPart[]
+  }
+  mcpInvoke: {
+    args: { serverId: string; toolName: string; args: Record<string, unknown> }
+    result: ToolResultPart[]
+  }
+  /** The daemon refreshes the turn's own OAuth credential; only the access token comes back. */
+  refreshApiKey: { args: { providerName: string }; result: string }
+  bashApproval: { args: BashApprovalArgs; result: CommandApproval }
 }
+
+export type RpcMethod = keyof RpcMethods
+
+export type IpcRequest = {
+  [M in RpcMethod]: { type: 'rpc'; id: string; method: M; args: RpcMethods[M]['args'] }
+}[RpcMethod]
+
+export type IpcReply =
+  | { type: 'rpc-reply'; id: string; ok: true; result: unknown }
+  | { type: 'rpc-reply'; id: string; ok: false; error: string }
 
 export interface SendMessageArgs {
   from: string
@@ -66,74 +64,16 @@ export interface SendMessageArgs {
   replyTo: string | null
 }
 
-export interface ListInboxArgs {
-  agentId: string
-  unreadOnly: boolean
-}
-
-export interface MarkReadArgs {
-  messageId: string
-}
-
-export interface FindRepliesArgs {
-  agentId: string
-  replyTo: string
-}
-
-export interface ApprovalStatusArgs {
-  agentId: string
-  approvalId: string
-}
-
-export interface UserMdGetArgs {
-  teamId: string
-}
-
 export interface UserMdGetResult {
   content: string
   /** Short content-derived hash. Pass back in `ifMatch` on the next write. */
   etag: string
 }
 
-export interface UserMdWriteArgs {
-  teamId: string
-  content: string
-  /** Etag from the most recent get. Write fails with a conflict if it no longer matches. */
-  ifMatch: string
-}
-
 export interface UserMdWriteResult {
   /** Etag of the newly-stored content — pass to the next write. */
   etag: string
   totalBytes: number
-}
-
-export interface BrowserInvokeArgs {
-  agentId: string
-  action: string
-  args: Record<string, unknown>
-}
-
-/** BAZ-044: the specialist capability. Both calls carry the turn's own request/attempt identity. */
-export interface VerificationIdentityArgs {
-  requestId: string
-  attemptId: string
-}
-
-export interface VerificationRunArgs extends VerificationIdentityArgs {
-  ordinal: number
-}
-
-export interface McpInvokeArgs {
-  serverId: string
-  toolName: string
-  args: Record<string, unknown>
-}
-
-export interface ApiKeyRefreshArgs {
-  providerName: string
-  agentId: string
-  turnId: string
 }
 
 export interface BashApprovalArgs {
@@ -145,13 +85,6 @@ export interface BashApprovalArgs {
   command: string
   risks: CommandRisk[]
   mode: BashApprovalMode
-}
-
-export type BashApprovalDecisionReason = 'user' | 'auto_deny' | 'timeout' | 'cancelled'
-
-export interface BashApprovalResult {
-  decision: 'allow' | 'deny'
-  reason: BashApprovalDecisionReason
 }
 
 /**
@@ -169,180 +102,55 @@ export interface InjectedMcpTool {
   inputSchema: object
 }
 
-export type PublishResultArgs = import('@bazilion/api-types').ResultPublicationInput
-
-export interface ImageGenerationHost {
-  generate(
-    input: import('@bazilion/api-types').ImageGenerationInput,
-  ): Promise<import('@bazilion/api-types').ImageGenerationOutput>
+/** A deliver_file file; the daemon binds the Agent, Team and conversation. */
+export interface PublishResultArgs {
+  toolCallId: string
+  name: string
+  mimeType: string
+  /** base64 */
+  data: string
 }
 
-export type { WebSearchArgs, WebSearchOutput } from '@bazilion/api-types'
-
-import type { WebSearchArgs, WebSearchOutput } from '@bazilion/api-types'
-
-/** BAZ-067: the worker sees only bounded results; the backend URL stays daemon-side. */
-export interface WebSearchHost {
-  search(args: WebSearchArgs): Promise<WebSearchOutput>
+export interface ImageGenerationInput {
+  toolCallId: string
+  prompt: string
+  /** Display filename stem. */
+  name?: string
 }
 
-export interface ResultHost {
-  publish(input: PublishResultArgs): Promise<import('@bazilion/api-types').ResultReference>
+/** The saved images; their bytes stay in the daemon's result store. */
+export interface ImageGenerationOutput {
+  model: string
+  files: Array<{ name: string; mimeType: string; result: ResultReference }>
 }
 
-export type RpcArgs =
-  | { method: 'nativeCancel'; args: import('@bazilion/api-types').NativeExecutionCancelRequest }
-  | { method: 'nativeExecute'; args: import('@bazilion/api-types').NativeExecutionRequest }
-  | { method: 'coding'; args: import('../pi/coding-contract.ts').CodingRequest }
-  | {
-      method: 'containerBeforeCreate' | 'containerAfterCreate' | 'containerAfterRemove'
-      args: { containerName: string }
-    }
-  | { method: 'repositoryContext'; args: { target: string } }
-  | { method: 'questionConsumed'; args: { questionId: string; toolCallId: string } }
-  | {
-      method: 'askUser'
-      args: { toolCallId: string; question: import('@bazilion/api-types').AgentQuestionInput }
-    }
-  | { method: 'publishResult'; args: PublishResultArgs }
-  | { method: 'generateImages'; args: import('@bazilion/api-types').ImageGenerationInput }
-  | { method: 'webSearch'; args: WebSearchArgs }
-  | { method: 'agentExists'; args: AgentExistsArgs }
-  | { method: 'sendMessage'; args: SendMessageArgs }
-  | { method: 'listInbox'; args: ListInboxArgs }
-  | { method: 'markRead'; args: MarkReadArgs }
-  | { method: 'findReplies'; args: FindRepliesArgs }
-  | { method: 'approvalStatus'; args: ApprovalStatusArgs }
-  | { method: 'userMdGet'; args: UserMdGetArgs }
-  | { method: 'userMdWrite'; args: UserMdWriteArgs }
-  | { method: 'browserInvoke'; args: BrowserInvokeArgs }
-  | { method: 'mcpInvoke'; args: McpInvokeArgs }
-  | {
-      method: 'reviewPacketCapture'
-      args: import('../tools/review.ts').ReviewRequestIntent
-    }
-  | { method: 'reviewPacketRead'; args: ReviewIdentityArgs }
-  | { method: 'reviewPathRead'; args: ReviewIdentityArgs & { path: string } }
-  | {
-      method: 'reviewFindingAdd'
-      args: ReviewIdentityArgs & { finding: import('@bazilion/api-types').ReviewFindingInput }
-    }
-  | {
-      method: 'reviewConclusion'
-      args: ReviewIdentityArgs & { conclusion: import('@bazilion/api-types').ReviewConclusionInput }
-    }
-  | {
-      method: 'verificationCapture'
-      args: import('../tools/verification.ts').VerificationRequestIntent
-    }
-  | { method: 'verificationRead'; args: VerificationIdentityArgs }
-  | { method: 'verificationRun'; args: VerificationRunArgs }
-  | { method: 'refreshApiKey'; args: ApiKeyRefreshArgs }
-  | { method: 'bashApproval'; args: BashApprovalArgs }
-
-export type RpcResult =
-  | { method: 'nativeCancel'; value: import('@bazilion/api-types').NativeExecutionCancelResult }
-  | { method: 'nativeExecute'; value: import('@bazilion/api-types').NativeExecutionResult }
-  | { method: 'generateImages'; value: import('@bazilion/api-types').ImageGenerationOutput }
-  | { method: 'webSearch'; value: WebSearchOutput }
-  | { method: 'coding'; value: import('../pi/coding-contract.ts').CodingResponse }
-  | {
-      method: 'containerBeforeCreate' | 'containerAfterCreate' | 'containerAfterRemove'
-      value: null
-    }
-  | { method: 'repositoryContext'; value: import('@bazilion/api-types').RepositoryContextReport }
-  | { method: 'questionConsumed'; value: null }
-  | { method: 'askUser'; value: import('@bazilion/api-types').AgentQuestionToolResult }
-  | { method: 'agentExists'; value: boolean }
-  | { method: 'sendMessage'; value: { messageId: string } }
-  | { method: 'listInbox'; value: Message[] }
-  | { method: 'markRead'; value: null }
-  | { method: 'findReplies'; value: Message[] }
-  | { method: 'approvalStatus'; value: CommunicationApproval | null }
-  | { method: 'userMdGet'; value: UserMdGetResult }
-  | { method: 'userMdWrite'; value: UserMdWriteResult }
-  | { method: 'browserInvoke'; value: ToolResultPart[] }
-  | { method: 'mcpInvoke'; value: ToolResultPart[] }
-  | {
-      method: 'reviewPacketCapture'
-      value: import('../tools/review.ts').ReviewRequestReceipt
-    }
-  | {
-      method: 'reviewPacketRead'
-      value: import('@bazilion/api-types').ReviewPacketBrief
-    }
-  | {
-      method: 'reviewPathRead'
-      value: import('@bazilion/api-types').ReviewPathContent
-    }
-  | { method: 'reviewFindingAdd'; value: { findingId: string; ordinal: number } }
-  | {
-      method: 'reviewConclusion'
-      value: { conclusion: import('@bazilion/api-types').ReviewConclusion }
-    }
-  | {
-      method: 'verificationCapture'
-      value: import('../tools/verification.ts').VerificationRequestReceipt
-    }
-  | { method: 'verificationRead'; value: import('../tools/verification.ts').VerificationBrief }
-  | { method: 'verificationRun'; value: import('../tools/verification.ts').VerificationCheckRun }
-  | { method: 'refreshApiKey'; value: string }
-  | { method: 'bashApproval'; value: BashApprovalResult }
-
-export type IpcRequest = { type: 'rpc'; id: string } & RpcArgs
-
-export type IpcReply =
-  | { type: 'rpc-reply'; id: string; ok: true; result: unknown }
-  | {
-      type: 'rpc-reply'
-      id: string
-      ok: false
-      error: string
-      nativeFailure?: import('@bazilion/api-types').NativeExecutionFailure
-    }
-
-export type IpcNativeOutput = {
-  type: 'rpc-output'
-  id: string
-} & import('@bazilion/api-types').NativeExecutionOutput
-
-/** Only a daemon-prepared turn host; no caller-selected backend, root, profile or credentials. */
-export interface NativeExecutionHost {
-  cancel(toolCallId: string): boolean
-  exec(
-    request: import('@bazilion/api-types').NativeExecutionRequest,
-    output: (
-      stream: 'stdout' | 'stderr',
-      bytes: Buffer,
-      capture?: import('@bazilion/api-types').NativeExecutionCapture,
-    ) => void,
-    signal?: AbortSignal,
-  ): Promise<import('@bazilion/api-types').NativeExecutionResult>
+export interface WebSearchArgs {
+  query: string
+  /** Number of results, 1–10 (default 5). */
+  count?: number
 }
 
-/**
- * The host-side surface the worker delegates messaging operations to. The
- * daemon implements this against `messageRepo` / `agentRepo`; tests can
- * provide an in-memory shim.
- */
+/** Results to read with web_fetch; provider-hosted search also returns its written answer. */
+export interface WebSearchOutput {
+  backend: 'brave' | 'searxng' | 'openai' | 'openai-codex'
+  answer?: string
+  results: Array<{ title: string; url: string; snippet: string }>
+}
+
+// The daemon side of each tool. The daemon implements them against its repos and resources;
+// the worker implements the same interfaces as IPC proxies.
+
 export interface MessagingHost {
   agentExists(agentId: string): boolean | Promise<boolean>
   sendMessage(input: SendMessageArgs): { messageId: string } | Promise<{ messageId: string }>
   listInbox(agentId: string, opts: { unreadOnly: boolean }): Message[] | Promise<Message[]>
   markRead(messageId: string): void | Promise<void>
   findReplies(agentId: string, replyTo: string): Message[] | Promise<Message[]>
-  approvalStatus(
-    agentId: string,
-    approvalId: string,
-  ): CommunicationApproval | null | Promise<CommunicationApproval | null>
 }
 
 /**
- * Host-side surface for the team-shared USER.md. Daemon implements against
- * `teamRepo.get` + `setUserMd`; worker proxies through IPC. Optimistic
- * concurrency via etag: `get` returns a content hash, `write` must echo it
- * back; if the stored content has moved on in the meantime the write fails
- * with a typed conflict the model handles by re-reading.
+ * The team-shared USER.md, with optimistic concurrency: `get` returns a content hash, `write`
+ * must echo it back and fails with a conflict the model handles by re-reading.
  */
 export interface UserMdHost {
   get(teamId: string): UserMdGetResult | Promise<UserMdGetResult>
@@ -353,22 +161,12 @@ export interface UserMdHost {
   ): UserMdWriteResult | Promise<UserMdWriteResult>
 }
 
-/**
- * Host-side surface for the per-agent browser session. Daemon implements it
- * against the Playwright pool in `lib/browser/`; the worker proxies every
- * `browser_*` tool call through IPC. The browser lives in the daemon (stateful,
- * persistent across turns), the worker stays stateless. Returns multimodal tool
- * output (text snapshots + base64 screenshots).
- */
+/** The Agent's managed browser, which lives in the daemon across turns. */
 export interface BrowserHost {
   invoke(agentId: string, action: string, args: Record<string, unknown>): Promise<ToolResultPart[]>
 }
 
-/**
- * Host-side surface for MCP `tools/call`. Daemon implements it against the
- * connection pool in `lib/mcp/`; the worker proxies each injected MCP tool
- * through IPC. `serverId` + `toolName` identify the upstream tool.
- */
+/** `tools/call` on the daemon's MCP connection pool. */
 export interface McpHost {
   invoke(
     serverId: string,
@@ -377,63 +175,7 @@ export interface McpHost {
   ): Promise<ToolResultPart[]>
 }
 
-/**
- * Daemon-owned OAuth token refresh surface. The worker supplies its turn
- * identity with every request; the parent validates it against the child it
- * spawned before this host is invoked. Tokens only travel in the private IPC
- * reply and are never emitted as chat frames.
- */
-/**
- * Host-side surface for the specialist capability. The daemon binds it to one claimed attempt, so a
- * worker can only read the request it was admitted for and run checks that request declared.
- */
-export interface ReviewIdentityArgs {
-  packetId: string
-  attemptId: string
-}
-
-/**
- * The reviewer's capability over IPC (BAZ-043).
- *
- * Every call carries the packet and attempt the worker believes it is acting for; the daemon refuses
- * anything but its own binding, so a compromised worker cannot read or annotate another review.
- */
-export interface ChangeReviewHost {
-  read(
-    packetId: string,
-    attemptId: string,
-  ): Promise<import('@bazilion/api-types').ReviewPacketBrief>
-  path(
-    packetId: string,
-    attemptId: string,
-    path: string,
-  ): Promise<import('@bazilion/api-types').ReviewPathContent>
-  addFinding(
-    packetId: string,
-    attemptId: string,
-    finding: import('@bazilion/api-types').ReviewFindingInput,
-  ): Promise<{ findingId: string; ordinal: number }>
-  conclude(
-    packetId: string,
-    attemptId: string,
-    conclusion: import('@bazilion/api-types').ReviewConclusionInput,
-  ): Promise<{ conclusion: import('@bazilion/api-types').ReviewConclusion }>
-}
-
-export interface VerificationHost {
-  read(
-    requestId: string,
-    attemptId: string,
-  ): Promise<import('../tools/verification.ts').VerificationBrief>
-  run(
-    requestId: string,
-    attemptId: string,
-    ordinal: number,
-    /** Parent transport lifetime only; never supplied in worker RPC arguments. */
-    signal?: AbortSignal,
-  ): Promise<import('../tools/verification.ts').VerificationCheckRun>
-}
-
+/** Refreshes the turn's OAuth access token; the stored refresh credential never leaves the daemon. */
 export interface ApiKeyRefreshHost {
   refresh(providerName: string, signal?: AbortSignal): Promise<string>
 }
@@ -441,30 +183,52 @@ export interface ApiKeyRefreshHost {
 export interface BashApprovalHandle {
   /** Pending for interactive requests; auto_denied for non-interactive requests. */
   approval: CommandApproval
-  decision: Promise<BashApprovalResult>
+  /** The approval once allowed, denied, expired or cancelled. */
+  settled: Promise<CommandApproval>
 }
 
-/**
- * Ephemeral daemon-side command approval surface. Unlike communication
- * approvals this never touches SQLite: its lifetime is exactly one worker turn.
- */
+/** Dangerous-command approvals, in daemon memory for the length of one turn. */
 export interface BashApprovalHost {
   begin(input: BashApprovalArgs, signal?: AbortSignal): BashApprovalHandle
 }
 
-/** Bound by the daemon to one prepared human turn; the worker supplies content only. */
+/** Bound by the daemon to one owner turn's Agent and conversation; the worker supplies content only. */
 export interface QuestionHost {
-  consumed(questionId: string, toolCallId: string): void
-  subscribe(listener: (question: import('@bazilion/api-types').AgentQuestion) => void): () => void
   ask(
-    toolCallId: string,
-    question: import('@bazilion/api-types').AgentQuestionInput,
-  ): Promise<import('@bazilion/api-types').AgentQuestionToolResult>
-  close(): void
+    question: unknown,
+    signal?: AbortSignal,
+  ): { question: AgentQuestion; result: Promise<AgentQuestionToolResult> }
 }
 
-export interface ContainerLifecycleHost {
-  beforeCreate(containerName: string): Promise<void>
-  afterCreate(containerName: string): Promise<void>
-  afterRemove(containerName: string): Promise<void>
+export interface ResultHost {
+  publish(input: PublishResultArgs): Promise<ResultReference>
 }
+
+export interface ImageGenerationHost {
+  generate(input: ImageGenerationInput): Promise<ImageGenerationOutput>
+}
+
+/** Search runs in the daemon, which holds the backend URL and credentials. */
+export interface WebSearchHost {
+  search(args: WebSearchArgs): Promise<WebSearchOutput>
+}
+
+/**
+ * The daemon hosts that serve one worker. The worker offers a tool only when its host is
+ * present: the spawner tells it which ones are (`WorkerInput.hosts`).
+ */
+export interface WorkerHosts {
+  messagingHost?: MessagingHost
+  userMdHost?: UserMdHost
+  resultHost?: ResultHost
+  bashApprovalHost?: BashApprovalHost
+  questionHost?: QuestionHost
+  imageGenerationHost?: ImageGenerationHost
+  webSearchHost?: WebSearchHost
+  browserHost?: BrowserHost
+  mcpHost?: McpHost
+  /** Present only for `openai-codex`, whose access token expires during long turns. */
+  apiKeyRefreshHost?: ApiKeyRefreshHost
+}
+
+export type WorkerHostName = keyof WorkerHosts

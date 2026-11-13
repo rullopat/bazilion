@@ -1,51 +1,28 @@
-import { Hono } from 'hono'
+import type { AnswerAgentQuestionRequest } from '@bazilion/api-types'
 import { bodyLimit } from 'hono/body-limit'
-import { resolveAgent } from '../core/agent/resolve.ts'
-import * as questions from '../core/repos/questions.ts'
-import { CommunicationDeniedError } from '../lib/communication.ts'
-import { getCtx } from '../lib/ctx.ts'
-import { parseQuestionResponse } from '../lib/question-input.ts'
-import { questionServiceFor } from '../lib/question-service.ts'
-import { questionVisible } from '../lib/question-visibility.ts'
+import { questionRegistry } from '../lib/questions.ts'
+import { jsonBody, newRouter, routeAgent } from './http.ts'
 
-export const questionsRouter = new Hono()
+export const questionsRouter = newRouter<{ Variables: { agentId: string } }>()
 questionsRouter.use('/:agentId/questions/*', bodyLimit({ maxSize: 32 * 1024 }))
 questionsRouter.use('/:agentId/questions/*', async (c, next) => {
-  c.header('Cache-Control', 'no-store')
-  const { db, paths } = getCtx()
-  try {
-    resolveAgent(db, paths, c.req.param('agentId'))
-  } catch {
-    return c.json({ error: 'Agent not found' }, 404)
-  }
+  // Accepts an Agent id, unique name or id prefix; the registry is keyed by the full id.
+  c.set('agentId', routeAgent(c, 'agentId').id)
   await next()
 })
-questionsRouter.onError((error, c) => {
-  if (error instanceof CommunicationDeniedError)
-    return c.json({ error: 'Team Policy denied this answer', code: 'communication_denied' }, 403)
-  return c.json({ error: 'Invalid or unavailable question request' }, 400)
-})
-questionsRouter.get('/:agentId/questions', (c) => {
-  const { db } = getCtx()
-  const conversationId = c.req.query('conversationId')
-  return c.json({
-    questions: questions
-      .list(db, c.req.param('agentId'), 100, conversationId)
-      .filter((item) => questionVisible(db, item)),
-  })
-})
-questionsRouter.get('/:agentId/questions/:id', (c) => {
-  const { db } = getCtx()
-  const item = questions.get(db, c.req.param('agentId'), c.req.param('id'))
-  return item && questionVisible(db, item)
-    ? c.json(item)
-    : c.json({ error: 'Question not found' }, 404)
-})
+
+/** Questions this Agent is waiting on. */
+questionsRouter.get('/:agentId/questions', (c) =>
+  c.json({ questions: questionRegistry.list(c.get('agentId')) }),
+)
+
 questionsRouter.post('/:agentId/questions/:id/answer', async (c) => {
-  const { db, paths, authToken } = getCtx()
-  const item = questions.get(db, c.req.param('agentId'), c.req.param('id'))
-  if (!item || !questionVisible(db, item)) return c.json({ error: 'Question not found' }, 404)
-  const input = parseQuestionResponse(await c.req.json(), item.question, item.conversationId)
-  const result = questionServiceFor(db, paths, authToken).respond(item.agentId, item.id, input)
-  return c.json(result, result.kind === 'conflict' ? 409 : result.kind === 'held' ? 202 : 200)
+  const body = await jsonBody<AnswerAgentQuestionRequest>(c)
+  try {
+    if (!questionRegistry.answer(c.get('agentId'), c.req.param('id'), body?.answer))
+      return c.json({ error: 'That question is no longer open' }, 404)
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Invalid answer' }, 400)
+  }
+  return c.json({ ok: true })
 })

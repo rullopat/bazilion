@@ -40,28 +40,13 @@ export function readAuthFile(authFile: string): AuthFile {
  * Merge plaintext config + decrypted secrets + process env into a single
  * env-shaped record. Precedence (low → high): config → secrets → env. The
  * caller supplies the bootstrap `password` (typically `readAuthFile().token`)
- * because the secrets table is encrypted with it.
- *
- * Either layer may fail to read (corrupt row, wrong key, table absent at
- * fixture-bootstrap time); failures are swallowed per-layer so a single bad
- * value never blocks the merge.
+ * because the secrets table is encrypted with it. A secret that does not
+ * decrypt (corrupt row, other password) is left out.
  */
 export function mergeSecretsIntoEnv(
   db: BazilionDb,
   password: string,
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  let configValues: Record<string, string> = {}
-  let secretValues: Record<string, string> = {}
-  try {
-    configValues = openConfig(db).getAll()
-  } catch {
-    // table missing or unreadable — continue without the layer
-  }
-  try {
-    secretValues = openSecrets(db, password).getAll()
-  } catch {
-    // table missing or wrong password — continue without the layer
-  }
-  return { ...configValues, ...secretValues, ...env }
+  return { ...openConfig(db).getAll(), ...openSecrets(db, password).getAll(), ...env }
 }

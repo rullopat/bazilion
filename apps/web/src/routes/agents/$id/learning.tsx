@@ -1,252 +1,190 @@
-import { ApiClientError } from '@bazilion/client'
 import type {
   AgentLessonProposal,
-  AgentReview,
   AgentReviewConfig,
   ListAgentLessonProposalsResponse,
   ListAgentReviewsResponse,
-  ResolvedAgent,
 } from '@bazilion/api-types'
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
-import { RecoveryState } from '../../../components/RecoveryState'
+import { REASONING_LEVELS } from '@bazilion/api-types'
+import { createFileRoute, getRouteApi, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
-import { AgentTabs } from '../../../components/AgentTabs'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
-import { PageShell } from '../../../components/Page'
+import { ItemList, ItemRow, SectionCard } from '../../../components/Page'
+import { type ApiInit, api, errorMessage } from '../../../lib/api'
 import { daemonClient } from '../../../lib/daemon-client'
 
-interface LearningView {
-  resolved: ResolvedAgent
-  config: AgentReviewConfig
-  reviews: AgentReview[]
-  proposals: AgentLessonProposal[]
-}
+const agentRoute = getRouteApi('/agents/$id')
 
-const fetchLearning = createServerFn({ method: 'POST' })
+const fetchLearning = createServerFn({ method: 'GET' })
   .validator((data: { id: string }) => data)
-  .handler(async ({ data }): Promise<LearningView | null> => {
+  .handler(async ({ data }) => {
     const client = daemonClient()
-    let resolved: ResolvedAgent
-    try {
-      resolved = await client.get<ResolvedAgent>(`/api/agents/${encodeURIComponent(data.id)}`)
-    } catch (error) {
-      if (error instanceof ApiClientError && error.status === 404) return null
-      throw error
-    }
-    const id = encodeURIComponent(resolved.agent.id)
+    const agent = `/api/agents/${encodeURIComponent(data.id)}`
     const [config, reviews, proposals] = await Promise.all([
-      client.get<AgentReviewConfig>(`/api/agents/${id}/review-config`),
-      client.get<ListAgentReviewsResponse>(`/api/agents/${id}/reviews`),
-      client.get<ListAgentLessonProposalsResponse>(`/api/agents/${id}/lesson-proposals`),
+      client.get<AgentReviewConfig>(`${agent}/review-config`),
+      client.get<ListAgentReviewsResponse>(`${agent}/reviews`),
+      client.get<ListAgentLessonProposalsResponse>(`${agent}/lesson-proposals`),
     ])
-    return { resolved, config, reviews: reviews.reviews, proposals: proposals.proposals }
+    return { config, reviews: reviews.reviews, proposals: proposals.proposals }
   })
 
 export const Route = createFileRoute('/agents/$id/learning')({
-  errorComponent: ({ error, reset }) => <RecoveryState title="Agent learning unavailable" error={error} reset={reset} fallbackHref="/agents" />,
-  loader: async ({ params }) => {
-    const data = await fetchLearning({ data: { id: params.id } })
-    if (!data) throw redirect({ to: '/agents' })
-    return data
-  },
+  loader: ({ params }) => fetchLearning({ data: { id: params.id } }),
   component: LearningPage,
 })
 
+type Act = (path: string, init: ApiInit) => Promise<void>
+
 function LearningPage() {
-  const { resolved, config, reviews, proposals } = Route.useLoaderData()
+  const { agent } = agentRoute.useLoaderData()
+  const { config, reviews, proposals } = Route.useLoaderData()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const base = `/api/agents/${encodeURIComponent(agent.id)}`
 
-  async function request(
-    path: string,
-    method: 'POST' | 'PATCH',
-    body?: unknown,
-    throwOnError = false,
-  ) {
+  /** Run one request and reload; the failure shows on the page and is rethrown. */
+  const act: Act = async (path, init) => {
     setError(null)
     setBusy(true)
     try {
-      const response = await fetch(path, {
-        method,
-        headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      })
-      if (!response.ok) {
-        const detail = (await response.json().catch(() => null)) as { error?: string } | null
-        throw new Error(detail?.error ?? `request failed (${response.status})`)
-      }
+      await api(path, init)
       await router.invalidate()
     } catch (cause) {
-      const failure = cause instanceof Error ? cause : new Error(String(cause))
-      setError(failure.message)
-      if (throwOnError) throw failure
+      setError(errorMessage(cause))
+      throw cause
     } finally {
       setBusy(false)
     }
   }
 
-  const id = encodeURIComponent(resolved.agent.id)
   return (
-    <PageShell>
-      <header className="mb-6">
-        <h1>{resolved.agent.name}</h1>
-      </header>
-      <AgentTabs
-        agentId={resolved.agent.id}
-        active="learning"
-        archived={resolved.agent.status === 'archived'}
-      />
-
+    <div className="space-y-6">
       {error && (
-        <p
-          role="alert"
-          className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800"
-        >
-          {error}. Refresh before retrying if another operator changed this proposal.
+        <p role="alert" className="err">
+          {error}
         </p>
       )}
 
-      <section className="mb-8 rounded-lg border bg-card p-5">
-        <h2 className="mb-2 text-xl">Reviewed learning</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Reviews inspect at most 8 successful user turns and 40,000 characters. They use{' '}
-          {config.model ?? 'the Agent model'} at {config.reasoningLevel} reasoning, propose at
-          most five lessons, and never apply anything without your approval.
-        </p>
+      <SectionCard
+        title="Reviewed learning"
+        description={
+          <>
+            A review reads at most 8 successful user turns and 40,000 characters with{' '}
+            {config.model ?? 'the Agent model'} at {config.reasoningLevel} reasoning and proposes at
+            most five lessons. Nothing is applied until you approve it.
+          </>
+        }
+      >
         <ReviewConfigForm
-          agentId={resolved.agent.id}
           config={config}
           disabled={busy}
-          onError={setError}
-          onSaved={() => router.invalidate()}
+          onSave={(body) => act(`${base}/review-config`, { method: 'PATCH', body })}
         />
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button
             variant="primary"
-            disabled={busy || resolved.agent.status === 'archived'}
-            onClick={() => request(`/api/agents/${id}/reviews`, 'POST')}
+            disabled={busy || agent.status === 'archived'}
+            onClick={() => void act(`${base}/reviews`, { method: 'POST' }).catch(() => {})}
           >
             Review now
           </Button>
           {!config.enabled && (
             <span className="text-sm text-muted-foreground">
-              Periodic review is disabled; manual review remains available.
+              Periodic review is off; Review now still works.
             </span>
           )}
         </div>
-      </section>
+      </SectionCard>
 
-      <h2 className="mb-3 text-xl">Lesson proposals</h2>
-      {proposals.length === 0 ? (
-        <p className="mb-8 text-muted-foreground">
-          No proposals yet. A successful review may also produce zero proposals.
-        </p>
-      ) : (
-        <div className="mb-8 grid gap-3">
-          {proposals.map((proposal) => (
-            <ProposalCard
-              key={proposal.id}
-              proposal={proposal}
-              agentId={resolved.agent.id}
-              busy={busy}
-              act={request}
-            />
-          ))}
-        </div>
-      )}
+      <SectionCard title="Lesson proposals">
+        {proposals.length === 0 ? (
+          <p className="text-muted-foreground">
+            No proposals yet. A successful review may also produce none.
+          </p>
+        ) : (
+          <div className="grid gap-3">
+            {proposals.map((proposal) => (
+              <ProposalCard
+                key={proposal.id}
+                proposal={proposal}
+                base={`${base}/lesson-proposals/${encodeURIComponent(proposal.id)}`}
+                busy={busy}
+                act={act}
+              />
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
-      <h2 className="mb-3 text-xl">Review history</h2>
-      {reviews.length === 0 ? (
-        <p className="text-muted-foreground">No reviews have been queued.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table>
-            <thead>
-              <tr>
-                <th>created</th>
-                <th>trigger</th>
-                <th>status</th>
-                <th>turns</th>
-                <th>proposals</th>
-                <th>diagnostic</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reviews.map((review) => (
-                <tr key={review.id}>
-                  <td>{new Date(review.createdAt).toLocaleString()}</td>
-                  <td>{review.trigger}</td>
-                  <td>
+      <SectionCard title="Review history">
+        {reviews.length === 0 ? (
+          <p className="text-muted-foreground">No reviews have been queued.</p>
+        ) : (
+          <ItemList>
+            {reviews.map((review) => (
+              <ItemRow
+                key={review.id}
+                title={new Date(review.createdAt).toLocaleString()}
+                meta={
+                  <>
                     <code>{review.status}</code>
-                  </td>
-                  <td>{review.turnsReviewed}</td>
-                  <td>{review.proposalCount}</td>
-                  <td>{review.lastError ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </PageShell>
+                    <span>{review.trigger}</span>
+                    <span>{review.turnsReviewed} turns</span>
+                    <span>{review.proposalCount} proposals</span>
+                  </>
+                }
+              >
+                {review.lastError && (
+                  <p className="mb-0 mt-1 break-words text-sm text-danger">{review.lastError}</p>
+                )}
+              </ItemRow>
+            ))}
+          </ItemList>
+        )}
+      </SectionCard>
+    </div>
   )
 }
 
 function ReviewConfigForm({
-  agentId,
   config,
   disabled,
-  onError,
-  onSaved,
+  onSave,
 }: {
-  agentId: string
   config: AgentReviewConfig
   disabled: boolean
-  onError: (value: string | null) => void
-  onSaved: () => void
+  onSave: (body: Partial<AgentReviewConfig>) => Promise<void>
 }) {
   const [enabled, setEnabled] = useState(config.enabled)
   const [every, setEvery] = useState(config.everyNTurns)
   const [model, setModel] = useState(config.model ?? '')
   const [reasoning, setReasoning] = useState(config.reasoningLevel)
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault()
-    onError(null)
-    const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/review-config`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        enabled,
-        everyNTurns: every,
-        model: model.trim() || null,
-        reasoningLevel: reasoning,
-      }),
-    })
-    if (!response.ok) {
-      const detail = (await response.json().catch(() => null)) as { error?: string } | null
-      onError(detail?.error ?? `request failed (${response.status})`)
-      return
-    }
-    onSaved()
-  }
-
   return (
-    <form onSubmit={submit} className="grid gap-3 md:grid-cols-4">
-      <label className="text-sm">
-        <span className="mb-1 block">Periodic review</span>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        void onSave({
+          enabled,
+          everyNTurns: every,
+          model: model.trim() || null,
+          reasoningLevel: reasoning,
+        }).catch(() => {})
+      }}
+      className="grid items-end gap-x-3 md:grid-cols-4"
+    >
+      <label>
         <input
           type="checkbox"
           checked={enabled}
           onChange={(event) => setEnabled(event.target.checked)}
-        />{' '}
-        enabled
+        />
+        Periodic review
       </label>
-      <label className="text-sm">
-        <span className="mb-1 block">Every turns</span>
+      <label>
+        Every N turns
         <input
           type="number"
           min={1}
@@ -255,31 +193,28 @@ function ReviewConfigForm({
           onChange={(event) => setEvery(Number(event.target.value))}
         />
       </label>
-      <label className="text-sm">
-        <span className="mb-1 block">Model override</span>
+      <label>
+        Model override
         <input
           value={model}
-          placeholder="agent model"
+          placeholder="the Agent model"
           onChange={(event) => setModel(event.target.value)}
         />
       </label>
-      <label className="text-sm">
-        <span className="mb-1 block">Reasoning</span>
+      <label>
+        Reasoning
         <select
           value={reasoning}
           onChange={(event) =>
             setReasoning(event.target.value as AgentReviewConfig['reasoningLevel'])
           }
         >
-          <option>off</option>
-          <option>minimal</option>
-          <option>low</option>
-          <option>medium</option>
-          <option>high</option>
-          <option>xhigh</option>
+          {REASONING_LEVELS.map((level) => (
+            <option key={level}>{level}</option>
+          ))}
         </select>
       </label>
-      <div>
+      <div className="md:col-span-4">
         <Button variant="primary" type="submit" disabled={disabled}>
           Save learning settings
         </Button>
@@ -290,74 +225,20 @@ function ReviewConfigForm({
 
 function ProposalCard({
   proposal,
-  agentId,
+  base,
   busy,
   act,
 }: {
   proposal: AgentLessonProposal
-  agentId: string
+  base: string
   busy: boolean
-  act: (
-    path: string,
-    method: 'POST' | 'PATCH',
-    body?: unknown,
-    throwOnError?: boolean,
-  ) => Promise<void>
+  act: Act
 }) {
   const [text, setText] = useState(proposal.text)
   const [scope, setScope] = useState(proposal.scope)
-  const [confirmAction, setConfirmAction] = useState<'reject' | 'revoke' | null>(null)
-  const base = `/api/agents/${encodeURIComponent(agentId)}/lesson-proposals/${encodeURIComponent(proposal.id)}`
-  const textId = `lesson-proposal-${proposal.id}-text`
-  const scopeId = `lesson-proposal-${proposal.id}-scope`
+  const [confirm, setConfirm] = useState<'reject' | 'revoke' | null>(null)
+  const version = { version: proposal.version }
   const summary = proposal.text.length > 54 ? `${proposal.text.slice(0, 51)}…` : proposal.text
-  const confirmation =
-    confirmAction === 'reject'
-      ? {
-          title: `Reject “${summary}”?`,
-          confirmLabel: 'Reject proposal',
-          description: (
-            <>
-              <p>
-                This permanently marks the saved proposal as rejected. It will never change the
-                Agent’s prompts or Team memory, while its text and evidence remain in review history
-                for audit.
-              </p>
-              <p className="mt-2">
-                Any edits not saved first will be discarded. A rejected proposal cannot be edited or
-                approved later.
-              </p>
-            </>
-          ),
-        }
-      : {
-          title: `Revoke “${summary}”?`,
-          confirmLabel: 'Revoke lesson',
-          description:
-            proposal.scope === 'shared' ? (
-              <>
-                <p>
-                  This removes the applied lesson note from Team memory, so it will no longer appear
-                  in Team-memory search.
-                </p>
-                <p className="mt-2">
-                  The proposal and its original approval remain in review history for audit. This
-                  cannot be undone here.
-                </p>
-              </>
-            ) : (
-              <>
-                <p>
-                  This removes the approved lesson from the Agent’s future prompts. It does not
-                  rewrite past conversations.
-                </p>
-                <p className="mt-2">
-                  The proposal and its original approval remain in review history for audit. This
-                  cannot be undone here.
-                </p>
-              </>
-            ),
-        }
 
   return (
     <article className="rounded-lg border bg-card p-4">
@@ -367,43 +248,46 @@ function ProposalCard({
       </div>
       {proposal.status === 'pending' ? (
         <>
-          <label htmlFor={textId} className="mb-1 block text-sm font-medium">
+          <label>
             Proposed lesson
+            <textarea rows={3} value={text} onChange={(event) => setText(event.target.value)} />
           </label>
-          <textarea
-            id={textId}
-            className="w-full"
-            rows={3}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-          />
-          <label htmlFor={scopeId} className="mb-1 mt-3 block text-sm font-medium">
-            Apply approved lesson to
+          <label>
+            Apply the approved lesson to
+            <select
+              value={scope}
+              onChange={(event) => setScope(event.target.value as AgentLessonProposal['scope'])}
+            >
+              <option value="private">private Agent behavior</option>
+              <option value="shared">shared Team knowledge</option>
+            </select>
           </label>
-          <select
-            id={scopeId}
-            value={scope}
-            onChange={(event) => setScope(event.target.value as AgentLessonProposal['scope'])}
-          >
-            <option value="private">private Agent behavior</option>
-            <option value="shared">shared Team knowledge</option>
-          </select>
+          {scope === 'shared' && (
+            <p className="text-xs text-muted-foreground">
+              Shared lessons become searchable Team memory. Stable facts about you belong in the
+              Team's USER.md instead.
+            </p>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               variant="ghost"
               disabled={busy}
-              onClick={() => act(base, 'PATCH', { version: proposal.version, text, scope })}
+              onClick={() =>
+                void act(base, { method: 'PATCH', body: { ...version, text, scope } }).catch(
+                  () => {},
+                )
+              }
             >
               Save edit
             </Button>
             <Button
               variant="primary"
               disabled={busy}
-              onClick={() => act(`${base}/approve`, 'POST', { version: proposal.version })}
+              onClick={() => void act(`${base}/approve`, { body: version }).catch(() => {})}
             >
               Approve
             </Button>
-            <Button variant="danger" disabled={busy} onClick={() => setConfirmAction('reject')}>
+            <Button variant="danger" disabled={busy} onClick={() => setConfirm('reject')}>
               Reject
             </Button>
           </div>
@@ -413,7 +297,7 @@ function ProposalCard({
           <p>{proposal.text}</p>
           {proposal.status === 'approved' && (
             <div className="mt-3">
-              <Button variant="danger" disabled={busy} onClick={() => setConfirmAction('revoke')}>
+              <Button variant="danger" disabled={busy} onClick={() => setConfirm('revoke')}>
                 Revoke
               </Button>
             </div>
@@ -437,25 +321,35 @@ function ProposalCard({
           </ul>
         )}
       </div>
-      {proposal.status === 'pending' && scope === 'shared' && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Shared lessons become searchable Team memory. Stable facts about the human belong in Team
-          USER.md instead.
-        </p>
-      )}
 
-      {confirmAction && (
+      {confirm && (
         <ConfirmDialog
           open
-          title={confirmation.title}
-          description={confirmation.description}
-          confirmLabel={confirmation.confirmLabel}
-          onOpenChange={(open) => {
-            if (!open) setConfirmAction(null)
-          }}
-          onConfirm={() =>
-            act(`${base}/${confirmAction}`, 'POST', { version: proposal.version }, true)
+          title={confirm === 'reject' ? `Reject “${summary}”?` : `Revoke “${summary}”?`}
+          description={
+            confirm === 'reject' ? (
+              <p>
+                The proposal is marked rejected and never changes the Agent's prompts or Team
+                memory; unsaved edits are discarded. A rejected proposal cannot be edited or
+                approved later.
+              </p>
+            ) : proposal.scope === 'shared' ? (
+              <p>
+                The lesson note is removed from Team memory, so Team-memory search no longer finds
+                it. The proposal stays in the review history.
+              </p>
+            ) : (
+              <p>
+                The lesson is removed from the Agent's future prompts; past conversations are not
+                rewritten. The proposal stays in the review history.
+              </p>
+            )
           }
+          confirmLabel={confirm === 'reject' ? 'Reject proposal' : 'Revoke lesson'}
+          onOpenChange={(open) => {
+            if (!open) setConfirm(null)
+          }}
+          onConfirm={() => act(`${base}/${confirm}`, { body: version })}
         />
       )}
     </article>

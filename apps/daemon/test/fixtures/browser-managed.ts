@@ -1,385 +1,77 @@
-// Shared fixtures for the BAZ-069 managed-browser actual-browser lane
-// (BAZILION_TEST_BROWSER=1, see test/lib/browser-managed.integration.test.ts).
-//
-// The launch posture itself lives in the production module
-// `src/lib/browser/guards.ts` (T05) — this fixture imports it so the lane
-// asserts the real controls rather than a parallel copy. Only test-specific
-// instrumentation lives here: an instrumented loopback HTTP origin, a loopback
-// UDP listener, the owned-process probe, and a thin launch helper.
+// Fixtures for the real-browser tests: a loopback HTTP origin that records every
+// request it gets, and a lookup of the processes running on a browser profile.
 
-import { execFile } from 'node:child_process'
-import { createSocket } from 'node:dgram'
-import { mkdirSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { promisify } from 'node:util'
-import { type BrowserContext, chromium } from 'playwright'
-import { ensureDarwinBrowserKeychain } from '../../src/lib/browser/darwin-keychain.ts'
-import {
-  installManagedGuards,
-  type ManagedPostureInput,
-  managedBrowserEnv,
-} from '../../src/lib/browser/guards.ts'
-import { startOwnedBrowser } from '../../src/lib/browser/process.ts'
-import { getDarwinProcessInspector } from '../../src/lib/process/darwin.ts'
-import { ownedDarwinBrowserProcesses } from './browser-managed-darwin.ts'
-
-let nativeNavigationSampleRequested = false
-let uncertainFixtureOwner = false
-let pendingFixtureOperations = 0
-const spawnInputs = new Map<
-  number,
-  { profileDir: string; start?: string; environment: Readonly<NodeJS.ProcessEnv> }
->()
-
-/** Real spawn inputs bound to this still-live native birth, never a reconstructed receipt. */
-export function observedBrowserLaunchEnvironment(profileDir: string, pid: number) {
-  const input = spawnInputs.get(pid)
-  if (!input || input.profileDir !== profileDir) throw new Error('owned spawn input unavailable')
-  if (process.platform === 'darwin') {
-    const current = getDarwinProcessInspector().member(pid)
-    if (!input.start || !current || current.start !== input.start || current.state === 'Z')
-      throw new Error('owned spawn input birth changed or unavailable')
-  }
-  return input.environment
-}
-export function fixtureOwnersConfirmed(): boolean {
-  return !uncertainFixtureOwner && pendingFixtureOperations === 0
-}
-function observeFixtureOperation<T>(operation: Promise<T>): Promise<T> {
-  pendingFixtureOperations++
-  return operation.catch(retainUncertainFixture).finally(() => {
-    pendingFixtureOperations--
-  })
-}
-function retainUncertainFixture(error: unknown): never {
-  uncertainFixtureOwner = true
-  throw error
-}
-
-export type { ManagedPostureInput } from '../../src/lib/browser/guards.ts'
-export {
-  MANAGED_DENIAL_ARGS,
-  MANAGED_INIT_SCRIPTS,
-  managedLaunchArgs,
-} from '../../src/lib/browser/guards.ts'
-
-/**
- * Launch the managed adapter for the lane: the production pinned options and
- * guards, plus (for the control arm only) raw args. Test-only bookkeeping
- * (profile slots, owner markers) is T06's launcher, not this helper.
- */
-export interface ManagedLaneInput extends ManagedPostureInput {
-  /** Control arm only: strip the authored denials to record the exposure. */
-  denialArgs?: readonly string[]
-  /** Startup evidence only: runs after CDP attachment, before document guards. */
-  beforeGuards?: (context: BrowserContext) => Promise<void>
-}
-
-export function launchLaneContext(input: ManagedLaneInput): Promise<BrowserContext> {
-  return observeFixtureOperation(launchLaneContextInner(input))
-}
-
-async function launchLaneContextInner(input: ManagedLaneInput): Promise<BrowserContext> {
-  if (input.denialArgs !== undefined) {
-    // Exposure control ONLY, not evidence for the product launch adapter. Keep credentials and
-    // native private keychain admission identical; WebRTC denials are the experiment's variable.
-    const env = managedBrowserEnv(input)
-    if (process.platform === 'darwin')
-      await ensureDarwinBrowserKeychain(input.home, 8000).catch(retainUncertainFixture)
-    const context = await chromium
-      .launchPersistentContext(input.profileDir, {
-        executablePath: input.executablePath,
-        headless: input.headless,
-        chromiumSandbox: true,
-        env,
-        ignoreDefaultArgs: ['--use-mock-keychain'],
-        // This control removes only the WebRTC denials under comparison. Starting an installed
-        // browser updater is not part of that experiment and may alter the runner-user account.
-        args: ['--disable-updater-scheduler', ...input.denialArgs],
-      })
-      .catch(retainUncertainFixture)
-    const close = context.close.bind(context)
-    context.close = (options) => observeFixtureOperation(close(options))
-    return context
-  }
-  mkdirSync(input.home, { recursive: true, mode: 0o700 })
-  let diagnosticBytes = 0
-  const diagnostic = (text: string) => {
-    if (process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS !== '1' || diagnosticBytes >= 64 * 1024)
-      return
-    const bounded = text
-      .slice(0, 64 * 1024 - diagnosticBytes)
-      .replace(/ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[^\s]+/g, '[private-cdp]')
-    diagnosticBytes += bounded.length
-    console.log('[controlled-browser-diagnostic]', bounded)
-  }
-  const owned = await startOwnedBrowser(input, () => {}, {
-    observeStderr: diagnostic,
-    observeSpawn: ({ pid, environment }) => {
-      const start =
-        process.platform === 'darwin' ? getDarwinProcessInspector().member(pid)?.start : undefined
-      if (process.platform === 'darwin' && !start)
-        throw new Error('owned spawn evidence has no native birth')
-      spawnInputs.set(pid, { profileDir: input.profileDir, start, environment })
-    },
-    installGuards: async (context) => {
-      const observe = (page: import('playwright').Page) => {
-        page.on('request', (request) => {
-          diagnostic(`request: ${request.method()} ${request.url()}`)
-          if (
-            process.platform !== 'darwin' ||
-            nativeNavigationSampleRequested ||
-            process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS !== '1' ||
-            !request.url().endsWith('/sw-page')
-          )
-            return
-          nativeNavigationSampleRequested = true
-          // Read-only diagnostics for this controlled fixture. No sudo, process signalling,
-          // preferences/keychain changes, or mock keychain/encryption switch is permitted.
-          setTimeout(async () => {
-            try {
-              const inspector = getDarwinProcessInspector()
-              const candidates = ownedBrowserProcesses(input.profileDir).filter(
-                (p) => p.kind === 'root' || p.cmdline.includes('network.mojom.NetworkService'),
-              )
-              for (const child of candidates.slice(0, 2)) {
-                const before = inspector.member(child.pid)
-                if (!before) continue
-                try {
-                  const { stdout } = await promisify(execFile)(
-                    '/usr/bin/sample',
-                    [String(child.pid), '1', '1'],
-                    { timeout: 8000, maxBuffer: 2 * 1024 * 1024 },
-                  )
-                  const after = inspector.member(child.pid)
-                  if (!after || before.start !== after.start || before.uid !== after.uid) {
-                    diagnostic('native sample discarded: observed process birth changed')
-                    continue
-                  }
-                  const lines = stdout
-                    .split('\n')
-                    .filter((line) =>
-                      /Keychain|keychain|SecItem|OSCrypt|SafeStorage|Security|Cookie|cookie|Thread_|dispatch_sync|mach_msg|semaphore|ConditionVariable|WaitableEvent|CFRunLoop/.test(
-                        line,
-                      ),
-                    )
-                  diagnostic(`native sample (${child.kind}):\n${lines.slice(0, 120).join('\n')}`)
-                } catch (error) {
-                  diagnostic(`native sample unavailable: ${String(error).slice(0, 1000)}`)
-                }
-              }
-            } catch (error) {
-              diagnostic(`native sample evidence unavailable: ${String(error).slice(0, 1000)}`)
-            }
-          }, 2000).unref()
-        })
-        page.on('response', (response) =>
-          diagnostic(`response: ${response.status()} ${response.url()}`),
-        )
-        page.on('requestfailed', (request) =>
-          diagnostic(`request failed: ${request.url()} ${request.failure()?.errorText}`),
-        )
-        page.on('console', (message) => diagnostic(`console: ${message.type()} ${message.text()}`))
-      }
-      if (process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS === '1') {
-        context.on('page', observe)
-        for (const page of context.pages()) observe(page)
-      }
-      await input.beforeGuards?.(context)
-      await installManagedGuards(context)
-    },
-  }).catch(retainUncertainFixture)
-  // Test convenience: context.close must retire the child, not just disconnect.
-  const ctx = owned.context
-  ctx.close = () => observeFixtureOperation(owned.close())
-  return ctx
-}
-
-// --- instrumented loopback HTTP fixture ---
 
 export interface InstrumentedOrigin {
   origin: string
-  /** Every request URL the fixture ever received (the zero-hit assertion). */
+  /** Every request path the origin received. */
   hits: string[]
-  swPage: string
-  bigPage: string
-  downloadPage: string
   close(): Promise<void>
 }
 
-const SW_PAGE_HTML = `<!doctype html><html><head><title>sw-probe</title></head><body>
-<p>service worker probe</p>
-<script>
+const PAGES: Record<string, string> = {
+  '/sw-page': `<!doctype html><title>sw-probe</title><p>service worker probe</p><script>
 navigator.serviceWorker.register('/sw.js', { scope: '/sw-scope/' }).then(
   () => { document.title = 'SW-RESOLVED' },
   (e) => { document.title = 'SW-REJECTED:' + e.name },
-)
-</script></body></html>`
-
-const DOWNLOAD_PAGE_HTML = `<!doctype html><html><head><title>download-probe</title></head><body>
-<p>download probe</p><a id="dl" href="/file.bin" download>download</a></body></html>`
-
-function bigPageHtml(): string {
-  const parts: string[] = []
-  for (let i = 0; i < 2500; i++) {
-    parts.push(
-      `<p>paragraph ${i} of the bounded-capture probe with some ordinary filler text number ${i}</p>`,
-    )
-  }
-  return `<!doctype html><html><head><title>big-probe</title></head><body><h1>bounded capture</h1>${parts.join('')}</body></html>`
+)</script>`,
+  '/download-page': `<!doctype html><title>download-probe</title><a id="dl" href="/file.bin" download>download</a>`,
 }
 
-/**
- * A loopback HTTP origin that records every request. Under the managed
- * posture (proxy with `<-loopback>`) nothing may reach it: private
- * destinations must hit **zero** instrumented targets.
- */
+// The worker answers every request in its scope itself, after trying one fetch
+// of its own: that fetch must still go through the browser's proxy.
+const SERVICE_WORKER = `self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', (event) => {
+  event.respondWith((async () => {
+    let result = 'network-blocked';
+    try { result = 'network-status:' + (await fetch('/worker-private-fetch')).status } catch {}
+    return new Response('<body>persisted-worker-active ' + result + '</body>', { headers: { 'content-type': 'text/html' } });
+  })());
+});`
+
 export async function createInstrumentedOrigin(): Promise<InstrumentedOrigin> {
   const hits: string[] = []
   const server = createServer((req, res) => {
     hits.push(req.url ?? '')
     if (req.url === '/sw.js') {
-      res.setHeader('content-type', 'application/javascript')
-      res.end(
-        `self.addEventListener('install', () => self.skipWaiting());
-         self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
-         self.addEventListener('fetch', event => {
-           event.respondWith((async () => {
-             let result = 'network-blocked';
-             try { const response = await fetch('/worker-private-fetch'); result = 'network-status:' + response.status } catch {}
-             return new Response('<html><body>persisted-worker-active ' + result + ' p2p:' + typeof RTCPeerConnection + '</body></html>', { headers: { 'content-type': 'text/html' } });
-           })());
-         });`,
-      )
-      return
+      res.writeHead(200, { 'content-type': 'application/javascript' }).end(SERVICE_WORKER)
+    } else if (req.url === '/file.bin') {
+      res
+        .writeHead(200, {
+          'content-type': 'application/octet-stream',
+          'content-disposition': 'attachment; filename="probe.bin"',
+        })
+        .end('probe-download-bytes')
+    } else {
+      const page = PAGES[req.url ?? '']
+      res.writeHead(200, { 'content-type': page ? 'text/html' : 'text/plain' })
+      res.end(page ?? 'instrumented origin')
     }
-    if (req.url === '/file.bin') {
-      res.setHeader('content-type', 'application/octet-stream')
-      res.setHeader('content-disposition', 'attachment; filename="probe.bin"')
-      res.end('probe-download-bytes')
-      return
-    }
-    if (req.url === '/sw-page') {
-      res.setHeader('content-type', 'text/html')
-      res.end(SW_PAGE_HTML)
-      return
-    }
-    if (req.url === '/big-page') {
-      res.setHeader('content-type', 'text/html')
-      res.end(bigPageHtml())
-      return
-    }
-    if (req.url === '/download-page') {
-      res.setHeader('content-type', 'text/html')
-      res.end(DOWNLOAD_PAGE_HTML)
-      return
-    }
-    res.setHeader('content-type', 'text/plain')
-    res.end('instrumented origin')
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const port = (server.address() as AddressInfo).port
-  const origin = `http://127.0.0.1:${port}`
   return {
-    origin,
+    origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     hits,
-    swPage: `${origin}/sw-page`,
-    bigPage: `${origin}/big-page`,
-    downloadPage: `${origin}/download-page`,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   }
 }
 
-// --- instrumented loopback UDP listener ---
-
-export interface UdpProbe {
-  port: number
-  /** Count of datagrams received (must stay 0 under the managed posture). */
-  datagrams: number[]
-  close(): Promise<void>
-}
-
-/** Binds a loopback UDP socket and records every datagram that arrives. */
-export async function createUdpProbe(): Promise<UdpProbe> {
-  const sock = createSocket('udp4')
-  const datagrams: number[] = []
-  sock.on('message', (msg) => datagrams.push(msg.length))
-  sock.on('error', () => {})
-  await new Promise<void>((resolve) => sock.bind(0, '127.0.0.1', resolve))
-  const port = (sock.address() as AddressInfo).port
-  return {
-    port,
-    datagrams,
-    close: () => new Promise<void>((resolve) => sock.close(() => resolve())),
-  }
-}
-
-// --- actual owned-process evidence (Linux / Darwin) ---
-
-export interface OwnedBrowserProcess {
-  pid: number
-  exe: string
-  /** NUL-split argv. NOTE: Chromium rewrites child cmdlines into a single
-   *  synthetic string, so child entries carry the whole line in argv[0]. */
-  argv: string[]
-  /** The full cmdline as one string — reliable for child-process matching. */
-  cmdline: string
-  environ: string[]
-  /** False is unreported, not evidence of an empty or secret-free environment. */
-  environmentReported: boolean
-  kind: 'root' | 'child'
-}
-
-/**
- * Find the browser processes owned by a launch, keyed on the exact profile
- * path in their argv — the narrow ownership probe the plan names (never broad
- * process-name matching). Darwin uses bounded public libproc/sysctl evidence, not ps text.
- */
-export function ownedBrowserProcesses(profileDir: string): OwnedBrowserProcess[] {
-  if (process.platform === 'darwin') return ownedDarwinBrowserProcesses(profileDir)
-  const found: OwnedBrowserProcess[] = []
-  let entries: string[]
-  try {
-    entries = readdirSync('/proc')
-  } catch {
-    return found
-  }
-  for (const entry of entries) {
-    if (!/^\d+$/.test(entry)) continue
-    const pid = Number(entry)
-    if (pid === process.pid) continue
-    let argv: string[] = []
-    try {
-      argv = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').filter(Boolean)
-    } catch {
-      continue
-    }
-    if (!argv.some((a) => a.includes(profileDir))) continue
-    let exe = ''
-    try {
-      exe = readlinkSync(`/proc/${pid}/exe`)
-    } catch {
-      // EACCES on restricted kernels: keep the process, drop the exe detail.
-    }
-    let environ: string[] = []
-    let environmentReported = false
-    try {
-      environ = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean)
-      environmentReported = true
-    } catch {
-      // Not a descendant, or exited between scans.
-    }
-    const cmdline = argv.join(' ')
-    found.push({
-      pid,
-      exe,
-      argv,
-      cmdline,
-      environ,
-      environmentReported,
-      kind: cmdline.includes('--type=') ? 'child' : 'root',
+/** Pids of the processes started on a profile (the browser and its helpers). */
+export function browserProcesses(userDataDir: string): number[] {
+  return readdirSync('/proc')
+    .filter((entry) => /^\d+$/.test(entry))
+    .filter((pid) => {
+      try {
+        return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(
+          `--user-data-dir=${userDataDir}`,
+        )
+      } catch {
+        return false
+      }
     })
-  }
-  return found
+    .map(Number)
 }

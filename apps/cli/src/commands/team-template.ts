@@ -1,38 +1,32 @@
 import { readFileSync } from 'node:fs'
 import type {
-  PutTeamTemplateDefinitionRequest,
-  TeamTemplateDetail,
-  TeamTemplateWithCount,
+  SaveTeamAsTemplateRequest,
+  SpawnTeamTemplateRequest,
+  SpawnTeamTemplateResponse,
+  TeamTemplate,
+  TeamTemplateEndpoint,
+  TeamTemplateInput,
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { ApiClientError, createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
-import {
-  edgeDiff,
-  exportTeamDocument,
-  parseTeamDocument,
-  teamImportBody,
-} from '../team-interchange.ts'
+import { apiPath, jsonFlag, positional, printJson, teamArg } from '../command-helpers.ts'
 
-function jsonFile(path: string): unknown {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8')) as unknown
-  } catch (error) {
-    throw new Error(`invalid JSON: ${(error as Error).message}`)
-  }
+const templateArg = positional('Template id')
+
+function endpointLabel(template: TeamTemplate, end: TeamTemplateEndpoint): string {
+  return end === 'outside' ? 'outside' : `${end}:${template.slots[end]?.agentName ?? '?'}`
 }
 
-function printTeam(detail: TeamTemplateDetail): void {
-  console.log(`# ${detail.template.id} — ${detail.template.name}`)
-  console.log(`revision: ${detail.template.currentRevision}`)
-  console.log(`slots:    ${detail.slots.length}`)
-  console.log(`edges:    ${detail.edges.length}`)
-  if (detail.slots.length) {
+function printTemplate(template: TeamTemplate): void {
+  console.log(`# ${template.id} — ${template.name}`)
+  console.log(`mode:  ${template.policyMode}`)
+  if (template.slots.length) {
     console.log('')
     for (const line of columnize([
       ['slot', 'profile', 'Agent name', 'model', 'reasoning'],
-      ...detail.slots.map((slot, index) => [
-        String(index + 1),
+      ...template.slots.map((slot, index) => [
+        String(index),
         slot.profileId,
         slot.agentName,
         slot.modelOverride ?? '-',
@@ -40,177 +34,169 @@ function printTeam(detail: TeamTemplateDetail): void {
       ]),
     ]))
       console.log(line)
+  } else console.log('slots: (none)')
+  if (template.edges.length) {
+    console.log('')
+    for (const line of columnize([
+      ['from', 'to'],
+      ...template.edges.map((edge) => [
+        endpointLabel(template, edge.from),
+        endpointLabel(template, edge.to),
+      ]),
+    ]))
+      console.log(line)
+  }
+}
+
+/** The editable part of a template, as `export` prints and `import` reads it. */
+function document(template: TeamTemplate): TeamTemplateInput {
+  return {
+    id: template.id,
+    name: template.name,
+    userMd: template.userMd,
+    policyMode: template.policyMode,
+    slots: template.slots,
+    edges: template.edges,
   }
 }
 
 const list = defineCommand({
-  meta: { name: 'list', description: 'List canonical Team templates' },
-  args: { json: { type: 'boolean', description: 'Emit stable JSON' } },
+  meta: { name: 'list', description: 'List Team templates' },
+  args: { json: jsonFlag },
   async run({ args }) {
-    const rows = await createClient().get<TeamTemplateWithCount[]>('/api/team-templates')
-    if (args.json) return console.log(JSON.stringify(rows, null, 2))
+    const rows = await createClient().get<TeamTemplate[]>('/api/team-templates')
+    if (args.json) return printJson(rows)
     if (!rows.length) return console.log('(no Team templates)')
     for (const line of columnize([
-      ['id', 'revision', 'slots', 'name'],
-      ...rows.map((row) => [row.id, String(row.currentRevision), String(row.slotCount), row.name]),
+      ['id', 'slots', 'mode', 'name'],
+      ...rows.map((row) => [row.id, String(row.slots.length), row.policyMode, row.name]),
     ]))
       console.log(line)
   },
 })
 
 const show = defineCommand({
-  meta: { name: 'show', description: 'Show a canonical Team template' },
+  meta: { name: 'show', description: 'Show a Team template' },
+  args: { id: templateArg, json: jsonFlag },
+  async run({ args }) {
+    const template = await createClient().get<TeamTemplate>(apiPath('team-templates', args.id))
+    if (args.json) printJson(template)
+    else printTemplate(template)
+  },
+})
+
+const create = defineCommand({
+  meta: { name: 'create', description: 'Create an empty Team template' },
   args: {
-    id: { type: 'positional', required: true },
-    json: { type: 'boolean', description: 'Emit the canonical API aggregate' },
+    id: positional('Template slug'),
+    name: { type: 'string', description: 'Display name (defaults to the slug)' },
   },
   async run({ args }) {
-    const detail = await createClient().get<TeamTemplateDetail>(
-      `/api/team-templates/${encodeURIComponent(args.id)}`,
-    )
-    if (args.json) console.log(JSON.stringify(detail, null, 2))
-    else printTeam(detail)
+    const body: TeamTemplateInput = { id: args.id, name: args.name ?? args.id }
+    const created = await createClient().post<TeamTemplate>('/api/team-templates', body)
+    console.log(`created Team template ${created.id}`)
   },
 })
 
 const exportCommand = defineCommand({
-  meta: {
-    name: 'export',
-    description: 'Export a portable versioned Team-template document to stdout',
-  },
-  args: { id: { type: 'positional', required: true } },
+  meta: { name: 'export', description: 'Print a Team template as JSON for editing or import' },
+  args: { id: templateArg },
   async run({ args }) {
-    const detail = await createClient().get<TeamTemplateDetail>(
-      `/api/team-templates/${encodeURIComponent(args.id)}`,
-    )
-    console.log(JSON.stringify(exportTeamDocument(detail), null, 2))
+    const template = await createClient().get<TeamTemplate>(apiPath('team-templates', args.id))
+    printJson(document(template))
   },
 })
-
-function printImportDiff(
-  current: TeamTemplateDetail | null,
-  document: ReturnType<typeof parseTeamDocument>,
-): void {
-  const before = current ? exportTeamDocument(current) : null
-  console.log(`Team: ${current ? current.template.id : '(new)'} -> ${document.template.id}`)
-  console.log(`Roster: ${current?.slots.length ?? 0} -> ${document.slots.length}`)
-  const previousSlots = new Map(before?.slots.map((slot) => [slot.key, slot]) ?? [])
-  const nextSlots = new Map(document.slots.map((slot) => [slot.key, slot]))
-  for (const [key, slot] of nextSlots) {
-    const previous = previousSlots.get(key)
-    if (!previous) console.log(`  + ${key}: ${slot.profileId} / ${slot.agentName}`)
-    else if (JSON.stringify(previous) !== JSON.stringify(slot))
-      console.log(
-        `  ~ ${key}: ${previous.profileId} / ${previous.agentName} -> ${slot.profileId} / ${slot.agentName}`,
-      )
-  }
-  for (const [key, slot] of previousSlots)
-    if (!nextSlots.has(key)) console.log(`  - ${key}: ${slot.profileId} / ${slot.agentName}`)
-  const toEdge = (edge: (typeof document.edges)[number]) => ({
-    sourceKind: edge.sourceKind,
-    sourceId: edge.sourceKey,
-    targetKind: edge.targetKind,
-    targetId: edge.targetKey,
-  })
-  const diff = edgeDiff(before?.edges.map(toEdge) ?? [], document.edges.map(toEdge))
-  console.log(`Edges: +${diff.added.length} -${diff.removed.length}`)
-  for (const value of diff.added) console.log(`  + ${value}`)
-  for (const value of diff.removed) console.log(`  - ${value}`)
-}
 
 const importCommand = defineCommand({
   meta: {
     name: 'import',
-    description: 'Validate, diff, and explicitly apply a portable Team-template document',
+    description: 'Create a Team template from JSON, or replace the one with the same id',
   },
-  args: {
-    file: { type: 'positional', required: true, description: 'JSON document path' },
-    'dry-run': { type: 'boolean', description: 'Validate and print the resolved diff only' },
-    apply: { type: 'boolean', description: 'Apply non-interactively after printing the diff' },
-    'expected-revision': {
-      type: 'string',
-      description: 'Required current revision when replacing an existing Team',
-    },
-    force: {
-      type: 'boolean',
-      description: 'Refetch current revision; requires --apply and still uses optimistic locking',
-    },
-    'confirm-current-revision': {
-      type: 'string',
-      description: 'Second force confirmation: the freshly displayed current revision',
-    },
-  },
+  args: { file: positional('JSON from export') },
   async run({ args }) {
-    if (args.force && !args.apply)
-      throw new Error('--force requires --apply (interactive force is intentionally unsupported)')
-    const document = parseTeamDocument(jsonFile(args.file))
+    const body = JSON.parse(readFileSync(args.file, 'utf8')) as TeamTemplateInput
+    if (typeof body.id !== 'string' || !body.id) throw new Error('the JSON needs an "id"')
     const client = createClient()
-    let current: TeamTemplateDetail | null = null
-    try {
-      current = await client.get<TeamTemplateDetail>(
-        `/api/team-templates/${encodeURIComponent(document.template.id)}`,
-      )
-    } catch (error) {
-      if (!(error instanceof ApiClientError) || error.status !== 404) throw error
-    }
-    printImportDiff(current, document)
-    if (args['dry-run']) {
-      console.log('valid: no changes applied')
-      return
-    }
-    if (!args.apply) throw new Error('refusing mutation: review the diff, then pass --apply')
-    if (!current) {
-      const body = teamImportBody(document)
-      const created = await client.post<TeamTemplateDetail>('/api/team-templates/import', {
-        id: document.template.id,
-        name: document.template.name,
-        userMd: document.template.userMd,
-        slots: document.slots.map((slot, index) => ({
-          ...body.slots[index],
-          clientKey: slot.key,
-        })),
-        edges: body.edges,
-      })
-      console.log(
-        `created Team ${created.template.id} at revision ${created.template.currentRevision}`,
-      )
-      return
-    }
-    if (
-      document.template.name !== current.template.name ||
-      document.template.userMd !== current.template.userMd
+    const exists = await client.get<TeamTemplate>(apiPath('team-templates', body.id)).then(
+      () => true,
+      (error: unknown) => {
+        if (error instanceof ApiClientError && error.status === 404) return false
+        throw error
+      },
     )
-      throw new Error(
-        'replacement document metadata differs; update Team name/USER.md separately before import',
-      )
-    const supplied = Number.parseInt(args['expected-revision'] ?? '', 10)
-    const expectedRevision = args.force ? current.template.currentRevision : supplied
-    if (
-      args.force &&
-      Number.parseInt(args['confirm-current-revision'] ?? '', 10) !==
-        current.template.currentRevision
-    )
-      throw new Error(
-        `--force requires --confirm-current-revision ${current.template.currentRevision} after reviewing the fresh diff`,
-      )
-    if (!Number.isInteger(expectedRevision) || expectedRevision < 1)
-      throw new Error('--expected-revision is required when replacing an existing Team')
-    const definition = teamImportBody(document, current)
-    const body: PutTeamTemplateDefinitionRequest = { expectedRevision, ...definition }
-    const updated = await client.put<TeamTemplateDetail>(
-      `/api/team-templates/${encodeURIComponent(document.template.id)}/definition`,
-      body,
-    )
+    const saved = exists
+      ? await client.put<TeamTemplate>(apiPath('team-templates', body.id), body)
+      : await client.post<TeamTemplate>('/api/team-templates', body)
     console.log(
-      `updated Team ${updated.template.id} to revision ${updated.template.currentRevision}`,
+      `${exists ? 'replaced' : 'created'} Team template ${saved.id} (${saved.slots.length} slots, ${saved.edges.length} edges)`,
     )
   },
 })
 
-export const teamTemplateCommand = defineCommand({
-  meta: {
-    name: 'team-template',
-    description: 'Inspect and exchange canonical Team templates',
+const rm = defineCommand({
+  meta: { name: 'rm', description: 'Delete a Team template (spawned Teams are unaffected)' },
+  args: { id: templateArg },
+  async run({ args }) {
+    await createClient().del(apiPath('team-templates', args.id))
+    console.log(`deleted Team template ${args.id}`)
   },
-  subCommands: { list, show, export: exportCommand, import: importCommand },
+})
+
+const spawn = defineCommand({
+  meta: {
+    name: 'spawn',
+    description: 'Spawn one Agent per slot into a Team; an unknown Team slug creates the Team',
+  },
+  args: {
+    id: templateArg,
+    team: positional('Target Team slug'),
+    'user-md-file': { type: 'string', description: 'USER.md for a newly created Team' },
+  },
+  async run({ args }) {
+    const body: SpawnTeamTemplateRequest = {
+      teamId: args.team,
+      ...(args['user-md-file'] ? { userMd: readFileSync(args['user-md-file'], 'utf8') } : {}),
+    }
+    const result = await createClient().post<SpawnTeamTemplateResponse>(
+      apiPath('team-templates', args.id, 'spawn'),
+      body,
+    )
+    console.log(
+      `spawned ${result.agents.length} agent(s) into Team ${result.team.teamId}: ${result.agents.map((agent) => agent.name).join(', ')}`,
+    )
+  },
+})
+
+const save = defineCommand({
+  meta: {
+    name: 'save',
+    description: "Save a live Team's members, edges, mode and USER.md as a new template",
+  },
+  args: {
+    team: teamArg,
+    id: positional('New template id'),
+    name: { type: 'string', description: 'Display name (defaults to the id)' },
+  },
+  async run({ args }) {
+    const body: SaveTeamAsTemplateRequest = { id: args.id, name: args.name ?? args.id }
+    const saved = await createClient().post<TeamTemplate>(
+      apiPath('teams', args.team, 'policy', 'save-as-template'),
+      body,
+    )
+    console.log(`saved Team ${args.team} as template ${saved.id} (${saved.slots.length} slots)`)
+  },
+})
+
+export const teamTemplateCommand = defineCommand({
+  meta: { name: 'team-template', description: 'Reusable Team rosters with their allow edges' },
+  subCommands: {
+    list,
+    show,
+    create,
+    export: exportCommand,
+    import: importCommand,
+    rm,
+    spawn,
+    save,
+  },
 })

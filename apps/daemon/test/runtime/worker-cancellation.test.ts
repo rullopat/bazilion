@@ -12,8 +12,7 @@ test.each([
 })
 test.each([
   'provider authentication failed',
-  'worker cleanup could not be confirmed',
-  'Native execution recovery_required',
+  'worker exited with code 1',
   'command timed out',
   'provider aborted after invalid credentials',
   'completed',

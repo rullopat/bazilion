@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, resolve, sep } from 'node:path'
 import type { SkillScanFinding } from '@bazilion/api-types'
 import AdmZip from 'adm-zip'
+import { DomainError } from '../errors.ts'
 import type { Paths } from '../paths.ts'
 import { parseSkillFile } from './parse.ts'
 import { scanSkillContent } from './scan.ts'
@@ -26,15 +27,15 @@ export interface ImportResult {
   findings?: Record<string, SkillScanFinding[]>
 }
 
-export class SkillScanBlockedError extends Error {
+export class SkillScanBlockedError extends DomainError {
   findings: Record<string, SkillScanFinding[]>
 
   constructor(findings: Record<string, SkillScanFinding[]>) {
     const names = Object.keys(findings).sort()
     super(
+      400,
       `skill scan blocked import: ${names.join(', ')} ${names.length === 1 ? 'has' : 'have'} findings (rerun with --force to confirm)`,
     )
-    this.name = 'SkillScanBlockedError'
     this.findings = findings
   }
 }

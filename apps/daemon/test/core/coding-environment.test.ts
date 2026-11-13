@@ -1,88 +1,87 @@
-import { expect, test } from 'vitest'
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { afterEach, beforeEach, expect, test } from 'vitest'
+import { createProfile, resolveAgent, spawnAgent, teamRepo } from '../../src/core/index.ts'
+import { getCodingEnvironment } from '../../src/core/repos/coding-environment.ts'
 import {
-  validateCodingCommand,
-  validateCodingEnvironmentConfig,
-} from '../../src/core/coding-environment/config.ts'
-import { openInMemoryDb } from '../../src/core/db/client.ts'
-import { runMigrations } from '../../src/core/db/migrate.ts'
-import {
-  getCodingEnvironment,
-  putCodingEnvironment,
-} from '../../src/core/repos/coding-environment.ts'
+  codingEnvironmentStatus,
+  dockerTurn,
+  setTeamCodingEnvironment,
+} from '../../src/lib/coding-environment.ts'
+import { homeContainerPrefix } from '../../src/runtime/shell/docker.ts'
+import { makeTestEnv, type TestEnv } from './helpers.ts'
 
-import {
-  resolveTeamCodingEnvironment,
-  resolveTeamNativeCodingEnvironment,
-} from '../../src/lib/coding-environment/resolve.ts'
-
-const config = { backend: 'docker', image: 'local/node:24', cwd: 'app source', env: { CI: 'true' } }
-test('optional defaults use revision CAS and reject the obsolete executable checklist', () => {
-  const db = openInMemoryDb()
-  runMigrations(db)
-  try {
-    db.raw.run("INSERT INTO teams (id,name,created_at) VALUES ('example','Example',0)")
-    expect(getCodingEnvironment(db, 'example')).toBeNull()
-    expect(putCodingEnvironment(db, 'example', 0, config).revision).toBe(1)
-    expect(() => putCodingEnvironment(db, 'example', 0, config)).toThrow('changed')
-    expect(putCodingEnvironment(db, 'example', 1, { ...config, cwd: '.' }).revision).toBe(2)
-    expect(() => validateCodingEnvironmentConfig({ ...config, checks: [] })).toThrow()
-  } finally {
-    db.close()
-  }
+let env: TestEnv
+beforeEach(() => {
+  env = makeTestEnv()
 })
+afterEach(() => env.cleanup())
+
+function team() {
+  const found = teamRepo.get(env.db, env.teamId, env.paths)
+  if (!found) throw new Error('missing test Team')
+  return found
+}
+
+test('a Team without saved defaults uses the installation image at the workspace root', () => {
+  expect(getCodingEnvironment(env.db, env.teamId)).toEqual({ image: null, cwd: '.' })
+  expect(
+    codingEnvironmentStatus(env.db, env.teamId, {
+      BAZILION_BASH_SANDBOX: 'docker',
+      BAZILION_BASH_SANDBOX_IMAGE: 'local/base:1',
+    }),
+  ).toEqual({ image: null, cwd: '.', sandboxMode: 'docker', defaultImage: 'local/base:1' })
+})
+
+test('saved defaults select the image and working directory of each Docker turn', () => {
+  mkdirSync(join(team().path, 'app'))
+  expect(
+    setTeamCodingEnvironment(env.db, team(), { image: 'local/node:26', cwd: 'app' }, {}),
+  ).toEqual({
+    image: 'local/node:26',
+    cwd: 'app',
+    sandboxMode: 'off',
+    defaultImage: 'debian:bookworm-slim',
+  })
+  createProfile(env.db, env.paths, { id: 'coder', defaultModel: 'lmstudio:test-model' })
+  const agent = resolveAgent(
+    env.db,
+    env.paths,
+    spawnAgent(env.db, env.paths, { profileId: 'coder', teamId: env.teamId }).id,
+  )
+  const first = dockerTurn(env.db, env.paths, agent, {})
+  const second = dockerTurn(env.db, env.paths, agent, {})
+  expect(first).toMatchObject({ image: 'local/node:26', cwd: 'app' })
+  // Each turn names its containers with a fresh prefix under this home's prefix.
+  expect(first.containerPrefix.startsWith(homeContainerPrefix(env.paths.home))).toBe(true)
+  expect(first.containerPrefix).not.toBe(second.containerPrefix)
+
+  // An empty image goes back to the installation image.
+  setTeamCodingEnvironment(env.db, team(), { image: null, cwd: '.' })
+  expect(
+    dockerTurn(env.db, env.paths, agent, { BAZILION_BASH_SANDBOX_IMAGE: 'local/base:1' }),
+  ).toMatchObject({ image: 'local/base:1', cwd: '.' })
+})
+
 test.each([
-  { ...config, env: { BASH_ENV: '/secret' } },
-  { ...config, env: { CI: 'secret' } },
-  { ...config, cwd: '../outside' },
-  { ...config, image: '--privileged' },
-])('rejects unsafe defaults without echoing input', (input) => {
-  expect(() => validateCodingEnvironmentConfig(input)).toThrow('Invalid coding environment')
-})
-test('explicit native defaults have no image, use CAS, and cannot become Docker or host fallback', () => {
-  const db = openInMemoryDb()
-  runMigrations(db)
-  try {
-    db.raw.run("INSERT INTO teams(id,name,created_at) VALUES('native','Native',0)")
-    expect(resolveTeamNativeCodingEnvironment(db, 'native')).toEqual({
-      revision: 0,
-      cwd: '.',
-      env: {},
-    })
-    const native = { backend: 'native', cwd: '.', env: { CI: 'true', NO_COLOR: '1', TZ: 'UTC' } }
-    expect(putCodingEnvironment(db, 'native', 0, native).config).toEqual(native)
-    expect(resolveTeamNativeCodingEnvironment(db, 'native')).toEqual({
-      revision: 1,
-      cwd: '.',
-      env: native.env,
-    })
-    expect(() =>
-      resolveTeamCodingEnvironment(db, 'native', { BAZILION_BASH_SANDBOX: 'docker' }),
-    ).toThrow('cannot select Docker')
-    putCodingEnvironment(db, 'native', 1, config)
-    expect(() => resolveTeamNativeCodingEnvironment(db, 'native')).toThrow('cannot select native')
-    expect(resolveTeamCodingEnvironment(db, 'native', {}).image).toBe(config.image)
-    expect(() =>
-      validateCodingEnvironmentConfig({ ...native, image: 'not-a-native-image' }),
-    ).toThrow('native image')
-    expect(() =>
-      validateCodingEnvironmentConfig({ image: 'old-shape', cwd: '.', env: {} }),
-    ).toThrow('backend')
-    expect(() => validateCodingEnvironmentConfig({ ...native, backend: 'host' })).toThrow('backend')
-  } finally {
-    db.close()
-  }
+  [{ image: 'local/node:26', cwd: '../outside' }, 'cwd'],
+  [{ image: 'local/node:26', cwd: '/etc' }, 'cwd'],
+  [{ image: 'local/node:26', cwd: '.git' }, 'cwd'],
+  [{ image: '--privileged', cwd: '.' }, 'image'],
+  [{ image: 'local/node:26', cwd: '.', env: { CI: 'true' } }, 'only image and cwd'],
+  [null, 'Invalid coding environment'],
+])('refuses invalid defaults: %j', (input, message) => {
+  expect(() => setTeamCodingEnvironment(env.db, team(), input)).toThrow(message)
+  expect(getCodingEnvironment(env.db, env.teamId)).toEqual({ image: null, cwd: '.' })
 })
 
-test('ad hoc commands are finite, scoped and independent of saved settings', () => {
-  const command = { command: 'pnpm test', cwd: 'app', purpose: 'test', timeoutSeconds: 30 }
-  expect(validateCodingCommand(command)).toEqual(command)
-  for (const patch of [
-    { cwd: '../escape' },
-    { timeoutSeconds: 301 },
-    { timeoutSeconds: 0 },
-    { purpose: 'deploy' },
-    { image: 'host' },
-    { command: 'x'.repeat(4097) },
-  ])
-    expect(() => validateCodingCommand({ ...command, ...patch })).toThrow()
+test('the working directory must be a real directory inside the Team', () => {
+  mkdirSync(join(team().path, 'app'))
+  writeFileSync(join(team().path, 'notes'), 'text')
+  symlinkSync(join(team().path, 'app'), join(team().path, 'linked'))
+  for (const cwd of ['missing', 'app/missing', 'notes', 'linked', 'linked/x'])
+    expect(() => setTeamCodingEnvironment(env.db, team(), { image: null, cwd })).toThrow(
+      'The directory must be an existing directory inside the Team',
+    )
+  expect(getCodingEnvironment(env.db, env.teamId)).toEqual({ image: null, cwd: '.' })
 })

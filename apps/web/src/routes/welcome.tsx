@@ -32,16 +32,14 @@ function WelcomePage() {
         </p>
         <ol className="my-5 space-y-4">
           <Step n={1}>
-            <strong>Choose a provider.</strong> Head to the{' '}
-            <a href="/config">providers tab</a>, pick a provider, and set credentials or a local
-            endpoint if that provider needs one. Local providers like Ollama and LM Studio can use
-            their default loopback URLs.
+            <strong>Choose a provider.</strong> Head to the <a href="/config">providers tab</a>,
+            pick a provider, and set credentials or a local endpoint if that provider needs one.
+            Local providers like Ollama and LM Studio can use their default loopback URLs.
           </Step>
           <Step n={2}>
-            <strong>Enable it and save a model.</strong> Flip the provider's toggle on, then click
-            a catalog chip or type one exact model id (for example{' '}
-            <code>claude-opus-5</code>, <code>gpt-6-astra</code>, or <code>llama3.3</code>) and
-            press <em>save models</em>.
+            <strong>Enable it and save a model.</strong> Flip the provider's toggle on, then click a
+            catalog chip or type one exact model id (for example <code>claude-opus-5</code>,{' '}
+            <code>gpt-6-astra</code>, or <code>llama3.3</code>) and press <em>save models</em>.
           </Step>
           <Step n={3}>
             <strong>Verify and spawn.</strong> Send the short real-model test. When setup is
@@ -49,10 +47,7 @@ function WelcomePage() {
             <code>default</code> template.
           </Step>
         </ol>
-        <a
-          href="/config"
-          className="btn-primary no-underline"
-        >
+        <a href="/config" className="btn-primary no-underline">
           Configure providers <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </a>
       </SectionCard>

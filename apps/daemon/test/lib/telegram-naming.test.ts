@@ -1,12 +1,12 @@
 // Topic-name templating + color-allocation tests.
 
+import { DEFAULT_TEAM_ID } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import * as teamRepo from '../../src/core/repos/teams.ts'
 import { registerTeam } from '../../src/core/team/register.ts'
+import { ICON_COLOR_RED } from '../../src/lib/telegram/activation.ts'
 import {
-  allocateGroupColor,
-  DEFAULT_TEAM_ID,
-  SERVICE_TOPIC_COLOR,
+  allocateTeamColor,
   TEAM_COLORS,
   topicDeepLink,
   topicNameFor,
@@ -36,10 +36,10 @@ describe('topicNameFor', () => {
   })
 })
 
-describe('allocateGroupColor', () => {
+describe('allocateTeamColor', () => {
   test('first team gets the first color in the rotation', () => {
     registerTeam(env.db, { id: DEFAULT_TEAM_ID, name: 'default' }, env.paths)
-    const color = allocateGroupColor(env.db, DEFAULT_TEAM_ID)
+    const color = allocateTeamColor(env.db, DEFAULT_TEAM_ID)
     expect(color).toBe(TEAM_COLORS[0])
   })
 
@@ -50,16 +50,16 @@ describe('allocateGroupColor', () => {
     registerTeam(env.db, { id: 'b', name: 'b' }, env.paths)
     registerTeam(env.db, { id: 'c', name: 'c' }, env.paths)
 
-    expect(allocateGroupColor(env.db, 'a')).toBe(TEAM_COLORS[0])
-    expect(allocateGroupColor(env.db, 'b')).toBe(TEAM_COLORS[1])
-    expect(allocateGroupColor(env.db, 'c')).toBe(TEAM_COLORS[2])
+    expect(allocateTeamColor(env.db, 'a')).toBe(TEAM_COLORS[0])
+    expect(allocateTeamColor(env.db, 'b')).toBe(TEAM_COLORS[1])
+    expect(allocateTeamColor(env.db, 'c')).toBe(TEAM_COLORS[2])
   })
 
   test('is idempotent — re-allocating returns the same color', () => {
     registerTeam(env.db, { id: 'a', name: 'a' }, env.paths)
-    const first = allocateGroupColor(env.db, 'a')
-    const second = allocateGroupColor(env.db, 'a')
-    const third = allocateGroupColor(env.db, 'a')
+    const first = allocateTeamColor(env.db, 'a')
+    const second = allocateTeamColor(env.db, 'a')
+    const third = allocateTeamColor(env.db, 'a')
     expect(first).toBe(second)
     expect(second).toBe(third)
   })
@@ -67,7 +67,7 @@ describe('allocateGroupColor', () => {
   test('wraps after exhausting the 5-color rotation', () => {
     for (const slug of ['g0', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6']) {
       registerTeam(env.db, { id: slug, name: slug }, env.paths)
-      allocateGroupColor(env.db, slug)
+      allocateTeamColor(env.db, slug)
     }
     // The 6th team (g5) wraps back to color 0; g6 to color 1.
     expect(teamRepo.getTelegramIconColor(env.db, 'g5')).toBe(TEAM_COLORS[0])
@@ -75,10 +75,8 @@ describe('allocateGroupColor', () => {
   })
 
   test('service-topic color is not in the team rotation', () => {
-    // The doc reserves red for ⚙ bazilion — make sure the constant matches
-    // and is excluded from the round-robin list.
-    expect(SERVICE_TOPIC_COLOR).toBe(16478047)
-    expect(TEAM_COLORS).not.toContain(SERVICE_TOPIC_COLOR)
+    // Red is reserved for the ⚙ bazilion service topic created by activation.
+    expect(TEAM_COLORS).not.toContain(ICON_COLOR_RED)
   })
 })
 

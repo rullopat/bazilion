@@ -1,18 +1,13 @@
-// One-shot Bot API calls used to validate a freshly-pasted token+chatId
-// pair on the /config/integrations/telegram setup page. Step 1 has no live
-// bot — we just need to confirm the four facts the user can fix themselves
-// before Step 2 wires up the polling singleton:
+// Setup checks for a pasted token + chat id, run with plain Bot API calls so they work before the
+// bot is running:
 //
 //   1. The token resolves to a bot account (getMe).
 //   2. The supergroup exists and is forum-enabled (getChat → is_forum).
-//   3. The bot is admin in the supergroup with can_manage_topics
-//      (getChatMember).
+//   3. The bot is admin in the supergroup with can_manage_topics (getChatMember).
 //   4. Privacy Mode is OFF (getMe → can_read_all_group_messages).
-//
-// Bare `fetch` against api.telegram.org — no grammY dep yet; that lands in
-// Step 2 alongside the polling driver.
 
 import type { TelegramHealth, TelegramPreflight } from '@bazilion/api-types'
+import { redactToken } from './config.ts'
 
 /** Default Bot API base URL. Overridable in tests via the optional `apiBase` arg. */
 const TELEGRAM_API_BASE = 'https://api.telegram.org'
@@ -175,13 +170,6 @@ function chatId(raw: string): number | string {
 }
 
 function errorMessage(e: unknown, botToken: string): string {
-  if (e instanceof Error) {
-    if (e.name === 'AbortError') return 'request timed out after 10s'
-    return e.message
-      .replaceAll(botToken, '[redacted]')
-      .replace(/bot\d+:[A-Za-z0-9_-]+/g, 'bot[redacted]')
-  }
-  return String(e)
-    .replaceAll(botToken, '[redacted]')
-    .replace(/bot\d+:[A-Za-z0-9_-]+/g, 'bot[redacted]')
+  if (e instanceof Error && e.name === 'AbortError') return 'request timed out after 10s'
+  return redactToken(e instanceof Error ? e.message : String(e), botToken)
 }

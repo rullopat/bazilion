@@ -1,52 +1,38 @@
 # Conversations
 
-Each Agent has one active conversation and a retained library. In web chat, open **Conversations**
-to list history, rename a title, view old work, or choose **New conversation**. Viewing or renaming
-history does not change where new messages go. New conversation keeps previous history and saved
-files. The ordinary destructive chat reset command is removed.
+Each Agent writes to one active conversation at a time and keeps the earlier ones. Starting a new
+conversation gives the Agent an empty history; old conversations and their saved files stay
+available to read and rename, but an old conversation cannot be made active again.
 
-```sh
-bazilion conversation list <agent> --json
-bazilion conversation show <agent> <conversation-id>
-bazilion conversation new <agent> --title "Next task"
-bazilion conversation rename <agent> <conversation-id> "Weekly report"
-```
+- **Web:** in the chat, open **Conversations** to list them, start a **New conversation**, read an
+  earlier one or rename it. `/new` in the composer opens the same panel. **Open conversation** on a
+  saved result in **Team → Results** opens the library on the conversation it came from.
+- **CLI:**
 
-New conversation is rejected while the Agent is occupied or has pending queued user messages.
-Wait for completion or reconcile pending work first. Web, CLI and mobile sends carry the selection
-they observed. If another client changes it, the daemon rejects the old send before execution.
-Web preserves its draft and attachments through **reload**; review the refreshed conversation before
-sending again. TTY chat restores rejected input at the next prompt. Native conversation management
-is deferred; mobile users can open the web library or use the CLI.
+  ```sh
+  bazilion conversation list <agent> [--json]
+  bazilion conversation show <agent> <conversation-id> [--json]
+  bazilion conversation new <agent> [--title "Next task"]
+  bazilion conversation rename <agent> <conversation-id> "Weekly report"
+  ```
 
-Creation uses an immutable UUID request ID and the original expected selection. If a CLI response
-is lost, repeat the request ID, expected revision/conversation and title printed before the request.
-Use `none` for an originally empty selection. A successful retry returns the original conversation
-and the current selection; it never reselects old history. Web keeps its pending creation request
-in tab session storage, including across a reload.
+New conversation is refused while the Agent is running a turn; try again when it finishes.
+Follow-ups that are already queued keep the conversation they were sent to.
 
-## API and history ownership
+If the active conversation's history file is missing or unreadable, the chat says so; start a new
+conversation to continue. Nothing recreates or replaces a missing history.
 
-| Endpoint | Contract |
+Editing the last message in the web chat is refused when the Agent has switched to another
+conversation since the page loaded; reload and try again.
+
+## API
+
+| Route | |
 | --- | --- |
-| `GET /api/agents/:id/conversations?limit=20&offset=0` | Bounded list, total and active selection; maximum page size 100 |
-| `POST /api/agents/:id/conversations` | `{requestId, expectedSelection: {conversationId, revision}, title?}` |
-| `GET /api/agents/:id/conversations/:conversationId` | Agent-scoped retained history; unavailable history returns 409 |
-| `PATCH /api/agents/:id/conversations/:conversationId` | `{title, expectedTitleRevision}`; titles are 1–200 characters |
+| `GET /api/agents/:id/conversations?limit=20&offset=0` | Newest first, with `selectedId` (the active one) |
+| `POST /api/agents/:id/conversations` | `{title?}`: start a conversation and make it active |
+| `GET /api/agents/:id/conversations/:conversationId` | Its messages (409 when its history is unreadable) |
+| `PATCH /api/agents/:id/conversations/:conversationId` | `{title}`: 1–200 characters |
 
-The daemon stores identity, title and routing metadata. Canonical Pi JSONL is the only transcript.
-Current history/head includes authoritative selection; an unreadable selected file is marked
-`head.unavailable` (or `unavailable` on the head endpoint), so clients can display recovery guidance.
-Empty messages with that flag do not mean an empty healthy conversation. Explicit New conversation
-is the recovery action. Missing/corrupt history is never recreated by a read or routed by file mtime.
-
-Foreground chat, compact and edit requests include `expectedSelection`. Context inspection requires
-an existing selected conversation. Controls share the Agent lifecycle lease. Background operations
-carry an exact target: scheduled occurrences capture it at materialization, inbox wakes at claim,
-and Telegram before media download. Delayed approvals retain their original destination. Executing
-an admitted retained target does not change active selection. Private reviewer scratch sessions are
-not listed or selected.
-
-Backups include metadata and canonical files, preserving source IDs and saved-file provenance.
-This follows the forward-migration schema contract; homes that predate it require the documented
-reset and rebootstrap workflow. Search, manual resume, branching and history purge are deferred.
+The transcript of each conversation is Pi's session file `agents/<id>/sessions/<conversation-id>.jsonl`;
+the database keeps titles and which conversation is active. Backups include both.

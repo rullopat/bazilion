@@ -16,7 +16,9 @@ import type {
 import { PROFILE_FILES } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
-import { columnize } from '../columnize.ts'
+import { apiPath, positional, printRows } from '../command-helpers.ts'
+
+const profileArg = positional('Profile id')
 
 function splitCsv(v: string | undefined): string[] | undefined {
   if (!v) return undefined
@@ -36,7 +38,7 @@ function parseSkillsMode(v: string | undefined): SkillsMode | undefined {
 const createCmd = defineCommand({
   meta: { name: 'create', description: 'Create a new profile' },
   args: {
-    id: { type: 'positional', required: true, description: 'Profile slug' },
+    id: positional('Profile slug'),
     name: { type: 'string', description: 'Display name (defaults to slug)' },
     model: {
       type: 'string',
@@ -69,12 +71,14 @@ const createCmd = defineCommand({
     },
     'agents-file': {
       type: 'string',
-      description: 'Path to AGENTS.md content (optional; omit to skip)',
+      description: 'Path to custom AGENTS.md content (defaults to the built-in template)',
     },
+    'skip-agents': { type: 'boolean', description: 'Create the profile without an AGENTS.md' },
     'tools-file': {
       type: 'string',
-      description: 'Path to TOOLS.md content (optional; omit to skip)',
+      description: 'Path to custom TOOLS.md content (defaults to the built-in template)',
     },
+    'skip-tools': { type: 'boolean', description: 'Create the profile without a TOOLS.md' },
   },
   async run({ args }) {
     const skillsMode = parseSkillsMode(args['skills-mode'])
@@ -88,14 +92,11 @@ const createCmd = defineCommand({
       defaultSkills: splitCsv(args.skills),
       soul: readTemplate(args['soul-file']),
       identity: readTemplate(args['identity-file']),
-      bootstrap: args['skip-bootstrap']
-        ? null
-        : (readTemplate(args['bootstrap-file']) ?? undefined),
-      agents: readTemplate(args['agents-file']),
-      tools: readTemplate(args['tools-file']),
+      bootstrap: args['skip-bootstrap'] ? null : readTemplate(args['bootstrap-file']),
+      agents: args['skip-agents'] ? null : readTemplate(args['agents-file']),
+      tools: args['skip-tools'] ? null : readTemplate(args['tools-file']),
     }
-    const client = createClient()
-    const profile = await client.post<Profile>('/api/profiles', body)
+    const profile = await createClient().post<Profile>('/api/profiles', body)
     console.log(`created profile ${profile.id} at ${profile.dir}`)
   },
 })
@@ -103,25 +104,19 @@ const createCmd = defineCommand({
 const listCmd = defineCommand({
   meta: { name: 'list', description: 'List profiles' },
   async run() {
-    const client = createClient()
-    const list = await client.get<Profile[]>('/api/profiles')
-    if (list.length === 0) {
-      console.log('(no profiles)')
-      return
-    }
-    const rows = list.map((p) => [p.id, p.defaultModel, p.name])
-    for (const line of columnize(rows)) console.log(line)
+    const list = await createClient().get<Profile[]>('/api/profiles')
+    printRows(
+      list.map((p) => [p.id, p.defaultModel, p.name]),
+      '(no profiles)',
+    )
   },
 })
 
 const showCmd = defineCommand({
   meta: { name: 'show', description: 'Show profile details' },
-  args: {
-    id: { type: 'positional', required: true },
-  },
+  args: { id: profileArg },
   async run({ args }) {
-    const client = createClient()
-    const loaded = await client.get<LoadedProfile>(`/api/profiles/${args.id}`)
+    const loaded = await createClient().get<LoadedProfile>(apiPath('profiles', args.id))
     console.log(`# ${loaded.profile.id}`)
     console.log(`name:           ${loaded.profile.name}`)
     console.log(`dir:            ${loaded.profile.dir}`)
@@ -148,11 +143,11 @@ const showCmd = defineCommand({
 const editCmd = defineCommand({
   meta: { name: 'edit', description: 'Open a profile file in $EDITOR' },
   args: {
-    id: { type: 'positional', required: true },
+    id: profileArg,
     file: {
       type: 'string',
-      default: 'profile.json',
-      description: `File: ${PROFILE_FILES.join(', ')}`,
+      default: 'SOUL.md',
+      description: `File: ${PROFILE_FILES.join(', ')} (default SOUL.md)`,
     },
   },
   async run({ args }) {
@@ -161,9 +156,8 @@ const editCmd = defineCommand({
     }
     const file = args.file as ProfileFileName
     const client = createClient()
-    const { content } = await client.get<FileContentResponse>(
-      `/api/profiles/${args.id}/files/${file}`,
-    )
+    const path = apiPath('profiles', args.id, 'files', file)
+    const { content } = await client.get<FileContentResponse>(path)
     const tmpPath = join(tmpdir(), `bazilion-${args.id}-${file}-${randomBytes(4).toString('hex')}`)
     writeFileSync(tmpPath, content)
     try {
@@ -180,12 +174,10 @@ const editCmd = defineCommand({
         return
       }
       const body: PutFileRequest = { content: updated }
-      await client.put(`/api/profiles/${args.id}/files/${file}`, body)
+      await client.put(path, body)
       console.log(`saved ${file}`)
     } finally {
-      try {
-        rmSync(tmpPath, { force: true })
-      } catch {}
+      rmSync(tmpPath, { force: true })
     }
   },
 })
@@ -196,7 +188,7 @@ const updateCmd = defineCommand({
     description: 'Update profile settings (name, model, skills-mode, skills)',
   },
   args: {
-    id: { type: 'positional', required: true },
+    id: profileArg,
     name: { type: 'string', description: 'New display name' },
     model: { type: 'string', description: 'New default model' },
     'skills-mode': {
@@ -211,31 +203,22 @@ const updateCmd = defineCommand({
     if (args.model !== undefined) body.defaultModel = args.model
     const mode = parseSkillsMode(args['skills-mode'])
     if (mode !== undefined) body.skillsMode = mode
-    if (args.skills !== undefined) {
-      body.defaultSkills = args.skills
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-    }
+    if (args.skills !== undefined) body.defaultSkills = splitCsv(args.skills) ?? []
     if (Object.keys(body).length === 0) {
       throw new Error(
         'nothing to update — pass at least one of --name/--model/--skills-mode/--skills',
       )
     }
-    const client = createClient()
-    const profile = await client.patch<Profile>(`/api/profiles/${args.id}`, body)
+    const profile = await createClient().patch<Profile>(apiPath('profiles', args.id), body)
     console.log(`updated profile ${profile.id}`)
   },
 })
 
 const deleteCmd = defineCommand({
   meta: { name: 'delete', description: 'Permanently delete a profile and its files' },
-  args: {
-    id: { type: 'positional', required: true },
-  },
+  args: { id: profileArg },
   async run({ args }) {
-    const client = createClient()
-    await client.del(`/api/profiles/${args.id}`)
+    await createClient().del(apiPath('profiles', args.id))
     console.log(`deleted profile ${args.id}`)
   },
 })

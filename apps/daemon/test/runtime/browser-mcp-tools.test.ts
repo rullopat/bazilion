@@ -1,16 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { BROWSER_SNAPSHOT_SCOPES, type ResolvedAgent } from '@bazilion/api-types'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import type { ResolvedAgent } from '@bazilion/api-types'
+import { afterEach, describe, expect, test } from 'vitest'
 import { resolvePaths } from '../../src/core/paths.ts'
-import { createBrowserHost } from '../../src/lib/browser/host.ts'
-import type {
-  BrowserAdmission,
-  BrowserConfig,
-  ManagedBrowserEntry,
-} from '../../src/lib/browser/pool.ts'
-import { resources } from '../../src/lib/resources.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import {
   extractToolResultImages,
@@ -18,12 +11,13 @@ import {
   piMessagesToProviderView,
 } from '../../src/runtime/pi/events.ts'
 import { createBazilionSession } from '../../src/runtime/pi/session.ts'
+import { browserGuideSection } from '../../src/runtime/session/browser-guide.ts'
 import { browserTools } from '../../src/runtime/tools/browser.ts'
 import { mcpProxyTools } from '../../src/runtime/tools/mcp.ts'
-import { createToolRegistry } from '../../src/runtime/tools/registry.ts'
 import type { ToolResultPart } from '../../src/runtime/tools/types.ts'
 import type { BrowserHost, McpHost } from '../../src/runtime/worker/ipc-protocol.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
+import { createToolRegistry } from '../fixtures/tool-registry.ts'
 
 test('browserTools proxy every action to the host with the agentId', async () => {
   const calls: Array<{ agentId: string; action: string; args: Record<string, unknown> }> = []
@@ -34,10 +28,23 @@ test('browserTools proxy every action to the host with the agentId', async () =>
     },
   }
   const reg = createToolRegistry(browserTools(host, 'agent-1'))
-  const names = reg.list().map((d) => d.name)
-  expect(names).toContain('browser_navigate')
-  expect(names).toContain('browser_snapshot')
-  expect(names).toContain('browser_take_screenshot')
+  expect(reg.list().map((d) => d.name)).toEqual(
+    [
+      'navigate',
+      'snapshot',
+      'click',
+      'type',
+      'hover',
+      'select',
+      'fill_form',
+      'press_key',
+      'go_back',
+      'tabs',
+      'take_screenshot',
+      'console',
+      'network',
+    ].map((action) => `browser_${action}`),
+  )
 
   const out = await reg.invoke('browser_navigate', JSON.stringify({ url: 'https://example.com' }))
   expect(out).toEqual([{ type: 'text', text: 'ok' }])
@@ -46,7 +53,7 @@ test('browserTools proxy every action to the host with the agentId', async () =>
   ])
 })
 
-test('browser_snapshot exposes and forwards only the closed semantic scope contract', async () => {
+test('browser_snapshot takes an optional element ref and a page of the latest snapshot', async () => {
   const calls: unknown[] = []
   const tools = browserTools(
     {
@@ -60,12 +67,11 @@ test('browser_snapshot exposes and forwards only the closed semantic scope contr
   const snapshot = tools.find((tool) => tool.def.name === 'browser_snapshot')
   expect(snapshot?.def.parameters).toMatchObject({
     additionalProperties: false,
-    properties: { scope: { type: 'string', enum: BROWSER_SNAPSHOT_SCOPES } },
+    required: [],
+    properties: { ref: { type: 'string' }, page: { type: 'integer', minimum: 1 } },
   })
-  for (const scope of BROWSER_SNAPSHOT_SCOPES) await snapshot?.invoke({ scope })
-  expect(calls).toEqual(
-    BROWSER_SNAPSHOT_SCOPES.map((scope) => ({ action: 'snapshot', args: { scope } })),
-  )
+  await snapshot?.invoke({ page: 2 })
+  expect(calls).toEqual([{ action: 'snapshot', args: { page: 2 } }])
 })
 
 test('browser_click maps to the click action', async () => {
@@ -77,27 +83,8 @@ test('browser_click maps to the click action', async () => {
     },
   }
   const reg = createToolRegistry(browserTools(host, 'a'))
-  await reg.invoke('browser_click', JSON.stringify({ ref: 'e5', observationId: 'obs-current' }))
+  await reg.invoke('browser_click', JSON.stringify({ ref: 'e5' }))
   expect(calls).toEqual(['click'])
-})
-
-test('browser ref tools expose the observationId required by the daemon', () => {
-  const tools = browserTools({ invoke: async () => [] }, 'a')
-  const click = tools.find((tool) => tool.def.name === 'browser_click')
-  const type = tools.find((tool) => tool.def.name === 'browser_type')
-  const fill = tools.find((tool) => tool.def.name === 'browser_fill_form')
-  expect(click?.def.parameters).toMatchObject({
-    required: ['ref', 'observationId'],
-    properties: { observationId: { type: 'string' } },
-  })
-  expect(type?.def.parameters).toMatchObject({
-    required: ['ref', 'text', 'observationId'],
-    properties: { observationId: { type: 'string' } },
-  })
-  expect(fill?.def.parameters).toMatchObject({
-    required: ['fields', 'observationId'],
-    properties: { observationId: { type: 'string' } },
-  })
 })
 
 test('mcpProxyTools route to (serverId, rawName) and expose the namespaced name', async () => {
@@ -193,180 +180,16 @@ test('piMessagesToProviderView omits images when a tool returns none', () => {
   expect(out[0]?.images).toBeUndefined()
 })
 
-describe('browser tool surface (T09)', () => {
-  test('browser_status is a read-only tool mapped to the status action', async () => {
-    const calls: Array<{ agentId: string; action: string; args: Record<string, unknown> }> = []
-    const host: BrowserHost = {
-      async invoke(agentId, action, args) {
-        calls.push({ agentId, action, args })
-        return [{ type: 'text', text: '{}' }]
-      },
-    }
-    const reg = createToolRegistry(browserTools(host, 'agent-1'))
-    expect(reg.list().map((d) => d.name)).toContain('browser_status')
-    await reg.invoke('browser_status', '{}')
-    expect(calls).toEqual([{ agentId: 'agent-1', action: 'status', args: {} }])
-  })
-
-  test('browser_tabs uses stable tab ids, not positional indexes', () => {
-    const host: BrowserHost = { invoke: async () => [{ type: 'text', text: '' }] }
-    const reg = createToolRegistry(browserTools(host, 'a'))
-    const tabs = reg.list().find((d) => d.name === 'browser_tabs')
-    expect(tabs).toBeTruthy()
-    const props = (tabs!.parameters as { properties: Record<string, unknown> }).properties
-    expect(props.index).toBeUndefined()
-    expect(props.tabId).toBeDefined()
-  })
+test('browser_tabs addresses tabs by id, not by position', () => {
+  const tabs = browserTools({ invoke: async () => [] }, 'a').find(
+    (tool) => tool.def.name === 'browser_tabs',
+  )
+  const props = (tabs?.def.parameters as { properties: Record<string, unknown> }).properties
+  expect(props.index).toBeUndefined()
+  expect(props.tabId).toBeDefined()
 })
 
-describe('browser IPC identity binding (daemon host, T09)', () => {
-  const roots: string[] = []
-  afterEach(() => {
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
-    resources().browsers.clear()
-  })
-
-  const dispatchStub = () =>
-    vi.fn(
-      async (
-        _agentId: string,
-        _action: string,
-        _args: Record<string, unknown>,
-      ): Promise<ToolResultPart[]> => [{ type: 'text', text: '' }],
-    )
-
-  const config = (): BrowserConfig => ({
-    executablePath: '/nonexistent/bazilion-fixture-browser',
-    allowPrivate: false,
-    idleMs: 900_000,
-    maxSessions: 2,
-  })
-
-  const admission = (agentId: string, signal?: AbortSignal): BrowserAdmission => {
-    const root = mkdtempSync(join(tmpdir(), 'bazilion-t09-'))
-    roots.push(root)
-    return { paths: resolvePaths(root), agentId, teamId: 'team-1', ...(signal ? { signal } : {}) }
-  }
-
-  test('a forged agent id is refused before the pool is touched', async () => {
-    const dispatch = dispatchStub()
-    const host = createBrowserHost(config(), admission('agent-1'), dispatch)
-    await expect(
-      host.invoke('other-agent', 'navigate', { url: 'https://example.com' }),
-    ).rejects.toThrow(/not admitted/)
-    expect(dispatch).not.toHaveBeenCalled()
-  })
-
-  test('an unknown action is refused before the pool is touched', async () => {
-    const dispatch = dispatchStub()
-    const host = createBrowserHost(config(), admission('agent-1'), dispatch)
-    await expect(host.invoke('agent-1', 'evaluate_javascript', { script: '1+1' })).rejects.toThrow(
-      /unknown action/,
-    )
-    expect(dispatch).not.toHaveBeenCalled()
-  })
-
-  test('non-object and oversized args are refused', async () => {
-    const dispatch = dispatchStub()
-    const host = createBrowserHost(config(), admission('agent-1'), dispatch)
-    await expect(
-      host.invoke('agent-1', 'navigate', ['not', 'a', 'record'] as never),
-    ).rejects.toThrow(/invalid action arguments/)
-    await expect(
-      host.invoke('agent-1', 'navigate', { blob: 'x'.repeat(80 * 1024) }),
-    ).rejects.toThrow(/invalid action arguments/)
-    expect(dispatch).not.toHaveBeenCalled()
-  })
-
-  test('a cancelled turn refuses browser work', async () => {
-    const dispatch = dispatchStub()
-    const controller = new AbortController()
-    const host = createBrowserHost(config(), admission('agent-1', controller.signal), dispatch)
-    controller.abort()
-    await expect(host.invoke('agent-1', 'snapshot', {})).rejects.toThrow(/cancelled/)
-    expect(dispatch).not.toHaveBeenCalled()
-  })
-
-  test('allowed ordinary IPC forwards the canonical agent id', async () => {
-    const dispatch = vi.fn(
-      async (
-        _agentId: string,
-        _action: string,
-        _args: Record<string, unknown>,
-      ): Promise<ToolResultPart[]> => [{ type: 'text', text: 'bounded observation' }],
-    )
-    const host = createBrowserHost(config(), admission('agent-1'), dispatch)
-    const out = await host.invoke('agent-1', 'navigate', { url: 'https://example.com' })
-    expect(out).toEqual([{ type: 'text', text: 'bounded observation' }])
-    expect(dispatch).toHaveBeenCalledWith('agent-1', 'navigate', { url: 'https://example.com' })
-  })
-
-  test('browser_status never dispatches (it must never launch) and reports bounded JSON', async () => {
-    const dispatch = dispatchStub()
-    const host = createBrowserHost(config(), admission('agent-1'), dispatch)
-    const out = await host.invoke('agent-1', 'status', {})
-    expect(dispatch).not.toHaveBeenCalled()
-    const first = out[0]
-    const text = first?.type === 'text' ? first.text : ''
-    const status = JSON.parse(text)
-    expect(status).toMatchObject({
-      agentId: 'agent-1',
-      enabled: true,
-      availability: 'unavailable',
-      state: 'stopped',
-      profilePresent: false,
-      reasonCode: 'browser_invalid_executable',
-    })
-    expect(typeof status.remedy).toBe('string')
-    // Bounded result, even though status is operator/model-facing.
-    expect(text.length).toBeLessThan(2048)
-  })
-
-  test('status reflects the filesystem profile slot and a live session state', async () => {
-    const adm = admission('agent-1')
-    mkdirSync(adm.paths.browserDir('agent-1'), { recursive: true })
-    const entry = {
-      agentId: 'agent-1',
-      state: 'running',
-      handle: null,
-      posture: 'test',
-      lastUsedAt: 0,
-      idleMs: 0,
-      busy: 0,
-      failure: { reasonCode: 'browser_start_failed', detail: 'fixture failure' },
-      close: async () => {},
-    } as unknown as ManagedBrowserEntry
-    resources().browsers.set('agent-1', entry)
-    try {
-      const host = createBrowserHost(config(), adm, vi.fn())
-      const out = await host.invoke('agent-1', 'status', {})
-      const first = out[0]
-      const status = JSON.parse(first?.type === 'text' ? first.text : '{}')
-      expect(status.profilePresent).toBe(true)
-      expect(status.state).toBe('running')
-      // A live failure classification wins over config facts.
-      expect(status.reasonCode).toBe('browser_start_failed')
-      expect(status.remedy).toBe(
-        'The managed browser could not start. Check browser installation and daemon logs.',
-      )
-      expect(existsSync(adm.paths.browserDir('agent-1'))).toBe(true)
-    } finally {
-      resources().browsers.delete('agent-1')
-    }
-  })
-
-  test('a different agent profile slot is never reported', async () => {
-    const adm = admission('agent-1')
-    mkdirSync(adm.paths.browserDir('other-agent'), { recursive: true })
-    const host = createBrowserHost(config(), adm, vi.fn())
-    const out = await host.invoke('agent-1', 'status', {})
-    const first = out[0]
-    const status = JSON.parse(first?.type === 'text' ? first.text : '{}')
-    expect(status.profilePresent).toBe(false)
-  })
-})
-
-describe('guide and tools align at the session seam (T10)', () => {
+describe('the browser guide comes with the browser tools', () => {
   const sessionRoots: string[] = []
   afterEach(() => {
     for (const path of sessionRoots.splice(0)) rmSync(path, { recursive: true, force: true })
@@ -424,6 +247,7 @@ describe('guide and tools align at the session seam (T10)', () => {
         path: teamDir,
         userMd: '',
         telegramTopicNameFormat: null,
+        policyMode: 'open',
         createdAt: 0,
       },
       skills: [],
@@ -434,7 +258,7 @@ describe('guide and tools align at the session seam (T10)', () => {
     invoke: async () => [{ type: 'text', text: '' }],
   }
 
-  test('an ordinary session with a browser host carries the guide; without one it does not', async () => {
+  test('a session with a browser host carries the guide; without one it does not', async () => {
     const mk = async (browserHost?: BrowserHost) => {
       const home = mkdtempSync(join(tmpdir(), 'bazilion-guide-session-'))
       sessionRoots.push(home)
@@ -449,7 +273,6 @@ describe('guide and tools align at the session seam (T10)', () => {
         paths,
         env: { BAZILION_BASH_SANDBOX: 'off', BAZILION_BASH_APPROVAL: 'off' },
         memory: fakeMemory(),
-        enabledProviders: new Set(['openai-codex']),
         apiKey: 'fixture-token',
         ...(browserHost ? { browserHost } : {}),
       })
@@ -457,14 +280,14 @@ describe('guide and tools align at the session seam (T10)', () => {
 
     const admitted = await mk(stubBrowserHost)
     try {
-      expect(admitted.session.systemPrompt).toContain('# Browser research (guide v')
+      expect(admitted.session.systemPrompt).toContain(browserGuideSection())
     } finally {
       admitted.dispose()
     }
 
     const denied = await mk()
     try {
-      expect(denied.session.systemPrompt).not.toContain('# Browser research')
+      expect(denied.session.systemPrompt).not.toContain(browserGuideSection())
     } finally {
       denied.dispose()
     }

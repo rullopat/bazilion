@@ -1,53 +1,31 @@
 import type { BrowserStatus } from '@bazilion/api-types'
 import { useCallback, useEffect, useState } from 'react'
+import { api, errorMessage } from '../lib/api'
 import { Button } from './Button'
 import { ConfirmDialog } from './ConfirmDialog'
 import { SectionCard } from './Page'
-import {
-  fetchAgentBrowser,
-  resetAgentBrowser,
-  stopAgentBrowser,
-  type AgentBrowserView,
-} from '../lib/browser'
 
-interface Props {
-  agentId: string
-}
-
-function StateLine({ status }: { status: BrowserStatus }) {
-  const availability =
-    status.availability === 'configured'
-      ? 'Browser configured'
-      : status.availability === 'disabled'
-        ? 'Browser tools disabled'
-        : 'Browser unavailable'
-  const selected = status.selectedBrowser
+function StatusList({ status }: { status: BrowserStatus }) {
   return (
     <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
-      <dt className="font-medium text-mocha">Availability</dt>
-      <dd>{availability}</dd>
+      <dt className="font-medium text-mocha">Browser tools</dt>
+      <dd>{status.enabled ? 'Enabled' : 'Disabled'}</dd>
       <dt className="font-medium text-mocha">Session</dt>
-      <dd>{status.state}</dd>
+      <dd>{status.running ? 'Running' : 'Stopped'}</dd>
       <dt className="font-medium text-mocha">Profile</dt>
-      <dd>{status.profilePresent ? 'Persistent profile exists' : 'No profile slot'}</dd>
-      <dt className="font-medium text-mocha">Selected browser</dt>
+      <dd>{status.profilePresent ? 'Saved (cookies and logins)' : 'None yet'}</dd>
+      <dt className="font-medium text-mocha">Browser</dt>
       <dd className="break-words">
-        {selected
-          ? `${selected.name} · ${selected.source} · ${selected.mode}${selected.version ? ` · ${selected.version}` : ''}`
-          : 'No usable browser selection'}
+        {status.browser ? `${status.browser.name} · ${status.browser.mode}` : 'None found'}
       </dd>
-      {status.reasonCode && (
-        <>
-          <dt className="font-medium text-mocha">State code</dt>
-          <dd className="break-words font-mono text-xs">{status.reasonCode}</dd>
-        </>
-      )}
     </dl>
   )
 }
 
-export function AgentBrowserCard({ agentId }: Props) {
-  const [view, setView] = useState<AgentBrowserView | null>(null)
+/** The Agent's persistent managed browser: status, stop and profile reset. */
+export function AgentBrowserCard({ agentId }: { agentId: string }) {
+  const path = `/api/agents/${encodeURIComponent(agentId)}/browser`
+  const [status, setStatus] = useState<BrowserStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState<'stop' | 'reset' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -56,117 +34,96 @@ export function AgentBrowserCard({ agentId }: Props) {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      setView(await fetchAgentBrowser({ data: { agentId } }))
-    } catch (err) {
-      setView({
-        status: null,
-        unavailable: { message: err instanceof Error ? err.message : String(err) },
-      })
+      setStatus(await api<BrowserStatus>(path))
+    } catch (cause) {
+      setError(errorMessage(cause))
     } finally {
       setLoading(false)
     }
-  }, [agentId])
+  }, [path])
 
-  useEffect(() => {
+  // Loading or refreshing by hand starts clean; run() keeps a failed stop or reset on screen.
+  const reload = useCallback(() => {
+    setError(null)
     void refresh()
   }, [refresh])
 
-  async function stop() {
-    setPending('stop')
+  useEffect(() => {
+    reload()
+  }, [reload])
+
+  async function run(action: 'stop' | 'reset') {
+    setPending(action)
     setError(null)
     try {
-      const result = await stopAgentBrowser({ data: { agentId } })
-      if (!result.ok) setError(`${result.failure.message}${result.failure.code ? ` (${result.failure.code})` : ''}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (action === 'stop') await api(`${path}/stop`, { method: 'POST' })
+      else await api(`${path}/profile`, { method: 'DELETE' })
+    } catch (cause) {
+      setError(errorMessage(cause))
     } finally {
       await refresh()
       setPending(null)
     }
   }
 
-  async function reset() {
-    setPending('reset')
-    setError(null)
-    try {
-      const result = await resetAgentBrowser({ data: { agentId } })
-      if (!result.ok) {
-        throw new Error(
-          `${result.failure.message}${result.failure.code ? ` (${result.failure.code})` : ''}`,
-        )
-      }
-    } finally {
-      // A 409 or a reset from another client may have changed lifecycle state;
-      // always refresh instead of leaving optimistic/stale status behind.
-      await refresh()
-      setPending(null)
-    }
-  }
-
-  const status = view?.status ?? null
-  const unavailable = view?.unavailable ?? null
   const busy = pending !== null || loading
 
   return (
     <SectionCard
       title="Managed browser"
-      description="Isolated persistent browser session. Availability does not guarantee that a particular site will load."
+      description="This Agent's own persistent browser, used by its browser_* tools."
       actions={
-        <Button variant="ghost" disabled={busy} onClick={() => void refresh()}>
-          {loading ? 'refreshing…' : 'refresh status'}
+        <Button variant="ghost" disabled={busy} onClick={reload}>
+          {loading ? 'Refreshing…' : 'Refresh status'}
         </Button>
       }
     >
       <div className="space-y-4">
-        {loading && !view && <p role="status">Loading browser status…</p>}
-        {unavailable && (
-          <div role="alert" className="rounded-md border border-warning/30 bg-fawn/30 p-3 text-sm">
-            <strong>{unavailable.code ? `${unavailable.code}: ` : ''}</strong>
-            {unavailable.message}
-          </div>
-        )}
-        {status && <StateLine status={status} />}
-        {status?.remedy && (
-          <p className="break-words rounded-md bg-fawn/35 p-3 text-sm text-chocolate">
-            {status.remedy}
+        {loading && !status && <p role="status">Loading browser status…</p>}
+        {status && <StatusList status={status} />}
+        {status?.error && (
+          <p className="whitespace-pre-wrap break-words rounded-md bg-fawn/35 p-3 text-sm text-chocolate">
+            {status.error}
           </p>
         )}
-        {error && <p role="alert" className="err break-words">{error}</p>}
+        {error && (
+          <p role="alert" className="err break-words">
+            {error}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <Button
             variant="ghost"
-            disabled={busy || status?.state !== 'running'}
-            onClick={() => void stop()}
+            disabled={busy || !status?.running}
+            onClick={() => void run('stop')}
           >
-            {pending === 'stop' ? 'stopping…' : 'Stop session'}
+            {pending === 'stop' ? 'Stopping…' : 'Stop session'}
           </Button>
           <Button
             variant="danger"
-            disabled={busy || (!status?.profilePresent && status?.state !== 'running')}
+            disabled={busy || (!status?.profilePresent && !status?.running)}
             onClick={() => setConfirmReset(true)}
           >
             Reset profile
           </Button>
         </div>
         <p className="text-xs leading-5 text-mocha-light">
-          Stop and archive preserve the profile. Reset and Team transfer remove it (cookies and
-          logins are lost). Browser state is excluded from backup. A site may still block or
-          challenge an otherwise available browser.
+          Stopping, archiving and moving the Agent to another Team keep the profile; Reset and
+          deleting the Agent remove it. Browser profiles are not included in backups.
         </p>
       </div>
       <ConfirmDialog
         open={confirmReset}
         onOpenChange={setConfirmReset}
-        title="Reset this Agent’s browser profile?"
+        title="Reset this Agent's browser profile?"
         description={
           <p>
-            This stops the session and permanently removes this Agent’s isolated profile, including
-            cookies and logins. This cannot be undone. Stop preserves the profile; use reset only
-            when you intend to discard that site state.
+            This stops the browser and permanently deletes this Agent's profile, including cookies
+            and logins.
           </p>
         }
-        confirmLabel={pending === 'reset' ? 'resetting…' : 'delete profile'}
-        onConfirm={reset}
+        confirmLabel="Delete profile"
+        onConfirm={() => run('reset')}
       />
     </SectionCard>
   )

@@ -1,374 +1,78 @@
+// Runs a prepared turn (see turn-preparation.ts): builds the daemon hosts behind the worker's
+// tools, spawns the worker, relays its frames (mirroring them to Telegram) and ends the turn's
+// registration whatever happens.
+
 import type { ChatFrame } from '@bazilion/api-types'
-import { imageGenerationConfig, imageTurnEnv } from '../core/image-generation-config.ts'
-import { agentReviewRepo, mergeSecretsIntoEnv, providerStateRepo } from '../core/index.ts'
-import { interruptCodingCommands } from '../core/repos/coding-commands.ts'
-import {
-  getStatus as codexStatus,
-  hasCredentials,
-  loadAccessToken,
-} from '../runtime/auth/openai-codex.ts'
+import { imageRoute } from '../core/image-generation-config.ts'
+import { agentReviewRepo, mergeSecretsIntoEnv } from '../core/index.ts'
+import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
-import {
-  type DockerContainerIdentity,
-  preflightProtectedDockerEngine,
-} from '../runtime/shell/docker.ts'
-import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
-import { ownsActiveAgent } from './agent-cancel.ts'
+import { removeDockerContainers } from '../runtime/shell/docker.ts'
+import { toolEnvironment } from '../runtime/shell/security.ts'
+import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { commandApprovalRegistry } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
-import { createCodingHost } from './coding-environment/agent-host.ts'
-import { codingSecrets } from './coding-environment/diagnostics.ts'
-import { workspaceLifecycle } from './coding-environment/lifecycle.ts'
 import { getCtx } from './ctx.ts'
 import { createImageGenerationHost } from './image-generation.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
-import { isPreparedProtectedNativeExecution } from './native-execution/protected.ts'
-import { createOrdinaryWebSearchHost } from './ordinary-web-search.ts'
-import { type LiveQuestionHost, questionServiceFor } from './question-service.ts'
-import {
-  requireCompleteRepositoryContext,
-  resolveRepositoryContext,
-} from './repository-context/index.ts'
+import { questionRegistry } from './questions.ts'
 import { createResultHost } from './result-host.ts'
-import { authorizeBackgroundResult } from './result-library-delivery.ts'
-import { reconcilePrivateResults } from './result-retention.ts'
-import { createReviewRequestHost } from './review/request-capability.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
-import { invocationRepresentsUserTurn } from './turn-invocation.ts'
 import {
-  consumePreparedAgentTurn,
   type PreparedAgentTurn,
   prepareAgentTurn,
-  preparedContainerLease,
-  preparedWorkerLifecycle,
   releasePreparedAgentTurn,
 } from './turn-preparation.ts'
-import { createTurnToolSource } from './turn-tool-source.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
-import { createVerificationRequestHost } from './verification/request-capability.ts'
-import { createWebSearchHost, isWebSearchConfigured } from './web-search.ts'
+import { createWebSearchHost, searchRoute } from './web-search.ts'
 
 export { prepareAgentTurn }
 
-/**
- * Execute a daemon-prepared turn. There is no raw Agent id, optional origin,
- * implicit authorization, or isolation flag at this boundary: callers must
- * first acquire the branded preparation produced by `prepareAgentTurn`.
- */
 export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<ChatFrame> {
-  consumePreparedAgentTurn(turn)
-  const { agent, invocation } = turn
-  const turnId = invocation.authorization.attemptId
-  let questionHost: LiveQuestionHost | undefined
-
+  const agentId = turn.agent.agent.id
   try {
-    const { db, paths, authToken } = getCtx()
-    questionHost = turn.questionRoute
-      ? questionServiceFor(db, paths, authToken).attach(turn)
-      : undefined
-    const messagingHost = createDbMessagingHost(db, {
-      causalParentMessageId: turn.causalParentMessageId,
-      workspace: { root: agent.team.path, paths, agentId: agent.agent.id },
-    })
-    const userMdHost = createDbUserMdHost(db, paths)
-    const resultHost = createResultHost(db, paths, agent, turn.controller.signal, turn.conversation)
-    const imageGenerationHost = imageGenerationConfig(
-      mergeSecretsIntoEnv(db, authToken),
-      hasCredentials(db, authToken),
-      { enabledProviders: providerStateRepo.listEnabled(db), chatModel: agent.model },
-    ).ready
-      ? createImageGenerationHost({
-          db,
-          agentId: agent.agent.id,
-          teamId: agent.team.id,
-          turnId,
-          chatModel: agent.model,
-          signal: turn.controller.signal,
-          env: () => mergeSecretsIntoEnv(db, authToken),
-          codex: {
-            connected: () => hasCredentials(db, authToken),
-            accessToken: () => loadAccessToken(db, authToken),
-          },
-          source: createTurnToolSource(paths, agent, turn.conversation, 'image_generate'),
-          assertActive: () => {
-            if (!ownsActiveAgent(agent.agent.id, turn.controller))
-              throw new Error('Image generation turn ended')
-          },
-        })
-      : undefined
-    const mergedEnvSupplier = () => mergeSecretsIntoEnv(db, authToken)
-    const webSearchHost = isWebSearchConfigured(mergedEnvSupplier())
-      ? createWebSearchHost({
-          env: () => mergeSecretsIntoEnv(db, authToken),
-          signal: turn.controller.signal,
-        })
-      : undefined
-    let contextBusy = false
-    const repositoryContextHost = async (target: string) => {
-      turn.controller.signal.throwIfAborted()
-      if (!ownsActiveAgent(agent.agent.id, turn.controller) || contextBusy)
-        throw new Error('Repository context unavailable for this turn')
-      contextBusy = true
-      try {
-        const report = await resolveRepositoryContext({
-          teamId: agent.team.id,
-          root: agent.team.path,
-          target,
-          expectedRootIdentity: turn.repositoryContext.rootIdentity ?? 'unavailable',
-        })
-        turn.controller.signal.throwIfAborted()
-        if (!ownsActiveAgent(agent.agent.id, turn.controller))
-          throw new Error('Repository context turn ended')
-        return report
-      } finally {
-        contextBusy = false
-      }
-    }
-    const selectedNative =
-      turn.configuredNative ??
-      (isPreparedProtectedNativeExecution(turn.protectedExecution)
-        ? turn.protectedExecution
-        : undefined)
-    const nativeSecrets = () => [authToken, ...codingSecrets(mergedEnvSupplier())]
-    // BAZ-044 requester side: this turn may hand its current change to a Team specialist. Bound to the
-    // turn's own agent, so a worker cannot request verification as anyone else.
-    const verificationRequestHost = createVerificationRequestHost({
-      db,
-      paths,
-      agentId: agent.agent.id,
-      teamId: agent.team.id,
-      turnId,
-      ...(selectedNative ? { native: selectedNative.host, secrets: nativeSecrets } : {}),
-      assertActive: () => {
-        if (!ownsActiveAgent(agent.agent.id, turn.controller)) throw new Error('Coding turn ended')
+    const { db, authToken } = getCtx()
+    // The worker, and so every shell command of the turn, never sees Bazilion's own credentials.
+    const env = toolEnvironment(mergeSecretsIntoEnv(db, authToken), authToken)
+    const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, turn.agent)
+    const mcp = await resolveMcpForTurn(db, authToken, turn.controller.signal)
+    const frames = spawnWorkerTurn(
+      {
+        kind: 'agent_turn',
+        agent: turn.agent,
+        conversation: turn.conversation,
+        message: turn.message,
+        images: turn.images,
+        apiKey,
+        ...(turn.docker ? { docker: turn.docker } : {}),
+        repositoryInstructions: turn.repositoryInstructions,
+        mcpTools: mcp?.tools,
+        turnId: turn.request.attemptId,
+        bashApprovalMode: turn.bashApprovalMode,
       },
-    })
-    // BAZ-043 requester side: this turn may ask a teammate to read its current change. Bound to the turn's
-    // own agent, so a worker cannot request a review as anyone else.
-    const reviewRequestHost = createReviewRequestHost({
-      db,
-      paths,
-      agentId: agent.agent.id,
-      teamId: agent.team.id,
-      turnId,
-      assertActive: () => {
-        if (!ownsActiveAgent(agent.agent.id, turn.controller)) throw new Error('Coding turn ended')
-      },
-    })
-    const selectedDocker = turn.protectedExecution?.docker ?? turn.configuredDocker?.docker
-    const codingHost = createCodingHost({
-      db,
-      paths,
-      agentId: agent.agent.id,
-      teamId: agent.team.id,
-      turnId,
-      root: agent.team.path,
-      posture: selectedNative
-        ? 'native'
-        : turn.protectedExecution
-          ? 'protected'
-          : selectedDocker
-            ? 'docker'
-            : 'host',
-      imageId: selectedDocker?.imageId ?? null,
-      ...(selectedNative ? { native: selectedNative.host } : {}),
-      values: selectedDocker?.coding?.env ?? {},
-      context: repositoryContextHost,
-      assertActive: () => {
-        if (!ownsActiveAgent(agent.agent.id, turn.controller)) throw new Error('Coding turn ended')
-      },
-      secrets: selectedNative ? nativeSecrets : codingSecrets(mergeSecretsIntoEnv(db, authToken)),
-    })
-    const repositoryContext = await repositoryContextHost(turn.repositoryContext.target)
-    requireCompleteRepositoryContext(repositoryContext)
-    const containerLease = preparedContainerLease(turn)
-    const containerNamespace = containerLease.writer.id
-    const containerHost = (runtime: Omit<DockerContainerIdentity, 'containerName'>) => {
-      const lifecycle = workspaceLifecycle(db).containers(containerLease, runtime)
-      return {
-        beforeCreate: (containerName: string) =>
-          lifecycle.beforeCreate({
-            dockerPath: runtime.dockerPath,
-            endpoint: runtime.endpoint,
-            executableIdentity: runtime.executableIdentity,
-            containerName,
-          }),
-        afterCreate: (containerName: string) => lifecycle.afterCreate(containerName),
-        afterRemove: (containerName: string) => lifecycle.afterRemove(containerName),
-      }
-    }
-    let frames: AsyncGenerator<ChatFrame, void, void>
-    if (turn.surface === 'configured_operator_http') {
-      if (invocation.kind !== 'operator_http') {
-        throw new Error('configured operator surface requires an operator_http invocation')
-      }
-      const daemonEnv = mergeSecretsIntoEnv(db, authToken)
-      const env = imageGenerationHost ? imageTurnEnv(daemonEnv, agent.model) : daemonEnv
-      const shellConfig = resolveShellSecurityConfig(env)
-      const dockerEngine =
-        turn.configuredDocker?.docker ??
-        (shellConfig.sandboxMode === 'docker'
-          ? await preflightProtectedDockerEngine({ image: shellConfig.sandboxImage, hostEnv: env })
-          : undefined)
-      const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
-      const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, agent, {
-        withRefresher: true,
-      })
-      const ordinarySearch = createOrdinaryWebSearchHost({
-        env: mergedEnvSupplier,
-        model: agent.model,
-        codexConnected: () => hasCredentials(db, authToken),
-        codexAccountId: () => codexStatus(db, authToken).accountId,
-        codexCredential: () => loadAccessToken(db, authToken),
-        protectedSecrets: () => [authToken],
+      {
+        env,
         signal: turn.controller.signal,
-        assertActive: () => {
-          if (!ownsActiveAgent(agent.agent.id, turn.controller))
-            throw new Error('Search turn ended')
-        },
-      })
-      const ordinarySearchHost =
-        ordinarySearch.status.state === 'configured' ? ordinarySearch : undefined
-      const browserEnabled = isBrowserEnabled(env)
-      // Daemon-owned admission: canonical Agent id + admitted Team id + daemon
-      // paths + the turn's cancellation signal, captured from the turn's own
-      // binding — never from worker input. The host validates every worker
-      // `browserInvoke` against this binding before pool access (T09).
-      const browserHost = browserEnabled
-        ? createBrowserHost(resolveBrowserConfig(env), {
-            paths,
-            agentId: agent.agent.id,
-            teamId: agent.team.id,
-            signal: turn.controller.signal,
-          })
-        : undefined
-      const mcp = await resolveMcpForTurn(db, env, authToken, turn.controller.signal)
-      frames = spawnWorkerTurn(
-        {
-          kind: 'configured_operator_http',
-          imageGenerationEnabled: !!imageGenerationHost,
-          ...(selectedNative
-            ? {
-                nativeExecution: selectedNative.nativeExecution,
-                nativeVerificationRequestEnabled: true,
-              }
-            : { containerNamespace }),
-          ...(turn.configuredDocker ? { configuredDocker: turn.configuredDocker } : {}),
-          repositoryContext,
-          agent,
-          message: turn.message,
-          conversation: turn.conversation,
-          enabledProviders,
-          apiKey,
-          browserEnabled,
-          webSearchEnabled: !!ordinarySearchHost,
-          mcpTools: mcp?.tools,
-          images: [...turn.images],
-          turnId,
-          bashApprovalMode: invocation.bashApprovalMode,
-          ...(questionHost ? { questionEnabled: true } : {}),
-        },
-        {
-          env,
-          signal: turn.controller.signal,
-          resourceLifecycle: preparedWorkerLifecycle(turn),
-          ...(selectedNative
-            ? { nativeExecutionHost: selectedNative.host, nativeExecutionSecrets: nativeSecrets }
-            : dockerEngine
-              ? { containerHost: containerHost(dockerEngine) }
-              : {}),
-          repositoryContextHost,
-          codingHost,
-          messagingHost,
-          verificationRequestHost,
-          reviewRequestHost,
-          resultHost,
-          imageGenerationHost,
-          userMdHost,
-          browserHost,
-          webSearchHost: ordinarySearchHost,
-          mcpHost: mcp?.host,
-          bashApprovalHost: commandApprovalRegistry,
-          ...(questionHost ? { questionHost } : {}),
-          apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
-          diagnosticSink: (diagnostic) => {
-            console.warn(`[worker ${agent.agent.id}] ${diagnostic}`)
-          },
-        },
-      )
-    } else {
-      if (!turn.protectedExecution) {
-        throw new Error('protected surface requires protected preparation')
-      }
-      const prepared = turn.protectedExecution
-      const native = prepared.backend === 'native' ? prepared : undefined
-      const docker = prepared.backend === 'docker' ? prepared.docker : undefined
-      if (!native && !docker) throw new Error('protected execution backend is unavailable')
-      frames = spawnWorkerTurn(
-        {
-          kind: 'protected',
-          imageGenerationEnabled: !!imageGenerationHost,
-          webSearchEnabled: !!webSearchHost,
-          ...(native
-            ? { nativeExecution: native.nativeExecution, nativeVerificationRequestEnabled: true }
-            : { containerNamespace, docker }),
-          repositoryContext,
-          agent,
-          message: turn.message,
-          conversation: turn.conversation,
-          images: [...turn.images],
-          turnId,
-          bashApprovalMode: 'auto_deny',
-          ...(questionHost ? { questionEnabled: true } : {}),
-          runtime: prepared.runtime,
-          paths: prepared.paths,
-          webFetchEnabled: true,
-        },
-        {
-          signal: turn.controller.signal,
-          resourceLifecycle: preparedWorkerLifecycle(turn),
-          ...(native
-            ? { nativeExecutionHost: native.host, nativeExecutionSecrets: nativeSecrets }
-            : docker
-              ? { containerHost: containerHost(docker) }
-              : {}),
-          repositoryContextHost,
-          codingHost,
-          messagingHost,
-          verificationRequestHost,
-          reviewRequestHost,
-          resultHost,
-          imageGenerationHost,
-          webSearchHost,
-          userMdHost,
-          bashApprovalHost: commandApprovalRegistry,
-          ...(questionHost ? { questionHost } : {}),
-          apiKeyRefreshHost: { refresh: prepared.refreshApiKey },
-        },
-      )
-    }
+        diagnosticSink: (diagnostic) => console.warn(`[worker ${agentId}] ${diagnostic}`),
+        ...turnHosts(turn, env),
+        mcpHost: mcp?.host,
+        apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
+      },
+    )
 
-    mirrorTypingStart(agent.agent.id, `${invocation.authorization.attemptKind}:${turnId}:typing`)
-    let mirrorFrameIndex = 0
+    mirrorTypingStart(agentId)
     let completed = false
     for await (const frame of frames) {
-      if (invocation.kind !== 'operator_http') {
-        authorizeBackgroundResult(db, agent.agent.id, frame)
-      }
-      void mirrorAgentTurnFrame(
-        agent.agent.id,
-        frame,
-        `${invocation.authorization.attemptKind}:${turnId}:${mirrorFrameIndex++}`,
-      ).catch((error) => {
+      void mirrorAgentTurnFrame(agentId, frame).catch((error) => {
         console.warn(
           JSON.stringify({
             event: 'telegram_mirror_failed',
-            agentId: agent.agent.id,
-            attemptKind: invocation.authorization.attemptKind,
-            attemptId: turnId,
+            agentId,
+            origin: turn.request.origin,
+            attemptId: turn.request.attemptId,
             errorName: error instanceof Error ? error.name : 'unknown',
           }),
         )
@@ -376,14 +80,70 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       if (frame.kind === 'done') completed = true
       yield frame
     }
-    if (completed && invocationRepresentsUserTurn(invocation)) {
-      agentReviewRepo.recordSuccessfulUserTurn(db, agent.agent.id)
+    // Reviewed learning counts the completed turns the owner started.
+    if (completed && (turn.request.origin === 'http' || turn.request.origin === 'telegram')) {
+      agentReviewRepo.recordSuccessfulUserTurn(db, agentId)
     }
   } finally {
-    interruptCodingCommands(getCtx().db, turnId)
-    questionHost?.close()
-    mirrorTypingStop(agent.agent.id)
-    await releasePreparedAgentTurn(turn)
-    reconcilePrivateResults(getCtx().db)
+    mirrorTypingStop(agentId)
+    // A killed worker cannot remove the container its last command was running in.
+    if (turn.docker) await removeDockerContainers(turn.docker.containerPrefix)
+    releasePreparedAgentTurn(turn)
+  }
+}
+
+/** The daemon side of the turn's tools, each bound to this turn's Agent, conversation and signal. */
+function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts {
+  const { db, paths, authToken } = getCtx()
+  const { agent, conversation } = turn
+  const { signal } = turn.controller
+  const secretsEnv = () => mergeSecretsIntoEnv(db, authToken)
+  const codexConnected = hasCredentials(db, authToken)
+  const search = searchRoute(env, agent.model, codexConnected)
+  return {
+    messagingHost: createDbMessagingHost(db, {
+      causalParentMessageId: turn.request.causalParentMessageId,
+    }),
+    userMdHost: createDbUserMdHost(db, paths),
+    resultHost: createResultHost(db, agent, conversation.id, signal),
+    bashApprovalHost: commandApprovalRegistry,
+    // ask_user waits for the owner, so only turns the owner can answer get it.
+    questionHost: turn.questions
+      ? {
+          ask: (question, askSignal) =>
+            questionRegistry.ask(
+              { agentId: agent.agent.id, conversationId: conversation.id },
+              question,
+              askSignal,
+            ),
+        }
+      : undefined,
+    imageGenerationHost: imageRoute(env, codexConnected).ready
+      ? createImageGenerationHost({
+          db,
+          agentId: agent.agent.id,
+          teamId: agent.team.id,
+          conversationId: conversation.id,
+          signal,
+          env: secretsEnv,
+          codex: {
+            connected: () => hasCredentials(db, authToken),
+            accessToken: () => loadAccessToken(db, authToken),
+          },
+        })
+      : undefined,
+    webSearchHost: search.backend
+      ? createWebSearchHost({
+          backend: search.backend,
+          env: secretsEnv,
+          model: agent.model,
+          codexToken: () => loadAccessToken(db, authToken),
+          signal,
+        })
+      : undefined,
+    // Bound to this turn's Agent: the worker cannot drive another Agent's browser.
+    browserHost: isBrowserEnabled(env)
+      ? createBrowserHost(resolveBrowserConfig(env), { paths, agentId: agent.agent.id, signal })
+      : undefined,
   }
 }

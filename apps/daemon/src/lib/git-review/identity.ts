@@ -1,24 +1,17 @@
-import type { PinnedBase, RepositoryIdentity } from '@bazilion/api-types'
+import type { PinnedBase, RepositoryIdentity, ReviewIssueCode } from '@bazilion/api-types'
+import { DomainError } from '../../core/errors.ts'
 import type { CapturedGit } from '../git/capture.ts'
-import type { ReviewIssueCode } from './issue.ts'
 import { isCommitOid, ReviewRefError, validateRefName } from './refs.ts'
-
-// Wire shapes are defined once in `@bazilion/api-types`; re-exported so daemon callers keep one
-// import path.
-export type { PinnedBase, RepositoryIdentity } from '@bazilion/api-types'
 
 // Repository identity and comparison-base resolution for Git change review (BAZ-042).
 //
 // Every read goes through the shared hardened capture, so no repository config, hook, filter,
 // credential helper or external metadata link can influence what is reported here.
 
-export class ReviewBaseError extends Error {
-  readonly code: ReviewIssueCode
-
+/** A comparison base the operator asked for that cannot be used; `code` tells the web which. */
+export class ReviewBaseError extends DomainError {
   constructor(code: ReviewIssueCode, message: string) {
-    super(message)
-    this.name = 'ReviewBaseError'
-    this.code = code
+    super(400, message, code)
   }
 }
 

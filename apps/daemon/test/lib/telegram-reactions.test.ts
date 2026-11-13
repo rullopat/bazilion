@@ -1,18 +1,24 @@
 // "Bot saw it" reactions — the 👀 indicator on inbound user messages that
 // clears once the agent's reply lands.
 
+import type { Api } from 'grammy'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import type { BazilionDb } from '../../src/core/db/client.ts'
+import type { Paths } from '../../src/core/paths.ts'
+import { setTelegramLive } from '../../src/lib/telegram/live.ts'
 import { _resetOutboundQueueForTest } from '../../src/lib/telegram/outbound-queue.ts'
 import {
   _pendingCountForTest,
   _resetReactionsForTest,
   clearReactionsFor,
-  installReactionsDepsResolver,
-  type ReactionsApi,
   reactSeen,
 } from '../../src/lib/telegram/reactions.ts'
 
 const CHAT_ID = -1003964430972
+
+interface ReactionsApi {
+  setMessageReaction(chatId: number, messageId: number, reaction: unknown): Promise<boolean>
+}
 
 function makeApi(): {
   api: ReactionsApi
@@ -28,24 +34,34 @@ function makeApi(): {
   return { api, calls }
 }
 
+function useLive(api: ReactionsApi): void {
+  setTelegramLive({
+    api: api as unknown as Api,
+    chatId: CHAT_ID,
+    db: {} as BazilionDb,
+    paths: {} as Paths,
+  })
+}
+
 beforeEach(() => {
   _resetReactionsForTest()
   _resetOutboundQueueForTest()
 })
 afterEach(() => {
+  setTelegramLive(null)
   _resetReactionsForTest()
   _resetOutboundQueueForTest()
 })
 
 describe('reactSeen / clearReactionsFor', () => {
-  test('no-op when no deps resolver is installed', () => {
+  test('no-op while the bot is stopped', () => {
     reactSeen('a1', CHAT_ID, 100)
     expect(_pendingCountForTest('a1')).toBe(0)
   })
 
   test('react adds a pending entry; clear removes it', async () => {
     const { api, calls } = makeApi()
-    installReactionsDepsResolver(() => ({ api, chatId: CHAT_ID }))
+    useLive(api)
 
     reactSeen('a1', CHAT_ID, 100)
     expect(_pendingCountForTest('a1')).toBe(1)
@@ -68,7 +84,7 @@ describe('reactSeen / clearReactionsFor', () => {
 
   test('multiple inbounds stack 👀s; clear drains them all', async () => {
     const { api, calls } = makeApi()
-    installReactionsDepsResolver(() => ({ api, chatId: CHAT_ID }))
+    useLive(api)
 
     reactSeen('a1', CHAT_ID, 100)
     reactSeen('a1', CHAT_ID, 101)
@@ -94,7 +110,7 @@ describe('reactSeen / clearReactionsFor', () => {
 
   test('different agents track reactions independently', () => {
     const { api } = makeApi()
-    installReactionsDepsResolver(() => ({ api, chatId: CHAT_ID }))
+    useLive(api)
 
     reactSeen('a1', CHAT_ID, 100)
     reactSeen('a2', CHAT_ID, 200)
@@ -108,7 +124,7 @@ describe('reactSeen / clearReactionsFor', () => {
 
   test('clearReactionsFor is a no-op when no pending exist', () => {
     const { api } = makeApi()
-    installReactionsDepsResolver(() => ({ api, chatId: CHAT_ID }))
+    useLive(api)
     // Heartbeat-triggered turn — no inbound to react to.
     clearReactionsFor('a1')
     expect(_pendingCountForTest('a1')).toBe(0)

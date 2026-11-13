@@ -1,91 +1,87 @@
-import type { ResultListResponse, Team } from '@bazilion/api-types'
+import type { Agent, ResultListResponse } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
-import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
-import { PageShell } from '../../../components/Page'
-import { PrivateImageCaptures } from '../../../components/PrivateImageCaptures'
-import { ResultSourceLink } from '../../../components/ResultSourceConversation'
 import { ResultCard } from '../../../components/ResultCard'
-import { TeamTabs } from '../../../components/TeamTabs'
+import { api, errorMessage } from '../../../lib/api'
 import { daemonClient } from '../../../lib/daemon-client'
 
-const fetchTeam = createServerFn({ method: 'POST' })
-  .validator((data: { id: string }) => data)
-  .handler(async ({ data }) =>
-    daemonClient().get<Team>(`/api/teams/${encodeURIComponent(data.id)}`),
-  )
+const PAGE = 20
+
+const fetchAgentNames = createServerFn({ method: 'GET' }).handler(async () => {
+  const agents = await daemonClient().get<Agent[]>('/api/agents?includeArchived=true')
+  // Results outlive their Agent: only an Agent that still exists has a conversation to open.
+  return Object.fromEntries(agents.map((agent) => [agent.id, agent.name])) as Record<string, string>
+})
+
 export const Route = createFileRoute('/teams/$id/results')({
-  errorComponent: ({ error, reset }) => <RecoveryState title="Saved results unavailable" error={error} reset={reset} fallbackHref="/teams" />,
-  loader: ({ params }) => fetchTeam({ data: { id: params.id } }),
+  loader: () => fetchAgentNames(),
   component: ResultsPage,
 })
+
 function ResultsPage() {
-  const team = Route.useLoaderData()
+  const agentNames = Route.useLoaderData()
+  const { id: teamId } = Route.useParams()
   const [data, setData] = useState<ResultListResponse | null>(null)
-  const [agent, setAgent] = useState('')
+  const [agentInput, setAgentInput] = useState('')
   const [filter, setFilter] = useState('')
   const [offset, setOffset] = useState(0)
   const [revision, setRevision] = useState(0)
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null)
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is the reload signal.
   useEffect(() => {
     const controller = new AbortController()
-    const query = new URLSearchParams({ teamId: team.id, limit: '20', offset: String(offset) })
+    const query = new URLSearchParams({ teamId, limit: String(PAGE), offset: String(offset) })
     if (filter) query.set('agentId', filter)
     setData(null)
     setError('')
-    fetch(`/api/results?${query}`, { signal: controller.signal })
-      .then(async (r) => {
-        if (!r.ok) throw new Error('Could not load saved results.')
-        const page = (await r.json()) as ResultListResponse
-        if (controller.signal.aborted) return
+    api<ResultListResponse>(`/api/results?${query}`, { signal: controller.signal })
+      .then((page) => {
+        // The last page emptied (a deletion): step back to the new last page.
         if (offset > 0 && offset >= page.total) {
-          setOffset(Math.max(0, Math.floor((page.total - 1) / 20) * 20))
+          setOffset(Math.max(0, Math.floor((page.total - 1) / PAGE) * PAGE))
           return
         }
         setData(page)
       })
-      .catch((e) => {
-        if (!controller.signal.aborted) setError(e.message)
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(errorMessage(cause))
       })
     return () => controller.abort()
-  }, [team.id, filter, offset, revision])
+  }, [teamId, filter, offset, revision])
+
   return (
-    <PageShell>
-      <header>
-        <h1>{team.name || team.id} results</h1>
-        <p>Files delivered by this Team, saved with their original contents.</p>
-      </header>
-      <TeamTabs teamId={team.id} />
+    <div className="space-y-6">
+      <p className="text-sm text-muted-foreground">
+        Files this Team's Agents delivered, saved with their original contents.
+      </p>
       <form
         className="flex flex-wrap items-end gap-3"
-        onSubmit={(e) => {
-          e.preventDefault()
+        onSubmit={(event) => {
+          event.preventDefault()
           setOffset(0)
-          setFilter(agent.trim())
+          setFilter(agentInput.trim())
         }}
       >
-        <label className="min-w-0">
+        <label className="m-0 min-w-0">
           Producing Agent ID
           <input
-            value={agent}
-            onChange={(e) => setAgent(e.target.value)}
+            value={agentInput}
+            onChange={(event) => setAgentInput(event.target.value)}
             placeholder="All Agents"
-            className="block max-w-full"
           />
         </label>
         <Button variant="ghost" type="submit">
           Filter
         </Button>
-        <Button variant="ghost" onClick={() => setRevision((v) => v + 1)}>
+        <Button variant="ghost" onClick={() => setRevision((value) => value + 1)}>
           Refresh
         </Button>
       </form>
-      <PrivateImageCaptures key={`${team.id}:${filter}`} teamId={team.id} agentId={filter || undefined}
-        onReleased={() => setRevision((value) => value + 1)} />
       {error && (
         <p role="alert" className="text-danger">
           {error}
@@ -94,31 +90,46 @@ function ResultsPage() {
       {!data && !error && <p role="status">Loading results…</p>}
       {data && (
         <>
-          {!data.results.length && <p>No saved results{filter ? ' for this Agent' : ' yet'}.</p>}
+          {data.results.length === 0 && (
+            <p>No saved results{filter ? ' for this Agent' : ' yet'}.</p>
+          )}
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            {data.results.map((result) => (
-              <article key={result.id} className="min-w-0 rounded-lg border border-fawn p-4">
-                <ResultCard resultId={result.id} showPreview />
-                <p className="break-all text-sm">Agent: {result.agentId}</p>
-                <p className="text-sm">Saved: {new Date(result.createdAt).toLocaleString()}</p>
-                <p className="break-all text-sm">Conversation: {result.sessionId}</p>
-                <div className="flex flex-wrap gap-2">
-                  <ResultSourceLink resultId={result.id} agentId={result.agentId} />
-                  <Button
-                    variant="danger"
-                    onClick={() => setDeleting({ id: result.id, name: result.name })}
-                  >
-                    Delete saved file
-                  </Button>
-                </div>
-              </article>
-            ))}
+            {data.results.map((result) => {
+              const agentName = agentNames[result.agentId]
+              return (
+                <article key={result.id} className="min-w-0 rounded-lg border border-fawn p-4">
+                  <ResultCard resultId={result.id} result={result} showPreview />
+                  <p className="break-all text-sm">
+                    Agent: {result.agentId} ({agentName ?? 'deleted'})
+                  </p>
+                  <p className="text-sm">Saved: {new Date(result.createdAt).toLocaleString()}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {agentName ? (
+                      <a
+                        className="ghost-btn"
+                        href={`/agents/${encodeURIComponent(result.agentId)}?conversation=${encodeURIComponent(result.sessionId)}`}
+                      >
+                        Open conversation
+                      </a>
+                    ) : (
+                      <span className="text-sm text-mocha">Conversation unavailable</span>
+                    )}
+                    <Button
+                      variant="danger"
+                      onClick={() => setDeleting({ id: result.id, name: result.name })}
+                    >
+                      Delete saved file
+                    </Button>
+                  </div>
+                </article>
+              )
+            })}
           </div>
-          <div className="flex flex-wrap items-center gap-3" aria-label="Results pagination">
+          <nav className="flex flex-wrap items-center gap-3" aria-label="Results pagination">
             <Button
               variant="ghost"
               disabled={offset === 0}
-              onClick={() => setOffset((v) => Math.max(0, v - 20))}
+              onClick={() => setOffset((value) => Math.max(0, value - PAGE))}
             >
               Previous
             </Button>
@@ -129,33 +140,29 @@ function ResultsPage() {
             </span>
             <Button
               variant="ghost"
-              disabled={offset + 20 >= data.total}
-              onClick={() => setOffset((v) => v + 20)}
+              disabled={offset + PAGE >= data.total}
+              onClick={() => setOffset((value) => value + PAGE)}
             >
               Next
             </Button>
-          </div>
+          </nav>
         </>
       )}
       <ConfirmDialog
         open={deleting !== null}
         title="Delete saved file?"
-        description={`Permanently delete the saved bytes of “${deleting?.name ?? ''}”. History will show a deletion receipt. The workspace source file is unchanged.`}
+        description={`Permanently delete the saved file “${deleting?.name ?? ''}”. The file in the workspace, if any, is unchanged.`}
         confirmLabel="Delete saved file"
         onOpenChange={(open) => {
           if (!open) setDeleting(null)
         }}
         onConfirm={async () => {
           if (!deleting) return
-          const response = await fetch(`/api/results/${encodeURIComponent(deleting.id)}`, {
-            method: 'DELETE',
-          })
-          if (!response.ok) throw new Error('Could not delete the saved file.')
-          setDeleting(null)
+          await api(`/api/results/${encodeURIComponent(deleting.id)}`, { method: 'DELETE' })
           setOffset(0)
-          setRevision((v) => v + 1)
+          setRevision((value) => value + 1)
         }}
       />
-    </PageShell>
+    </div>
   )
 }

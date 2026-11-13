@@ -2,6 +2,7 @@
 // curated models, and per-field config/secret writes.
 
 import type {
+  AvailableModelsResponse,
   ProviderConfigEntry,
   ProviderConfigResponse,
   ServiceCard,
@@ -9,9 +10,9 @@ import type {
   ServiceFieldState,
   SetProviderModelsRequest,
 } from '@bazilion/api-types'
-import { Hono } from 'hono'
-import { imageGenerationConfig, OPENROUTER_IMAGE_MODELS } from '../core/image-generation-config.ts'
+import { IMAGE_MODEL_CHOICES, imageRoute } from '../core/image-generation-config.ts'
 import {
+  type BazilionDb,
   ensureSetupSeeded,
   findFieldByEnvVar,
   groupAvailableModels,
@@ -23,66 +24,47 @@ import {
   type ServiceDef,
   servicesByCategory,
 } from '../core/index.ts'
+import { findProvider, PROVIDERS } from '../core/providers.ts'
 import { getCtx } from '../lib/ctx.ts'
-import { ordinarySearchStatus } from '../lib/ordinary-search-config.ts'
+import { searchStatus } from '../lib/web-search.ts'
 import { hasCredentials } from '../runtime/auth/openai-codex.ts'
-import {
-  listAllProviders,
-  listCatalogModels,
-  listCatalogModelsSync,
-  loadProviderConfigFromEnv,
-} from '../runtime/index.ts'
-import {
-  MAC_DOCKER_EXECUTION_UNAVAILABLE,
-  MAC_NATIVE_EXECUTION_UNAVAILABLE,
-} from '../runtime/shell/platform-support.ts'
+import { listCatalogModels, listCatalogModelsSync } from '../runtime/index.ts'
+import { jsonBody, newRouter } from './http.ts'
 
-export const configRouter = new Hono()
+export const configRouter = newRouter()
 
 // /api/config/providers
 configRouter.get('/providers', async (c) => {
   const { db, authToken } = getCtx()
   const env = mergeSecretsIntoEnv(db, authToken)
-  const registryProviders = listAllProviders(loadProviderConfigFromEnv(env, { db, authToken }))
-  const registryByName = new Map(registryProviders.map((p) => [p.name, p]))
-
   const configValues = readAll(() => openConfig(db).getAll())
   const secretValues = readAll(() => openSecrets(db, authToken).getAll())
 
-  const providerServices = servicesByCategory('provider')
   const enabledSet = providerStateRepo.listEnabled(db)
 
   const entries = await Promise.all(
-    providerServices.map(async (svc): Promise<ProviderConfigEntry> => {
-      const meta = registryByName.get(svc.id)
-      const enabled = enabledSet.has(svc.id)
-      const envHint = meta?.envHint ?? ''
-      const ac = new AbortController()
-      const t = setTimeout(() => ac.abort(), 5_000)
-      try {
-        const { catalog, live } = enabled
-          ? await listCatalogModels(svc.id, env, ac.signal)
-          : { catalog: listCatalogModelsSync(svc.id), live: undefined }
-        return {
-          id: svc.id,
-          displayName: svc.displayName,
-          ...(svc.hint ? { hint: svc.hint } : {}),
-          enabled,
-          envHint,
-          fields: resolveFieldStates(svc, configValues, secretValues),
-          catalog: catalog.filter((model) => !isImageChoice(svc.id, model)),
-          ...(live
-            ? {
-                live: {
-                  ...live,
-                  models: live.models.filter((model) => !isImageChoice(svc.id, model)),
-                },
-              }
-            : {}),
-          curated: providerModelRepo.list(db, svc.id),
-        }
-      } finally {
-        clearTimeout(t)
+    PROVIDERS.map(async (provider): Promise<ProviderConfigEntry> => {
+      const enabled = enabledSet.has(provider.id)
+      // Live model listings are fetched only for enabled providers, and briefly.
+      const { catalog, live } = enabled
+        ? await listCatalogModels(provider.id, env, AbortSignal.timeout(5_000))
+        : { catalog: listCatalogModelsSync(provider.id), live: undefined }
+      return {
+        id: provider.id,
+        displayName: provider.displayName,
+        ...(provider.hint ? { hint: provider.hint } : {}),
+        enabled,
+        fields: resolveFieldStates(provider, configValues, secretValues),
+        catalog: catalog.filter((model) => !isImageChoice(provider.id, model)),
+        ...(live
+          ? {
+              live: {
+                ...live,
+                models: live.models.filter((model) => !isImageChoice(provider.id, model)),
+              },
+            }
+          : {}),
+        curated: providerModelRepo.list(db, provider.id),
       }
     }),
   )
@@ -97,21 +79,13 @@ configRouter.get('/services', (c) => {
   const configValues = readAll(() => openConfig(db).getAll())
   const secretValues = readAll(() => openSecrets(db, authToken).getAll())
 
-  const imageStatus = imageGenerationConfig(
-    mergeSecretsIntoEnv(db, authToken),
-    hasCredentials(db, authToken),
-    { enabledProviders: providerStateRepo.listEnabled(db) },
-  ).status
+  const env = mergeSecretsIntoEnv(db, authToken)
+  const image = imageRoute(env, hasCredentials(db, authToken))
   const services: ServiceCard[] = servicesByCategory('service').map((svc) => ({
-    ...(svc.id === 'image-generation' ? { status: imageStatus } : {}),
-    ...(svc.id === 'web-search'
-      ? {
-          status: ordinarySearchStatus({
-            env: mergeSecretsIntoEnv(db, authToken),
-            codexConnected: hasCredentials(db, authToken),
-          }).message,
-        }
+    ...(svc.id === 'image-generation'
+      ? { status: image.ready ? `Ready: ${image.model}.` : image.reason }
       : {}),
+    ...(svc.id === 'web-search' ? { status: searchStatus(env) } : {}),
     id: svc.id,
     displayName: svc.displayName,
     ...(svc.hint ? { hint: svc.hint } : {}),
@@ -126,14 +100,12 @@ configRouter.get('/services', (c) => {
 // /api/config/providers/:name/enabled — flip the admin switch.
 configRouter.put('/providers/:name/enabled', async (c) => {
   const name = c.req.param('name')
-  if (!knownProviderIds().has(name)) return c.json({ error: `unknown provider: ${name}` }, 404)
+  if (!findProvider(name)) return c.json({ error: `unknown provider: ${name}` }, 404)
 
-  const body = (await c.req.json().catch(() => null)) as { enabled?: unknown } | null
-  if (!body || (typeof body.enabled !== 'boolean' && typeof body.enabled !== 'string')) {
+  const enabled = (await jsonBody<{ enabled: unknown }>(c))?.enabled
+  if (typeof enabled !== 'boolean') {
     return c.json({ error: 'body must be {"enabled": boolean}' }, 400)
   }
-  const enabled =
-    typeof body.enabled === 'boolean' ? body.enabled : body.enabled.toLowerCase() === 'true'
 
   const { db, paths } = getCtx()
   providerStateRepo.setEnabled(db, name, enabled)
@@ -144,32 +116,19 @@ configRouter.put('/providers/:name/enabled', async (c) => {
 // /api/config/providers/:name/models — curated model list.
 configRouter.get('/providers/:name/models', (c) => {
   const name = c.req.param('name')
-  if (!knownProviderRegistryNames().has(name))
-    return c.json({ error: `unknown provider: ${name}` }, 404)
+  if (!findProvider(name)) return c.json({ error: `unknown provider: ${name}` }, 404)
   const { db } = getCtx()
   return c.json({ models: providerModelRepo.list(db, name) })
 })
 
 configRouter.put('/providers/:name/models', async (c) => {
   const name = c.req.param('name')
-  if (!knownProviderRegistryNames().has(name))
-    return c.json({ error: `unknown provider: ${name}` }, 404)
-  const body = (await c.req.json().catch(() => null)) as Partial<SetProviderModelsRequest> | null
-  if (!body) return c.json({ error: 'invalid JSON body' }, 400)
-
-  // Accept textarea-style newline-separated input from web forms in addition
-  // to the CLI's array shape.
-  let models: string[] = []
-  if (Array.isArray(body.models)) {
-    models = body.models.filter((m): m is string => typeof m === 'string')
-  } else if (typeof (body as Record<string, unknown>).models === 'string') {
-    models = ((body as Record<string, unknown>).models as string).split(/\r?\n/)
-  } else {
-    return c.json(
-      { error: 'models must be an array of strings or a newline-separated string' },
-      400,
-    )
+  if (!findProvider(name)) return c.json({ error: `unknown provider: ${name}` }, 404)
+  const body = await jsonBody<SetProviderModelsRequest>(c)
+  if (!Array.isArray(body?.models)) {
+    return c.json({ error: 'models must be an array of strings' }, 400)
   }
+  const models = body.models.filter((m): m is string => typeof m === 'string')
 
   if (models.some((model) => isImageChoice(name, model.trim()))) {
     return c.json(
@@ -186,34 +145,19 @@ configRouter.put('/providers/:name/models', async (c) => {
 // /api/config/fields/:envVar — write-through for any envVar the registry knows.
 configRouter.put('/fields/:envVar', async (c) => {
   const envVar = c.req.param('envVar')
-  const found = findFieldByEnvVar(envVar)
-  if (!found) return c.json({ error: `unknown envVar: ${envVar}` }, 404)
+  const field = findFieldByEnvVar(envVar)
+  if (!field) return c.json({ error: `unknown envVar: ${envVar}` }, 404)
 
-  const body = (await c.req.json().catch(() => null)) as { value?: unknown } | null
+  const body = await jsonBody<{ value: unknown }>(c)
   if (!body || typeof body.value !== 'string') {
     return c.json({ error: 'body must be {"value": "<string>"}' }, 400)
   }
-  if (
-    process.platform === 'darwin' &&
-    envVar === 'BAZILION_BASH_SANDBOX' &&
-    (body.value === 'native' || body.value === 'docker')
-  ) {
-    return c.json(
-      {
-        error:
-          body.value === 'native'
-            ? MAC_NATIVE_EXECUTION_UNAVAILABLE
-            : MAC_DOCKER_EXECUTION_UNAVAILABLE,
-      },
-      400,
-    )
-  }
-  if (body.value && found.field.options && !found.field.options.includes(body.value)) {
-    return c.json({ error: `Choose one of: ${found.field.options.join(', ')}` }, 400)
+  if (body.value && field.options && !field.options.includes(body.value)) {
+    return c.json({ error: `Choose one of: ${field.options.join(', ')}` }, 400)
   }
 
   const { db, authToken } = getCtx()
-  if (found.field.kind === 'config') {
+  if (field.kind === 'config') {
     const store = openConfig(db)
     if (body.value === '') store.remove(envVar)
     else store.set(envVar, body.value)
@@ -223,23 +167,22 @@ configRouter.put('/fields/:envVar', async (c) => {
     else store.set(envVar, body.value)
   }
 
-  return c.json(readFieldState(db, authToken, envVar, found.field.kind))
+  return c.json(readFieldState(db, authToken, envVar, field.kind))
 })
 
 // /api/config/available-models — provider-grouped curated models. Drives
 // the model dropdowns on the profile + agent spawn pages.
-configRouter.get('/available-models', (c) => {
-  const { db } = getCtx()
-  return c.json({ teams: groupAvailableModels(db) })
-})
+configRouter.get('/available-models', (c) =>
+  c.json({ teams: groupAvailableModels(getCtx().db) } satisfies AvailableModelsResponse),
+)
 
 configRouter.delete('/fields/:envVar', (c) => {
   const envVar = c.req.param('envVar')
-  const found = findFieldByEnvVar(envVar)
-  if (!found) return c.json({ error: `unknown envVar: ${envVar}` }, 404)
+  const field = findFieldByEnvVar(envVar)
+  if (!field) return c.json({ error: `unknown envVar: ${envVar}` }, 404)
 
   const { db, authToken } = getCtx()
-  if (found.field.kind === 'config') {
+  if (field.kind === 'config') {
     openConfig(db).remove(envVar)
   } else {
     openSecrets(db, authToken).remove(envVar)
@@ -249,11 +192,9 @@ configRouter.delete('/fields/:envVar', (c) => {
 
 // ─── helpers ─────────────────────────────────────────────────────────────
 
+/** Image models are chosen under Services → Image generation, never as chat models. */
 function isImageChoice(provider: string, model: string): boolean {
-  return (
-    (provider === 'openrouter' && OPENROUTER_IMAGE_MODELS.some((id) => id === model)) ||
-    ((provider === 'openai' || provider === 'openai-codex') && model === 'gpt-image-2')
-  )
+  return (IMAGE_MODEL_CHOICES as readonly string[]).includes(`${provider}:${model}`)
 }
 
 function mask(value: string): string {
@@ -262,7 +203,7 @@ function mask(value: string): string {
 }
 
 function resolveFieldStates(
-  service: ServiceDef,
+  service: Pick<ServiceDef, 'fields'>,
   configValues: Record<string, string>,
   secretValues: Record<string, string>,
 ): ServiceFieldState[] {
@@ -304,7 +245,7 @@ interface FieldState {
 }
 
 function readFieldState(
-  db: import('../core/index.ts').BazilionDb,
+  db: BazilionDb,
   authToken: string,
   envVar: string,
   kind: 'secret' | 'config',
@@ -315,15 +256,4 @@ function readFieldState(
   }
   const v = openSecrets(db, authToken).get(envVar) ?? ''
   return { envVar, kind, set: v.length > 0, ...(v.length > 0 ? { preview: mask(v) } : {}) }
-}
-
-function knownProviderIds(): Set<string> {
-  return new Set(servicesByCategory('provider').map((s) => s.id))
-}
-
-function knownProviderRegistryNames(): Set<string> {
-  const { db, authToken } = getCtx()
-  return new Set(
-    listAllProviders(loadProviderConfigFromEnv(process.env, { db, authToken })).map((p) => p.name),
-  )
 }

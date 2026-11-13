@@ -16,11 +16,7 @@ interface PageShellProps extends HTMLAttributes<HTMLDivElement> {
 export function PageShell({ size = 'default', className, ...props }: PageShellProps) {
   return (
     <div
-      className={cn(
-        'mx-auto min-w-0 w-full space-y-6',
-        PAGE_SIZE_CLASS[size],
-        className,
-      )}
+      className={cn('mx-auto min-w-0 w-full space-y-6', PAGE_SIZE_CLASS[size], className)}
       {...props}
     />
   )
@@ -142,7 +138,9 @@ export function EmptyState({
       {description && (
         <div className="mt-1 max-w-lg text-sm leading-6 text-muted-foreground">{description}</div>
       )}
-      {actions && <div className="mt-4 flex flex-wrap items-center justify-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">{actions}</div>
+      )}
     </div>
   )
 }
@@ -152,10 +150,8 @@ export type StatusBadgeVariant = 'neutral' | 'info' | 'success' | 'warning' | 'd
 const STATUS_BADGE_CLASS: Record<StatusBadgeVariant, string> = {
   neutral: 'border-border bg-muted text-muted-foreground',
   info: 'border-primary/20 bg-accent text-accent-foreground',
-  success:
-    'border-success/25 bg-success/10 text-success',
-  warning:
-    'border-warning/25 bg-warning/10 text-warning',
+  success: 'border-success/25 bg-success/10 text-success',
+  warning: 'border-warning/25 bg-warning/10 text-warning',
   danger: 'border-danger/25 bg-danger/10 text-danger',
 }
 
@@ -163,11 +159,7 @@ interface StatusBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: StatusBadgeVariant
 }
 
-export function StatusBadge({
-  variant = 'neutral',
-  className,
-  ...props
-}: StatusBadgeProps) {
+export function StatusBadge({ variant = 'neutral', className, ...props }: StatusBadgeProps) {
   return (
     <span
       className={cn(
@@ -177,5 +169,75 @@ export function StatusBadge({
       )}
       {...props}
     />
+  )
+}
+
+/** The one list layout: a row per item that stacks on narrow screens. */
+export function ItemList({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <ul
+      className={cn(
+        'm-0 list-none divide-y divide-border overflow-hidden rounded-xl border border-border bg-card p-0',
+        className,
+      )}
+    >
+      {children}
+    </ul>
+  )
+}
+
+export function ItemRow({
+  title,
+  meta,
+  actions,
+  children,
+  className,
+}: {
+  title: ReactNode
+  /** Secondary facts, laid out on one wrapping line. */
+  meta?: ReactNode
+  actions?: ReactNode
+  children?: ReactNode
+  className?: string
+}) {
+  return (
+    <li
+      className={cn(
+        'flex min-w-0 flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
+        className,
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="min-w-0 break-words font-medium text-foreground">{title}</div>
+        {meta && (
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {meta}
+          </div>
+        )}
+        {children}
+      </div>
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+    </li>
+  )
+}
+
+/** A labelled number tile. */
+export function Stat({
+  label,
+  value,
+  detail,
+}: {
+  label: string
+  value: ReactNode
+  detail?: string
+}) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-baziu-sm">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1 text-2xl font-semibold text-foreground">{value}</div>
+      {detail && <div className="mt-0.5 text-xs leading-5 text-muted-foreground">{detail}</div>}
+    </div>
   )
 }

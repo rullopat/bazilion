@@ -1,27 +1,19 @@
-import { createIpcClient } from '../../src/runtime/worker/ipc-client.ts'
+import { createProcessIpcClient } from '../../src/runtime/worker/ipc-client.ts'
 
-const chunks: Buffer[] = []
-for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
-const input = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { message: string }
-const call = createIpcClient({
-  send: process.send
-    ? (message, done) => process.send?.(message, undefined, undefined, done)
-    : undefined,
-  onMessage: (listener) => process.on('message', listener),
-  onDisconnect: (listener) => process.on('disconnect', listener),
-})
+for await (const _chunk of process.stdin) {
+  // The worker input is not needed: this entry only asks one question.
+}
+const call = createProcessIpcClient()
 try {
+  // The daemon binds the Agent; a worker cannot pick another one.
   const args = {
-    toolCallId: 'actual-tool-call',
     question: { prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] },
-    ...(input.message === 'forged' ? { agentId: 'another-agent' } : {}),
+    agentId: 'another-agent',
   }
-  const result = await call<{ kind: string; questionId: string }>('askUser', args)
-  if (result.kind !== 'answer') throw new Error('Expected answer')
-  await call('questionConsumed', {
-    questionId: result.questionId,
-    toolCallId: 'actual-tool-call',
-  })
+  const result = await call('askUser', args)
+  if (result.kind !== 'answer' || result.answer.kind !== 'choice' || result.answer.index !== 1) {
+    throw new Error('Expected JSON')
+  }
   process.stdout.write(`${JSON.stringify({ kind: 'done', messages: [] })}\n`)
 } catch (error) {
   process.stdout.write(`${JSON.stringify({ kind: 'fatal', error: String(error) })}\n`)

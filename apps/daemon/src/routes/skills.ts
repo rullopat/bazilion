@@ -1,30 +1,35 @@
-// /api/skills/* — skill discovery, removal, and import (file-path or zip upload).
+// /api/skills: installed skills (list, remove, import from a path or a zip upload), and
+// /api/agents/:id/skills: the skills attached to an agent.
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
+  AttachSkillRequest,
   ImportSkillsRequest,
   ImportSkillsResponse,
+  ResolvedSkillsResponse,
   SkillInfo,
   SkillScanFinding,
 } from '@bazilion/api-types'
-import { Hono } from 'hono'
 import {
+  agentRepo,
   discoverSkills,
   importSkills,
   parseSkillFile,
+  resolveAgentSkills,
   SkillScanBlockedError,
   scanSkillContent,
   skillMetaRepo,
 } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { jsonBody, newRouter, routeAgent } from './http.ts'
 
 // 50 MiB cap — generous headroom for a bundle of skills, tight enough to
 // reject obviously-malicious payloads without needing a streaming upload.
 const MAX_ZIP_BYTES = 50 * 1024 * 1024
 
-export const skillsRouter = new Hono()
+export const skillsRouter = newRouter()
 
 skillsRouter.get('/', (c) => {
   const { db, paths } = getCtx()
@@ -52,9 +57,11 @@ skillsRouter.get('/', (c) => {
 skillsRouter.delete('/:name', (c) => {
   const { db, paths } = getCtx()
   const name = c.req.param('name')
-  const dir = paths.skillDir(name)
-  if (!existsSync(dir)) return c.json({ error: `skill not found: ${name}` }, 404)
-  rmSync(dir, { recursive: true, force: true })
+  // Only an installed skill directory may be removed: the name comes from the URL
+  // (decoded, so it can hold "../"), never straight into a filesystem path.
+  const skill = discoverSkills(paths).find((s) => s.name === name)
+  if (!skill) return c.json({ error: `skill not found: ${name}` }, 404)
+  rmSync(skill.dir, { recursive: true, force: true })
   skillMetaRepo.remove(db, name)
   return c.body(null, 204)
 })
@@ -69,6 +76,7 @@ skillsRouter.post('/import', async (c) => {
 
   const { db, paths } = getCtx()
   try {
+    // A path or archive the operator named: its problems are bad input.
     const result = importSkills(paths, { source: input.source, force: input.force })
     const now = Date.now()
     for (const name of result.imported) {
@@ -143,17 +151,68 @@ async function parseImportInput(request: Request): Promise<ParsedImportInput> {
     }
   }
 
-  const body = (await request.json().catch(() => null)) as
-    | (Partial<ImportSkillsRequest> & { from?: string })
-    | null
+  const body = (await request.json().catch(() => null)) as Partial<ImportSkillsRequest> | null
   if (!body) throw new Error('invalid JSON body')
-  const from = body.source ?? body.from
-  if (typeof from !== 'string' || !from) throw new Error('source is required')
-  const source = from === 'openclaw' ? join(homedir(), '.openclaw', 'skills') : from
+  const { source } = body
+  if (typeof source !== 'string' || !source) throw new Error('source is required')
   return {
-    source,
+    source: source === 'openclaw' ? join(homedir(), '.openclaw', 'skills') : source,
     force: Boolean(body.force),
     tempZipPath: null,
-    sourceLabel: from,
+    sourceLabel: source,
   }
 }
+
+export const agentSkillsRouter = newRouter()
+
+agentSkillsRouter.get('/:id/skills', (c) => {
+  const { db, paths } = getCtx()
+  const set = resolveAgentSkills(db, paths, routeAgent(c).id)
+  return c.json({
+    resolved: set.resolved.map((s) => {
+      const meta = skillMetaRepo.get(db, s.name)
+      return {
+        name: s.name,
+        description: s.parsed.frontmatter.description,
+        source: meta?.source ?? null,
+        importedAt: meta?.importedAt ?? null,
+        scanFindings: scanSkillContent(s.parsed.raw),
+      }
+    }),
+    missing: set.missing,
+  } satisfies ResolvedSkillsResponse)
+})
+
+agentSkillsRouter.post('/:id/skills', async (c) => {
+  const body = await jsonBody<AttachSkillRequest>(c)
+  const skill = body?.skill
+  if (typeof skill !== 'string' || !skill) return c.json({ error: 'skill is required' }, 400)
+  const { db, paths } = getCtx()
+  const agent = routeAgent(c)
+  const discovered = discoverSkills(paths).find((s) => s.name === skill)
+  if (discovered) {
+    // A skill whose SKILL.md does not parse is attached anyway; it reports the parse error
+    // wherever it is used.
+    let findings: SkillScanFinding[] = []
+    try {
+      findings = scanSkillContent(parseSkillFile(discovered.skillFile).raw)
+    } catch {}
+    if (findings.length > 0 && !body?.allowFindings) {
+      return c.json(
+        {
+          error: `skill scan blocked attach: ${skill} has findings`,
+          code: 'skill_scan_blocked',
+          findings,
+        },
+        400,
+      )
+    }
+  }
+  agentRepo.attachSkill(db, agent.id, skill)
+  return c.body(null, 204)
+})
+
+agentSkillsRouter.delete('/:id/skills/:name', (c) => {
+  agentRepo.detachSkill(getCtx().db, routeAgent(c).id, c.req.param('name'))
+  return c.body(null, 204)
+})

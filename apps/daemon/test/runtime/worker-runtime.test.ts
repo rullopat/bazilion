@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -6,84 +7,50 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ResolvedAgent } from '@bazilion/api-types'
-import { afterEach, describe, expect, test, vi } from 'vitest'
-import { openDb } from '../../src/core/db/client.ts'
-import { runMigrations } from '../../src/core/db/migrate.ts'
-import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
-import { createOrdinaryWebSearchHost } from '../../src/lib/ordinary-web-search.ts'
-import { resolveRepositoryContext } from '../../src/lib/repository-context/index.ts'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { createWebSearchHost } from '../../src/lib/web-search.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
-import { createProtectedBazilionCustomTools } from '../../src/runtime/pi/tools.ts'
-import type { ProtectedDockerRuntime } from '../../src/runtime/shell/docker.ts'
+import { createBazilionCustomTools } from '../../src/runtime/pi/tools.ts'
+import type { DockerTurn } from '../../src/runtime/shell/tooling.ts'
 import type {
   ApiKeyRefreshHost,
-  BashApprovalHost,
   MessagingHost,
   UserMdHost,
 } from '../../src/runtime/worker/ipc-protocol.ts'
 import {
+  type AgentTurnWorkerSpec,
   cleanupMinimalWorkerScratch,
   createMinimalWorkerScratch,
   ExactValueStreamRedactor,
-  initializeMinimalWorkerProcessEnv,
   minimalWorkerProcessEnv,
-  type ProtectedWorkerSpec,
   parseWorkerInput,
+  type RestrictedReviewWorkerSpec,
 } from '../../src/runtime/worker/runtime.ts'
 import {
   formatWorkerExitFailure,
+  type ReviewSpawnOptions,
   spawnReviewWorker,
-  spawnStaticReviewWorker,
-  spawnVerificationWorker,
   spawnWorkerTurn,
 } from '../../src/runtime/worker/spawn.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
-import { emptyRepositoryContext } from '../fixtures/repository-context.ts'
 
 const cleanup: string[] = []
 afterEach(() => {
   for (const path of cleanup.splice(0)) rmSync(path, { recursive: true, force: true })
 })
 
-// These executable fixtures explicitly carry a Docker spec. That backend is Linux-only;
-// keep every assertion there. Actual Mac native spawn/approval/EOF/ownership paths run in
-// native-worker.integration and native-darwin-worker-retirement, not a fake Docker launch.
-const dockerSpawnTest = test.skipIf(process.platform !== 'linux')
+// These executable fixtures spawn real workers; their process-group and Docker assertions are
+// Linux-only.
+const linuxSpawnTest = test.skipIf(process.platform !== 'linux')
 describe('minimal worker runtime', () => {
-  dockerSpawnTest(
-    'worker ownership readiness failure refuses before executable input',
-    async () => {
-      const beforeInput = vi.fn()
-      const afterExit = vi.fn(async () => true)
-      const run = async () => {
-        for await (const _frame of spawnWorkerTurn(protectedSpec(tempRoot()), {
-          ...scopedHosts(),
-          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
-          resourceLifecycle: {
-            beforeSpawn: () => {
-              throw new Error('native ownership unavailable')
-            },
-            beforeInput,
-            afterExit,
-          },
-        })) {
-          /* admission must refuse */
-        }
-      }
-      await expect(run()).rejects.toThrow('native ownership unavailable')
-      expect(beforeInput).not.toHaveBeenCalled()
-      expect(afterExit).not.toHaveBeenCalled()
-    },
-  )
-  test('real worker Pi loop executes native search IPC, reads guarded source and completes with citations offline', async () => {
-    const prepared = protectedSpec(tempRoot())
+  test('a real worker turn searches through the daemon host, reads the source and completes offline', async () => {
+    const { spec: prepared } = turnFixture(tempRoot())
     prepared.agent.model = 'openai:gpt-6.1-sol'
     prepared.agent.reasoningLevel = 'medium'
     const marker = join(prepared.agent.team.path, 'unadmitted-mcp-started')
@@ -105,76 +72,56 @@ describe('minimal worker runtime', () => {
       mkdirSync(directory, { recursive: true })
       writeFileSync(join(directory, 'mcp.json'), mcpConfig)
     }
-    const provider = vi.fn(async () =>
-      Response.json({
-        id: 'resp_search_loop',
-        status: 'completed',
-        model: 'gpt-6.1-sol',
-        output: [
-          {
-            type: 'web_search_call',
-            id: 'ws_fixture_loop',
-            status: 'completed',
-            action: { type: 'search' },
-          },
-          {
-            type: 'message',
-            role: 'assistant',
-            status: 'completed',
-            content: [
-              {
-                type: 'output_text',
-                text: 'NASA source discovered.',
-                annotations: [
-                  {
-                    type: 'url_citation',
-                    title: 'NASA',
-                    url: 'https://www.nasa.gov/mission/artemis-ii/',
-                    start_index: 0,
-                    end_index: 4,
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      }),
+    const answer = {
+      type: 'message',
+      role: 'assistant',
+      status: 'completed',
+      content: [
+        {
+          type: 'output_text',
+          text: 'NASA source discovered.',
+          annotations: [
+            { type: 'url_citation', title: 'NASA', url: 'https://www.nasa.gov/old-artemis-ii' },
+          ],
+        },
+      ],
+    }
+    const provider = vi.fn(
+      async () =>
+        new Response(
+          `data: ${JSON.stringify({ type: 'response.completed', response: { output: [answer] } })}\n\n`,
+        ),
     )
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 25000)
-    const host = createOrdinaryWebSearchHost({
+    const host = createWebSearchHost({
+      backend: 'openai',
       env: () => ({ OPENAI_API_KEY: 'fixture-search-key' }),
       model: prepared.agent.model,
-      codexConnected: () => false,
-      codexAccountId: () => null,
-      codexCredential: async () => {
+      codexToken: async () => {
         throw new Error('unadmitted')
       },
       signal: controller.signal,
-      assertActive: () => {},
-      fetchImpl: provider,
+      fetch: provider,
     })
     const frames = []
     try {
       for await (const frame of spawnWorkerTurn(
         {
-          kind: 'configured_operator_http',
+          kind: 'agent_turn',
           agent: prepared.agent,
-          repositoryContext: prepared.repositoryContext,
+          repositoryInstructions: prepared.repositoryInstructions,
           conversation: prepared.conversation,
           message: 'Research NASA Artemis II with official sources.',
           turnId: 'real-loop',
-          enabledProviders: ['openai'],
           bashApprovalMode: 'auto_deny',
-          webSearchEnabled: true,
-          browserEnabled: false,
         },
         {
           signal: controller.signal,
           env: {
             BAZILION_HOME: join(prepared.agent.agent.dir, '..', '..'),
             OPENAI_API_KEY: 'fixture-search-key',
-            NODE_OPTIONS: `--import=${new URL('../fixtures/worker-native-search-preload.mjs', import.meta.url).href}`,
+            NODE_OPTIONS: `--import=${new URL('../fixtures/worker-search-preload.mjs', import.meta.url).href}`,
           },
           webSearchHost: host,
         },
@@ -189,287 +136,119 @@ describe('minimal worker runtime', () => {
       serialized,
     ).toHaveLength(1)
     expect(frames.filter((f) => f.kind === 'fatal')).toHaveLength(0)
-    expect(serialized).toContain('ws_fixture_loop')
-    expect(serialized).toContain('https://www.nasa.gov/mission/artemis-ii/')
+    expect(serialized).toContain('NASA source discovered.')
+    expect(serialized).toContain('[final URL: https://www.nasa.gov/mission/artemis-ii/]')
     expect(serialized).toContain('Source actually read')
     expect(existsSync(marker)).toBe(false)
     expect(serialized).not.toContain('fixture-search-key')
     const transcript = readFileSync(
-      join(prepared.agent.agent.dir, 'sessions', prepared.conversation.filename),
+      join(prepared.agent.agent.dir, 'sessions', `${prepared.conversation.id}.jsonl`),
       'utf8',
     )
-    expect(transcript).toContain('"webSearch"')
-    expect(transcript).toContain('"webFetch"')
-    expect(transcript).toContain('ws_fixture_loop')
-    expect(transcript).toContain('"finalUrl":"https://www.nasa.gov/mission/artemis-ii/"')
+    expect(transcript).toContain('NASA source discovered.')
+    expect(transcript).toContain('OFFLINE NASA FIXTURE')
     expect(transcript).not.toContain('fixture-search-key')
     expect(provider).toHaveBeenCalledTimes(1)
   }, 35000)
 
-  dockerSpawnTest(
-    'ordinary worker search IPC preserves native evidence, guarded-fetch effective URL and completion; forged authority refuses',
+  linuxSpawnTest(
+    'an exited worker ends its process group and stops reading pipes a detached process holds',
     async () => {
-      const root = tempRoot()
-      const prepared = protectedSpec(root)
-      prepared.agent.model = 'openai:gpt-6-astra'
-      const provider = vi.fn(async () =>
-        Response.json({
-          id: 'resp_fixture',
-          status: 'completed',
-          model: 'gpt-6-astra',
-          output: [
-            {
-              type: 'web_search_call',
-              id: 'ws_fixture',
-              status: 'completed',
-              action: { type: 'search' },
-            },
-            {
-              type: 'message',
-              role: 'assistant',
-              status: 'completed',
-              content: [
-                {
-                  type: 'output_text',
-                  text: 'NASA fixture source.',
-                  annotations: [
-                    {
-                      type: 'url_citation',
-                      title: 'NASA',
-                      url: 'https://www.nasa.gov/mission/artemis-ii/',
-                      start_index: 0,
-                      end_index: 4,
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        }),
-      )
-      const searchHost = createOrdinaryWebSearchHost({
-        env: () => ({ OPENAI_API_KEY: 'fixture-search-key' }),
-        model: prepared.agent.model,
-        codexConnected: () => false,
-        codexAccountId: () => null,
-        codexCredential: async () => {
-          throw new Error('unadmitted account')
-        },
-        signal: new AbortController().signal,
-        assertActive: () => {},
-        fetchImpl: provider,
-      })
-      for (const message of ['valid', 'forged']) {
+      const { spec } = turnFixture(tempRoot())
+      const pidFile = (name: string) => join(spec.agent.team.path, `fixture-${name}-pid`)
+      let holder: number | undefined
+      try {
         const frames = []
-        for await (const frame of spawnWorkerTurn(
-          {
-            kind: 'configured_operator_http',
-            repositoryContext: prepared.repositoryContext,
-            agent: prepared.agent,
-            conversation: prepared.conversation,
-            message,
-            turnId: 'search-fixture',
-            enabledProviders: [],
-            bashApprovalMode: 'auto_deny',
-            webSearchEnabled: true,
-            browserEnabled: false,
-          },
-          {
-            env: {},
-            webSearchHost: searchHost,
-            workerEntryPath: fileURLToPath(
-              new URL('../fixtures/worker-web-search-entry.ts', import.meta.url),
-            ),
-          },
-        ))
+        const started = Date.now()
+        for await (const frame of spawnWorkerTurn(spec, {
+          env: {},
+          workerEntryPath: fileURLToPath(
+            new URL('../fixtures/worker-output-holder-entry.ts', import.meta.url),
+          ),
+        }))
           frames.push(frame)
-        const text = JSON.stringify(frames)
-        if (message === 'valid') {
-          expect(text).toContain('ws_fixture')
-          expect(text).toContain('webFetch')
-          expect(text).toContain('finalUrl')
-          expect(text).toContain('https://www.nasa.gov/mission/artemis-ii/')
-          expect(frames.filter((frame) => frame.kind === 'done')).toHaveLength(1)
-          expect(text).not.toContain('fixture-search-key')
-        } else expect(text).toContain('Invalid web search IPC request')
-      }
-      expect(provider).toHaveBeenCalledTimes(1)
-      // An ordinary capability cannot be accidentally attached to the protected dispatcher.
-      const collect = async () => {
-        for await (const _frame of spawnWorkerTurn(
-          { ...prepared, webSearchEnabled: true },
-          {
-            ...scopedHosts(),
-            webSearchHost: searchHost,
-            apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
-          },
-        )) {
-          /* must refuse before spawn */
+        expect(frames.map((frame) => frame.kind)).toEqual(['done'])
+        expect(Date.now() - started).toBeLessThan(10_000)
+        holder = Number(readFileSync(pidFile('descendant'), 'utf8'))
+        const sibling = Number(readFileSync(pidFile('group-child'), 'utf8'))
+        await vi.waitFor(() => expect(() => process.kill(sibling, 0)).toThrow(), {
+          timeout: 5000,
+        })
+        // A process that left the worker's group is not ours to stop; it only lost its reader.
+        expect(() => process.kill(holder as number, 0)).not.toThrow()
+      } finally {
+        if (holder) {
+          try {
+            process.kill(-holder, 'SIGKILL')
+          } catch {}
         }
       }
-      await expect(collect()).rejects.toThrow('ordinary discovery host is denied')
-      expect(provider).toHaveBeenCalledTimes(1)
     },
   )
-
-  test('lost host worker cannot release ownership of Pi detached shell work after restart', async () => {
-    const root = tempRoot()
-    const prepared = protectedSpec(root)
-    const dbPath = join(root, 'host-recovery.db')
-    let db = openDb(dbPath)
-    runMigrations(db)
-    let workerPid: number | undefined
-    let shellPid: number | undefined
-    const marker = join(prepared.paths.teamDir, 'fixture-host-shell-pid')
+  linuxSpawnTest('no signal reaches the worker group after the worker has exited', async () => {
+    const { spec } = turnFixture(tempRoot())
+    const kill = vi.spyOn(process, 'kill')
+    const groupSignals = () => kill.mock.calls.filter(([pid]) => Number(pid) < 0).length
+    let holder: number | undefined
     try {
-      const lifecycle = workspaceLifecycle(db)
-      const lease = await lifecycle.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent')
-      const worker = lifecycle.worker(lease)
-      const collect = async () => {
-        for await (const _frame of spawnWorkerTurn(
-          {
-            kind: 'configured_operator_http',
-            agent: prepared.agent,
-            repositoryContext: prepared.repositoryContext,
-            conversation: prepared.conversation,
-            message: 'Fixture host command',
-            enabledProviders: ['openai-codex'],
-            turnId: 'host-recovery-fixture',
-            bashApprovalMode: 'auto_deny',
-          },
-          {
-            env: { ...process.env, BAZILION_BASH_SANDBOX: 'off' },
-            resourceLifecycle: {
-              ...worker,
-              beforeInput(pid, hostCommands, child) {
-                workerPid = pid
-                expect(hostCommands).toBe(true)
-                worker.beforeInput(pid, hostCommands, child)
-              },
-            },
-            workerEntryPath: fileURLToPath(
-              new URL('../fixtures/worker-host-detached-entry.ts', import.meta.url),
-            ),
-          },
-        )) {
-          /* Consume through the observed worker failure. */
-        }
+      for await (const _frame of spawnWorkerTurn(spec, {
+        env: {},
+        workerEntryPath: fileURLToPath(
+          new URL('../fixtures/worker-output-holder-entry.ts', import.meta.url),
+        ),
+      })) {
       }
-      const result = expect(collect()).rejects.toThrow('Worker cleanup could not be confirmed')
-      await vi.waitFor(() => expect(existsSync(marker)).toBe(true), { timeout: 10000 })
-      shellPid = Number(readFileSync(marker, 'utf8'))
-      if (!workerPid || !shellPid) throw new Error('Fixture process identity missing')
-      process.kill(-workerPid, 'SIGKILL')
-      await result
-      process.kill(shellPid, 0)
-      await lifecycle.release(lease)
-      db.close()
-      db = openDb(dbPath)
-      const restarted = workspaceLifecycle(db)
-      await expect(
-        restarted.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent'),
-      ).rejects.toThrow('workspace_recovery_required')
-      process.kill(shellPid, 0)
-      process.kill(-shellPid, 'SIGKILL')
-      // Absence of known PIDs still cannot prove the entire lost host command tree stopped.
-      await expect(
-        restarted.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent'),
-      ).rejects.toThrow('workspace_recovery_required')
+      holder = Number(readFileSync(join(spec.agent.team.path, 'fixture-descendant-pid'), 'utf8'))
+      // Its leftovers were signalled as it exited. Later, its emptied group id could be reused.
+      const atEnd = groupSignals()
+      expect(atEnd).toBeGreaterThan(0)
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+      expect(groupSignals()).toBe(atEnd)
     } finally {
-      if (!shellPid) {
+      kill.mockRestore()
+      if (holder) {
         try {
-          shellPid = Number(readFileSync(marker, 'utf8'))
+          process.kill(-holder, 'SIGKILL')
         } catch {}
       }
-      for (const pid of [workerPid, shellPid]) {
-        if (pid) {
-          try {
-            process.kill(-pid, 'SIGKILL')
-          } catch {}
-        }
-      }
-      db.close()
     }
   })
-  dockerSpawnTest(
-    'unconfirmed descendant output ends the transport but remains blocked after database reopen',
+
+  linuxSpawnTest(
+    'the real worker exits when its IPC channel disconnects',
     async () => {
-      const root = tempRoot()
-      const spec = protectedSpec(root)
-      const dbPath = join(root, 'recovery.db')
-      let db = openDb(dbPath)
-      runMigrations(db)
-      let descendant: number | undefined
+      const entry = fileURLToPath(new URL('../../src/runtime/worker/entry.ts', import.meta.url))
+      const child = spawn(
+        process.execPath,
+        ['--experimental-strip-types', '--no-warnings', entry],
+        {
+          env: { PATH: process.env.PATH },
+          stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+        },
+      )
+      let stdout = ''
+      child.stdout?.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString('utf8')
+      })
+      const exited = new Promise<number | null>((resolve) => child.once('exit', resolve))
       try {
-        const lifecycle = workspaceLifecycle(db)
-        const lease = await lifecycle.claim(spec.agent.team.id, spec.paths.teamDir, 'agent')
-        const workerOwner = lifecycle.worker(lease)
-        const collect = async () => {
-          for await (const _frame of spawnWorkerTurn(spec, {
-            ...scopedHosts(),
-            apiKeyRefreshHost: { refresh: async () => 'rotated' },
-            resourceLifecycle: {
-              ...workerOwner,
-              // This injected fixture really spawns a detached HOST process. Classifying
-              // it as a no-host-command protected worker permitted an unsound recovery oracle.
-              beforeInput: (pid, _hostCommands, child) => workerOwner.beforeInput(pid, true, child),
-            },
-            workerEntryPath: fileURLToPath(
-              new URL('../fixtures/worker-output-holder-entry.ts', import.meta.url),
-            ),
-          })) {
-            /* Consume the transport through termination, including a possible done frame. */
-          }
-        }
-        await expect(collect()).rejects.toThrow('Worker cleanup could not be confirmed')
-        descendant = Number(
-          readFileSync(join(spec.paths.teamDir, 'fixture-descendant-pid'), 'utf8'),
+        // Its input never arrives (stdin stays open): only the disconnect can end the worker.
+        child.disconnect()
+        expect(await exited).toBe(0)
+        expect(stdout.trim()).toBe(
+          JSON.stringify({ kind: 'event', event: { type: 'error', error: 'cancelled' } }),
         )
-        process.kill(descendant, 0)
-        await lifecycle.release(lease)
-        db.close()
-        db = openDb(dbPath)
-        const restarted = workspaceLifecycle(db)
-        await expect(
-          restarted.claim(spec.agent.team.id, spec.paths.teamDir, 'agent'),
-        ).rejects.toThrow('workspace_recovery_required')
-        process.kill(descendant, 0)
-        process.kill(-descendant, 'SIGKILL')
-        // The reopened owner has no live cleanup capability. Killing the fixture cannot
-        // turn numeric PID disappearance into proof or silently clear the durable blocker.
-        await expect(
-          restarted.claim(spec.agent.team.id, spec.paths.teamDir, 'agent'),
-        ).rejects.toThrow('workspace_recovery_required')
       } finally {
-        if (!descendant) {
-          try {
-            descendant = Number(
-              readFileSync(join(spec.paths.teamDir, 'fixture-descendant-pid'), 'utf8'),
-            )
-          } catch {}
-        }
-        if (descendant) {
-          try {
-            process.kill(-descendant, 'SIGKILL')
-          } catch {}
-        }
-        db.close()
+        child.kill('SIGKILL')
       }
     },
+    30_000,
   )
+
   test('constructs an exact POSIX environment with no ambient startup or credential values', () => {
     const scratch = createMinimalWorkerScratch()
     try {
-      const env = minimalWorkerProcessEnv(scratch, 'linux', {
-        PATH: '/must/not/pass',
-        NODE_OPTIONS: '--require /evil.cjs',
-        BASH_ENV: '/evil.sh',
-        HTTPS_PROXY: 'https://proxy.example',
-        NODE_EXTRA_CA_CERTS: '/secret/ca.pem',
-        BAZILION_HOME: '/secret/bazilion',
-        OPENAI_API_KEY: 'secret',
-        DOCKER_HOST: 'ssh://remote',
-      })
+      const env = minimalWorkerProcessEnv(scratch)
       expect(env).toEqual({
         HOME: scratch.homeDir,
         TMPDIR: scratch.tempDir,
@@ -484,67 +263,8 @@ describe('minimal worker runtime', () => {
     expect(existsSync(scratch.root)).toBe(false)
   })
 
-  test('minimal bootstrap strips only Darwin bookkeeping before unchanged exact validation', () => {
-    const scratch = createMinimalWorkerScratch()
-    try {
-      const expected = minimalWorkerProcessEnv(scratch, 'darwin')
-      const env = { ...expected, __CF_USER_TEXT_ENCODING: 'os-generated-bookkeeping' }
-      initializeMinimalWorkerProcessEnv(env, scratch, 'darwin')
-      expect(env).toEqual(expected)
-      const injected = { ...expected, NODE_OPTIONS: '--require /unadmitted.cjs' }
-      expect(() => initializeMinimalWorkerProcessEnv(injected, scratch, 'darwin')).toThrow(
-        'unexpected keys',
-      )
-      expect(injected.NODE_OPTIONS).toBe('--require /unadmitted.cjs')
-      const linux = {
-        ...minimalWorkerProcessEnv(scratch, 'linux'),
-        __CF_USER_TEXT_ENCODING: 'extra',
-      }
-      expect(() => initializeMinimalWorkerProcessEnv(linux, scratch, 'linux')).toThrow(
-        'unexpected keys',
-      )
-    } finally {
-      cleanupMinimalWorkerScratch(scratch)
-    }
-  })
-
-  test('constructs the exact Windows bootstrap mechanics without ambient credentials', () => {
-    const root = tempRoot()
-    const scratch = createMinimalWorkerScratch(root)
-    const systemRoot = join(root, 'Windows')
-    const comSpec = join(systemRoot, 'System32', 'cmd.exe')
-    mkdirSync(join(systemRoot, 'System32'), { recursive: true })
-    writeFileSync(comSpec, '')
-    try {
-      const env = minimalWorkerProcessEnv(scratch, 'win32', {
-        SystemRoot: systemRoot,
-        WINDIR: systemRoot,
-        ComSpec: comSpec,
-        PATHEXT: '.COM;.EXE;.BAT;.CMD',
-        Path: 'C:\\must-not-pass',
-        NODE_OPTIONS: '--require C:\\evil.cjs',
-        HTTPS_PROXY: 'https://proxy.example',
-        OPENAI_API_KEY: 'secret',
-        BAZILION_HOME: 'C:\\secret',
-      })
-      expect(env).toEqual({
-        USERPROFILE: scratch.homeDir,
-        TMPDIR: scratch.tempDir,
-        TMP: scratch.tempDir,
-        TEMP: scratch.tempDir,
-        SystemRoot: systemRoot,
-        WINDIR: systemRoot,
-        ComSpec: comSpec,
-        PATHEXT: '.COM;.EXE;.BAT;.CMD',
-      })
-    } finally {
-      cleanupMinimalWorkerScratch(scratch)
-    }
-    expect(existsSync(scratch.root)).toBe(false)
-  })
-
   test('redacts initial and rotated values across arbitrary chunk boundaries', () => {
-    const redactor = new ExactValueStreamRedactor('initial-access-token')
+    const redactor = new ExactValueStreamRedactor(['initial-access-token'])
     let output = redactor.push('before initial-ac')
     output += redactor.push('cess-token after ')
     redactor.add('rotated-access-token')
@@ -554,114 +274,17 @@ describe('minimal worker runtime', () => {
     expect(output).toBe('before [REDACTED] after [REDACTED] done')
   })
 
-  test('rejects missing, extra, legacy, and malformed nested protected fields', () => {
-    const root = tempRoot()
-    const scratch = createMinimalWorkerScratch(root)
-    const input = {
-      ...protectedSpec(root),
-      apiKeyRefreshEnabled: true,
-      scratch,
-    }
-    try {
-      expect(parseWorkerInput(input)).toEqual(input)
-      const missingContext = structuredClone(input) as Record<string, unknown>
-      delete missingContext.repositoryContext
-      expect(() => parseWorkerInput(missingContext)).toThrow(
-        /missing required fields: repositoryContext/,
-      )
-      expect(() =>
-        parseWorkerInput({
-          ...input,
-          repositoryContext: { ...input.repositoryContext, teamId: 'other-team' },
-        }),
-      ).toThrow(/repository context/)
-      expect(() =>
-        parseWorkerInput({
-          ...input,
-          repositoryContext: { ...input.repositoryContext, extra: true },
-        }),
-      ).toThrow(/repository context/)
-      const missing = structuredClone(input) as Record<string, unknown>
-      delete missing.runtime
-      expect(() => parseWorkerInput(missing)).toThrow(/missing required fields: runtime/)
-      expect(() => parseWorkerInput({ ...input, enabledProviders: [] })).toThrow(
-        /unexpected fields: enabledProviders/,
-      )
-
-      const wrongProviderCredential = structuredClone(input)
-      wrongProviderCredential.runtime = {
-        ...wrongProviderCredential.runtime,
-        providerName: 'anthropic',
-        credentialEnv: [{ name: 'AWS_SECRET_ACCESS_KEY', value: 'cross-provider-secret' }],
-      }
-      expect(() => parseWorkerInput(wrongProviderCredential)).toThrow(/unexpected credential field/)
-
-      const badMount = structuredClone(input)
-      badMount.docker.readOnlyMounts[0] = {
-        ...badMount.docker.readOnlyMounts[0],
-        target: '/host',
-        credential: 'must-not-pass',
-      } as never
-      expect(() => parseWorkerInput(badMount)).toThrow(
-        /unexpected fields: credential|target is not permitted/,
-      )
-
-      const badEnvironment = structuredClone(input)
-      ;(badEnvironment.docker.containerEnv as unknown as Record<string, string>).AWS_PROFILE =
-        'secret'
-      expect(() => parseWorkerInput(badEnvironment)).toThrow(/unexpected fields: AWS_PROFILE/)
-
-      const badDocuments = structuredClone(input)
-      delete (
-        badDocuments.paths.homeDocuments as Partial<ProtectedWorkerSpec['paths']['homeDocuments']>
-      )['SOUL.md']
-      expect(() => parseWorkerInput(badDocuments)).toThrow(/missing required fields: SOUL.md/)
-
-      const missingMemoryMount = structuredClone(input)
-      missingMemoryMount.docker.readOnlyMounts = []
-      expect(() => parseWorkerInput(missingMemoryMount)).toThrow(/mount set is incomplete/)
-
-      const traversalTarget = structuredClone(input)
-      const firstMount = traversalTarget.docker.readOnlyMounts[0]
-      if (!firstMount) throw new Error('fixture memory mount is missing')
-      firstMount.target = '/skills/../inputs'
-      expect(() => parseWorkerInput(traversalTarget)).toThrow(/target is not permitted/)
-
-      const external = join(root, 'outside-session')
-      mkdirSync(external)
-      rmSync(input.paths.sessionDir, { recursive: true })
-      symlinkSync(external, input.paths.sessionDir, 'dir')
-      expect(() => parseWorkerInput(input)).toThrow(/session directory must be a real directory/)
-    } finally {
-      cleanupMinimalWorkerScratch(scratch)
-    }
+  test('the worker checks only that its input is a kind it knows', () => {
+    const { spec } = turnFixture(tempRoot())
+    const input = { ...spec, hosts: [] }
+    expect(parseWorkerInput(input)).toBe(input)
+    expect(() => parseWorkerInput({ ...input, kind: 'packet_review' })).toThrow(/unknown/)
+    expect(() => parseWorkerInput(null)).toThrow(/unknown/)
   })
 
-  test('accepts a registered Team-root symlink with canonical prepared child paths', () => {
+  test('the custom-tool set grows only with the hosts the daemon supplies', () => {
     const root = tempRoot()
-    const scratch = createMinimalWorkerScratch(root)
-    const spec = protectedSpec(root)
-    const registeredTeamDir = spec.paths.teamDir
-    const linkedTeamDir = join(root, 'linked-team')
-    rmSync(registeredTeamDir, { recursive: true })
-    mkdirSync(join(linkedTeamDir, 'memory'), { recursive: true })
-    symlinkSync(linkedTeamDir, registeredTeamDir, 'dir')
-    const canonicalTeamDir = realpathSync(linkedTeamDir)
-    const canonicalMemoryDir = realpathSync(join(linkedTeamDir, 'memory'))
-    spec.paths.memoryDir = canonicalMemoryDir
-    spec.docker = fakeDockerRuntime(canonicalTeamDir, canonicalMemoryDir)
-
-    try {
-      const input = { ...spec, apiKeyRefreshEnabled: true, scratch }
-      expect(parseWorkerInput(input)).toEqual(input)
-    } finally {
-      cleanupMinimalWorkerScratch(scratch)
-    }
-  })
-
-  test('builds the closed protected custom-tool projection: scoped discovery, no browser/MCP/review', () => {
-    const root = tempRoot()
-    const spec = protectedSpec(root)
+    const { spec } = turnFixture(root)
     const hosts = scopedHosts()
     const memory: MemoryBackend = {
       init: async () => {},
@@ -675,38 +298,32 @@ describe('minimal worker runtime', () => {
       list: async () => [],
       remove: async () => {},
     }
-    const names = createProtectedBazilionCustomTools({
+    const base = {
       agent: spec.agent,
       memory,
       messagingHost: hosts.messagingHost,
       userMdHost: hosts.userMdHost,
       fileSink: async () => ({ resultId: 'fixture-result' }),
-    }).map((tool) => tool.name)
+      env: {},
+    }
+    const names = createBazilionCustomTools(base).map((tool) => tool.name)
 
     expect(names).toContain('web_fetch')
     expect(names).toContain('deliver_file')
-    // BAZ-067: discovery is scoped — absent without the host, present only with it.
+    // Discovery is daemon-owned: absent without the host, present only with it.
     expect(names).not.toContain('web_search')
     expect(names).not.toContain('propose_lesson')
     expect(names).not.toContain('ask_user')
     expect(names).not.toContain('image_generate')
-    const withImages = createProtectedBazilionCustomTools({
-      agent: spec.agent,
-      memory,
-      messagingHost: hosts.messagingHost,
-      userMdHost: hosts.userMdHost,
-      fileSink: async () => ({ resultId: 'fixture-result' }),
+    const withImages = createBazilionCustomTools({
+      ...base,
       imageGenerationHost: { generate: vi.fn() },
     }).map((tool) => tool.name)
     expect(withImages).toContain('image_generate')
     expect(withImages.filter((name) => name !== 'image_generate')).toEqual(names)
-    const withQuestion = createProtectedBazilionCustomTools({
-      agent: spec.agent,
-      memory,
-      messagingHost: hosts.messagingHost,
-      userMdHost: hosts.userMdHost,
-      fileSink: async () => ({ resultId: 'fixture-result' }),
-      askUser: async (_toolCallId, question) => ({
+    const withQuestion = createBazilionCustomTools({
+      ...base,
+      askUser: async (question) => ({
         questionId: 'fixture-question',
         question,
         kind: 'no_answer',
@@ -719,515 +336,197 @@ describe('minimal worker runtime', () => {
     expect(names.some((name) => name.startsWith('mcp_'))).toBe(false)
   })
 
-  for (const surface of ['configured', 'protected'] as const) {
-    const surfaceTest = surface === 'protected' ? dockerSpawnTest : test
-    surfaceTest(
-      `repository refresh IPC is scoped and rejects caller-supplied identity (${surface})`,
-      async () => {
-        const root = tempRoot()
-        const prepared = protectedSpec(root)
-        const teamRoot = prepared.agent.team.path
-        mkdirSync(join(teamRoot, 'nested'))
-        writeFileSync(join(teamRoot, 'nested', 'AGENTS.md'), 'IPC_NESTED_SENTINEL')
-        const initial = await resolveRepositoryContext({
-          teamId: prepared.agent.team.id,
-          root: teamRoot,
-        })
-        const host = vi.fn((target: string) =>
-          resolveRepositoryContext({
-            teamId: prepared.agent.team.id,
-            root: teamRoot,
-            target,
-            expectedRootIdentity: initial.rootIdentity ?? 'missing',
-          }),
-        )
-        for (const mode of ['valid', 'forged']) {
-          const frames = []
-          const options = {
-            ...scopedHosts(),
-            repositoryContextHost: host,
-            apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
-            workerEntryPath: fileURLToPath(
-              new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
-            ),
-          }
-          const iterator =
-            surface === 'protected'
-              ? spawnWorkerTurn({ ...prepared, repositoryContext: initial, message: mode }, options)
-              : spawnWorkerTurn(
-                  {
-                    kind: 'configured_operator_http',
-                    repositoryContext: initial,
-                    agent: prepared.agent,
-                    conversation: prepared.conversation,
-                    message: mode,
-                    turnId: 'context-test',
-                    enabledProviders: [],
-                    apiKey: prepared.runtime.apiKey,
-                    bashApprovalMode: 'auto_deny',
-                  },
-                  { ...options, env: {} },
-                )
-          for await (const frame of iterator) frames.push(frame)
-          if (mode === 'valid') {
-            expect(JSON.stringify(frames)).toContain('IPC_NESTED_SENTINEL')
-            expect(host).toHaveBeenCalledWith('nested/new.ts')
-          } else expect(JSON.stringify(frames)).toContain('Invalid repository context request')
-        }
-        expect(host).toHaveBeenCalledTimes(1)
-      },
-    )
-  }
-
-  test('restricted-review IPC never receives a repository context host', async () => {
-    const prepared = protectedSpec(tempRoot())
-    const host = vi.fn(async () => prepared.repositoryContext)
-    await expect(
-      spawnReviewWorker(
-        {
-          kind: 'restricted_review',
-          agentId: prepared.agent.agent.id,
-          message: 'valid',
-          turnId: 'review-context',
-          runtime: prepared.runtime,
-          review: { reviewId: 'review', evidence: [] },
-        },
-        {
-          repositoryContextHost: host,
-          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
-          workerEntryPath: fileURLToPath(
-            new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
-          ),
-        },
-      ),
-      // Refused before the worker starts: a restricted kind may not be handed the host at all, so
-      // the capability cannot reach the repository even through a spawn-time option.
-    ).rejects.toThrow(/rejects repositoryContextHost/)
-    expect(host).not.toHaveBeenCalled()
-  })
-
-  test('image generation cannot widen any restricted worker through input or host injection', async () => {
-    const prepared = protectedSpec(tempRoot())
-    const imageGenerationHost = { generate: vi.fn() }
-    const opts = {
-      imageGenerationHost,
-      apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
-    }
-    const base = {
-      agentId: prepared.agent.agent.id,
-      message: 'valid',
-      turnId: 'image-denied',
-      runtime: prepared.runtime,
-    }
-    const specs = [
-      { ...base, kind: 'restricted_review' as const, review: { reviewId: 'review', evidence: [] } },
-      {
-        ...base,
-        kind: 'packet_review' as const,
-        review: { packetId: 'packet', attemptId: 'attempt' },
-      },
-      {
-        ...base,
-        kind: 'specialist_verification' as const,
-        verification: { requestId: 'request', attemptId: 'attempt' },
-      },
-    ]
-    const scratch = createMinimalWorkerScratch(tempRoot())
-    try {
-      for (const spec of specs) {
-        expect(() =>
-          parseWorkerInput({
-            ...spec,
-            scratch,
-            apiKeyRefreshEnabled: true,
-            imageGenerationEnabled: true,
-          }),
-        ).toThrow()
-        const run = async () => {
-          if (spec.kind === 'restricted_review') return spawnReviewWorker(spec, opts)
-          const frames =
-            spec.kind === 'packet_review'
-              ? spawnStaticReviewWorker(spec, {
-                  ...opts,
-                  changeReviewHost: {
-                    read: vi.fn(),
-                    path: vi.fn(),
-                    addFinding: vi.fn(),
-                    conclude: vi.fn(),
-                  },
-                })
-              : spawnVerificationWorker(spec, {
-                  ...opts,
-                  verificationHost: { read: vi.fn(), run: vi.fn() },
-                })
-          for await (const _frame of frames) {
-            /* Must refuse before spawn. */
-          }
-        }
-        await expect(run()).rejects.toThrow(
-          process.platform === 'darwin' && spec.kind === 'specialist_verification'
-            ? 'Protected execution is unavailable on macOS'
-            : 'rejects imageGenerationHost',
-        )
-      }
-    } finally {
-      cleanupMinimalWorkerScratch(scratch)
-    }
-    expect(imageGenerationHost.generate).not.toHaveBeenCalled()
-  })
-
-  test('a restricted turn cannot be handed the browser capability (T09)', async () => {
-    const prepared = protectedSpec(tempRoot())
-    const browserHost = { invoke: vi.fn(async () => [] as never[]) }
-    await expect(
-      spawnReviewWorker(
-        {
-          kind: 'restricted_review',
-          agentId: prepared.agent.agent.id,
-          message: 'valid',
-          turnId: 'browser-denied',
-          runtime: prepared.runtime,
-          review: { reviewId: 'review', evidence: [] },
-        },
-        {
-          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
-          browserHost: browserHost,
-          workerEntryPath: fileURLToPath(
-            new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
-          ),
-        } as never,
-      ),
-      // Refused before the worker starts: the capability cannot reach a
-      // restricted turn even through a spawn-time option. Dispatch-side denial
-      // is the daemon host's identity binding (browser-mcp-tools tests).
-    ).rejects.toThrow(/rejects browserHost/)
-    expect(browserHost.invoke).not.toHaveBeenCalled()
-  })
-
-  test('a restricted turn cannot be handed the requester capability', async () => {
-    // The requester capability captures a snapshot and writes a request. A restricted turn is
-    // read-only by construction, so it must be refused the host at spawn time rather than trusted not
-    // to call it — the same rule the specialist cappability already follows.
-    const prepared = protectedSpec(tempRoot())
-    const host = {
-      capture: async () => {
-        throw new Error('the requester capability must never be offered to a restricted turn')
-      },
-    }
-    for (const spec of [
-      {
-        kind: 'restricted_review' as const,
-        agentId: prepared.agent.agent.id,
-        message: 'valid',
-        turnId: 'review-requester',
-        runtime: prepared.runtime,
-        review: { reviewId: 'review', evidence: [] },
-      },
-    ]) {
-      await expect(
-        spawnReviewWorker(spec, {
-          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
-          verificationRequestHost: host,
-          workerEntryPath: fileURLToPath(
-            new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
-          ),
-        } as never),
-      ).rejects.toThrow(/rejects verificationRequestHost/)
-    }
-  })
-
-  dockerSpawnTest(
-    'spawns with exact minimal env, closes stdin, redacts rotated diagnostics, and cleans scratch',
-    async () => {
-      const root = tempRoot()
-      const scratchParent = join(root, 'scratch-parent')
-      mkdirSync(scratchParent)
-      const initial = 'initial-worker-secret'
-      const rotated = 'rotated-worker-secret'
-      const diagnostics: string[] = []
-      const frames = []
-      const refresh: ApiKeyRefreshHost = { refresh: vi.fn(async () => rotated) }
-      const ambientSecrets = {
-        TELEGRAM_BOT_TOKEN: 'telegram-secret-sentinel',
-        BAZILION_TOKEN: 'bootstrap-secret-sentinel',
-        OPENAI_CODEX_OAUTH: 'oauth-refresh-secret-sentinel',
-        ANTHROPIC_API_KEY: 'unrelated-provider-secret-sentinel',
-        FIRECRAWL_API_KEY: 'unrelated-tool-secret-sentinel',
-      }
-      const priorEnvironment = Object.fromEntries(
-        Object.keys(ambientSecrets).map((key) => [key, process.env[key]]),
-      )
-      Object.assign(process.env, ambientSecrets)
-      const spec = protectedSpec(root, initial)
-      spec.message = `do not duplicate ${initial}`
-      spec.agent.agent.name = `Agent ${initial}`
-      spec.paths.homeDocuments['IDENTITY.md'] = `identity ${initial}`
-
-      try {
-        for await (const frame of spawnWorkerTurn(spec, {
-          ...scopedHosts(),
-          apiKeyRefreshHost: refresh,
-          scratchParentDir: scratchParent,
-          diagnosticSink: (message) => diagnostics.push(message),
-          workerEntryPath: fileURLToPath(
-            new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
-          ),
-        })) {
-          frames.push(frame)
-        }
-      } finally {
-        for (const [key, value] of Object.entries(priorEnvironment)) {
-          if (value === undefined) delete process.env[key]
-          else process.env[key] = value
-        }
-      }
-
-      expect(refresh.refresh).toHaveBeenCalledOnce()
-      expect(readdirSync(scratchParent)).toEqual([])
-      const serialized = JSON.stringify(frames)
-      expect(serialized).not.toContain(initial)
-      expect(serialized).not.toContain(rotated)
-      expect(serialized).toContain('[REDACTED]')
-      expect(diagnostics).toHaveLength(1)
-      expect(diagnostics[0]?.length).toBeLessThanOrEqual(16 * 1024)
-      expect(diagnostics[0]).not.toContain(initial)
-      expect(diagnostics[0]).not.toContain(rotated)
-      expect(diagnostics[0]).toContain('initial=[REDACTED]')
-      expect(diagnostics[0]).toContain('rotated=[REDACTED]')
-
-      const done = frames.find((frame) => frame.kind === 'done')
-      if (done?.kind !== 'done') throw new Error('fixture did not emit done')
-      const content = done.messages[0]?.content
-      if (!content) throw new Error('fixture did not emit inspection content')
-      const inspected = JSON.parse(content) as {
-        environment: Record<string, string>
-        argv: string[]
-        scratchRoot: string
-        stdinEnded: boolean
-        stdioAreRegularFiles: boolean[]
-        ipcConnected: boolean
-        selectedTokenInputOccurrences: number
-        forbiddenInputOccurrences: Record<string, number>
-      }
-      expect(Object.keys(inspected.environment).sort()).toEqual(
-        ['HOME', 'LANG', 'LC_ALL', 'TEMP', 'TMP', 'TMPDIR'].sort(),
-      )
-      expect(inspected.environment.PATH).toBeUndefined()
-      expect(inspected.environment.NODE_OPTIONS).toBeUndefined()
-      expect(inspected.environment.BAZILION_HOME).toBeUndefined()
-      expect(inspected.environment.DOCKER_HOST).toBeUndefined()
-      expect(inspected.stdinEnded).toBe(true)
-      expect(inspected.stdioAreRegularFiles).toEqual([false, false, false])
-      expect(inspected.ipcConnected).toBe(true)
-      expect(inspected.selectedTokenInputOccurrences).toBe(1)
-      expect(inspected.forbiddenInputOccurrences).toEqual({
-        'telegram-secret-sentinel': 0,
-        'bootstrap-secret-sentinel': 0,
-        'oauth-refresh-secret-sentinel': 0,
-        'unrelated-provider-secret-sentinel': 0,
-        'unrelated-tool-secret-sentinel': 0,
-      })
-      expect(inspected.argv.join(' ')).not.toContain(initial)
-      expect(inspected.argv.join(' ')).not.toContain(rotated)
-      expect(existsSync(inspected.scratchRoot)).toBe(false)
-    },
-  )
-
-  dockerSpawnTest('cleans scratch when protected input validation fails before spawn', async () => {
+  test('refuses a worker input that cannot be serialized before spawn', async () => {
     const root = tempRoot()
-    const scratchParent = join(root, 'scratch-parent')
-    mkdirSync(scratchParent)
-    const invalid = {
-      ...protectedSpec(root),
-      webFetchEnabled: false,
-    } as unknown as ProtectedWorkerSpec
-    const iterator = spawnWorkerTurn(invalid, {
-      ...scopedHosts(),
-      apiKeyRefreshHost: { refresh: async () => 'rotated' },
-      scratchParentDir: scratchParent,
-    })
-    await expect(iterator.next()).rejects.toThrow(/requires guarded web_fetch/)
-    expect(readdirSync(scratchParent)).toEqual([])
-  })
-
-  dockerSpawnTest(
-    'rejects a malformed Docker executable identity before worker spawn',
-    async () => {
-      const root = tempRoot()
-      const scratchParent = join(root, 'scratch-parent')
-      mkdirSync(scratchParent)
-      const invalid = protectedSpec(root)
-      invalid.docker.executableIdentity.inode = 'not-an-inode'
-      const iterator = spawnWorkerTurn(invalid, {
-        ...scopedHosts(),
-        apiKeyRefreshHost: { refresh: async () => 'rotated' },
-        scratchParentDir: scratchParent,
-      })
-
-      await expect(iterator.next()).rejects.toThrow(/executable identity has invalid inode/)
-      expect(readdirSync(scratchParent)).toEqual([])
-    },
-  )
-
-  dockerSpawnTest(
-    'cleans scratch when a nested worker input cannot be serialized before spawn',
-    async () => {
-      const root = tempRoot()
-      const scratchParent = join(root, 'scratch-parent')
-      mkdirSync(scratchParent)
-      const spec = protectedSpec(root)
-      ;(spec.agent.profile as typeof spec.agent.profile & { cycle?: unknown }).cycle =
-        spec.agent.profile
-      const iterator = spawnWorkerTurn(spec, {
-        ...scopedHosts(),
-        apiKeyRefreshHost: { refresh: async () => 'rotated' },
-        scratchParentDir: scratchParent,
-      })
-
-      await expect(iterator.next()).rejects.toThrow(/circular/i)
-      expect(readdirSync(scratchParent)).toEqual([])
-    },
-  )
-
-  dockerSpawnTest('bounds protected stdin before spawn and cleans its scratch tree', async () => {
-    const root = tempRoot()
-    const scratchParent = join(root, 'scratch-parent')
-    mkdirSync(scratchParent)
-    const spec = protectedSpec(root)
-    spec.message = 'x'.repeat(2_048)
+    const { spec } = turnFixture(root)
+    ;(spec.agent.profile as typeof spec.agent.profile & { cycle?: unknown }).cycle =
+      spec.agent.profile
     const iterator = spawnWorkerTurn(spec, {
-      ...scopedHosts(),
-      apiKeyRefreshHost: { refresh: async () => 'rotated' },
-      scratchParentDir: scratchParent,
-      maxInputBytes: 1_024,
+      env: {},
       workerEntryPath: join(root, 'must-not-spawn.ts'),
     })
-
-    await expect(iterator.next()).rejects.toThrow(/input exceeded the maximum size/)
-    expect(readdirSync(scratchParent)).toEqual([])
+    await expect(iterator.next()).rejects.toThrow(/circular/i)
   })
 
-  dockerSpawnTest(
-    'terminates a live child before cleaning scratch when a consumer stops early',
-    async () => {
-      const root = tempRoot()
-      const scratchParent = join(root, 'scratch-parent')
-      mkdirSync(scratchParent)
-      const spec = protectedSpec(root)
-      spec.message = 'hang-after-frame'
-      const iterator = spawnWorkerTurn(spec, {
-        ...scopedHosts(),
-        apiKeyRefreshHost: { refresh: async () => 'rotated' },
-        scratchParentDir: scratchParent,
-        workerEntryPath: fileURLToPath(
-          new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
-        ),
-        killGraceMs: 500,
-      })
-
-      const first = await iterator.next()
-      expect(first.done).toBe(false)
-      await iterator.return(undefined)
-      expect(readdirSync(scratchParent)).toEqual([])
-    },
-  )
-
-  dockerSpawnTest('bounds an unterminated stdout frame and fails closed', async () => {
-    const root = tempRoot()
-    const scratchParent = join(root, 'scratch-parent')
-    mkdirSync(scratchParent)
-    const spec = protectedSpec(root)
-    spec.message = 'oversized-frame'
-    const frames = []
-
-    for await (const frame of spawnWorkerTurn(spec, {
-      ...scopedHosts(),
-      apiKeyRefreshHost: { refresh: async () => 'rotated' },
-      scratchParentDir: scratchParent,
-      workerEntryPath: fileURLToPath(
-        new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
-      ),
-      maxFrameChars: 1_024,
-      killGraceMs: 500,
-    })) {
-      frames.push(frame)
-    }
-
-    expect(frames).toContainEqual({
-      kind: 'fatal',
-      error: 'worker frame exceeded the maximum size',
+  describe('review worker', () => {
+    let scratchParent: string
+    let priorTmpdir: string | undefined
+    beforeEach(() => {
+      scratchParent = tempRoot()
+      priorTmpdir = process.env.TMPDIR
+      // Review scratch trees are created here, so each test can see them removed.
+      process.env.TMPDIR = scratchParent
     })
-    expect(readdirSync(scratchParent)).toEqual([])
-  })
+    afterEach(() => {
+      if (priorTmpdir === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = priorTmpdir
+    })
 
-  dockerSpawnTest('turns a native module ABI mismatch into an actionable fatal frame', async () => {
-    const root = tempRoot()
-    const scratchParent = join(root, 'scratch-parent')
-    mkdirSync(scratchParent)
-    const spec = protectedSpec(root)
-    spec.message = 'native-abi-mismatch'
-    const diagnostics: string[] = []
-    const frames = []
+    linuxSpawnTest(
+      'gets only the refresh host and an exact minimal env, and its output is redacted',
+      async () => {
+        const initial = 'initial-worker-secret'
+        const rotated = 'rotated-worker-secret'
+        const diagnostics: string[] = []
+        const refresh: ApiKeyRefreshHost = { refresh: vi.fn(async () => rotated) }
+        // A review is served only the refresh host, whatever else a caller hands it.
+        const browserHost = { invoke: vi.fn(async () => []) }
+        const imageGenerationHost = { generate: vi.fn() }
+        const ambientSecrets = {
+          TELEGRAM_BOT_TOKEN: 'telegram-secret-sentinel',
+          BAZILION_TOKEN: 'bootstrap-secret-sentinel',
+          OPENAI_CODEX_OAUTH: 'oauth-refresh-secret-sentinel',
+          ANTHROPIC_API_KEY: 'unrelated-provider-secret-sentinel',
+          FIRECRAWL_API_KEY: 'unrelated-tool-secret-sentinel',
+        }
+        const priorEnvironment = Object.fromEntries(
+          Object.keys(ambientSecrets).map((key) => [key, process.env[key]]),
+        )
+        Object.assign(process.env, ambientSecrets)
+        let proposals: Awaited<ReturnType<typeof spawnReviewWorker>> = []
+        try {
+          proposals = await spawnReviewWorker(reviewSpec(initial), {
+            apiKeyRefreshHost: refresh,
+            browserHost,
+            imageGenerationHost,
+            diagnosticSink: (message) => diagnostics.push(message),
+            workerEntryPath: minimalWorkerEntry,
+          } as ReviewSpawnOptions)
+        } finally {
+          for (const [key, value] of Object.entries(priorEnvironment)) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+          }
+        }
 
-    for await (const frame of spawnWorkerTurn(spec, {
-      ...scopedHosts(),
-      apiKeyRefreshHost: { refresh: async () => 'rotated' },
-      scratchParentDir: scratchParent,
-      diagnosticSink: (message) => diagnostics.push(message),
-      workerEntryPath: fileURLToPath(
-        new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
-      ),
-    })) {
-      frames.push(frame)
-    }
+        expect(refresh.refresh).toHaveBeenCalledOnce()
+        expect(browserHost.invoke).not.toHaveBeenCalled()
+        expect(imageGenerationHost.generate).not.toHaveBeenCalled()
+        expect(readdirSync(scratchParent)).toEqual([])
+        const serialized = JSON.stringify(proposals)
+        expect(serialized).not.toContain(initial)
+        expect(serialized).not.toContain(rotated)
+        expect(serialized).toContain('[REDACTED]')
+        expect(diagnostics).toHaveLength(1)
+        expect(diagnostics[0]?.length).toBeLessThanOrEqual(16 * 1024)
+        expect(diagnostics[0]).not.toContain(initial)
+        expect(diagnostics[0]).not.toContain(rotated)
+        expect(diagnostics[0]).toContain('initial=[REDACTED]')
+        expect(diagnostics[0]).toContain('rotated=[REDACTED]')
 
-    expect(frames).toEqual([
-      {
-        kind: 'fatal',
-        error: expect.stringMatching(
-          /built for Node module ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
-        ),
+        const content = proposals[0]?.text
+        if (!content) throw new Error('fixture did not emit inspection content')
+        const inspected = JSON.parse(content) as {
+          hosts: string[]
+          environment: Record<string, string>
+          argv: string[]
+          scratchRoot: string
+          stdinEnded: boolean
+          stdioAreRegularFiles: boolean[]
+          ipcConnected: boolean
+          forbiddenInputOccurrences: Record<string, number>
+        }
+        expect(inspected.hosts).toEqual(['apiKeyRefreshHost'])
+        expect(Object.keys(inspected.environment).sort()).toEqual(
+          ['HOME', 'LANG', 'LC_ALL', 'TEMP', 'TMP', 'TMPDIR'].sort(),
+        )
+        expect(inspected.environment.PATH).toBeUndefined()
+        expect(inspected.environment.NODE_OPTIONS).toBeUndefined()
+        expect(inspected.environment.BAZILION_HOME).toBeUndefined()
+        expect(inspected.environment.DOCKER_HOST).toBeUndefined()
+        expect(inspected.stdinEnded).toBe(true)
+        expect(inspected.stdioAreRegularFiles).toEqual([false, false, false])
+        expect(inspected.ipcConnected).toBe(true)
+        expect(inspected.forbiddenInputOccurrences).toEqual({
+          'telegram-secret-sentinel': 0,
+          'bootstrap-secret-sentinel': 0,
+          'oauth-refresh-secret-sentinel': 0,
+          'unrelated-provider-secret-sentinel': 0,
+          'unrelated-tool-secret-sentinel': 0,
+        })
+        expect(inspected.argv.join(' ')).not.toContain(initial)
+        expect(inspected.argv.join(' ')).not.toContain(rotated)
+        expect(existsSync(inspected.scratchRoot)).toBe(false)
       },
-    ])
-    expect(JSON.stringify(frames)).not.toContain('/private/checkout')
-    expect(diagnostics).toHaveLength(1)
-    expect(diagnostics[0]).toContain('/private/checkout/node_modules/better_sqlite3.node')
-    expect(readdirSync(scratchParent)).toEqual([])
-  })
+    )
 
-  dockerSpawnTest(
-    'normalizes a native ABI mismatch already emitted as a worker frame',
-    async () => {
-      const root = tempRoot()
-      const scratchParent = join(root, 'scratch-parent')
-      mkdirSync(scratchParent)
-      const spec = protectedSpec(root)
-      spec.message = 'native-abi-frame'
-      const frames = []
+    linuxSpawnTest(
+      'terminates a live child before cleaning scratch when a consumer stops early',
+      async () => {
+        // The fixture emits its result and then hangs; the reviewer returns on the result.
+        const proposals = await spawnReviewWorker(
+          { ...reviewSpec(), message: 'hang-after-frame' },
+          {
+            apiKeyRefreshHost: { refresh: async () => 'rotated' },
+            workerEntryPath: minimalWorkerEntry,
+          },
+        )
+        expect(proposals).toHaveLength(1)
+        expect(readdirSync(scratchParent)).toEqual([])
+      },
+    )
 
-      for await (const frame of spawnWorkerTurn(spec, {
-        ...scopedHosts(),
-        apiKeyRefreshHost: { refresh: async () => 'rotated' },
-        scratchParentDir: scratchParent,
-        workerEntryPath: fileURLToPath(
-          new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
+    linuxSpawnTest('bounds an unterminated stdout frame and fails closed', async () => {
+      await expect(
+        spawnReviewWorker(
+          { ...reviewSpec(), message: 'oversized-frame' },
+          {
+            apiKeyRefreshHost: { refresh: async () => 'rotated' },
+            workerEntryPath: minimalWorkerEntry,
+          },
         ),
-      })) {
-        frames.push(frame)
-      }
-
-      expect(frames).toEqual([
-        {
-          kind: 'fatal',
-          error: expect.stringMatching(
-            /built for Node module ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
-          ),
-        },
-      ])
-      expect(JSON.stringify(frames)).not.toContain('/private/checkout')
+      ).rejects.toThrow('worker frame exceeded the maximum size')
       expect(readdirSync(scratchParent)).toEqual([])
-    },
-  )
+    })
+
+    linuxSpawnTest(
+      'turns a native module ABI mismatch into an actionable fatal frame',
+      async () => {
+        const diagnostics: string[] = []
+        const failure = await spawnReviewWorker(
+          { ...reviewSpec(), message: 'native-abi-mismatch' },
+          {
+            apiKeyRefreshHost: { refresh: async () => 'rotated' },
+            diagnosticSink: (message) => diagnostics.push(message),
+            workerEntryPath: minimalWorkerEntry,
+          },
+        ).then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+
+        expect((failure as Error).message).toMatch(
+          /built for Node module ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
+        )
+        expect((failure as Error).message).not.toContain('/private/checkout')
+        expect(diagnostics).toHaveLength(1)
+        expect(diagnostics[0]).toContain('/private/checkout/node_modules/better_sqlite3.node')
+        expect(readdirSync(scratchParent)).toEqual([])
+      },
+    )
+
+    linuxSpawnTest(
+      'normalizes a native ABI mismatch already emitted as a worker frame',
+      async () => {
+        const failure = await spawnReviewWorker(
+          { ...reviewSpec(), message: 'native-abi-frame' },
+          {
+            apiKeyRefreshHost: { refresh: async () => 'rotated' },
+            workerEntryPath: minimalWorkerEntry,
+          },
+        ).then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+
+        expect((failure as Error).message).toMatch(
+          /built for Node module ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
+        )
+        expect((failure as Error).message).not.toContain('/private/checkout')
+        expect(readdirSync(scratchParent)).toEqual([])
+      },
+    )
+  })
 
   test('uses generic rebuild guidance for a different native addon', () => {
     const error = formatWorkerExitFailure(
@@ -1249,48 +548,49 @@ function tempRoot(): string {
   return root
 }
 
-function protectedSpec(
-  root: string,
-  accessToken = 'initial-access-token',
-): ProtectedWorkerSpec & { docker: ProtectedDockerRuntime } {
+const minimalWorkerEntry = fileURLToPath(
+  new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
+)
+
+function turnFixture(root: string): {
+  spec: AgentTurnWorkerSpec
+  docker: DockerTurn
+} {
   const agentDir = join(root, 'agents', 'agent-1')
   const teamDir = join(root, 'teams', 'team-1')
   const memoryDir = join(teamDir, 'memory')
   const sessionsDir = join(agentDir, 'sessions')
   for (const path of [agentDir, teamDir, memoryDir, sessionsDir])
     mkdirSync(path, { recursive: true })
-  const agent = resolvedAgent(agentDir, teamDir)
-  const docker = fakeDockerRuntime(teamDir, memoryDir)
   return {
-    kind: 'protected',
-    repositoryContext: emptyRepositoryContext(agent.team.id),
-    conversation: seedConversationTarget(sessionsDir, teamDir),
-    agent,
-    message: 'test protected runtime',
-    turnId: 'turn-1',
-    bashApprovalMode: 'auto_deny',
+    spec: {
+      kind: 'agent_turn',
+      repositoryInstructions: [],
+      conversation: seedConversationTarget(sessionsDir, teamDir),
+      agent: resolvedAgent(agentDir, teamDir),
+      message: 'test agent turn',
+      turnId: 'turn-1',
+      bashApprovalMode: 'auto_deny',
+    },
+    docker: {
+      image: 'test:image',
+      cwd: '.',
+      containerPrefix: `bazilion-${'1'.repeat(12)}-${'2'.repeat(12)}-`,
+    },
+  }
+}
+
+function reviewSpec(accessToken = 'initial-access-token'): RestrictedReviewWorkerSpec {
+  return {
+    kind: 'restricted_review',
+    message: 'test review',
     runtime: {
       providerName: 'openai-codex',
       modelId: 'gpt-5.6-sol',
       reasoningLevel: 'high',
       apiKey: accessToken,
     },
-    paths: {
-      agentDir,
-      teamDir,
-      memoryDir,
-      sessionDir: sessionsDir,
-      skills: [],
-      homeDocuments: {
-        'AGENTS.md': null,
-        'SOUL.md': null,
-        'TOOLS.md': null,
-        'IDENTITY.md': null,
-        'BOOTSTRAP.md': null,
-      },
-    },
-    docker,
-    webFetchEnabled: true,
+    evidence: [],
   }
 }
 
@@ -1333,6 +633,7 @@ function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
       path: teamDir,
       userMd: '',
       telegramTopicNameFormat: null,
+      policyMode: 'open',
       createdAt: 0,
     },
     skills: [],
@@ -1340,39 +641,9 @@ function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
   }
 }
 
-function fakeDockerRuntime(teamDir: string, memoryDir: string): ProtectedDockerRuntime {
-  return {
-    dockerPath: process.execPath,
-    executableIdentity: {
-      device: '1',
-      inode: '2',
-      mode: '33261',
-      size: '3',
-      modifiedTimeNs: '4',
-      changedTimeNs: '5',
-    },
-    endpoint: 'unix:///tmp/bazilion-test-docker.sock',
-    image: 'test:image',
-    imageId: `sha256:${'a'.repeat(64)}`,
-    uid: typeof process.getuid === 'function' ? process.getuid() : 1,
-    gid: typeof process.getgid === 'function' ? process.getgid() : 1,
-    workspace: { source: teamDir, sourceRoot: teamDir, target: '/workspace' },
-    readOnlyMounts: [{ source: memoryDir, sourceRoot: teamDir, target: '/workspace/memory' }],
-    containerEnv: {
-      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-      HOME: '/tmp',
-      LANG: 'C.UTF-8',
-      LC_ALL: 'C.UTF-8',
-      SHELL: '/bin/bash',
-      TMPDIR: '/tmp',
-    },
-  }
-}
-
 function scopedHosts(): {
   messagingHost: MessagingHost
   userMdHost: UserMdHost
-  bashApprovalHost: BashApprovalHost
 } {
   return {
     messagingHost: {
@@ -1381,28 +652,10 @@ function scopedHosts(): {
       listInbox: () => [],
       markRead: () => {},
       findReplies: () => [],
-      approvalStatus: () => null,
     },
     userMdHost: {
       get: () => ({ content: '', etag: 'unused' }),
       write: () => ({ etag: 'unused', totalBytes: 0 }),
-    },
-    bashApprovalHost: {
-      begin: () => ({
-        approval: {
-          id: 'unused',
-          turnId: 'turn-1',
-          toolCallId: 'unused',
-          agentId: 'agent-1',
-          teamId: 'team-1',
-          command: 'unused',
-          risks: [],
-          status: 'auto_denied',
-          createdAt: 0,
-          expiresAt: 0,
-        },
-        decision: Promise.resolve({ decision: 'deny', reason: 'auto_deny' }),
-      }),
     },
   }
 }

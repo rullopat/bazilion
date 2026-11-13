@@ -1,10 +1,10 @@
 // Per-team topic-name template: rendering, validation, and repo round-trip.
 
+import { DEFAULT_TEAM_ID } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import * as teamRepo from '../../src/core/repos/teams.ts'
 import { registerTeam } from '../../src/core/team/register.ts'
 import {
-  DEFAULT_TEAM_ID,
   renderTopicNameFormat,
   topicNameFor,
   validateTopicNameFormat,

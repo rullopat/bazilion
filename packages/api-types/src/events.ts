@@ -1,9 +1,10 @@
-import type { CodingLogReference } from './coding-environment.ts'
-import type { ResultReference } from './results.ts'
 // Wire shapes for chat streaming and provider message exchange. The worker
 // emits `ChatFrame`s as NDJSON, the daemon forwards them verbatim, every UI
 // renders the contained `SessionEvent`s. `ProviderMessage` is the shape both
 // the worker (in `done` frames) and clients (when displaying history) speak.
+
+import type { AgentQuestion } from './questions.ts'
+import type { ResultReference } from './results.ts'
 
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
 
@@ -15,7 +16,7 @@ export interface ToolCall {
 }
 
 export interface ProviderMessage {
-  result?: ResultReference
+  /** for role='tool': files the tool saved as results (deliver_file, image_generate). */
   results?: ResultReference[]
   role: Role
   content: string
@@ -26,12 +27,6 @@ export interface ProviderMessage {
   toolName?: string
   /** for role='tool': images the tool emitted (browser screenshots, MCP image results). */
   images?: ToolResultImage[]
-  /**
-   * for role='tool': opaque reference to a retained coding-command log. History
-   * projections carry this so a reloaded chat can offer the retained output;
-   * it never carries bytes and never releases anything on its own.
-   */
-  codingLog?: CodingLogReference
 }
 
 export interface ToolDef {
@@ -59,13 +54,9 @@ export type CommandRiskCode =
   | 'outbound-exfiltration'
   | 'privilege-or-credential-access'
 
-export type CommandRiskSeverity = 'warning' | 'danger'
-
 export interface CommandRisk {
   code: CommandRiskCode
-  severity: CommandRiskSeverity
   message: string
-  matchedText: string
   /** Inclusive/exclusive UTF-16 offsets into the original command. */
   span: { start: number; end: number }
 }
@@ -93,14 +84,13 @@ export interface CommandApproval {
 }
 
 export type SessionEvent =
-  | { type: 'agent_question'; question: import('./questions.ts').AgentQuestion }
+  | { type: 'agent_question'; question: AgentQuestion }
   | { type: 'user_message'; text: string }
   | { type: 'assistant_delta'; delta: string }
   | { type: 'assistant_message'; text: string }
   | { type: 'tool_call'; id: string; name: string; arguments: string }
   | {
       type: 'tool_result'
-      resultReference?: ResultReference
       id: string
       name: string
       result: string
@@ -109,33 +99,23 @@ export type SessionEvent =
     }
   | { type: 'tool_error'; id: string; name: string; error: string }
   | {
-      /** A file the agent delivered to the user via the `deliver_file` tool. */
+      /** A file the Agent saved for the user (deliver_file, image_generate); fetch it by result id. */
       type: 'file'
-      result?: ResultReference
+      result: ResultReference
       name: string
       mimeType: string
-      /** base64-encoded file bytes. */
-      data: string
     }
   | { type: 'command_approval'; approval: CommandApproval }
   | {
       /**
-       * A bounded, cumulative live update from an admitted coding command. Every
-       * update for the same `id` replaces the previous one, so a reconnect can
-       * replay the latest tail without duplicating output. The tail is redacted
-       * before it is emitted and may stop short of the command's retained log.
+       * Live output of a running tool (e.g. bash). Cumulative: each update for the same `id`
+       * replaces the previous one. A bounded, redacted tail; the tool result follows.
        */
-      type: 'coding_progress'
-      /** Pi tool-call id; the renderer keys on this to replace prior updates. */
+      type: 'tool_progress'
+      /** Tool-call id. */
       id: string
-      /** Opaque Bazilion receipt id for the command. */
-      commandId: string
-      /** Cumulative redacted output tail. */
+      name: string
       output: string
-      /** True when `output` does not reach the beginning of the command's output. */
-      truncated: boolean
-      /** Milliseconds elapsed since the command started. */
-      elapsedMs: number
     }
   | { type: 'error'; error: string }
 

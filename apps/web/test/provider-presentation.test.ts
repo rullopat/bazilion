@@ -18,12 +18,7 @@ describe('provider presentation', () => {
     ]
 
     const groups = groupProviders(providers)
-    expect(groups.map((group) => group.key)).toEqual([
-      'configured',
-      'recommended',
-      'local',
-      'more',
-    ])
+    expect(groups.map((group) => group.key)).toEqual(['configured', 'recommended', 'local', 'more'])
     expect(groups[0]?.providers.map((item) => item.id)).toEqual(['ollama', 'anthropic'])
     expect(groups.flatMap((group) => group.providers.map((item) => item.id)).sort()).toEqual(
       providers.map((item) => item.id).sort(),
@@ -42,18 +37,16 @@ describe('provider presentation', () => {
     expect(providerMatches(item, 'anthropic')).toBe(false)
   })
 
-  test('distinguishes saved, model-incomplete, and test-ready states', () => {
+  test('distinguishes saved, model-incomplete, and enabled states without claiming credentials work', () => {
     const saved = provider('anthropic', { fieldSet: true })
     const incomplete = provider('openai', { enabled: true })
-    const ready = provider('ollama', { enabled: true, curated: ['llama3.3'] })
+    // Enabled with a model but no API key: nothing has checked the credentials.
+    const enabled = provider('anthropic', { enabled: true, curated: ['claude-opus-5'] })
 
     expect(providerHasConfiguration(saved)).toBe(true)
     expect(providerReadiness(saved)).toEqual({ label: 'Saved, disabled', tone: 'neutral' })
     expect(providerReadiness(incomplete)).toEqual({ label: 'Needs a model', tone: 'warning' })
-    expect(providerReadiness(ready)).toEqual({
-      label: 'Configured, unverified',
-      tone: 'warning',
-    })
+    expect(providerReadiness(enabled)).toEqual({ label: 'Enabled', tone: 'neutral' })
   })
 })
 
@@ -71,7 +64,6 @@ function provider(
     id,
     displayName: options.displayName ?? id,
     enabled: options.enabled ?? false,
-    envHint: options.envVar ?? '',
     fields: options.envVar
       ? [
           {

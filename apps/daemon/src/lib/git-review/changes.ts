@@ -1,25 +1,23 @@
 import {
   type ContentOmission,
+  type PinnedBase,
   REVIEW_LIMITS,
   type RepositoryChanges,
+  type RepositoryIdentity,
   type ReviewChange,
   type ReviewChangeStatus,
   type ReviewIssue,
   type ReviewLimits,
 } from '@bazilion/api-types'
 import type { CapturedGit } from '../git/capture.ts'
-import { type PinnedBase, type RepositoryIdentity, ReviewBaseError } from './identity.ts'
+import { type ContextDirectory, ContextReadError } from '../git/context-directory.ts'
 import { reviewScope } from './scope.ts'
 
-// Change inventory and bounded diffs for Git change review (BAZ-042 slice 3).
+// Change inventory and bounded diffs for Git change review (BAZ-042).
 //
 // Two read-only Git invocations describe the same change set: `--raw` carries the status letter,
 // modes and rename source, while `--numstat` carries line counts and binary markers. They are
 // merged by destination path. Patches are read per file, bounded, and say so when truncated.
-//
-// The wire shapes live in `@bazilion/api-types`; re-exported so daemon callers keep one path.
-export type { ContentOmission, RepositoryChanges, ReviewChange, ReviewChangeStatus, ReviewLimits }
-export { REVIEW_LIMITS }
 
 /**
  * List changes between a pinned base and the working tree.
@@ -66,8 +64,6 @@ export async function listChanges(
       binary: count?.binary ?? false,
       addedLines: count?.added ?? null,
       deletedLines: count?.deleted ?? null,
-      oldMode: header.oldMode,
-      newMode: header.newMode,
       patch: null,
       patchTruncated: false,
       // A credential-shaped or Bazilion-owned tracked file may be listed, but never captured.
@@ -83,8 +79,9 @@ export async function listChanges(
   for (const path of untrackedNames) {
     const scoped = reviewScope(path)
     if (!scoped.included) {
-      // Untracked credential-shaped or Bazilion-owned names are withheld entirely, only counted.
-      excludedUntracked++
+      // The Team's own memory store is not project content and is not mentioned; untracked
+      // credential-shaped names are withheld entirely, only counted.
+      if (scoped.reason !== 'bazilion_state') excludedUntracked++
       continue
     }
     entries.push({
@@ -94,11 +91,9 @@ export async function listChanges(
       binary: false,
       addedLines: null,
       deletedLines: null,
-      oldMode: null,
-      newMode: null,
       patch: null,
       patchTruncated: false,
-      contentOmitted: 'untracked_not_selected',
+      contentOmitted: null,
       excludedReason: null,
     })
   }
@@ -119,12 +114,7 @@ export async function listChanges(
     truncated,
     // Counts of what was *not* captured, so an omission is never invisible. Untracked
     // credential-shaped names are counted here but never listed by name.
-    withheld: {
-      untracked: excludedUntracked,
-      excluded: excludedTracked,
-      binary: kept.filter((change) => change.binary).length,
-      tooLarge: 0,
-    },
+    withheld: { untracked: excludedUntracked, excluded: excludedTracked },
     issues,
   }
 }
@@ -143,28 +133,29 @@ export async function readChangePatch(
 ): Promise<{ patch: string | null; truncated: boolean; omitted: ContentOmission | null }> {
   if (change.excludedReason) return { patch: null, truncated: false, omitted: 'excluded' }
   if (change.binary) return { patch: null, truncated: false, omitted: 'binary' }
-  if (change.status === 'untracked') {
-    return { patch: null, truncated: false, omitted: 'untracked_not_selected' }
-  }
   // A deleted file is addressed by its base-side path; everything else by its destination path.
   const target = change.status === 'deleted' ? (change.previousPath ?? change.path) : change.path
   let output: string
   try {
-    output = await captured.runGit([
-      'diff',
-      '--no-ext-diff',
-      '--no-textconv',
-      '--no-color',
-      '--unified=3',
-      '-M',
-      base.resolvedOid,
-      '--',
-      target,
-    ])
+    output =
+      change.status === 'untracked'
+        ? addedFileDiff(target, readUntrackedFile(captured.root, target))
+        : await captured.runGit([
+            'diff',
+            '--no-ext-diff',
+            '--no-textconv',
+            '--no-color',
+            '--unified=3',
+            '-M',
+            base.resolvedOid,
+            '--',
+            target,
+          ])
   } catch (error) {
-    if (error instanceof ReviewBaseError) throw error
-    return { patch: null, truncated: false, omitted: 'unavailable' }
+    const tooLarge = error instanceof ContextReadError && error.code === 'byte_limit'
+    return { patch: null, truncated: false, omitted: tooLarge ? 'too_large' : 'unavailable' }
   }
+  if (/^Binary files /m.test(output)) return { patch: null, truncated: false, omitted: 'binary' }
   if (output.length <= patchBytes) return { patch: output, truncated: false, omitted: null }
   return {
     patch: `${output.slice(0, patchBytes)}\n[truncated: diff exceeds ${patchBytes} bytes]`,
@@ -181,7 +172,6 @@ export async function attachPatches(
   onlyPath?: string,
 ): Promise<RepositoryChanges> {
   let total = 0
-  let tooLarge = 0
   const changes: ReviewChange[] = []
   for (const change of report.changes) {
     // A caller asking for one file's diff should not pay for (or receive) every other patch.
@@ -200,7 +190,6 @@ export async function attachPatches(
     const read = await readChangePatch(captured, report.base, change, limits.patchBytes)
     const bytes = read.patch ? Buffer.byteLength(read.patch) : 0
     if (bytes > limits.fileBytes && !read.truncated) {
-      tooLarge++
       changes.push({ ...change, patch: null, contentOmitted: 'too_large' })
       continue
     }
@@ -212,7 +201,51 @@ export async function attachPatches(
       contentOmitted: read.omitted,
     })
   }
-  return { ...report, changes, withheld: { ...report.withheld, tooLarge } }
+  return { ...report, changes }
+}
+
+/**
+ * Read an untracked file through the pinned worktree, never following a symlink in any component.
+ * Git would resolve the live path instead: an untracked path has no index entry to protect it.
+ */
+function readUntrackedFile(
+  root: ContextDirectory,
+  path: string,
+): { content: Buffer; executable: boolean } {
+  const parts = path.split('/')
+  const name = parts.pop() ?? ''
+  const [first, ...rest] = parts
+  // Directory descriptors are released per file; the root stays open for the next one.
+  const top = first === undefined ? undefined : root.directory(first)
+  try {
+    let dir = top ?? root
+    for (const part of rest) dir = dir.directory(part)
+    const entry = dir.entry(name)
+    const content = dir.read(name, REVIEW_LIMITS.fileBytes)
+    if (!entry || !content) throw new ContextReadError('source_changed')
+    return { content, executable: (entry.mode & 0o111) !== 0 }
+  } finally {
+    top?.close()
+  }
+}
+
+/** A new file's diff in Git's format: it has no blob to diff against. */
+function addedFileDiff(path: string, file: { content: Buffer; executable: boolean }): string {
+  const header = `diff --git a/${path} b/${path}\nnew file mode ${file.executable ? '100755' : '100644'}\n`
+  // Git's own heuristic: a NUL byte early in the file.
+  if (file.content.subarray(0, 8000).includes(0))
+    return `${header}Binary files /dev/null and b/${path} differ\n`
+  if (file.content.length === 0) return header
+  const lines = file.content.toString('utf8').split('\n')
+  const finalNewline = lines.at(-1) === ''
+  if (finalNewline) lines.pop()
+  const range = lines.length === 1 ? '1' : `1,${lines.length}`
+  return [
+    header,
+    `--- /dev/null\n+++ b/${path}\n@@ -0,0 +${range} @@\n`,
+    ...lines.map((line) => `+${line}\n`),
+    finalNewline ? '' : '\\ No newline at end of file\n',
+  ].join('')
 }
 
 async function readDiff(captured: CapturedGit, base: PinnedBase, args: string[]): Promise<string> {
@@ -228,8 +261,6 @@ interface RawHeader {
   path: string
   previousPath: string | null
   status: ReviewChangeStatus
-  oldMode: string | null
-  newMode: string | null
 }
 
 const RAW_HEADER = /^:(\d{6}) (\d{6}) ([0-9a-f]+) ([0-9a-f]+) ([A-Z])(\d*)$/
@@ -248,23 +279,11 @@ function parseRaw(output: string): RawHeader[] {
     if (paired) {
       const second = records[++i] ?? ''
       if (first.length === 0 || second.length === 0) continue
-      headers.push({
-        path: second,
-        previousPath: first,
-        status,
-        oldMode: match[1] ?? null,
-        newMode: match[2] ?? null,
-      })
+      headers.push({ path: second, previousPath: first, status })
       continue
     }
     if (first.length === 0) continue
-    headers.push({
-      path: first,
-      previousPath: null,
-      status,
-      oldMode: match[1] ?? null,
-      newMode: match[2] ?? null,
-    })
+    headers.push({ path: first, previousPath: null, status })
   }
   return headers
 }

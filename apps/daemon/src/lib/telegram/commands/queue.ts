@@ -1,81 +1,66 @@
-import { agentRepo, mergeSecretsIntoEnv, telegramPairingRepo } from '../../../core/index.ts'
+// `/queue`, `/stop` and `/resume`: the follow-up queue of the Agent bound to this topic.
+
 import * as queue from '../../../core/repos/user-queue.ts'
-import { cancelAgent } from '../../agent-cancel.ts'
+import { stopAgentTurn } from '../../user-queue.ts'
+import { clip } from '../markdown.ts'
+import { notifyTelegramQueueOutcome } from '../queue-notice.ts'
 import type { CommandHandler } from './types.ts'
 
-export const handle: CommandHandler = async (ctx) => {
-  const agent = ctx.agent && agentRepo.get(ctx.db, ctx.agent.id)
-  const config = mergeSecretsIntoEnv(ctx.db, ctx.authToken)
-  if (
-    !agent ||
-    ctx.from.is_bot ||
-    telegramPairingRepo.status(ctx.db).ownerUserId !== ctx.from.id ||
-    agent.telegramTopicId !== ctx.topicId ||
-    Number(config.TELEGRAM_CHAT_ID) !== ctx.chatId ||
-    !config.TELEGRAM_BOT_TOKEN
-  )
-    return { text: 'Queue controls require the paired owner in the current Agent topic.' }
-  const [command = 'list', arg, rev, acknowledgement] = ctx.args.trim().split(/\s+/).filter(Boolean)
-  try {
-    queue.reconcileApprovalHolds(ctx.db)
-    if (command === 'list' || command === 'history') {
-      const state = queue.list(ctx.db, agent.id, {
-        all: command === 'history',
-        offset: command === 'history' && arg ? revision(arg) : 0,
-      })
-      return {
-        text: [
-          `Queue ${state.control.paused ? 'paused' : 'ready'}; control revision ${state.control.revision}.`,
-          ...state.items.map(
-            (item) => `${item.id} · ${item.status} · revision ${item.revision} · ${item.source}`,
-          ),
-          '/queue pause <control-revision> | resume <control-revision> | stop <control-revision>',
-          '/queue remove <item-id> <item-revision>',
-          'Review uncertain work in web/CLI before acknowledging it.',
-        ].join('\n'),
-      }
-    }
-    if (command === 'pause' || command === 'resume' || command === 'stop') {
-      const expected = revision(arg)
-      const control = queue.setPaused(
-        ctx.db,
-        agent.id,
-        command !== 'resume',
-        expected,
-        command === 'resume' ? null : 'telegram_operator',
-      )
-      const cancelled = command === 'stop' && cancelAgent(agent.id)
-      return {
-        text: `Queue ${control.paused ? 'paused' : 'resumed'}; control revision ${control.revision}.${cancelled ? ' Active turn cancellation requested.' : ''}`,
-      }
-    }
-    if (command === 'remove' && arg) {
-      const item = queue.remove(ctx.db, agent.id, arg, revision(rev))
-      return { text: `Follow-up ${item.id}: ${item.status}.` }
-    }
-    if (command === 'reconcile' && arg && acknowledgement === 'acknowledge') {
-      const item = queue.get(ctx.db, agent.id, arg)
-      if (!item || item.revision !== revision(rev) || item.status !== 'uncertain')
-        throw new queue.QueueConflictError('Queue item changed or is not uncertain')
-      queue.transition(ctx.db, agent.id, arg, 'uncertain', 'cancelled', {
-        diagnostic: 'Telegram owner acknowledged uncertain outcome; no replay',
-      })
-      return { text: 'Uncertain input closed without replay. The queue remains paused.' }
-    }
+const NOT_IN_TOPIC = { text: 'Run this inside an Agent topic.' }
+
+/** `/queue` lists waiting messages; `/queue drop <n|all>` removes them. */
+export const handleQueue: CommandHandler = async (ctx) => {
+  if (!ctx.agent) return NOT_IN_TOPIC
+  const agentId = ctx.agent.id
+  const { paused, items } = queue.list(ctx.db, agentId)
+  const open = items.filter((item) => item.status !== 'failed')
+  const [command, target] = ctx.args.trim().split(/\s+/).filter(Boolean)
+  if (!command) {
     return {
-      text: 'Run /queue for items and current revisions. Reconciliation requires /queue reconcile <id> <revision> acknowledge after reviewing possible effects.',
-    }
-  } catch (error) {
-    return {
-      text:
-        error instanceof queue.QueueConflictError
-          ? `${error.message}. Run /queue for current state.`
-          : 'Invalid queue command. Run /queue for current state and syntax.',
+      text: [
+        paused ? 'Queue paused. /resume continues it.' : 'Queue running.',
+        ...open.map((item, index) => {
+          const text = item.text.replace(/\s+/g, ' ').trim()
+          return `${index + 1}. ${item.status} · ${clip(text || '(attachment)', 60)}`
+        }),
+        open.length ? '/queue drop <n|all> removes waiting messages.' : 'Nothing waiting.',
+      ].join('\n'),
     }
   }
+  if (command !== 'drop' || !target) return { text: 'Usage: /queue, or /queue drop <n|all>.' }
+  const chosen = target === 'all' ? open : [open[Number(target) - 1]]
+  let dropped = 0
+  for (const item of chosen) {
+    if (item?.status !== 'pending') continue
+    try {
+      const removed = queue.remove(ctx.db, agentId, item.id)
+      await notifyTelegramQueueOutcome(removed.item, removed.origin, 'removed')
+      dropped++
+    } catch {
+      // It started meanwhile.
+    }
+  }
+  return {
+    text: dropped
+      ? `Dropped ${dropped} message${dropped === 1 ? '' : 's'}.`
+      : 'Nothing dropped: only waiting messages can be dropped.',
+  }
 }
-function revision(value: string | undefined): number {
-  if (!value || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)))
-    throw new Error('Invalid revision')
-  return Number(value)
+
+/** Cancel the running turn; waiting messages are paused until /resume. */
+export const handleStop: CommandHandler = async (ctx) => {
+  if (!ctx.agent) return NOT_IN_TOPIC
+  const { cancelled, queuePaused } = stopAgentTurn(ctx.db, ctx.agent.id)
+  return {
+    text: [
+      cancelled ? 'Turn cancelled.' : 'No turn is running.',
+      ...(queuePaused ? ['Waiting messages are paused. /resume continues them.'] : []),
+    ].join(' '),
+  }
+}
+
+export const handleResume: CommandHandler = async (ctx) => {
+  if (!ctx.agent) return NOT_IN_TOPIC
+  queue.setPaused(ctx.db, ctx.agent.id, false)
+  return { text: 'Queue running.' }
 }

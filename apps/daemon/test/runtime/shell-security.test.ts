@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import {
-  buildScrubbedShellEnv,
   classifyBashCommand,
   DEFAULT_BASH_SANDBOX_IMAGE,
   resolveShellSecurityConfig,
-  ShellSecurityConfigError,
+  toolEnvironment,
 } from '../../src/runtime/shell/security.ts'
 
 function riskCodes(command: string): string[] {
@@ -39,9 +38,7 @@ describe('classifyBashCommand', () => {
   ])('classifies a sensitive path or credential read: %s', (command, expectedMatch) => {
     const risk = classifyBashCommand(command).find((item) => item.code === 'sensitive-path-read')
     expect(risk).toBeDefined()
-    expect(risk?.severity).toBe('danger')
-    expect(risk?.matchedText).toContain(expectedMatch)
-    expect(command.slice(risk?.span.start, risk?.span.end)).toBe(risk?.matchedText)
+    expect(command.slice(risk?.span.start, risk?.span.end)).toContain(expectedMatch)
   })
 
   test.each([
@@ -105,9 +102,10 @@ describe('classifyBashCommand', () => {
       'sensitive-path-read',
       'privilege-or-credential-access',
     ])
-    for (const risk of risks) {
-      expect(command.slice(risk.span.start, risk.span.end)).toBe(risk.matchedText)
-    }
+    expect(risks.map((risk) => command.slice(risk.span.start, risk.span.end))).toEqual([
+      '~/.ssh/id_rsa',
+      'sudo true',
+    ])
   })
 })
 
@@ -117,105 +115,56 @@ describe('resolveShellSecurityConfig', () => {
       sandboxMode: 'off',
       approvalMode: 'off',
       sandboxImage: DEFAULT_BASH_SANDBOX_IMAGE,
-      envAllowlist: [],
     })
     expect(DEFAULT_BASH_SANDBOX_IMAGE).toBe('debian:bookworm-slim')
   })
 
-  test('native is an explicit backend with mandatory dangerous-command gating, not a host/Docker alias', () => {
-    expect(
-      resolveShellSecurityConfig({
-        BAZILION_BASH_SANDBOX: 'native',
-        BAZILION_BASH_APPROVAL: 'off',
-      }),
-    ).toMatchObject({ sandboxMode: 'native', approvalMode: 'dangerous' })
-    expect(resolveShellSecurityConfig({ BAZILION_BASH_SANDBOX: ' native ' })).toMatchObject({
-      sandboxMode: 'native',
-      approvalMode: 'dangerous',
-    })
-  })
-
-  test('parses dangerous approval, Docker mode, a custom image, and an env allowlist', () => {
+  test('parses dangerous approval, Docker mode and a custom image', () => {
     expect(
       resolveShellSecurityConfig({
         BAZILION_BASH_APPROVAL: 'dangerous',
         BAZILION_BASH_SANDBOX: 'docker',
         BAZILION_BASH_SANDBOX_IMAGE: 'registry.example.com:5000/bazilion/bash@sha256:abc123',
-        BAZILION_BASH_SANDBOX_ENV_ALLOWLIST: 'CI, PROJECT_TOKEN,CI',
       }),
     ).toEqual({
       sandboxMode: 'docker',
       approvalMode: 'dangerous',
       sandboxImage: 'registry.example.com:5000/bazilion/bash@sha256:abc123',
-      envAllowlist: ['CI', 'PROJECT_TOKEN'],
     })
   })
 
   test.each([
     [{ BAZILION_BASH_APPROVAL: 'true' }, /must be "off" or "dangerous"/],
     [{ BAZILION_BASH_APPROVAL: 'Dangerous' }, /must be "off" or "dangerous"/],
-    [{ BAZILION_BASH_SANDBOX: 'true' }, /must be "off", "docker" or "native"/],
-    [{ BAZILION_BASH_SANDBOX: 'Docker' }, /must be "off", "docker" or "native"/],
+    [{ BAZILION_BASH_SANDBOX: 'true' }, /must be "off" or "docker"/],
+    [{ BAZILION_BASH_SANDBOX: 'Docker' }, /must be "off" or "docker"/],
     [
       { BAZILION_BASH_SANDBOX_IMAGE: 'debian:latest --privileged' },
       /not a valid Docker image reference/,
     ],
-    [{ BAZILION_BASH_SANDBOX_ENV_ALLOWLIST: 'GOOD,,ALSO_GOOD' }, /empty environment variable name/],
-    [{ BAZILION_BASH_SANDBOX_ENV_ALLOWLIST: 'GOOD,BAD-NAME' }, /invalid environment variable name/],
-    [{ BAZILION_BASH_SANDBOX_ENV_ALLOWLIST: '__proto__' }, /invalid environment variable name/],
-    [
-      { BAZILION_BASH_SANDBOX_ENV_ALLOWLIST: 'DOCKER_HOST' },
-      /cannot include Docker client control variable/,
-    ],
-    [
-      { BAZILION_BASH_SANDBOX_ENV_ALLOWLIST: 'BASH_ENV' },
-      /cannot include shell startup control variable/,
-    ],
   ] as const)('fails closed on invalid configuration: %j', (env, expected) => {
-    expect(() => resolveShellSecurityConfig(env)).toThrow(ShellSecurityConfigError)
     expect(() => resolveShellSecurityConfig(env)).toThrow(expected)
   })
 })
 
-describe('buildScrubbedShellEnv', () => {
-  test('copies only safe basics and explicit keys without mutating the source', () => {
-    const source: NodeJS.ProcessEnv = {
-      PATH: '/usr/local/bin:/usr/bin',
-      HOME: '/home/agent',
-      LANG: 'en_US.UTF-8',
-      TERM: 'xterm-256color',
-      CI: 'true',
-      PROJECT_TOKEN: 'operator-approved',
-      OPENAI_API_KEY: 'must-not-leak',
-      BAZILION_TOKEN: 'must-not-leak',
-      NODE_OPTIONS: '--require malicious.js',
-    }
-    const snapshot = { ...source }
-
-    const scrubbed = buildScrubbedShellEnv(source, ['CI', 'PROJECT_TOKEN'])
-
-    expect(scrubbed).toEqual({
-      PATH: '/usr/local/bin:/usr/bin',
-      HOME: '/home/agent',
-      LANG: 'en_US.UTF-8',
-      TERM: 'xterm-256color',
-      CI: 'true',
-      PROJECT_TOKEN: 'operator-approved',
-    })
-    expect(scrubbed).not.toBe(source)
-    expect(source).toEqual(snapshot)
-    expect(scrubbed).not.toHaveProperty('OPENAI_API_KEY')
-    expect(scrubbed).not.toHaveProperty('BAZILION_TOKEN')
-    expect(scrubbed).not.toHaveProperty('NODE_OPTIONS')
-  })
-
-  test('does not invent missing safe or explicitly allowed values', () => {
-    expect(buildScrubbedShellEnv({ LANG: 'C' }, ['CI'])).toEqual({ LANG: 'C' })
-  })
-
-  test('fails closed on an invalid programmatic allowlist key', () => {
-    expect(() => buildScrubbedShellEnv({ GOOD: 'value' }, ['GOOD; touch /tmp/pwned'])).toThrow(
-      ShellSecurityConfigError,
-    )
+test("the tool environment keeps provider keys but never Bazilion's own credentials", () => {
+  expect(
+    toolEnvironment(
+      {
+        PATH: '/usr/bin',
+        ANTHROPIC_API_KEY: 'provider-key',
+        GITHUB_TOKEN: 'operator-secret',
+        OPENAI_CODEX_OAUTH: '{"refresh":"r"}',
+        TELEGRAM_BOT_TOKEN: '123:bot',
+        MCP_TOKEN_ABC123: 'mcp-bearer',
+        BAZILION_TOKEN: 'cli-bearer',
+        COPIED_BOOTSTRAP: 'bootstrap-token',
+      },
+      'bootstrap-token',
+    ),
+  ).toEqual({
+    PATH: '/usr/bin',
+    ANTHROPIC_API_KEY: 'provider-key',
+    GITHUB_TOKEN: 'operator-secret',
   })
 })

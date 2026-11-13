@@ -3,7 +3,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   _resetSpawnStateForTest,
-  peekPendingSpawn,
   setPendingSpawn,
   takePendingSpawn,
 } from '../../src/lib/telegram/spawn-state.ts'
@@ -32,15 +31,6 @@ describe('spawn-state', () => {
     expect(takePendingSpawn(CHAT, USER_B)).toBeNull()
   })
 
-  test('peekPendingSpawn does NOT consume the entry', () => {
-    setPendingSpawn(CHAT, USER_A, 'coder')
-    expect(peekPendingSpawn(CHAT, USER_A)).toEqual({ profileId: 'coder' })
-    expect(peekPendingSpawn(CHAT, USER_A)).toEqual({ profileId: 'coder' })
-    // still consumable
-    expect(takePendingSpawn(CHAT, USER_A)).toEqual({ profileId: 'coder' })
-    expect(takePendingSpawn(CHAT, USER_A)).toBeNull()
-  })
-
   test('entries from different users do not collide', () => {
     setPendingSpawn(CHAT, USER_A, 'coder')
     setPendingSpawn(CHAT, USER_B, 'researcher')
@@ -66,7 +56,7 @@ describe('spawn-state', () => {
       expect(takePendingSpawn(CHAT, USER_A)).toBeNull()
       // After expiry, the entry is also cleared from the map (no double-take).
       now += 1
-      expect(peekPendingSpawn(CHAT, USER_A)).toBeNull()
+      expect(takePendingSpawn(CHAT, USER_A)).toBeNull()
     } finally {
       Date.now = realNow
     }

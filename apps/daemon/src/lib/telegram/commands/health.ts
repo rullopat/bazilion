@@ -1,11 +1,5 @@
-// `/health` — diagnostic snapshot of the bot + polling state.
-//
-// Reads the live polling state from the bot lifecycle module (no extra
-// Telegram API calls — the data is already in process). The preflight
-// section reads the cached preflight result from the most recent
-// `/api/config/telegram/health` call would be ideal, but we don't cache,
-// so /health here just surfaces polling. Operators who want preflight can
-// run `bazilion telegram health` or hit the HTTP endpoint.
+// `/health` — the bot's polling state. The full setup checks run from
+// `bazilion telegram health` or the web Telegram page.
 
 import { getTelegramBotState } from '../bot.ts'
 import type { CommandHandler } from './types.ts'

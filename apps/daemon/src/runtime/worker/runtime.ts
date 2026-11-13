@@ -1,153 +1,67 @@
-import {
-  constants,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  statSync,
-} from 'node:fs'
-import { access } from 'node:fs/promises'
+// What the daemon hands a worker on stdin, the learning-review worker's scratch tree and minimal
+// environment, and the exact-value redaction used on everything a worker sends back.
+
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, relative, sep } from 'node:path'
+import { join } from 'node:path'
 import type {
   Attachment,
   BashApprovalMode,
-  NativeExecutionAdmission,
+  ChatFrame,
+  ConversationTarget,
   ReasoningLevel,
   ResolvedAgent,
 } from '@bazilion/api-types'
-import { assertRepositoryContext } from '../pi/repository-context-contract.ts'
-import {
-  PROTECTED_PROVIDER_NAMES,
-  PROVIDER_CREDENTIAL_ENV,
-  type ProtectedProviderName,
-} from '../providers/pi-runtime.ts'
-import type { PromptSkill, ProtectedHomeDocuments } from '../session/prompt.ts'
-import { validateDockerCodingSelection } from '../shell/coding.ts'
-import type { ProtectedDockerRuntime } from '../shell/docker.ts'
-import type { InjectedMcpTool } from './ipc-protocol.ts'
-import { assertNativeExecutionAdmission } from './native-contract.ts'
+import type { DockerTurn } from '../shell/tooling.ts'
+import type { InjectedMcpTool, WorkerHostName } from './ipc-protocol.ts'
 
-export const REDACTED_VALUE = '[REDACTED]'
+const REDACTED_VALUE = '[REDACTED]'
 
-export interface ProtectedProviderWorkerRuntime {
-  providerName: ProtectedProviderName
+/** The one provider credential a learning review gets; unrelated daemon secrets never cross. */
+export interface ReviewProviderRuntime {
+  providerName: string
   modelId: string
   reasoningLevel: ReasoningLevel
-  /** Selected provider credential only; unrelated daemon secrets never cross this wire. */
   apiKey?: string
   baseUrl?: string
   /** Closed provider-specific fields installed in Pi's in-memory credential store, not process.env. */
   credentialEnv?: Array<{ name: string; value: string }>
-  /** Explicit Google service-account/ADC JSON materialized only inside this turn's scratch tree. */
+  /** Explicit Google service-account/ADC JSON materialized only inside this review's scratch tree. */
   credentialFile?: { envName: 'GOOGLE_APPLICATION_CREDENTIALS'; content: string }
 }
 
-export interface ProtectedWorkerPaths {
-  agentDir: string
-  teamDir: string
-  memoryDir: string
-  sessionDir: string
-  uploadsDir?: string
-  /** Prompt bodies and exact, daemon-resolved read-only Docker mount paths. */
-  skills: PromptSkill[]
-  /** Daemon-prepared fixed-file snapshot; protected workers never follow home-file symlinks. */
-  homeDocuments: ProtectedHomeDocuments
-}
+/** Workspace AGENTS.md files read by the daemon; paths are relative to the Team root. */
+export type RepositoryInstructions = ReadonlyArray<{
+  readonly path: string
+  readonly content: string
+}>
 
-export interface ConfiguredOperatorHttpWorkerSpec {
-  nativeExecution?: NativeExecutionAdmission
-  nativeVerificationRequestEnabled?: true
-  containerNamespace?: string
-  configuredDocker?: { paths: ProtectedWorkerPaths; docker: ProtectedDockerRuntime }
-  repositoryContext: import('@bazilion/api-types').RepositoryContextReport
-  questionEnabled?: boolean
-  conversation: import('@bazilion/api-types').ConversationTarget
-  imageGenerationEnabled?: boolean
-  webSearchEnabled?: boolean
-  kind: 'configured_operator_http'
+/** Every Agent turn, whatever its origin; BAZILION_BASH_SANDBOX alone decides host or Docker bash. */
+export interface AgentTurnWorkerSpec {
+  kind: 'agent_turn'
   /** Pre-resolved agent record — the worker never queries the DB itself. */
   agent: ResolvedAgent
+  conversation: ConversationTarget
   message: string
-  enabledProviders: string[]
-  apiKey?: string
-  browserEnabled?: boolean
-  mcpTools?: InjectedMcpTool[]
   images?: Attachment[]
+  /** The ChatGPT access token; other providers read their key from the environment. */
+  apiKey?: string
+  /** The turn's Docker settings; present exactly when BAZILION_BASH_SANDBOX is docker. */
+  docker?: DockerTurn
+  repositoryInstructions: RepositoryInstructions
+  mcpTools?: InjectedMcpTool[]
   turnId: string
   bashApprovalMode: BashApprovalMode
 }
 
-export interface ProtectedWorkerSpec {
-  nativeExecution?: NativeExecutionAdmission
-  nativeVerificationRequestEnabled?: true
-  containerNamespace?: string
-  repositoryContext: import('@bazilion/api-types').RepositoryContextReport
-  questionEnabled?: boolean
-  conversation: import('@bazilion/api-types').ConversationTarget
-  imageGenerationEnabled?: boolean
-  kind: 'protected'
-  agent: ResolvedAgent
-  message: string
-  images?: Attachment[]
-  turnId: string
-  bashApprovalMode: 'auto_deny'
-  runtime: ProtectedProviderWorkerRuntime
-  paths: ProtectedWorkerPaths
-  docker?: ProtectedDockerRuntime
-  /** The only general web capability in the protected normal surface. */
-  webFetchEnabled: true
-  /** BAZ-067: discovery host present only when the operator configured a backend. */
-  webSearchEnabled?: boolean
-}
-
+/** A learning review: a digest of recent turns, answered only through `propose_lesson`. */
 export interface RestrictedReviewWorkerSpec {
   kind: 'restricted_review'
-  agentId: string
   message: string
-  turnId: string
-  runtime: ProtectedProviderWorkerRuntime
-  review: {
-    reviewId: string
-    evidence: Array<{ sessionId: string; entryOrdinal: number }>
-  }
+  runtime: ReviewProviderRuntime
+  /** The transcript entries the digest shows; a proposal may cite only these. */
+  evidence: Array<{ sessionId: string; entryOrdinal: number }>
 }
-
-/**
- * BAZ-044: a specialist verification turn.
- *
- * Restricted by construction: the worker receives the request and attempt identity it may act on and
- * nothing else. There is no coding host, container host, repository context, result host or resource
- * lifecycle, so the only execution surface is the captured check set reached over IPC.
- */
-export interface SpecialistVerificationWorkerSpec {
-  kind: 'specialist_verification'
-  agentId: string
-  message: string
-  turnId: string
-  runtime: ProtectedProviderWorkerRuntime
-  verification: {
-    requestId: string
-    attemptId: string
-  }
-}
-
-/** BAZ-043: a restricted static review of one captured revision. */
-export interface StaticReviewWorkerSpec {
-  kind: 'packet_review'
-  agentId: string
-  message: string
-  turnId: string
-  runtime: ProtectedProviderWorkerRuntime
-  review: {
-    packetId: string
-    attemptId: string
-  }
-}
-
-export type WorkerTurnSpec = ConfiguredOperatorHttpWorkerSpec | ProtectedWorkerSpec
 
 export interface MinimalWorkerScratch {
   root: string
@@ -158,134 +72,30 @@ export interface MinimalWorkerScratch {
   reviewSessionDir: string
 }
 
+/** The spec plus the daemon hosts serving this worker, so it offers only tools that work. */
 export type WorkerInput =
-  | (ConfiguredOperatorHttpWorkerSpec & { apiKeyRefreshEnabled: boolean })
-  | (ProtectedWorkerSpec & {
-      apiKeyRefreshEnabled: true
-      scratch: MinimalWorkerScratch
-    })
-  | (RestrictedReviewWorkerSpec & {
-      apiKeyRefreshEnabled: true
-      scratch: MinimalWorkerScratch
-    })
-  | (SpecialistVerificationWorkerSpec & {
-      apiKeyRefreshEnabled: true
-      scratch: MinimalWorkerScratch
-    })
-  | (StaticReviewWorkerSpec & {
-      apiKeyRefreshEnabled: true
-      scratch: MinimalWorkerScratch
-    })
+  | (AgentTurnWorkerSpec & { hosts: WorkerHostName[] })
+  | (RestrictedReviewWorkerSpec & { hosts: WorkerHostName[]; scratch: MinimalWorkerScratch })
 
-const REASONING_LEVELS = new Set<ReasoningLevel>([
-  'off',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-])
+export interface ReviewWorkerProposal {
+  scope: 'private' | 'shared'
+  text: string
+  evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
+}
 
-const CONFIGURED_KEYS = new Set([
-  'nativeVerificationRequestEnabled',
-  'containerNamespace',
-  'configuredDocker',
-  'nativeExecution',
-  'imageGenerationEnabled',
-  'webSearchEnabled',
-  'repositoryContext',
-  'questionEnabled',
-  'conversation',
-  'kind',
-  'agent',
-  'message',
-  'enabledProviders',
-  'apiKey',
-  'apiKeyRefreshEnabled',
-  'browserEnabled',
-  'mcpTools',
-  'images',
-  'turnId',
-  'bashApprovalMode',
-])
-const CONFIGURED_REQUIRED_KEYS = new Set([
-  'repositoryContext',
-  'conversation',
-  'kind',
-  'agent',
-  'message',
-  'enabledProviders',
-  'apiKeyRefreshEnabled',
-  'turnId',
-  'bashApprovalMode',
-])
-const PROTECTED_KEYS = new Set([
-  'nativeVerificationRequestEnabled',
-  'imageGenerationEnabled',
-  'containerNamespace',
-  'repositoryContext',
-  'questionEnabled',
-  'conversation',
-  'kind',
-  'agent',
-  'message',
-  'images',
-  'turnId',
-  'bashApprovalMode',
-  'runtime',
-  'paths',
-  'docker',
-  'nativeExecution',
-  'webFetchEnabled',
-  'webSearchEnabled',
-  'apiKeyRefreshEnabled',
-  'scratch',
-])
-const PROTECTED_REQUIRED_KEYS = new Set(
-  [...PROTECTED_KEYS].filter(
-    (key) =>
-      key !== 'images' &&
-      key !== 'docker' &&
-      key !== 'nativeExecution' &&
-      key !== 'nativeVerificationRequestEnabled' &&
-      key !== 'questionEnabled' &&
-      key !== 'containerNamespace' &&
-      key !== 'imageGenerationEnabled' &&
-      key !== 'webSearchEnabled',
-  ),
-)
-const STATIC_REVIEW_KEYS = new Set([
-  'kind',
-  'agentId',
-  'message',
-  'turnId',
-  'runtime',
-  'review',
-  'apiKeyRefreshEnabled',
-  'scratch',
-])
-const VERIFICATION_KEYS = new Set([
-  'kind',
-  'agentId',
-  'message',
-  'turnId',
-  'runtime',
-  'verification',
-  'apiKeyRefreshEnabled',
-  'scratch',
-])
-const REVIEW_KEYS = new Set([
-  'kind',
-  'agentId',
-  'message',
-  'turnId',
-  'runtime',
-  'review',
-  'apiKeyRefreshEnabled',
-  'scratch',
-])
+/** A worker's stdout line: a chat frame, or a learning review's proposals. */
+export type WorkerFrame = ChatFrame | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
 
-/** Create the complete scratch tree used by one protected/review child. */
+/** The daemon wrote the input itself; the worker checks only that it is one it knows. */
+export function parseWorkerInput(value: unknown): WorkerInput {
+  const kind = (value as { kind?: unknown } | null)?.kind
+  if (kind !== 'agent_turn' && kind !== 'restricted_review') {
+    throw new Error('worker: unknown or missing input kind')
+  }
+  return value as WorkerInput
+}
+
+/** Create the scratch tree of one learning-review worker: its home, tmp and Pi state. */
 export function createMinimalWorkerScratch(parentDir = tmpdir()): MinimalWorkerScratch {
   const root = mkdtempSync(join(parentDir, 'bazilion-worker-'))
   const scratch: MinimalWorkerScratch = {
@@ -308,42 +118,11 @@ export function createMinimalWorkerScratch(parentDir = tmpdir()): MinimalWorkerS
 }
 
 export function cleanupMinimalWorkerScratch(scratch: MinimalWorkerScratch): void {
-  assertMinimalWorkerScratch(scratch)
   rmSync(scratch.root, { recursive: true, force: true })
 }
 
-/**
- * Construct the exact process environment for a protected/review child.
- * Docker/provider/tool configuration is deliberately not represented here.
- */
-export function minimalWorkerProcessEnv(
-  scratch: MinimalWorkerScratch,
-  platform: NodeJS.Platform = process.platform,
-  hostEnv: Readonly<NodeJS.ProcessEnv> = process.env,
-): NodeJS.ProcessEnv {
-  assertMinimalWorkerScratch(scratch)
-  if (platform === 'win32') {
-    const systemRoot = requireCanonicalWindowsDirectory(
-      hostEnv.SystemRoot ?? hostEnv.WINDIR,
-      'SystemRoot',
-    )
-    const windir = requireCanonicalWindowsDirectory(hostEnv.WINDIR ?? systemRoot, 'WINDIR')
-    const comSpec = requireCanonicalWindowsFile(hostEnv.ComSpec, 'ComSpec')
-    const pathExt = hostEnv.PATHEXT
-    if (!pathExt || pathExt.includes('\0') || pathExt.includes('\n') || pathExt.includes('\r')) {
-      throw new Error('minimal worker bootstrap requires a valid PATHEXT on Windows')
-    }
-    return {
-      USERPROFILE: scratch.homeDir,
-      TMPDIR: scratch.tempDir,
-      TMP: scratch.tempDir,
-      TEMP: scratch.tempDir,
-      SystemRoot: systemRoot,
-      WINDIR: windir,
-      ComSpec: comSpec,
-      PATHEXT: pathExt,
-    }
-  }
+/** The whole environment of a learning-review worker: no daemon variable reaches it. */
+export function minimalWorkerProcessEnv(scratch: MinimalWorkerScratch): NodeJS.ProcessEnv {
   return {
     HOME: scratch.homeDir,
     TMPDIR: scratch.tempDir,
@@ -354,312 +133,12 @@ export function minimalWorkerProcessEnv(
   }
 }
 
-/**
- * CoreFoundation can add this locale/uid bookkeeping key after exec even when the parent supplies
- * the exact minimal environment. Remove it, rather than admitting it (or any ambient value) to
- * the worker contract. Every remaining key and value still passes the unchanged exact validator.
- */
-export function initializeMinimalWorkerProcessEnv(
-  env: NodeJS.ProcessEnv,
-  scratch: MinimalWorkerScratch,
-  platform: NodeJS.Platform = process.platform,
-): void {
-  if (platform === 'darwin') delete env.__CF_USER_TEXT_ENCODING
-  validateMinimalWorkerProcessEnv(env, scratch, platform)
-}
-
-export function validateMinimalWorkerProcessEnv(
-  env: Readonly<NodeJS.ProcessEnv>,
-  scratch: MinimalWorkerScratch,
-  platform: NodeJS.Platform = process.platform,
-): void {
-  const expected = minimalWorkerProcessEnv(scratch, platform, env)
-  const actualKeys = Object.keys(env).sort()
-  const expectedKeys = Object.keys(expected).sort()
-  if (
-    actualKeys.length !== expectedKeys.length ||
-    actualKeys.some((key, index) => key !== expectedKeys[index])
-  ) {
-    throw new Error(`minimal worker environment has unexpected keys: ${actualKeys.join(', ')}`)
-  }
-  for (const key of expectedKeys) {
-    if (env[key] !== expected[key]) {
-      throw new Error(`minimal worker environment has an invalid ${key} value`)
-    }
-  }
-}
-
-export function parseWorkerInput(value: unknown): WorkerInput {
-  const input = objectRecord(value, 'worker input')
-  const kind = input.kind
-  if (
-    input.nativeVerificationRequestEnabled !== undefined &&
-    (input.nativeVerificationRequestEnabled !== true ||
-      input.nativeExecution === undefined ||
-      (kind !== 'configured_operator_http' && kind !== 'protected'))
-  )
-    throw new Error('Invalid native verification requester capability')
-  if (
-    input.containerNamespace !== undefined &&
-    (typeof input.containerNamespace !== 'string' ||
-      !/^[a-f0-9-]{36}$/.test(input.containerNamespace))
-  )
-    throw new Error('Invalid container namespace')
-  if (
-    input.imageGenerationEnabled !== undefined &&
-    typeof input.imageGenerationEnabled !== 'boolean'
-  )
-    throw new Error('Invalid worker image capability')
-  if (input.webSearchEnabled !== undefined && typeof input.webSearchEnabled !== 'boolean')
-    throw new Error('Invalid worker web search capability')
-  if (input.questionEnabled !== undefined && typeof input.questionEnabled !== 'boolean')
-    throw new Error('Invalid worker question capability')
-  if (kind === 'configured_operator_http') {
-    assertExactKeys(input, CONFIGURED_KEYS, 'configured worker input', CONFIGURED_REQUIRED_KEYS)
-    if (!isResolvedAgent(input.agent)) throw new Error('worker: configured input requires an agent')
-    if (input.nativeExecution !== undefined) {
-      assertNativeExecutionAdmission(input.nativeExecution)
-      if (input.configuredDocker !== undefined || input.containerNamespace !== undefined)
-        throw new Error('Native worker rejects Docker inputs')
-    }
-    if (input.configuredDocker !== undefined) {
-      const prepared = objectRecord(input.configuredDocker, 'configured Docker inputs')
-      const keys = new Set(['paths', 'docker'])
-      assertExactKeys(prepared, keys, 'configured Docker inputs', keys)
-      assertProtectedWorkerPaths(prepared.paths, input.agent)
-      assertProtectedDockerRuntime(prepared.docker, prepared.paths as ProtectedWorkerPaths)
-    }
-    assertRepositoryContext(input.repositoryContext, input.agent.team.id)
-    requireString(input.message, 'message')
-    if (!Array.isArray(input.enabledProviders) || !input.enabledProviders.every(isString)) {
-      throw new Error('worker: configured input requires enabledProviders')
-    }
-    requireString(input.turnId, 'turnId')
-    assertConversationTarget(input.conversation)
-    if (input.bashApprovalMode !== 'interactive' && input.bashApprovalMode !== 'auto_deny') {
-      throw new Error('worker: configured input requires a valid bashApprovalMode')
-    }
-    if (typeof input.apiKeyRefreshEnabled !== 'boolean') {
-      throw new Error('worker: configured input requires apiKeyRefreshEnabled')
-    }
-    if (input.apiKeyRefreshEnabled) {
-      const providerName = input.agent.model.split(':', 1)[0] ?? ''
-      if (providerName !== 'openai-codex' || !nonEmptyString(input.apiKey)) {
-        throw new Error(
-          'worker: API key refresh requires an openai-codex turn with an initial token',
-        )
-      }
-    }
-    return value as WorkerInput
-  }
-
-  if (kind === 'protected') {
-    assertExactKeys(input, PROTECTED_KEYS, 'protected worker input', PROTECTED_REQUIRED_KEYS)
-    if (!isResolvedAgent(input.agent)) throw new Error('worker: protected input requires an agent')
-    assertRepositoryContext(input.repositoryContext, input.agent.team.id)
-    requireString(input.message, 'message')
-    requireString(input.turnId, 'turnId')
-    assertConversationTarget(input.conversation)
-    if (input.bashApprovalMode !== 'auto_deny') {
-      throw new Error('worker: protected input requires auto-deny shell approval')
-    }
-    if (input.webFetchEnabled !== true) {
-      throw new Error('worker: protected input requires guarded web_fetch')
-    }
-    assertProtectedProviderRuntime(input.runtime)
-    const runtime = input.runtime as ProtectedProviderWorkerRuntime
-    const separator = (input.agent as ResolvedAgent).model.indexOf(':')
-    if (
-      runtime.providerName !== (input.agent as ResolvedAgent).model.slice(0, separator) ||
-      runtime.modelId !== (input.agent as ResolvedAgent).model.slice(separator + 1)
-    ) {
-      throw new Error('worker: protected runtime does not match the resolved Agent model')
-    }
-    assertProtectedWorkerPaths(input.paths, input.agent)
-    if ((input.nativeExecution !== undefined) === (input.docker !== undefined))
-      throw new Error('Protected worker requires exactly one execution backend')
-    if (input.nativeExecution !== undefined) {
-      assertNativeExecutionAdmission(input.nativeExecution)
-      if (input.containerNamespace !== undefined)
-        throw new Error('Native worker rejects Docker namespace')
-    } else assertProtectedDockerRuntime(input.docker, input.paths as ProtectedWorkerPaths)
-    if (input.apiKeyRefreshEnabled !== true) {
-      throw new Error('worker: protected input requires bound API key refresh')
-    }
-    assertMinimalWorkerScratch(input.scratch)
-    return value as WorkerInput
-  }
-
-  if (kind === 'specialist_verification') {
-    assertExactKeys(input, VERIFICATION_KEYS, 'verification worker input', VERIFICATION_KEYS)
-    requireString(input.agentId, 'agentId')
-    requireString(input.message, 'message')
-    requireString(input.turnId, 'turnId')
-    assertProtectedProviderRuntime(input.runtime)
-    if (input.apiKeyRefreshEnabled !== true) {
-      throw new Error('worker: verification input requires bound API key refresh')
-    }
-    assertMinimalWorkerScratch(input.scratch)
-    const verification = objectRecord(input.verification, 'verification metadata')
-    assertExactKeys(
-      verification,
-      new Set(['requestId', 'attemptId']),
-      'verification metadata',
-      new Set(['requestId', 'attemptId']),
-    )
-    requireString(verification.requestId, 'requestId')
-    requireString(verification.attemptId, 'attemptId')
-    return value as WorkerInput
-  }
-
-  if (kind === 'packet_review') {
-    assertExactKeys(input, STATIC_REVIEW_KEYS, 'static review worker input', STATIC_REVIEW_KEYS)
-    requireString(input.agentId, 'agentId')
-    requireString(input.message, 'message')
-    requireString(input.turnId, 'turnId')
-    assertProtectedProviderRuntime(input.runtime)
-    if (input.apiKeyRefreshEnabled !== true) {
-      throw new Error('worker: static review requires bound API key refresh')
-    }
-    assertMinimalWorkerScratch(input.scratch)
-    const review = objectRecord(input.review, 'review metadata')
-    assertExactKeys(
-      review,
-      new Set(['packetId', 'attemptId']),
-      'review metadata',
-      new Set(['packetId', 'attemptId']),
-    )
-    requireString(review.packetId, 'packetId')
-    requireString(review.attemptId, 'attemptId')
-    return value as WorkerInput
-  }
-
-  if (kind === 'restricted_review') {
-    assertExactKeys(input, REVIEW_KEYS, 'restricted review worker input', REVIEW_KEYS)
-    requireString(input.agentId, 'agentId')
-    requireString(input.message, 'message')
-    requireString(input.turnId, 'turnId')
-    assertProtectedProviderRuntime(input.runtime)
-    if (input.apiKeyRefreshEnabled !== true) {
-      throw new Error('worker: restricted review requires bound API key refresh')
-    }
-    assertMinimalWorkerScratch(input.scratch)
-    const review = objectRecord(input.review, 'review metadata')
-    assertExactKeys(
-      review,
-      new Set(['reviewId', 'evidence']),
-      'review metadata',
-      new Set(['reviewId', 'evidence']),
-    )
-    requireString(review.reviewId, 'reviewId')
-    if (!Array.isArray(review.evidence)) throw new Error('worker: review evidence must be an array')
-    for (const item of review.evidence) {
-      const evidence = objectRecord(item, 'review evidence')
-      assertExactKeys(
-        evidence,
-        new Set(['sessionId', 'entryOrdinal']),
-        'review evidence',
-        new Set(['sessionId', 'entryOrdinal']),
-      )
-      requireString(evidence.sessionId, 'sessionId')
-      if (!Number.isInteger(evidence.entryOrdinal) || Number(evidence.entryOrdinal) < 0) {
-        throw new Error('worker: review evidence entryOrdinal must be a non-negative integer')
-      }
-    }
-    return value as WorkerInput
-  }
-
-  throw new Error('worker: unknown or missing runtime kind')
-}
-
-export function assertProtectedProviderRuntime(
-  value: unknown,
-): asserts value is ProtectedProviderWorkerRuntime {
-  const runtime = objectRecord(value, 'protected provider runtime')
-  assertExactKeys(
-    runtime,
-    new Set([
-      'providerName',
-      'modelId',
-      'reasoningLevel',
-      'apiKey',
-      'baseUrl',
-      'credentialEnv',
-      'credentialFile',
-    ]),
-    'protected provider runtime',
-    new Set(['providerName', 'modelId', 'reasoningLevel']),
-  )
-  if (!PROTECTED_PROVIDER_NAMES.includes(runtime.providerName as ProtectedProviderName)) {
-    throw new Error('protected execution requires a registered provider')
-  }
-  if (!nonEmptyString(runtime.modelId))
-    throw new Error('protected provider runtime requires a model id')
-  if (!REASONING_LEVELS.has(runtime.reasoningLevel as ReasoningLevel)) {
-    throw new Error('protected provider runtime requires a valid reasoning level')
-  }
-  if (runtime.apiKey !== undefined && !nonEmptyString(runtime.apiKey)) {
-    throw new Error('protected provider runtime contains an invalid selected credential')
-  }
-  if (runtime.baseUrl !== undefined) requireString(runtime.baseUrl, 'baseUrl')
-  if (runtime.credentialEnv !== undefined) {
-    if (!Array.isArray(runtime.credentialEnv)) {
-      throw new Error('protected provider credential fields must be an array')
-    }
-    const allowed = new Set(PROVIDER_CREDENTIAL_ENV[String(runtime.providerName)] ?? [])
-    const seen = new Set<string>()
-    for (const rawField of runtime.credentialEnv) {
-      const field = objectRecord(rawField, 'protected provider credential field')
-      assertExactKeys(
-        field,
-        new Set(['name', 'value']),
-        'protected provider credential field',
-        new Set(['name', 'value']),
-      )
-      requireString(field.name, 'credential field name')
-      requireString(field.value, 'credential field value')
-      if (!allowed.has(field.name as string) || seen.has(field.name as string)) {
-        throw new Error('protected provider runtime contains an unexpected credential field')
-      }
-      seen.add(field.name as string)
-    }
-  }
-  if (runtime.credentialFile !== undefined) {
-    const file = objectRecord(runtime.credentialFile, 'protected provider credential file')
-    assertExactKeys(
-      file,
-      new Set(['envName', 'content']),
-      'protected provider credential file',
-      new Set(['envName', 'content']),
-    )
-    if (
-      runtime.providerName !== 'google-vertex' ||
-      file.envName !== 'GOOGLE_APPLICATION_CREDENTIALS' ||
-      !nonEmptyString(file.content) ||
-      Buffer.byteLength(file.content as string, 'utf8') > 64 * 1024
-    ) {
-      throw new Error('protected provider runtime contains an invalid credential file')
-    }
-  }
-  if (
-    !nonEmptyString(runtime.apiKey) &&
-    !Array.isArray(runtime.credentialEnv) &&
-    runtime.credentialFile === undefined
-  ) {
-    throw new Error('protected provider runtime requires selected credentials')
-  }
-}
-
-export function protectedRuntimeSecrets(runtime: ProtectedProviderWorkerRuntime): string[] {
+export function reviewRuntimeSecrets(runtime: ReviewProviderRuntime): string[] {
   return [
     runtime.apiKey,
     ...(runtime.credentialEnv ?? []).map((field) => field.value),
     runtime.credentialFile?.content,
   ].filter((value): value is string => Boolean(value))
-}
-
-export function redactExactValue(text: string, value: string | undefined): string {
-  return value ? text.replaceAll(value, REDACTED_VALUE) : text
 }
 
 export function redactExactValues(text: string, values: readonly string[]): string {
@@ -670,23 +149,57 @@ export function redactExactValues(text: string, values: readonly string[]): stri
   return redacted
 }
 
+/**
+ * A `_`-separated part of a variable name that ends in a credential word (`OPENAI_API_KEY`,
+ * `OPENAI_APIKEY`, `PGPASSWORD`, `MCP_TOKEN_<id>`, `GOOGLE_VERTEX_CREDENTIALS_JSON`), so
+ * `GIT_AUTHOR_NAME`, `SSH_AUTH_SOCK` or `GNOME_KEYRING_CONTROL` are not mistaken for one.
+ */
+const CREDENTIAL_NAME = /(^|_)[A-Z0-9]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?|OAUTH)(_|$)/i
+
+/** A field of a JSON credential (`private_key`, `refresh`, `accessToken`), not `token_uri`. */
+function isCredentialField(field: string): boolean {
+  const words = field.replace(/([a-z\d])([A-Z])/g, '$1_$2')
+  return /(^|_)(key|token|secret|password|refresh|access)$/i.test(words)
+}
+
+/**
+ * Credential values from a merged env, for exact-value redaction: every value of a
+ * credential-named variable plus the credential fields inside structured (JSON) credentials,
+ * never their keys. Values shorter than 8 characters are skipped: they are too common in ordinary
+ * output (`1`, `true`, a colour) to redact without destroying it, and are not real credentials.
+ */
+export function envSecretValues(env: NodeJS.ProcessEnv): string[] {
+  const values = new Set<string>()
+  function collect(value: unknown, depth = 0) {
+    if (depth > 8 || !value || typeof value !== 'object') return
+    for (const [field, entry] of Object.entries(value)) {
+      if (typeof entry !== 'string') collect(entry, depth + 1)
+      else if (entry.length >= 8 && isCredentialField(field)) values.add(entry)
+    }
+  }
+  for (const [key, value] of Object.entries(env)) {
+    if (!value || !CREDENTIAL_NAME.test(key)) continue
+    if (value.length >= 8) values.add(value)
+    try {
+      collect(JSON.parse(value))
+    } catch {
+      /* Ordinary string credential. */
+    }
+  }
+  return [...values]
+}
+
 /** Exact-value redactor that safely handles matches split across stream chunks. */
 export class ExactValueStreamRedactor {
   readonly #values: string[] = []
   #pending = ''
-  #redacted = false
-  get redacted(): boolean {
-    return this.#redacted
-  }
 
-  constructor(value: string | readonly string[]) {
-    const values = typeof value === 'string' ? [value] : value
-    for (const item of values) this.add(item)
+  constructor(values: readonly string[]) {
+    for (const value of values) this.add(value)
   }
 
   add(value: string): void {
-    if (!value) throw new Error('stream redactor requires a non-empty value')
-    if (!this.#values.includes(value)) this.#values.push(value)
+    if (value && !this.#values.includes(value)) this.#values.push(value)
   }
 
   push(chunk: string): string {
@@ -702,7 +215,6 @@ export class ExactValueStreamRedactor {
         cursor = cutoff
         break
       }
-      this.#redacted = true
       output += data.slice(cursor, match.index) + REDACTED_VALUE
       cursor = match.index + match.value.length
     }
@@ -711,7 +223,6 @@ export class ExactValueStreamRedactor {
   }
 
   flush(): string {
-    if (this.#values.some((value) => this.#pending.includes(value))) this.#redacted = true
     const output = redactExactValues(this.#pending, this.#values)
     this.#pending = ''
     return output
@@ -734,433 +245,14 @@ export class ExactValueStreamRedactor {
   }
 }
 
-export function redactJsonValue<T>(value: T, secrets: string | readonly string[] | undefined): T {
-  if (!secrets || (Array.isArray(secrets) && secrets.length === 0)) return value
-  const values = typeof secrets === 'string' ? [secrets] : secrets
-  if (typeof value === 'string') return redactExactValues(value, values) as T
-  if (Array.isArray(value)) return value.map((item) => redactJsonValue(item, values)) as T
+export function redactJsonValue<T>(value: T, secrets: readonly string[]): T {
+  if (secrets.length === 0) return value
+  if (typeof value === 'string') return redactExactValues(value, secrets) as T
+  if (Array.isArray(value)) return value.map((item) => redactJsonValue(item, secrets)) as T
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, redactJsonValue(item, values)]),
+      Object.entries(value).map(([key, item]) => [key, redactJsonValue(item, secrets)]),
     ) as T
   }
   return value
-}
-
-function assertProtectedWorkerPaths(value: unknown, agent: ResolvedAgent): void {
-  const paths = objectRecord(value, 'protected worker paths')
-  assertExactKeys(
-    paths,
-    new Set([
-      'agentDir',
-      'teamDir',
-      'memoryDir',
-      'sessionDir',
-      'uploadsDir',
-      'skills',
-      'homeDocuments',
-    ]),
-    'protected worker paths',
-    new Set(['agentDir', 'teamDir', 'memoryDir', 'sessionDir', 'skills', 'homeDocuments']),
-  )
-  for (const key of ['agentDir', 'teamDir', 'memoryDir', 'sessionDir'] as const) {
-    requireAbsolutePath(paths[key], key)
-  }
-  if (paths.uploadsDir !== undefined) requireAbsolutePath(paths.uploadsDir, 'uploadsDir')
-  if (paths.agentDir !== agent.agent.dir || paths.teamDir !== agent.team.path) {
-    throw new Error('worker: protected paths do not match the resolved Agent')
-  }
-  const canonicalAgentDir = requireCanonicalRealDirectory(
-    paths.agentDir as string,
-    'Agent directory',
-  )
-  const canonicalTeamDir = resolveCanonicalDirectory(paths.teamDir as string, 'Team directory')
-  requireCanonicalContainedDirectory(
-    canonicalAgentDir,
-    paths.sessionDir as string,
-    'session directory',
-  )
-  if (paths.uploadsDir !== undefined) {
-    requireCanonicalContainedDirectory(
-      canonicalAgentDir,
-      paths.uploadsDir as string,
-      'uploads directory',
-    )
-  }
-  requireCanonicalContainedDirectory(
-    canonicalTeamDir,
-    paths.memoryDir as string,
-    'memory directory',
-  )
-  if (!Array.isArray(paths.skills)) throw new Error('worker: protected skills must be an array')
-  for (const item of paths.skills) {
-    const skill = objectRecord(item, 'protected skill')
-    assertExactKeys(
-      skill,
-      new Set(['name', 'description', 'body', 'hostDir', 'sandboxDir']),
-      'protected skill',
-    )
-    requireString(skill.name, 'skill name')
-    requireString(skill.description, 'skill description')
-    requireString(skill.body, 'skill body')
-    requireAbsolutePath(skill.hostDir, 'skill hostDir')
-    requireCanonicalRealDirectory(skill.hostDir, 'skill hostDir')
-    if (typeof skill.sandboxDir !== 'string' || !skill.sandboxDir.startsWith('/skills/')) {
-      throw new Error('worker: protected skill sandbox path must be under /skills')
-    }
-  }
-  const homeDocuments = objectRecord(paths.homeDocuments, 'protected home documents')
-  const homeDocumentKeys = new Set([
-    'AGENTS.md',
-    'SOUL.md',
-    'TOOLS.md',
-    'IDENTITY.md',
-    'BOOTSTRAP.md',
-  ])
-  assertExactKeys(homeDocuments, homeDocumentKeys, 'protected home documents', homeDocumentKeys)
-  for (const [name, contents] of Object.entries(homeDocuments)) {
-    if (contents !== null && typeof contents !== 'string') {
-      throw new Error(`worker: protected home document ${name} must be text or null`)
-    }
-  }
-}
-
-function assertProtectedDockerRuntime(
-  value: unknown,
-  paths: ProtectedWorkerPaths,
-): asserts value is ProtectedDockerRuntime {
-  const runtime = objectRecord(value, 'protected Docker runtime')
-  assertExactKeys(
-    runtime,
-    new Set([
-      'dockerPath',
-      'executableIdentity',
-      'endpoint',
-      'image',
-      'imageId',
-      'uid',
-      'gid',
-      'workspace',
-      'readOnlyMounts',
-      'containerEnv',
-      'coding',
-    ]),
-    'protected Docker runtime',
-    new Set([
-      'dockerPath',
-      'executableIdentity',
-      'endpoint',
-      'image',
-      'imageId',
-      'uid',
-      'gid',
-      'workspace',
-      'readOnlyMounts',
-      'containerEnv',
-    ]),
-  )
-  requireAbsolutePath(runtime.dockerPath, 'Docker executable')
-  const executableIdentity = objectRecord(
-    runtime.executableIdentity,
-    'protected Docker executable identity',
-  )
-  const executableIdentityKeys = new Set([
-    'device',
-    'inode',
-    'mode',
-    'size',
-    'modifiedTimeNs',
-    'changedTimeNs',
-  ])
-  assertExactKeys(
-    executableIdentity,
-    executableIdentityKeys,
-    'protected Docker executable identity',
-    executableIdentityKeys,
-  )
-  for (const [name, field] of Object.entries(executableIdentity)) {
-    if (typeof field !== 'string' || !/^\d+$/.test(field)) {
-      throw new Error(`worker: protected Docker executable identity has invalid ${name}`)
-    }
-  }
-  if (
-    typeof runtime.endpoint !== 'string' ||
-    !runtime.endpoint.startsWith('unix://') ||
-    !isAbsolute(runtime.endpoint.slice('unix://'.length)) ||
-    containsUnsafeDockerArgument(runtime.endpoint)
-  ) {
-    throw new Error('worker: protected Docker endpoint must be a local Unix socket')
-  }
-  if (
-    !nonEmptyString(runtime.image) ||
-    runtime.image.startsWith('-') ||
-    runtime.image.includes('\0') ||
-    runtime.image.includes('\n') ||
-    runtime.image.includes('\r')
-  ) {
-    throw new Error('worker: protected Docker image is required')
-  }
-  if (typeof runtime.imageId !== 'string' || !/^sha256:[a-fA-F0-9]{64}$/.test(runtime.imageId)) {
-    throw new Error('worker: protected Docker runtime requires an immutable image id')
-  }
-  if (!Number.isSafeInteger(runtime.uid) || !Number.isSafeInteger(runtime.gid)) {
-    throw new Error('worker: protected Docker runtime requires a numeric host identity')
-  }
-  if (Number(runtime.uid) < 0 || Number(runtime.gid) < 0) {
-    throw new Error('worker: protected Docker runtime requires a non-negative host identity')
-  }
-  const workspace = objectRecord(runtime.workspace, 'protected Docker workspace')
-  assertExactKeys(
-    workspace,
-    new Set(['source', 'target', 'sourceRoot']),
-    'protected Docker workspace',
-    new Set(['source', 'target', 'sourceRoot']),
-  )
-  requireAbsolutePath(workspace.source, 'Docker workspace source')
-  requireAbsolutePath(workspace.sourceRoot, 'Docker workspace root')
-  assertSafeDockerHostPath(workspace.source, 'Docker workspace source')
-  assertSafeDockerHostPath(workspace.sourceRoot, 'Docker workspace root')
-  if (workspace.target !== '/workspace') {
-    throw new Error('worker: protected Docker workspace target must be /workspace')
-  }
-  const canonicalTeamDir = resolveCanonicalDirectory(paths.teamDir, 'Team directory')
-  if (workspace.source !== canonicalTeamDir || workspace.sourceRoot !== canonicalTeamDir) {
-    throw new Error('worker: protected Docker workspace does not match the canonical Team root')
-  }
-  if (!Array.isArray(runtime.readOnlyMounts)) {
-    throw new Error('worker: protected Docker read-only mounts must be an array')
-  }
-  const mountTargets = new Set(['/workspace', '/tmp'])
-  for (const item of runtime.readOnlyMounts) {
-    const mount = objectRecord(item, 'protected Docker read-only mount')
-    assertExactKeys(
-      mount,
-      new Set(['source', 'target', 'sourceRoot']),
-      'protected Docker read-only mount',
-      new Set(['source', 'target', 'sourceRoot']),
-    )
-    requireAbsolutePath(mount.source, 'Docker read-only mount source')
-    requireAbsolutePath(mount.sourceRoot, 'Docker read-only mount root')
-    assertSafeDockerHostPath(mount.source, 'Docker read-only mount source')
-    assertSafeDockerHostPath(mount.sourceRoot, 'Docker read-only mount root')
-    if (
-      typeof mount.target !== 'string' ||
-      !mount.target.startsWith('/') ||
-      containsUnsafeDockerArgument(mount.target) ||
-      mount.target.split('/').includes('..') ||
-      (!mount.target.startsWith('/skills/') &&
-        mount.target !== '/inputs' &&
-        mount.target !== '/workspace/memory')
-    ) {
-      throw new Error('worker: protected Docker read-only mount target is not permitted')
-    }
-    if (!lexicallyWithin(mount.sourceRoot, mount.source)) {
-      throw new Error('worker: protected Docker read-only mount escaped its root')
-    }
-    if (mountTargets.has(mount.target)) {
-      throw new Error('worker: protected Docker mount target is duplicated')
-    }
-    mountTargets.add(mount.target)
-  }
-  assertExactProtectedDockerMounts(
-    runtime.readOnlyMounts as ProtectedDockerRuntime['readOnlyMounts'],
-    paths,
-  )
-  if (runtime.coding !== undefined) validateDockerCodingSelection(runtime.coding)
-  const containerEnv = objectRecord(runtime.containerEnv, 'protected Docker container environment')
-  const expectedContainerEnv = {
-    PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-    HOME: '/tmp',
-    LANG: 'C.UTF-8',
-    LC_ALL: 'C.UTF-8',
-    SHELL: '/bin/bash',
-    TMPDIR: '/tmp',
-  }
-  const expectedKeys = new Set(Object.keys(expectedContainerEnv))
-  assertExactKeys(
-    containerEnv,
-    expectedKeys,
-    'protected Docker container environment',
-    expectedKeys,
-  )
-  for (const [key, expected] of Object.entries(expectedContainerEnv)) {
-    if (containerEnv[key] !== expected) {
-      throw new Error(`worker: protected Docker container environment has invalid ${key}`)
-    }
-  }
-}
-
-function assertExactProtectedDockerMounts(
-  mounts: ProtectedDockerRuntime['readOnlyMounts'],
-  paths: ProtectedWorkerPaths,
-): void {
-  const expected = new Map<string, string>([
-    ['/workspace/memory', paths.memoryDir],
-    ...((paths.uploadsDir ? [['/inputs', paths.uploadsDir]] : []) as Array<[string, string]>),
-    ...paths.skills.map((skill) => [skill.sandboxDir, skill.hostDir] as [string, string]),
-  ])
-  if (mounts.length !== expected.size) {
-    throw new Error('worker: protected Docker read-only mount set is incomplete')
-  }
-  for (const mount of mounts) {
-    const source = expected.get(mount.target)
-    if (!source || mount.source !== source) {
-      throw new Error('worker: protected Docker read-only mount set does not match protected paths')
-    }
-  }
-}
-
-function assertSafeDockerHostPath(value: unknown, name: string): asserts value is string {
-  if (typeof value !== 'string' || containsUnsafeDockerArgument(value)) {
-    throw new Error(`worker: ${name} cannot be represented safely`)
-  }
-}
-
-function containsUnsafeDockerArgument(value: string): boolean {
-  return value.includes('\0') || value.includes(',') || value.includes('\n') || value.includes('\r')
-}
-
-function requireCanonicalRealDirectory(value: unknown, name: string): string {
-  if (typeof value !== 'string') throw new Error(`worker: ${name} must be a path`)
-  try {
-    const entry = lstatSync(value)
-    if (entry.isSymbolicLink() || !entry.isDirectory()) {
-      throw new Error('unsafe entry')
-    }
-    const canonical = realpathSync(value)
-    if (canonical !== value) throw new Error('non-canonical entry')
-    return canonical
-  } catch {
-    throw new Error(`worker: ${name} must be a real directory`)
-  }
-}
-
-function resolveCanonicalDirectory(value: string, name: string): string {
-  try {
-    const entry = statSync(value)
-    if (!entry.isDirectory()) throw new Error('not a directory')
-    return realpathSync(value)
-  } catch {
-    throw new Error(`worker: ${name} is unavailable or unsafe`)
-  }
-}
-
-function requireCanonicalContainedDirectory(root: string, value: string, name: string): string {
-  const canonical = requireCanonicalRealDirectory(value, name)
-  if (!lexicallyWithin(root, canonical)) throw new Error(`worker: ${name} escaped its root`)
-  return canonical
-}
-
-function assertMinimalWorkerScratch(value: unknown): asserts value is MinimalWorkerScratch {
-  const scratch = objectRecord(value, 'minimal worker scratch')
-  assertExactKeys(
-    scratch,
-    new Set(['root', 'homeDir', 'tempDir', 'piAgentDir', 'reviewCwd', 'reviewSessionDir']),
-    'minimal worker scratch',
-    new Set(['root', 'homeDir', 'tempDir', 'piAgentDir', 'reviewCwd', 'reviewSessionDir']),
-  )
-  requireAbsolutePath(scratch.root, 'scratch root')
-  for (const key of [
-    'homeDir',
-    'tempDir',
-    'piAgentDir',
-    'reviewCwd',
-    'reviewSessionDir',
-  ] as const) {
-    requireAbsolutePath(scratch[key], key)
-    if (!lexicallyWithin(scratch.root as string, scratch[key] as string)) {
-      throw new Error(`worker: ${key} escaped the scratch root`)
-    }
-  }
-}
-
-function requireCanonicalWindowsDirectory(value: string | undefined, name: string): string {
-  if (!value || !isAbsolute(value) || !existsSync(value) || !statSync(value).isDirectory()) {
-    throw new Error(`minimal worker bootstrap requires a valid ${name} directory`)
-  }
-  return realpathSync(value)
-}
-
-function requireCanonicalWindowsFile(value: string | undefined, name: string): string {
-  if (!value || !isAbsolute(value) || !existsSync(value) || !statSync(value).isFile()) {
-    throw new Error(`minimal worker bootstrap requires a valid ${name} executable`)
-  }
-  return realpathSync(value)
-}
-
-function objectRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`worker: ${label} must be an object`)
-  }
-  return value as Record<string, unknown>
-}
-
-function assertExactKeys(
-  value: Record<string, unknown>,
-  allowed: ReadonlySet<string>,
-  label: string,
-  required: ReadonlySet<string> = allowed,
-) {
-  const unexpected = Object.keys(value).filter((key) => !allowed.has(key))
-  if (unexpected.length > 0) {
-    throw new Error(`worker: ${label} contains unexpected fields: ${unexpected.sort().join(', ')}`)
-  }
-  const missing = [...required].filter((key) => !(key in value))
-  if (missing.length > 0) {
-    throw new Error(`worker: ${label} is missing required fields: ${missing.sort().join(', ')}`)
-  }
-}
-
-function isResolvedAgent(value: unknown): value is ResolvedAgent {
-  if (!value || typeof value !== 'object') return false
-  const resolved = value as Partial<ResolvedAgent>
-  return Boolean(
-    resolved.agent &&
-      typeof resolved.agent.id === 'string' &&
-      typeof resolved.agent.dir === 'string' &&
-      resolved.team &&
-      typeof resolved.team.id === 'string' &&
-      typeof resolved.team.path === 'string' &&
-      typeof resolved.model === 'string',
-  )
-}
-
-function requireString(value: unknown, name: string): asserts value is string {
-  if (typeof value !== 'string') throw new Error(`worker: ${name} must be a string`)
-}
-
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === 'string'
-}
-
-function requireAbsolutePath(value: unknown, name: string): asserts value is string {
-  if (typeof value !== 'string' || !isAbsolute(value) || value.includes('\0')) {
-    throw new Error(`worker: ${name} must be an absolute path`)
-  }
-}
-
-function lexicallyWithin(root: string, candidate: string): boolean {
-  const rel = relative(root, candidate)
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-}
-
-/** Test/preflight helper for checking that every scratch directory is accessible. */
-export async function checkMinimalWorkerScratch(scratch: MinimalWorkerScratch): Promise<void> {
-  assertMinimalWorkerScratch(scratch)
-  for (const path of Object.values(scratch)) await access(path, constants.R_OK | constants.W_OK)
-}
-
-function assertConversationTarget(value: unknown): void {
-  const target = objectRecord(value, 'conversation target')
-  assertExactKeys(target, new Set(['id', 'filename']), 'conversation target')
-  if (
-    typeof target.id !== 'string' ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target.id) ||
-    target.filename !== `${target.id}.jsonl`
-  )
-    throw new Error('Invalid worker conversation target')
 }

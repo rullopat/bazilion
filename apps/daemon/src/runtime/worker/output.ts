@@ -1,7 +1,7 @@
 import type { Writable } from 'node:stream'
 
 /** Below the daemon's 3s cancellation grace. A dead reader must not pin a worker. */
-export const WORKER_OUTPUT_DRAIN_MS = 2_000
+const WORKER_OUTPUT_DRAIN_MS = 2_000
 
 /**
  * Worker stdout is a protocol, not a console. Seal it and flush every queued

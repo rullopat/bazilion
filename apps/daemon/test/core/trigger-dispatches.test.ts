@@ -14,7 +14,6 @@ beforeEach(() => {
   profileRepo.insert(env.db, {
     id: 'p',
     name: 'p',
-    dir: env.paths.profileDir('p'),
     defaultModel: 'lmstudio:x',
     skillsMode: 'selected',
   })
@@ -25,7 +24,6 @@ beforeEach(() => {
     modelOverride: null,
     reasoningLevel: 'medium',
     status: 'idle',
-    dir: env.paths.agentDir('a1'),
     teamId: env.teamId,
   })
   triggerId = triggerRepo.insert(env.db, {
@@ -45,93 +43,84 @@ test('materialization is idempotent per trigger occurrence', () => {
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
-    now: 2_000,
   })
   const replay = triggerDispatchRepo.materialize(env.db, {
     conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
-    now: 3_000,
   })
   expect(replay.id).toBe(first.id)
   expect(triggerDispatchRepo.listForTrigger(env.db, triggerId)).toHaveLength(1)
   expect(triggerDispatchRepo.hasOpenForTrigger(env.db, triggerId)).toBe(true)
 })
 
-test('claim is atomic and an expired running lease is recoverable', () => {
+test('an occurrence starts once and closes once', () => {
   const dispatch = triggerDispatchRepo.materialize(env.db, {
     conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
-    now: 2_000,
   })
-  expect(
-    triggerDispatchRepo.claim(env.db, dispatch.id, { now: 2_000, leaseMs: 100 }),
-  ).toMatchObject({
-    status: 'running',
-    attemptCount: 1,
-  })
-  expect(triggerDispatchRepo.claim(env.db, dispatch.id, { now: 2_050 })).toBeNull()
-  expect(triggerDispatchRepo.claim(env.db, dispatch.id, { now: 2_101 })).toMatchObject({
-    status: 'running',
-    attemptCount: 2,
-  })
-})
+  expect(triggerDispatchRepo.listPending(env.db).map((d) => d.id)).toEqual([dispatch.id])
+  expect(triggerDispatchRepo.start(env.db, dispatch.id, 2_000)).toBe(true)
+  expect(triggerDispatchRepo.start(env.db, dispatch.id, 2_001)).toBe(false)
+  expect(triggerDispatchRepo.listPending(env.db)).toEqual([])
+  expect(triggerDispatchRepo.hasOpenForTrigger(env.db, triggerId)).toBe(true)
 
-test('fail retries with backoff and becomes terminal at the attempt bound', () => {
-  const dispatch = triggerDispatchRepo.materialize(env.db, {
-    conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
-    triggerId,
-    agentId: 'a1',
-    scheduledAt: 1_000,
-    now: 2_000,
-  })
-  triggerDispatchRepo.claim(env.db, dispatch.id, { now: 2_000 })
-  triggerDispatchRepo.fail(env.db, dispatch.id, 'temporary', {
-    now: 2_100,
-    maxAttempts: 2,
-    retryDelayMs: 10,
-  })
-  expect(triggerDispatchRepo.listForTrigger(env.db, triggerId)[0]).toMatchObject({
-    status: 'retrying',
-    nextAttemptAt: 2_110,
-    lastError: 'temporary',
-  })
-  triggerDispatchRepo.claim(env.db, dispatch.id, { now: 2_110 })
-  triggerDispatchRepo.fail(env.db, dispatch.id, 'permanent', {
-    now: 2_120,
-    maxAttempts: 2,
-    retryDelayMs: 10,
-  })
-  expect(triggerDispatchRepo.listForTrigger(env.db, triggerId)[0]).toMatchObject({
+  triggerDispatchRepo.finish(env.db, dispatch.id, 'failed', 'provider unavailable', 3_000)
+  // A closed occurrence stays closed.
+  triggerDispatchRepo.finish(env.db, dispatch.id, 'succeeded', null, 4_000)
+  expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
     status: 'failed',
-    attemptCount: 2,
-    finishedAt: 2_120,
-    lastError: 'permanent',
+    startedAt: 2_000,
+    finishedAt: 3_000,
+    error: 'provider unavailable',
   })
+  expect(triggerDispatchRepo.hasOpenForTrigger(env.db, triggerId)).toBe(false)
 })
 
-test('disabling a trigger cancels pending and retrying dispatches', () => {
+test('the boot sweep fails running occurrences and leaves pending ones', () => {
+  const conversationId = seedRegisteredConversation(env.db, env.paths, 'a1').id
+  const running = triggerDispatchRepo.materialize(env.db, {
+    conversationId,
+    triggerId,
+    agentId: 'a1',
+    scheduledAt: 1_000,
+  })
+  const pending = triggerDispatchRepo.materialize(env.db, {
+    conversationId,
+    triggerId,
+    agentId: 'a1',
+    scheduledAt: 2_000,
+  })
+  triggerDispatchRepo.start(env.db, running.id)
+  triggerDispatchRepo.failInterrupted(env.db, 5_000)
+  expect(triggerDispatchRepo.get(env.db, running.id)).toMatchObject({
+    status: 'failed',
+    finishedAt: 5_000,
+    error: triggerDispatchRepo.INTERRUPTED,
+  })
+  expect(triggerDispatchRepo.get(env.db, pending.id)?.status).toBe('pending')
+})
+
+test('disabling a trigger cancels its pending dispatches', () => {
   triggerDispatchRepo.materialize(env.db, {
     conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
-    now: 2_000,
   })
   triggerRepo.setEnabled(env.db, triggerId, false)
   expect(triggerDispatchRepo.listForTrigger(env.db, triggerId)[0]?.status).toBe('cancelled')
 })
 
-test('deleting a trigger cascades its dispatch diagnostics', () => {
+test('deleting a trigger cascades its run history', () => {
   triggerDispatchRepo.materialize(env.db, {
     conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
-    now: 2_000,
   })
   triggerRepo.remove(env.db, triggerId)
   expect(triggerDispatchRepo.listForTrigger(env.db, triggerId)).toEqual([])

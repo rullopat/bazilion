@@ -1,6 +1,3 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { type BashOperations, createBashToolDefinition } from '@earendil-works/pi-coding-agent'
 import { expect, test, vi } from 'vitest'
 import {
@@ -8,10 +5,9 @@ import {
   type BashApprovalHost,
   createApprovalGatedBashTool,
 } from '../../src/runtime/shell/approval.ts'
-import {
-  buildSandboxContainerEnv,
-  createSessionShellTools,
-} from '../../src/runtime/shell/tooling.ts'
+import { createSessionShellTools } from '../../src/runtime/shell/tooling.ts'
+
+const containerPrefix = `bazilion-${'1'.repeat(12)}-`
 
 function fakeBashBackend() {
   const exec = vi.fn(
@@ -55,10 +51,11 @@ test('dangerous approval on the host replaces only bash with a sequential custom
 })
 
 test('Docker mode exposes a custom bash and no host-backed coding tools', () => {
-  const result = createSessionShellTools('/tmp/team', {
-    BAZILION_BASH_SANDBOX: 'docker',
-    OPENAI_API_KEY: 'must-not-leak',
-  })
+  const result = createSessionShellTools(
+    '/tmp/team',
+    { BAZILION_BASH_SANDBOX: 'docker', OPENAI_API_KEY: 'must-not-leak' },
+    { containerPrefix },
+  )
 
   expect(result.config.sandboxMode).toBe('docker')
   expect(result.config.approvalMode).toBe('off')
@@ -68,14 +65,15 @@ test('Docker mode exposes a custom bash and no host-backed coding tools', () => 
     label: 'bash (Docker sandbox)',
   })
   expect(result.customBash?.description).toContain('network-disabled Docker container')
-  expect(result.customBash?.description).toContain('bounded read-only')
+  expect(result.customBash?.description).toContain('Host files and credentials are unavailable')
 })
 
 test('Docker plus dangerous approval wraps the Docker bash without restoring host tools', () => {
-  const result = createSessionShellTools('/tmp/team', {
-    BAZILION_BASH_APPROVAL: 'dangerous',
-    BAZILION_BASH_SANDBOX: 'docker',
-  })
+  const result = createSessionShellTools(
+    '/tmp/team',
+    { BAZILION_BASH_APPROVAL: 'dangerous', BAZILION_BASH_SANDBOX: 'docker' },
+    { containerPrefix },
+  )
 
   expect(result.hostToolNames).toEqual([])
   expect(result.customBash).toMatchObject({
@@ -128,7 +126,7 @@ test('approval receives tool identity, risks, and cancellation before backend ex
     risks: [
       expect.objectContaining({
         code: 'privilege-or-credential-access',
-        matchedText: 'sudo true',
+        span: { start: 0, end: 9 },
       }),
     ],
     signal: controller.signal,
@@ -170,44 +168,28 @@ test('missing approval host auto-denies risky commands but not safe ones', async
   expect(exec).toHaveBeenCalledTimes(1)
 })
 
-test('sandbox environment pins container basics and omits merged host secrets', () => {
-  expect(
-    buildSandboxContainerEnv(
-      {
-        PATH: '/host/bin',
-        HOME: '/home/operator',
-        LANG: 'host-locale',
-        TERM: 'xterm-256color',
-        CI: 'true',
-        OPENAI_API_KEY: 'must-not-leak',
-      },
-      ['CI'],
-    ),
-  ).toEqual({
-    PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-    HOME: '/tmp',
-    LANG: 'C.UTF-8',
-    LC_ALL: 'C.UTF-8',
-    TERM: 'xterm-256color',
-    CI: 'true',
-    SHELL: '/bin/bash',
-    TMPDIR: '/tmp',
-  })
-})
+test('paths inside the workspace count as project-local, the workspace itself does not', async () => {
+  const { exec, operations } = fakeBashBackend()
+  const requestApproval = vi.fn(async () => 'denied' as const)
+  const tool = createApprovalGatedBashTool(
+    createBashToolDefinition('/tmp/team', { operations }),
+    { requestApproval },
+    '/workspace',
+  )
 
-test('Docker mode rejects a memory mount that is a symlink outside the team', () => {
-  const root = mkdtempSync(join(tmpdir(), 'bazilion-shell-tooling-'))
-  const team = join(root, 'team')
-  const outside = join(root, 'outside')
-  mkdirSync(team)
-  mkdirSync(outside)
-  symlinkSync(outside, join(team, 'memory'))
+  for (const command of [
+    'rm -rf /workspace/build',
+    'find /workspace/tmp -type f -delete',
+    'chown -R 1000 /workspace/out',
+  ])
+    await tool.execute('call-local', { command }, undefined, undefined, toolContext)
+  expect(requestApproval).not.toHaveBeenCalled()
+  expect(exec).toHaveBeenCalledTimes(3)
 
-  try {
-    expect(() => createSessionShellTools(team, { BAZILION_BASH_SANDBOX: 'docker' })).toThrow(
-      /read-only mount must be a real directory/,
-    )
-  } finally {
-    rmSync(root, { recursive: true, force: true })
-  }
+  for (const command of ['rm -rf /workspace', 'rm -rf /workspace/*', 'rm -rf /workspace/../etc'])
+    await expect(
+      tool.execute('call-broad', { command }, undefined, undefined, toolContext),
+    ).rejects.toBeInstanceOf(BashApprovalDeniedError)
+  expect(requestApproval).toHaveBeenCalledTimes(3)
+  expect(exec).toHaveBeenCalledTimes(3)
 })

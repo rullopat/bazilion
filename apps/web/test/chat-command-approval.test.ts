@@ -2,13 +2,13 @@ import type { CommandApproval } from '@bazilion/api-types'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test, vi } from 'vitest'
+import { CommandApprovalCard } from '../src/components/chat/CommandApprovalCard.tsx'
 import {
-  CommandApprovalCard,
   interactiveChatRequest,
-  shellApprovalsUrl,
   type RenderEntry,
+  shellApprovalsUrl,
   upsertCommandApprovalEntry,
-} from '../src/components/ChatPane.tsx'
+} from '../src/components/chat/entries.ts'
 
 const pendingApproval: CommandApproval = {
   id: 'approval-1',
@@ -20,9 +20,7 @@ const pendingApproval: CommandApproval = {
   risks: [
     {
       code: 'broad-destructive-operation',
-      severity: 'danger',
       message: 'Recursively changes or deletes a broad filesystem target.',
-      matchedText: 'rm -rf /',
       span: { start: 35, end: 43 },
     },
   ],
@@ -38,9 +36,7 @@ describe('inline shell command approval', () => {
       bashApprovalMode: 'interactive',
       questionMode: 'web',
     })
-    expect(shellApprovalsUrl('agent/one')).toBe(
-      '/api/shell-approvals?agentId=agent%2Fone',
-    )
+    expect(shellApprovalsUrl('agent/one')).toBe('/api/shell-approvals?agentId=agent%2Fone')
   })
 
   test('upserts terminal state without moving or duplicating the pending card', () => {
@@ -72,7 +68,7 @@ describe('inline shell command approval', () => {
     expect(html).not.toContain('<img')
     expect(html).toContain('Recursively changes or deletes a broad filesystem target.')
     expect(html).toContain('broad-destructive-operation')
-    expect(html).toContain('Deny blocks only this command; cancel stops the whole turn.')
+    expect(html).toContain('Deny blocks only this command; Stop ends the whole turn.')
     expect(html).toContain('>Deny</button>')
     expect(html).toContain('>Allow once</button>')
   })

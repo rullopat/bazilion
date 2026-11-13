@@ -1,13 +1,11 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
 /* Neva Masquerade palette — dedicated to Baziu.
-   shadcn semantic tokens are remapped to Baziu colors below so every
-   `bg-card`, `text-muted-foreground`, `border-border`, `ring`, etc.
-   utility resolves to the Baziu palette without per-component edits.
+   The semantic tokens (`bg-card`, `text-muted-foreground`, `border-border`,
+   `ring`, …) are mapped to Baziu colors below.
    The parallel @theme block exposes the raw palette as Tailwind utilities
    (`bg-cream`, `font-display`, `border-frost`) for cases where the
    semantic name doesn't match what we want to express.
@@ -16,114 +14,86 @@
    the literal hex into every utility at build time and dark-mode rules can't
    reach them — `text-charcoal` would stay #2A1F16 on a dark background. */
 @theme {
-    --font-heading: 'DM Serif Display', Georgia, serif;
-    --font-serif: 'DM Serif Display', Georgia, serif;
-    --font-sans: 'DM Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-heading: "DM Serif Display", Georgia, serif;
+  --font-serif: "DM Serif Display", Georgia, serif;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
-    --font-display: 'DM Serif Display', Georgia, serif;
-    --font-body: 'DM Sans', system-ui, sans-serif;
-    --font-mono-baziu: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-display: "DM Serif Display", Georgia, serif;
+  --font-body: "DM Sans", system-ui, sans-serif;
 
-    --color-cream: #F4F1EB;
-    --color-ivory: #FAF8F4;
-    --color-frost: #DED7CD;
-    --color-fawn: #C9BEB1;
-    --color-chocolate: #342820;
-    --color-charcoal: #241C16;
-    --color-mocha: #6F6054;
-    --color-mocha-light: #776A60;
-    --color-sapphire: #356E8F;
-    --color-sapphire-deep: #2F617D;
-    --color-sapphire-light: #72A9C5;
-    --color-sapphire-glow: rgba(53, 110, 143, 0.12);
-    --color-rose-baziu: #C4878A;
-    --color-snow: #FFFFFF;
+  --color-cream: #f4f1eb;
+  --color-ivory: #faf8f4;
+  --color-frost: #ded7cd;
+  --color-fawn: #c9beb1;
+  --color-chocolate: #342820;
+  --color-charcoal: #241c16;
+  --color-mocha: #6f6054;
+  --color-mocha-light: #776a60;
+  --color-sapphire: #356e8f;
+  --color-sapphire-deep: #2f617d;
+  --color-sapphire-light: #72a9c5;
+  --color-sapphire-glow: rgba(53, 110, 143, 0.12);
+  --color-rose-baziu: #c4878a;
+  --color-snow: #ffffff;
 
-    --color-success: #376F59;
-    --color-warning: #87591B;
-    --color-danger: #A34E52;
-    --color-info: #356E8F;
+  --color-success: #376f59;
+  --color-warning: #87591b;
+  --color-danger: #a34e52;
 
-    --shadow-baziu-sm: 0 1px 2px rgba(36, 28, 22, 0.05), 0 1px 8px rgba(36, 28, 22, 0.035);
-    --shadow-baziu-md: 0 8px 24px rgba(36, 28, 22, 0.08);
-    --shadow-baziu-lg: 0 18px 50px rgba(36, 28, 22, 0.12);
+  --shadow-baziu-sm: 0 1px 2px rgba(36, 28, 22, 0.05), 0 1px 8px rgba(36, 28, 22, 0.035);
+  --shadow-baziu-md: 0 8px 24px rgba(36, 28, 22, 0.08);
+  --shadow-baziu-lg: 0 18px 50px rgba(36, 28, 22, 0.12);
 
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
 
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 16px;
-    --radius-xl: 22px;
-    --radius-2xl: 28px;
-    --radius-3xl: 36px;
-    --radius-4xl: 48px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
+  --radius-3xl: 36px;
+  --radius-4xl: 48px;
 }
 
 :root {
-    /* shadcn semantic tokens, remapped to Baziu colors */
-    --background: #F4F1EB;          /* cream */
-    --foreground: #342820;          /* chocolate */
-    --card: #FFFFFF;                /* snow */
-    --card-foreground: #342820;
-    --popover: #FFFFFF;
-    --popover-foreground: #342820;
-    --primary: #356E8F;             /* sapphire, AA-safe on cream */
-    --primary-foreground: #FFFFFF;
-    --secondary: #FAF8F4;           /* ivory */
-    --secondary-foreground: #342820;
-    --muted: #FAF8F4;
-    --muted-foreground: #776A60;    /* mocha-light */
-    --accent: rgba(53, 110, 143, 0.12); /* sapphire-glow */
-    --accent-foreground: #2F617D;   /* sapphire-deep */
-    --destructive: #A34E52;
-    --border: #DED7CD;              /* frost */
-    --input: #DED7CD;
-    --ring: #356E8F;                /* sapphire focus ring */
-    --chart-1: #356E8F;
-    --chart-2: #C4878A;
-    --chart-3: #7A6555;
-    --chart-4: #D4CAB8;
-    --chart-5: #6BA3C2;
-    --radius: 16px;
-    --sidebar: #FAF8F4;
-    --sidebar-foreground: #342820;
-    --sidebar-primary: #356E8F;
-    --sidebar-primary-foreground: #FFFFFF;
-    --sidebar-accent: rgba(53, 110, 143, 0.12);
-    --sidebar-accent-foreground: #2F617D;
-    --sidebar-border: #DED7CD;
-    --sidebar-ring: #356E8F;
+  /* Semantic tokens, mapped to Baziu colors */
+  --background: #f4f1eb; /* cream */
+  --foreground: #342820; /* chocolate */
+  --card: #ffffff; /* snow */
+  --card-foreground: #342820;
+  --popover: #ffffff;
+  --popover-foreground: #342820;
+  --primary: #356e8f; /* sapphire, AA-safe on cream */
+  --primary-foreground: #ffffff;
+  --secondary: #faf8f4; /* ivory */
+  --secondary-foreground: #342820;
+  --muted: #faf8f4;
+  --muted-foreground: #776a60; /* mocha-light */
+  --accent: rgba(53, 110, 143, 0.12); /* sapphire-glow */
+  --accent-foreground: #2f617d; /* sapphire-deep */
+  --destructive: #a34e52;
+  --border: #ded7cd; /* frost */
+  --input: #ded7cd;
+  --ring: #356e8f; /* sapphire focus ring */
+  --radius: 16px;
 }
 
 /* Dark theme — "Mask & Moonlight".
@@ -131,73 +101,59 @@
    cream body fur becomes text, sapphire eyes glow brighter against the
    dark fur. Flips both the raw palette tokens (so component CSS using
    var(--color-snow)/var(--color-chocolate) etc. auto-inverts) AND the
-   shadcn semantic tokens (so Tailwind utilities like bg-card/bg-muted
+   semantic tokens (so Tailwind utilities like bg-card/bg-muted
    resolve correctly). Applied via .dark on <html> by the pre-hydration
    script in __root.tsx — it picks 'system' / 'light' / 'dark' from
    localStorage and falls back to prefers-color-scheme. */
 :root.dark {
-    /* Raw palette — re-mapped to the dark side of Baziu */
-    --color-cream: #1A140F;
-    --color-ivory: #211A13;
-    --color-frost: #3B2E24;
-    --color-fawn: #5C4A3D;
-    --color-chocolate: #F5F0E8;
-    --color-charcoal: #FAF8F4;
-    --color-mocha: #C4B3A0;
-    --color-mocha-light: #A89789;
-    --color-sapphire: #7BB4D2;
-    --color-sapphire-deep: #5E9BBA;
-    --color-sapphire-light: #A0CEE3;
-    --color-sapphire-glow: rgba(123, 180, 210, 0.18);
-    --color-rose-baziu: #D89A9D;
-    --color-snow: #2A211A;
-    --color-success: #75B99A;
-    --color-warning: #D2A15D;
-    --color-danger: #E28A8E;
-    --color-info: #8AC3DF;
+  /* Raw palette — re-mapped to the dark side of Baziu */
+  --color-cream: #1a140f;
+  --color-ivory: #211a13;
+  --color-frost: #3b2e24;
+  --color-fawn: #5c4a3d;
+  --color-chocolate: #f5f0e8;
+  --color-charcoal: #faf8f4;
+  --color-mocha: #c4b3a0;
+  --color-mocha-light: #a89789;
+  --color-sapphire: #7bb4d2;
+  --color-sapphire-deep: #5e9bba;
+  --color-sapphire-light: #a0cee3;
+  --color-sapphire-glow: rgba(123, 180, 210, 0.18);
+  --color-rose-baziu: #d89a9d;
+  --color-snow: #2a211a;
+  --color-success: #75b99a;
+  --color-warning: #d2a15d;
+  --color-danger: #e28a8e;
 
-    --shadow-baziu-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-    --shadow-baziu-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-    --shadow-baziu-lg: 0 8px 30px rgba(0, 0, 0, 0.6);
+  --shadow-baziu-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-baziu-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-baziu-lg: 0 8px 30px rgba(0, 0, 0, 0.6);
 
-    /* shadcn semantic tokens */
-    --background: #1A140F;
-    --foreground: #F5F0E8;
-    --card: #2A211A;
-    --card-foreground: #F5F0E8;
-    --popover: #2A211A;
-    --popover-foreground: #F5F0E8;
-    --primary: #7BB4D2;
-    --primary-foreground: #0F0A07;
-    --secondary: #211A13;
-    --secondary-foreground: #F5F0E8;
-    --muted: #211A13;
-    --muted-foreground: #A89789;
-    --accent: rgba(123, 180, 210, 0.18);
-    --accent-foreground: #A0CEE3;
-    --destructive: #D87878;
-    --border: #3B2E24;
-    --input: #3B2E24;
-    --ring: #7BB4D2;
-    --chart-1: #7BB4D2;
-    --chart-2: #D89A9D;
-    --chart-3: #C4B3A0;
-    --chart-4: #5C4A3D;
-    --chart-5: #A0CEE3;
-    --sidebar: #1F1812;
-    --sidebar-foreground: #F5F0E8;
-    --sidebar-primary: #7BB4D2;
-    --sidebar-primary-foreground: #0F0A07;
-    --sidebar-accent: rgba(123, 180, 210, 0.18);
-    --sidebar-accent-foreground: #A0CEE3;
-    --sidebar-border: #3B2E24;
-    --sidebar-ring: #7BB4D2;
+  /* Semantic tokens */
+  --background: #1a140f;
+  --foreground: #f5f0e8;
+  --card: #2a211a;
+  --card-foreground: #f5f0e8;
+  --popover: #2a211a;
+  --popover-foreground: #f5f0e8;
+  --primary: #7bb4d2;
+  --primary-foreground: #0f0a07;
+  --secondary: #211a13;
+  --secondary-foreground: #f5f0e8;
+  --muted: #211a13;
+  --muted-foreground: #a89789;
+  --accent: rgba(123, 180, 210, 0.18);
+  --accent-foreground: #a0cee3;
+  --destructive: #d87878;
+  --border: #3b2e24;
+  --input: #3b2e24;
+  --ring: #7bb4d2;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
+  }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body);
@@ -207,27 +163,29 @@
     min-height: 100vh;
     background-image:
       radial-gradient(circle at 8% -10%, var(--color-sapphire-glow), transparent 28rem),
-      radial-gradient(circle at 94% 0%, color-mix(in srgb, var(--color-rose-baziu) 8%, transparent), transparent 25rem);
+      radial-gradient(
+        circle at 94% 0%,
+        color-mix(in srgb, var(--color-rose-baziu) 8%, transparent),
+        transparent 25rem
+      );
     background-attachment: fixed;
-    }
+  }
   html {
     @apply font-sans;
     overflow-y: scroll;
     overflow-x: hidden;
     scrollbar-gutter: stable;
-    }
+  }
   /* Workspaces lock html and body to the viewport so their panels own internal
    * scrolling. Set via the data-layout attribute in __root.tsx. */
-  html[data-layout='home'],
-  body[data-layout='home'],
-  html[data-layout='workspace'],
-  body[data-layout='workspace'] {
+  html[data-layout="workspace"],
+  body[data-layout="workspace"] {
     height: 100dvh;
     overflow: hidden;
   }
   /* Subtle paper grain — the single most distinctive Baziu signal. */
   body::before {
-    content: '';
+    content: "";
     position: fixed;
     inset: 0;
     opacity: 0.025;
@@ -236,16 +194,28 @@
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-repeat: repeat;
     background-size: 256px;
-    }
-  h1, h2, h3 {
+  }
+  h1,
+  h2,
+  h3 {
     font-family: var(--font-display);
     color: var(--color-charcoal);
     font-weight: 400;
     letter-spacing: -0.01em;
-    }
-  h1 { font-size: clamp(2rem, 3vw, 2.65rem); line-height: 1.05; }
-  h2 { font-size: clamp(1.4rem, 2vw, 1.75rem); line-height: 1.15; }
-  h3 { font-size: 1.12rem; line-height: 1.25; color: var(--color-mocha); }
+  }
+  h1 {
+    font-size: clamp(2rem, 3vw, 2.65rem);
+    line-height: 1.05;
+  }
+  h2 {
+    font-size: clamp(1.4rem, 2vw, 1.75rem);
+    line-height: 1.15;
+  }
+  h3 {
+    font-size: 1.12rem;
+    line-height: 1.25;
+    color: var(--color-mocha);
+  }
   code {
     font-family: var(--font-mono);
     font-size: 0.88em;
@@ -253,13 +223,15 @@
     padding: 0.15em 0.4em;
     border-radius: var(--radius-sm);
     color: var(--color-mocha);
-    }
+  }
   a {
     color: var(--color-sapphire);
     text-decoration: none;
     transition: color 0.2s;
-    }
-  a:hover { color: var(--color-sapphire-deep); }
+  }
+  a:hover {
+    color: var(--color-sapphire-deep);
+  }
 }
 
 ::selection {
@@ -267,6 +239,7 @@
   color: var(--color-charcoal);
 }
 
+/* biome-ignore-start lint/complexity/noImportantStyles: reduced motion must override every utility. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -277,6 +250,7 @@
     transition-duration: 0.01ms !important;
   }
 }
+/* biome-ignore-end lint/complexity/noImportantStyles: reduced motion must override every utility. */
 
 :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--color-sapphire);
@@ -284,7 +258,7 @@
 }
 
 /* React Flow inherits Bazilion's semantic palette instead of its default blue UI. */
-.teamPolicy-flow {
+.policy-flow {
   --xy-background-color: var(--color-ivory);
   --xy-node-color: var(--color-chocolate);
   --xy-node-border: 1px solid var(--color-frost);
@@ -302,13 +276,25 @@
 
 @layer components {
   /* --- forms --- */
-  label { display: block; margin: 0.6rem 0; font-size: 0.9em; color: var(--color-mocha); }
-  input[type=text], input[type=password], input[type=number], input[type=search],
-  input[type=email], input[type=url], input:not([type]),
-  select, textarea {
+  label {
+    display: block;
+    margin: 0.6rem 0;
+    font-size: 0.9em;
+    color: var(--color-mocha);
+  }
+  input[type="text"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="email"],
+  input[type="url"],
+  input:not([type]),
+  select,
+  textarea {
     min-height: 2.65rem;
     padding: 0.58rem 0.8rem;
-    font: inherit; font-size: 0.95em;
+    font: inherit;
+    font-size: 0.95em;
     border: 1px solid var(--color-frost);
     border-radius: var(--radius-md);
     width: 100%;
@@ -316,18 +302,25 @@
     color: var(--color-chocolate);
     transition: all 0.2s;
     outline: none;
-    }
-  input:focus, select:focus, textarea:focus {
+  }
+  input:focus,
+  select:focus,
+  textarea:focus {
     border-color: var(--color-sapphire);
     box-shadow: 0 0 0 3px var(--color-sapphire-glow);
     background: var(--color-snow);
-    }
-  input::placeholder, textarea::placeholder { color: var(--color-mocha-light); }
-  input[type=checkbox] {
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-mocha-light);
+  }
+  input[type="checkbox"] {
     accent-color: var(--color-sapphire);
-    width: 16px; height: 16px;
-    vertical-align: middle; margin-right: 0.35rem;
-    }
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+    margin-right: 0.35rem;
+  }
 
   /* --- buttons ---
      Primary-CTA styling applies ONLY to form submits and explicit
@@ -335,122 +328,212 @@
      toggles) keeps Tailwind's preflight (transparent bg + inherited text)
      so their per-instance Tailwind classes don't fight a global sapphire
      background. */
-  button[type='submit']:not(.unstyled),
+  button[type="submit"]:not(.unstyled),
   .btn-primary {
-    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
     min-height: 2.55rem;
     padding: 0.58rem 1.05rem;
-    font: inherit; font-size: 0.9em; font-weight: 650; letter-spacing: 0.005em;
-    border: none; border-radius: var(--radius-md); cursor: pointer;
+    font: inherit;
+    font-size: 0.9em;
+    font-weight: 650;
+    letter-spacing: 0.005em;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
     transition: all 0.2s;
-    background: var(--color-sapphire); color: var(--primary-foreground);
-    box-shadow: 0 1px 1px rgba(23, 45, 58, 0.12), 0 4px 12px rgba(61, 120, 153, 0.14);
-    }
-  button[type='submit']:not(.unstyled):hover,
+    background: var(--color-sapphire);
+    color: var(--primary-foreground);
+    box-shadow:
+      0 1px 1px rgba(23, 45, 58, 0.12),
+      0 4px 12px rgba(61, 120, 153, 0.14);
+  }
+  button[type="submit"]:not(.unstyled):hover,
   .btn-primary:hover {
     background: var(--color-sapphire-deep);
     color: var(--primary-foreground);
     box-shadow: var(--shadow-baziu-md);
     transform: translateY(-1px);
-    }
-  button[type='submit']:not(.unstyled):active,
-  .btn-primary:active { transform: translateY(0); }
-  button[type='submit']:not(.unstyled):disabled,
-  button[type='submit']:not(.unstyled)[disabled],
+  }
+  button[type="submit"]:not(.unstyled):active,
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+  button[type="submit"]:not(.unstyled):disabled,
+  button[type="submit"]:not(.unstyled)[disabled],
   .btn-primary:disabled,
   .btn-primary[disabled] {
-    opacity: 0.5; cursor: not-allowed;
-    transform: none; box-shadow: none;
-    }
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
   .ghost-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
     min-height: 2.4rem;
-    background: transparent; color: var(--color-mocha);
+    background: transparent;
+    color: var(--color-mocha);
     border: 1px solid var(--color-frost);
-    padding: 0.48rem 0.85rem; font: inherit; font-weight: 600; font-size: 0.9em;
-    border-radius: var(--radius-md); cursor: pointer;
+    padding: 0.48rem 0.85rem;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9em;
+    border-radius: var(--radius-md);
+    cursor: pointer;
     transition: all 0.2s;
-    }
+  }
   .ghost-btn:hover {
-    border-color: var(--color-sapphire-light); color: var(--color-sapphire);
+    border-color: var(--color-sapphire-light);
+    color: var(--color-sapphire);
     background: var(--color-sapphire-glow);
-    }
-  .ghost-btn:disabled, .ghost-btn[disabled] {
-    opacity: 0.5; cursor: not-allowed;
-    }
+  }
+  .ghost-btn:disabled,
+  .ghost-btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
   .danger-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
     min-height: 2.4rem;
-    background: transparent; color: var(--destructive);
+    background: transparent;
+    color: var(--destructive);
     border: 1px solid color-mix(in srgb, var(--destructive) 32%, transparent);
-    padding: 0.48rem 0.85rem; font: inherit; font-weight: 600; font-size: 0.9em;
-    border-radius: var(--radius-md); cursor: pointer;
+    padding: 0.48rem 0.85rem;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9em;
+    border-radius: var(--radius-md);
+    cursor: pointer;
     transition: all 0.2s;
-    }
+  }
   .danger-btn:hover {
     background: color-mix(in srgb, var(--destructive) 10%, transparent);
     border-color: var(--destructive);
-    }
-  .danger-btn:disabled, .danger-btn[disabled] {
-    opacity: 0.5; cursor: not-allowed;
-    }
+  }
+  .danger-btn:disabled,
+  .danger-btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 
   /* --- tables --- */
   table {
-    width: 100%; border-collapse: separate; border-spacing: 0;
-    margin: 1rem 0; background: color-mix(in srgb, var(--color-snow) 94%, transparent);
-    border: 1px solid var(--color-frost); border-radius: var(--radius-lg); overflow: hidden;
-    }
-  thead { background: var(--color-ivory); }
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 1rem 0;
+    background: color-mix(in srgb, var(--color-snow) 94%, transparent);
+    border: 1px solid var(--color-frost);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  thead {
+    background: var(--color-ivory);
+  }
   th {
-    text-align: left; padding: 0.75rem 1rem;
-    font-size: 0.74em; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.08em; color: var(--color-mocha-light);
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-size: 0.74em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-mocha-light);
     border-bottom: 1px solid var(--color-frost);
-    }
+  }
   td {
-    padding: 0.78rem 1rem; border-bottom: 1px solid var(--color-frost);
-    vertical-align: middle; font-size: 0.93em;
-    }
-  tr:last-child td { border-bottom: none; }
-  tbody tr { transition: background 0.2s; }
-  tbody tr:hover { background: var(--color-sapphire-glow); }
+    padding: 0.78rem 1rem;
+    border-bottom: 1px solid var(--color-frost);
+    vertical-align: middle;
+    font-size: 0.93em;
+  }
+  tr:last-child td {
+    border-bottom: none;
+  }
+  tbody tr {
+    transition: background 0.2s;
+  }
+  tbody tr:hover {
+    background: var(--color-sapphire-glow);
+  }
 
   /* --- markdown (chat output) ---
      `marked` produces standard HTML (<p>/<h*>/<ul>/<code>/<pre>/<blockquote>);
      Tailwind preflight strips margins + list markers, so without these rules
      the chat reads as flat plain text. Scoped under .md-content so we don't
      bleed into form labels or other authored markup. */
-  .md-content > * + * { margin-top: 0.65em; }
-  .md-content h1, .md-content h2, .md-content h3,
-  .md-content h4, .md-content h5, .md-content h6 {
+  .md-content > * + * {
+    margin-top: 0.65em;
+  }
+  .md-content h1,
+  .md-content h2,
+  .md-content h3,
+  .md-content h4,
+  .md-content h5,
+  .md-content h6 {
     font-family: var(--font-serif);
     font-weight: 600;
     color: var(--color-chocolate);
     line-height: 1.3;
     margin-top: 1.1em;
-    }
-  .md-content h1 { font-size: 1.45em; }
-  .md-content h2 { font-size: 1.25em; }
-  .md-content h3 { font-size: 1.1em; }
-  .md-content h4, .md-content h5, .md-content h6 { font-size: 1em; }
-  .md-content p { line-height: 1.55; }
-  .md-content ul, .md-content ol {
+  }
+  .md-content h1 {
+    font-size: 1.45em;
+  }
+  .md-content h2 {
+    font-size: 1.25em;
+  }
+  .md-content h3 {
+    font-size: 1.1em;
+  }
+  .md-content h4,
+  .md-content h5,
+  .md-content h6 {
+    font-size: 1em;
+  }
+  .md-content p {
+    line-height: 1.55;
+  }
+  .md-content ul,
+  .md-content ol {
     padding-left: 1.5em;
     line-height: 1.55;
-    }
-  .md-content ul { list-style: disc; }
-  .md-content ol { list-style: decimal; }
-  .md-content li + li { margin-top: 0.25em; }
-  .md-content li > ul, .md-content li > ol { margin-top: 0.25em; }
+  }
+  .md-content ul {
+    list-style: disc;
+  }
+  .md-content ol {
+    list-style: decimal;
+  }
+  .md-content li + li {
+    margin-top: 0.25em;
+  }
+  .md-content li > ul,
+  .md-content li > ol {
+    margin-top: 0.25em;
+  }
   .md-content a {
     color: var(--color-sapphire);
     text-decoration: underline;
     text-underline-offset: 2px;
-    }
-  .md-content a:hover { color: var(--color-sapphire-deep); }
-  .md-content strong { font-weight: 600; color: var(--color-chocolate); }
-  .md-content em { font-style: italic; }
+  }
+  .md-content a:hover {
+    color: var(--color-sapphire-deep);
+  }
+  .md-content strong {
+    font-weight: 600;
+    color: var(--color-chocolate);
+  }
+  .md-content em {
+    font-style: italic;
+  }
   .md-content code {
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.88em;
@@ -458,7 +541,7 @@
     background: var(--color-frost);
     border-radius: var(--radius-sm, 4px);
     color: var(--color-chocolate);
-    }
+  }
   .md-content pre {
     margin: 0.7em 0;
     padding: 0.75rem 1rem;
@@ -468,39 +551,44 @@
     overflow-x: auto;
     font-size: 0.88em;
     line-height: 1.5;
-    }
+  }
   .md-content pre code {
     padding: 0;
     background: transparent;
     border-radius: 0;
     font-size: inherit;
-    }
+  }
   .md-content blockquote {
     border-left: 3px solid var(--color-frost);
     padding-left: 0.9rem;
     color: var(--color-mocha-light);
     font-style: italic;
-    }
+  }
   .md-content hr {
     border: none;
     border-top: 1px solid var(--color-frost);
     margin: 1em 0;
-    }
+  }
   .md-content table {
     margin: 0.5em 0;
     border-collapse: collapse;
     font-size: 0.93em;
-    }
-  .md-content th, .md-content td {
+  }
+  .md-content th,
+  .md-content td {
     padding: 0.4rem 0.7rem;
     border: 1px solid var(--color-frost);
     text-align: left;
-    }
+  }
   .md-content th {
     background: var(--color-frost);
     font-weight: 600;
-    }
-  .md-content img { max-width: 100%; height: auto; border-radius: var(--radius-sm, 4px); }
+  }
+  .md-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm, 4px);
+  }
 
   /* --- cards --- */
   .card {
@@ -511,21 +599,29 @@
     padding: 1.5rem;
     margin: 1.25rem 0;
     box-shadow: var(--shadow-baziu-sm);
-    }
+  }
   .card h3 {
     font-family: var(--font-body);
-    font-weight: 600; font-size: 0.92em;
-    text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--color-mocha-light); margin-bottom: 1rem;
-    }
+    font-weight: 600;
+    font-size: 0.92em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-mocha-light);
+    margin-bottom: 1rem;
+  }
 
   /* --- helpers --- */
-  .muted { color: var(--color-mocha-light); font-size: 0.9em; }
+  .muted {
+    color: var(--color-mocha-light);
+    font-size: 0.9em;
+  }
   .err {
-    color: var(--destructive); padding: 0.75rem 1rem;
+    color: var(--destructive);
+    padding: 0.75rem 1rem;
     background: color-mix(in srgb, var(--destructive) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--destructive) 25%, transparent);
     border-radius: var(--radius-md);
-    font-size: 0.92em; margin-bottom: 1rem;
-    }
+    font-size: 0.92em;
+    margin-bottom: 1rem;
+  }
 }

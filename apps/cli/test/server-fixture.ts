@@ -1,24 +1,23 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  initSchema,
   openDb,
   providerModelRepo,
   providerStateRepo,
   registerTeam,
   resolvePaths,
-  runMigrations,
   webTokenRepo,
 } from '../../daemon/src/core/index.ts'
 import { type CliResult, runCli } from './helpers.ts'
 
-// Tests now boot the standalone daemon (apps/daemon/src/index.ts) — the
-// authority for /api/* — instead of the Astro web app, which only renders
-// pages and proxies to the daemon. tsx loader keeps the source-mode
-// invocation matching `bazilion serve`.
+// Tests boot the standalone daemon (apps/daemon/src/index.ts) — the
+// authority for /api/* — not the web app, which only renders pages and
+// proxies to the daemon. tsx loader keeps the source-mode invocation matching
+// `bazilion serve`.
 const daemonEntry = join(import.meta.dirname, '..', '..', 'daemon', 'src', 'index.ts')
 
 export function findFreePort(): Promise<number> {
@@ -58,12 +57,11 @@ function initHome(options: TestServerFixtureOptions = {}): { home: string; token
     paths.agentsDir,
     paths.skillsDir,
     paths.teamsDir,
-    paths.logsDir,
   ]) {
     mkdirSync(d, { recursive: true })
   }
   const db = openDb(paths.db)
-  runMigrations(db)
+  initSchema(db)
   // Mint a bootstrap token row + write its plaintext into auth.json.
   const created = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
   writeFileSync(paths.authFile, `${JSON.stringify({ token: created.token }, null, 2)}\n`)
@@ -88,62 +86,32 @@ function initHome(options: TestServerFixtureOptions = {}): { home: string; token
   return { home, token: created.token }
 }
 
-/** Test-only readiness: the endpoint must come from this child's bound-listener output. */
-export async function waitForFixtureServer(
-  proc: ChildProcess,
-  token: string,
-  timeoutMs = 20_000,
-): Promise<string> {
-  const deadline = Date.now() + timeoutMs
-  const url = await new Promise<string>((resolve, reject) => {
+/** Resolve with the URL the daemon prints once it is listening on its own port. */
+function waitForListening(proc: ChildProcess, timeoutMs = 20_000): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     if (!proc.stdout) return reject(new Error('fixture stdout pipe is unavailable'))
     let output = ''
-    const finish = (error?: Error, endpoint?: string) => {
+    const finish = (error?: Error, url?: string) => {
       clearTimeout(timer)
       proc.stdout?.removeListener('data', onData)
       proc.removeListener('close', onClose)
-      proc.removeListener('error', onError)
       proc.stdout?.resume()
       if (error) reject(error)
-      else resolve(endpoint as string)
+      else resolve(url as string)
     }
     const onData = (chunk: Buffer) => {
-      output = (output + chunk.toString()).slice(-65_536)
-      // Require the complete line; a chunk ending mid-port is not an endpoint.
-      const match = /(?:^|\n)bazilion daemon listening at (http:\/\/127\.0\.0\.1:(\d+))\r?\n/.exec(
-        output,
-      )
-      if (match && Number(match[2]) > 0 && Number(match[2]) <= 65_535) finish(undefined, match[1])
+      output += chunk.toString()
+      const match = /bazilion daemon listening at (http:\/\/127\.0\.0\.1:\d+)\r?\n/.exec(output)
+      if (match) finish(undefined, match[1])
     }
-    const onClose = () =>
-      finish(new Error(`fixture exited before publishing its listener: ${output}`))
-    const onError = (error: Error) => finish(error)
+    const onClose = () => finish(new Error(`fixture daemon exited before listening: ${output}`))
     const timer = setTimeout(
-      () => finish(new Error(`fixture listener deadline exceeded: ${output}`)),
+      () => finish(new Error(`fixture daemon did not start listening: ${output}`)),
       timeoutMs,
     )
     proc.stdout.on('data', onData)
     proc.once('close', onClose)
-    proc.once('error', onError)
-    if (proc.exitCode !== null || proc.signalCode !== null) onClose()
   })
-  // Authentication failure is not liveness and is never retried as startup success.
-  const response = await fetch(`${url}/api/auth/whoami`, {
-    headers: { authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
-    redirect: 'error',
-  })
-  if (response.status !== 200)
-    throw new Error(`fixture owner authentication failed: HTTP ${response.status}`)
-  const owner = (await response.json()) as {
-    authenticated?: boolean
-    principal?: { kind?: string }
-  }
-  if (owner.authenticated !== true || owner.principal?.kind !== 'bootstrap')
-    throw new Error('fixture owner authentication returned an unexpected principal')
-  if (proc.exitCode !== null || proc.signalCode !== null)
-    throw new Error('fixture exited during owner authentication')
-  return url
 }
 
 export interface TestServer {
@@ -164,39 +132,24 @@ export interface TestServer {
   stop(options?: { keepHome?: boolean; signal?: NodeJS.Signals }): Promise<void>
 }
 
-const WIPE_SQL = `
-  DELETE FROM web_sessions;
-  DELETE FROM web_tokens WHERE kind != 'bootstrap';
-  DELETE FROM agent_loop_break_events;
-  DELETE FROM agent_lesson_proposals;
-  DELETE FROM agent_reviews;
-  DELETE FROM team_policy_block_events;
-  DELETE FROM source_slot_bindings;
-  DELETE FROM template_instantiations;
-  DELETE FROM team_policy_edges;
-  DELETE FROM team_agent_state;
-  DELETE FROM team_template_edges;
-  DELETE FROM team_template_slots;
-  DELETE FROM team_template_revisions;
-  DELETE FROM team_templates;
-  DELETE FROM messages;
-  DELETE FROM agent_triggers;
-  DELETE FROM agent_skills;
-  DELETE FROM agents;
-  DELETE FROM profile_default_skills;
-  DELETE FROM profiles;
-  DELETE FROM teams;
-  DELETE FROM skill_meta;
-  DELETE FROM provider_models;
-  DELETE FROM provider_state;
-  DELETE FROM secrets;
-  DELETE FROM config;
-`
-
 function resetHome(home: string): void {
   const paths = resolvePaths(home)
   const db = openDb(paths.db)
-  db.raw.exec(WIPE_SQL)
+  // Empty every table except the bootstrap token row the CLI authenticates with.
+  const tables = db.raw
+    .query<{ name: string }, []>(
+      "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    )
+    .all()
+  db.raw.exec('PRAGMA foreign_keys = OFF')
+  for (const { name } of tables) {
+    db.raw.exec(
+      name === 'web_tokens'
+        ? "DELETE FROM web_tokens WHERE kind != 'bootstrap'"
+        : `DELETE FROM "${name}"`,
+    )
+  }
+  db.raw.exec('PRAGMA foreign_keys = ON')
   // Re-enable lmstudio + ollama the same way initHome does — tests that mount
   // mock providers expect these enabled.
   providerStateRepo.setEnabled(db, 'lmstudio', true)
@@ -217,8 +170,8 @@ function resetHome(home: string): void {
 
 /**
  * Spawns the daemon on a free port with BAZILION_HOME pointing at a fresh
- * tempdir. Resolves once the server answers HTTP. Call `stop()` to kill the
- * process and clean up the tempdir.
+ * tempdir. Resolves once the daemon reports it is listening. Call `stop()` to
+ * kill the process and clean up the tempdir.
  *
  * Additional env vars can be passed (e.g. `LMSTUDIO_URL` pointing at a mock
  * provider) — they're merged into the server's env.
@@ -245,14 +198,7 @@ async function bootTestServer(
   extraServerEnv: NodeJS.ProcessEnv,
   preserveOnFailure = false,
 ): Promise<TestServer> {
-  // Let the owned listener allocate its port atomically. Closing a parent-side
-  // free-port probe before spawn permits another parallel fixture to claim it.
-  // Opt-in diagnostics for disposable test daemons only, never the operator daemon.
-  // Ephemeral ports can be reused during a serial gate; never overwrite/collide with prior logs.
-  const stderrDir = process.env.BAZILION_TEST_DAEMON_STDERR_DIR
-  const stderrFd = stderrDir
-    ? openSync(join(stderrDir, `fixture-${randomUUID()}.stderr.log`), 'wx', 0o600)
-    : undefined
+  // PORT=0 lets the daemon pick its own port, so parallel fixtures never race for one.
   const proc: ChildProcess = spawn('node', ['--import', 'tsx/esm', daemonEntry], {
     env: {
       ...process.env,
@@ -261,14 +207,13 @@ async function bootTestServer(
       HOST: '127.0.0.1',
       PORT: '0',
     },
-    stdio: ['ignore', 'pipe', stderrFd ?? 'ignore'],
+    stdio: ['ignore', 'pipe', 'ignore'],
   })
-  if (stderrFd !== undefined) closeSync(stderrFd)
 
   const closed = new Promise<void>((resolve) => proc.once('close', () => resolve()))
   let url: string
   try {
-    url = await waitForFixtureServer(proc, token)
+    url = await waitForListening(proc)
   } catch (err) {
     proc.kill()
     await closed
@@ -300,46 +245,7 @@ async function bootTestServer(
       } finally {
         clearTimeout(timer)
       }
-      if (!options.keepHome) await rmWithRetry(home)
+      if (!options.keepHome) rmSync(home, { recursive: true, force: true })
     },
-  }
-}
-
-/** Stop a protected fixture without erasing unresolved writers, bind sources or receipts. */
-export async function stopSettledTestServer(server: TestServer): Promise<void> {
-  await server.stop({ keepHome: true })
-  const db = openDb(resolvePaths(server.home).db)
-  let writers: number | undefined
-  try {
-    writers = db.raw
-      .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
-      .get()?.count
-  } finally {
-    db.close()
-  }
-  if (writers !== 0) {
-    console.warn(`[protected fixture] retained unconfirmed workspace/receipts: ${server.home}`)
-    throw new Error('protected fixture cleanup requires confirmed workspace settlement')
-  }
-  await rmWithRetry(server.home)
-}
-
-/**
- * Windows keeps handles open past process exit (AV scanning, late watchers),
- * so an immediate recursive rm can fail with EPERM/EBUSY/ENOTEMPTY. Retry a
- * few times with backoff before giving up — the fixture owns this temp dir.
- */
-async function rmWithRetry(target: string, attempts = 10): Promise<void> {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      rmSync(target, { recursive: true, force: true })
-      return
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (attempt === attempts || !['EPERM', 'EBUSY', 'ENOTEMPTY', 'EACCES'].includes(code ?? '')) {
-        throw error
-      }
-      await new Promise((resolve) => setTimeout(resolve, attempt * 1_000))
-    }
   }
 }

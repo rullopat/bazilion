@@ -1,105 +1,66 @@
 {
-  "version": 1,
-  "kind": "bazilion.team-template",
-  "template": {
-    "id": "content-preparation",
-    "name": "Content preparation — manual Mastodon handoff",
-    "userMd": "# Content preparation\n\nThis Team prepares Mastodon content for human review and manual handoff only. The coordinator is the user's contact. Topic, purpose, audience and timing must be confirmed before work; no brief or usage grant is prefilled. Store project briefs in Team memory, not as invented user preferences. No social credentials, posting, recurring triggers or automatic approval are authorized by creating this Team. The operator must supply the current same-Team role UUIDs from the canonical roster before delegation. Protected peer/scheduled discovery requires daemon-owned web_search through an admitted SearXNG backend; ordinary native/browser research is not an unattended substitute. If required discovery is disabled or unavailable, report the blocker, never silently switch posture or call supplied-URL retrieval a search.\n"
-  },
+  "id": "content-preparation",
+  "name": "Content preparation — manual Mastodon handoff",
+  "userMd": "# Content preparation\n\nThis Team prepares Mastodon content for human review and manual handoff only. The coordinator is the user's contact. Topic, purpose, audience and timing must be confirmed before work; no brief or usage grant is prefilled. Store project briefs in Team memory, not as invented user preferences. No social credentials, posting, recurring triggers or automatic approval are authorized by creating this Team. The operator must supply the current same-Team role UUIDs from the canonical roster before delegation. Peer and scheduled turns use the same web_search route as chat. If required discovery is disabled or unavailable, report the blocker, never silently switch posture or call supplied-URL retrieval a search.\n",
+  "policyMode": "restricted",
   "slots": [
     {
-      "key": "coordinator",
       "profileId": "content-coordinator",
       "agentName": "Content Coordinator",
-      "modelOverride": null,
-      "reasoningLevel": null,
-      "layoutPosition": { "x": 0, "y": 0 },
-      "display": null
+      "layoutPosition": {
+        "x": 0,
+        "y": 0
+      }
     },
     {
-      "key": "researcher",
       "profileId": "content-researcher",
       "agentName": "Content Researcher",
-      "modelOverride": null,
-      "reasoningLevel": null,
-      "layoutPosition": { "x": 240, "y": -160 },
-      "display": null
+      "layoutPosition": {
+        "x": 240,
+        "y": -160
+      }
     },
     {
-      "key": "writer",
       "profileId": "content-writer",
       "agentName": "Content Writer",
-      "modelOverride": null,
-      "reasoningLevel": null,
-      "layoutPosition": { "x": 240, "y": 0 },
-      "display": null
+      "layoutPosition": {
+        "x": 240,
+        "y": 0
+      }
     },
     {
-      "key": "designer",
       "profileId": "content-designer",
       "agentName": "Content Designer",
-      "modelOverride": null,
-      "reasoningLevel": null,
-      "layoutPosition": { "x": 240, "y": 160 },
-      "display": null
+      "layoutPosition": {
+        "x": 240,
+        "y": 160
+      }
     }
   ],
   "edges": [
     {
-      "sourceKind": "user",
-      "sourceKey": null,
-      "targetKind": "slot",
-      "targetKey": "coordinator",
-      "posture": "allow"
+      "from": 0,
+      "to": 1
     },
     {
-      "sourceKind": "slot",
-      "sourceKey": "coordinator",
-      "targetKind": "user",
-      "targetKey": null,
-      "posture": "allow"
+      "from": 1,
+      "to": 0
     },
     {
-      "sourceKind": "slot",
-      "sourceKey": "coordinator",
-      "targetKind": "slot",
-      "targetKey": "researcher",
-      "posture": "allow"
+      "from": 0,
+      "to": 2
     },
     {
-      "sourceKind": "slot",
-      "sourceKey": "researcher",
-      "targetKind": "slot",
-      "targetKey": "coordinator",
-      "posture": "allow"
+      "from": 2,
+      "to": 0
     },
     {
-      "sourceKind": "slot",
-      "sourceKey": "coordinator",
-      "targetKind": "slot",
-      "targetKey": "writer",
-      "posture": "allow"
+      "from": 0,
+      "to": 3
     },
     {
-      "sourceKind": "slot",
-      "sourceKey": "writer",
-      "targetKind": "slot",
-      "targetKey": "coordinator",
-      "posture": "allow"
-    },
-    {
-      "sourceKind": "slot",
-      "sourceKey": "coordinator",
-      "targetKind": "slot",
-      "targetKey": "designer",
-      "posture": "allow"
-    },
-    {
-      "sourceKind": "slot",
-      "sourceKey": "designer",
-      "targetKind": "slot",
-      "targetKey": "coordinator",
-      "posture": "allow"
+      "from": 3,
+      "to": 0
     }
   ]
 }

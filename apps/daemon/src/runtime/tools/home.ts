@@ -24,29 +24,6 @@ const HOME_FILES_READABLE = [
 
 const HOME_FILES_WRITABLE = ['IDENTITY.md', 'SOUL.md', 'AGENTS.md', 'TOOLS.md'] as const
 
-export type PrivateHomeFile = (typeof HOME_FILES_READABLE)[number]
-export type PrivateHomeSnapshot = Partial<Record<PrivateHomeFile, string>>
-
-/**
- * Read the complete fixed Agent-document surface without following links.
- * Protected preparation calls this before spawn; prompt construction uses the
- * returned bytes so a planted fixed-name symlink can never inject host data.
- */
-export function loadPrivateHomeSnapshot(agentDir: string): PrivateHomeSnapshot {
-  const homeRoot = resolvePrivateHomeRoot(agentDir)
-  const snapshot: PrivateHomeSnapshot = {}
-  for (const file of HOME_FILES_READABLE) {
-    const path = privateHomeFile(homeRoot, file)
-    try {
-      snapshot[file] = readRegularFileNoFollow(path)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
-      throw new Error(`private Agent home is unsafe at ${file}`)
-    }
-  }
-  return snapshot
-}
-
 export function homeTools(agentDir: string): ToolHandler[] {
   const homeRoot = resolvePrivateHomeRoot(agentDir)
   return [

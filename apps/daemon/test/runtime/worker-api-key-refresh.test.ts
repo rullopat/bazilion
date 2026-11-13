@@ -7,57 +7,17 @@ import { expect, test, vi } from 'vitest'
 import { resolvePaths } from '../../src/core/index.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import { createBazilionSession } from '../../src/runtime/pi/session.ts'
-import {
-  type ApiKeyRefreshTurnContext,
-  createIpcApiKeyRefresher,
-  refreshApiKeyForTurn,
-} from '../../src/runtime/worker/api-key-refresh.ts'
-import { createIpcClient, type WorkerIpcCall } from '../../src/runtime/worker/ipc-client.ts'
+import { refreshApiKeyForTurn } from '../../src/runtime/worker/api-key-refresh.ts'
+import { createIpcClient } from '../../src/runtime/worker/ipc-client.ts'
 import type {
-  ApiKeyRefreshArgs,
   ApiKeyRefreshHost,
   IpcReply,
   IpcRequest,
 } from '../../src/runtime/worker/ipc-protocol.ts'
 import { spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
-import { emptyRepositoryContext } from '../fixtures/repository-context.ts'
 
-const context: ApiKeyRefreshTurnContext = {
-  providerName: 'openai-codex',
-  agentId: 'agent-1',
-  turnId: 'turn-1',
-}
-
-const request: ApiKeyRefreshArgs = {
-  providerName: 'openai-codex',
-  agentId: 'agent-1',
-  turnId: 'turn-1',
-}
-
-test('worker refresher sends only provider and current-turn identity over IPC', async () => {
-  const calls: Array<{ method: string; args: unknown }> = []
-  const call: WorkerIpcCall = async <T>(method: string, args: unknown) => {
-    calls.push({ method, args })
-    return 'fresh-access-token' as T
-  }
-  const refresh = createIpcApiKeyRefresher(call, context)
-
-  await expect(refresh('openai-codex')).resolves.toBe('fresh-access-token')
-  expect(calls).toEqual([{ method: 'refreshApiKey', args: request }])
-})
-
-test('worker rejects a provider mismatch without sending an IPC request', async () => {
-  let calls = 0
-  const call: WorkerIpcCall = async <T>() => {
-    calls += 1
-    return 'must-not-return' as T
-  }
-  const refresh = createIpcApiKeyRefresher(call, context)
-
-  await expect(refresh('openai')).rejects.toThrow(/unexpected API key refresh provider/)
-  expect(calls).toBe(0)
-})
+const request = { providerName: 'openai-codex' }
 
 test('worker IPC disconnect rejects and clears a pending refresh request', async () => {
   let onMessage: ((message: unknown) => void) | undefined
@@ -75,11 +35,11 @@ test('worker IPC disconnect rejects and clears a pending refresh request', async
       onDisconnect = listener
     },
   })
-  const refresh = createIpcApiKeyRefresher(call, context)
-  const pending = refresh('openai-codex')
+  const pending = call('refreshApiKey', request)
   const rejected = expect(pending).rejects.toThrow(/IPC channel disconnected/)
 
   expect(sent).toHaveLength(1)
+  expect(sent[0]).toMatchObject({ type: 'rpc', method: 'refreshApiKey', args: request })
   onDisconnect?.()
   await rejected
 
@@ -151,15 +111,11 @@ test('spawned worker refreshes end-to-end without putting either token in ChatFr
   try {
     for await (const frame of spawnWorkerTurn(
       {
-        kind: 'configured_operator_http',
-        repositoryContext: emptyRepositoryContext(agent.team.id),
-        conversation: {
-          id: '11111111-1111-4111-8111-111111111111',
-          filename: '11111111-1111-4111-8111-111111111111.jsonl',
-        },
+        kind: 'agent_turn',
+        repositoryInstructions: [],
+        conversation: { id: '11111111-1111-4111-8111-111111111111' },
         agent,
         message: 'exercise refresh IPC',
-        enabledProviders: ['openai-codex'],
         apiKey: initialToken,
         turnId: 'turn-spawn-integration',
         bashApprovalMode: 'auto_deny',
@@ -185,23 +141,19 @@ test('spawned worker refreshes end-to-end without putting either token in ChatFr
   }
 })
 
-test('daemon refresh accepts only the provider and identity bound to this turn', async () => {
+test('daemon refresh serves only the provider of this turn', async () => {
   const refresh = vi.fn(async () => 'fresh-access-token')
   const host: ApiKeyRefreshHost = { refresh }
 
-  await expect(refreshApiKeyForTurn(request, context, host)).resolves.toBe('fresh-access-token')
+  await expect(refreshApiKeyForTurn('openai-codex', 'openai-codex', host)).resolves.toBe(
+    'fresh-access-token',
+  )
   expect(refresh).toHaveBeenCalledOnce()
   expect(refresh).toHaveBeenCalledWith('openai-codex', undefined)
 
-  for (const mismatch of [
-    { ...request, providerName: 'openai' },
-    { ...request, agentId: 'agent-2' },
-    { ...request, turnId: 'turn-2' },
-  ]) {
-    await expect(refreshApiKeyForTurn(mismatch, context, host)).rejects.toThrow(
-      /unexpected API key refresh provider|does not belong to this worker turn/,
-    )
-  }
+  await expect(refreshApiKeyForTurn('openai', 'openai-codex', host)).rejects.toThrow(
+    /unexpected API key refresh provider/,
+  )
   expect(refresh).toHaveBeenCalledOnce()
 })
 
@@ -211,13 +163,13 @@ test('daemon rejects refresh before host invocation when the turn is already can
   const refresh = vi.fn(async () => 'must-not-return')
 
   await expect(
-    refreshApiKeyForTurn(request, context, { refresh }, controller.signal),
+    refreshApiKeyForTurn('openai-codex', 'openai-codex', { refresh }, controller.signal),
   ).rejects.toThrow(/cancelled with the worker turn/)
   expect(refresh).not.toHaveBeenCalled()
 })
 
 test('daemon rejects a refresh request when this turn has no refresh host', async () => {
-  await expect(refreshApiKeyForTurn(request, context, undefined)).rejects.toThrow(
+  await expect(refreshApiKeyForTurn('openai-codex', 'openai-codex', undefined)).rejects.toThrow(
     /refresh is unavailable for this worker turn/,
   )
 })
@@ -234,7 +186,12 @@ test('daemon stops waiting when cancellation happens during refresh', async () =
     return pending
   })
 
-  const result = refreshApiKeyForTurn(request, context, { refresh }, controller.signal)
+  const result = refreshApiKeyForTurn(
+    'openai-codex',
+    'openai-codex',
+    { refresh },
+    controller.signal,
+  )
   controller.abort()
 
   await expect(result).rejects.toThrow(/cancelled with the worker turn/)
@@ -246,7 +203,7 @@ test('daemon redacts host errors and rejects empty host results', async () => {
   const tokenSentinel = 'secret-access-token-must-not-leak'
   let exposedError: unknown
   try {
-    await refreshApiKeyForTurn(request, context, {
+    await refreshApiKeyForTurn('openai-codex', 'openai-codex', {
       refresh: async () => {
         throw new Error(`upstream rejected Authorization: Bearer ${tokenSentinel}`)
       },
@@ -260,9 +217,9 @@ test('daemon redacts host errors and rejects empty host results', async () => {
   expect(String(exposedError)).not.toContain(tokenSentinel)
   expect(JSON.stringify(exposedError)).not.toContain(tokenSentinel)
 
-  await expect(refreshApiKeyForTurn(request, context, { refresh: async () => '' })).rejects.toThrow(
-    /invalid token/,
-  )
+  await expect(
+    refreshApiKeyForTurn('openai-codex', 'openai-codex', { refresh: async () => '' }),
+  ).rejects.toThrow(/invalid token/)
 })
 
 test('Bazilion session gives pi the IPC-backed refresher for openai-codex', async () => {
@@ -311,6 +268,7 @@ test('Bazilion session gives pi the IPC-backed refresher for openai-codex', asyn
       path: teamDir,
       userMd: '',
       telegramTopicNameFormat: null,
+      policyMode: 'open',
       createdAt: 0,
     },
     skills: [],
@@ -340,7 +298,6 @@ test('Bazilion session gives pi the IPC-backed refresher for openai-codex', asyn
       paths,
       env: { BAZILION_BASH_SANDBOX: 'off', BAZILION_BASH_APPROVAL: 'off' },
       memory,
-      enabledProviders: new Set(['openai-codex']),
       apiKey: 'initial-access-token',
       refreshApiKey,
     })
@@ -349,6 +306,8 @@ test('Bazilion session gives pi the IPC-backed refresher for openai-codex', asyn
         'session-refreshed-token',
       )
       expect(refreshApiKey).toHaveBeenCalledWith('openai-codex')
+      // A token refreshed mid-turn joins the redaction set for later tool output.
+      expect(handle.redactionSecrets).toContain('session-refreshed-token')
       await expect(handle.session.agent.getApiKey?.('openai')).resolves.toBeUndefined()
     } finally {
       handle.dispose()
@@ -398,6 +357,7 @@ function resolvedOpenAICodexAgent(paths: ReturnType<typeof resolvePaths>): Resol
       path: paths.teamDir('team-1'),
       userMd: '',
       telegramTopicNameFormat: null,
+      policyMode: 'open',
       createdAt: 0,
     },
     skills: [],

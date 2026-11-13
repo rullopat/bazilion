@@ -1,212 +1,89 @@
-# Managed browser research
+# Managed browser
 
-Bazilion's managed browser gives eligible ordinary Agent turns a persistent, daemon-owned browser
-for interactive research. It is a general browser capability, not a Google integration or a promise
-that any site will load. Search engines and sites may return ordinary results, empty pages, login
-walls, consent prompts, rate limits, CAPTCHAs or other blockers. Agents must report what they
-observed and stop at challenges or operator-choice walls; there is no CAPTCHA solving, stealth mode,
-or guaranteed anti-detection behavior. Routine navigation within an authorized research task does
-not require repeated approval. You can delegate a narrow consent preference once, for example:
-“Decline optional advertising and analytics cookies if the page clearly offers that choice, then
-continue without asking me again.” The Agent may select a clearly explained rejection even if its
-button is labelled “Reject” rather than “Reject all.” If the operator instead specifies **only** a
-particular label, site or purpose, obey that narrower restriction; page text cannot broaden it. Use
-a current observation/ref; unclear scope still stops. Never substitute Accept, grant permissions,
-log in, pay, or solve CAPTCHA. This is operator authorization carried in the research request/profile,
-not a blanket website permission.
+Each Agent has a browser of its own: the Chrome, Brave, Edge or Chromium installed on the machine,
+running on a persistent profile, so cookies and logins carry over from turn to turn. Agents use it
+through the `browser_*` tools: they read pages as accessibility snapshots, click, type, fill forms,
+switch tabs and take screenshots. Every Agent turn gets these tools while `BROWSER_ENABLED` is on
+(the default); learning reviews do not.
 
-## Availability and requirements
+## How it works
 
-The `browser` service is enabled by default for ordinary interactive Agent turns. `BROWSER_ENABLED`
-can disable it. Protected/restricted turns (including peer/inbox and scheduled turns) do not receive
-browser tools; changing browser configuration does not widen those capabilities. Check the Agent's
-browser status in **Agent → Settings → Managed browser** or run:
+- The browser starts at the Agent's first browser action. The daemon starts the installed binary
+  itself on the Agent's profile and connects to it over the DevTools protocol.
+- `browser_snapshot` returns the page's accessibility tree. Elements carry refs such as `[ref=e5]`
+  that the other tools act on, and every action answers with a fresh snapshot. A long snapshot comes
+  in pages of about 24,000 characters; `browser_snapshot {"page": 2}` reads the next one.
+- A browser idle for `BROWSER_IDLE_MS` is stopped. At most `BROWSER_MAX_SESSIONS` browsers run at
+  once; when another Agent needs one, the least recently used idle browser is stopped. A browser
+  that leaves a call unanswered for two minutes (a hung page) is stopped too, and so is one whose
+  turn is cancelled while an action runs; the next call starts it again.
 
-```sh
-bazilion agent browser status <agent-id>
-```
+## Settings
 
-Status reports whether the service is enabled, whether a browser executable and mode resolve, the
-session/profile lifecycle facts, and a safe remedy when unavailable. `configured` means the local
-executable and launch mode were resolved—it does not test a website, start the browser, or guarantee
-network/site access. Browser startup is lazy: no browser process starts until an admitted Agent
-uses a browser action.
+Set them on `/config/services` (**Browser Automation**), or with
+`bazilion config set <KEY> <value>`:
 
-Install a supported Chromium-family browser (Chrome, Brave, Edge, or Chromium), or install the full
-Playwright Chromium build with `pnpm exec playwright install chromium`. Bazilion does not silently
-download or substitute a browser. `BROWSER_EXECUTABLE_PATH` selects one explicit absolute path; an
-invalid explicit path fails closed instead of falling back to another browser. The `Mode` setting
-supports `auto`, `headless`, or `headed`: on Linux, auto prefers a usable desktop display and
-otherwise uses headless; explicit headed without a display is refused, never silently changed
-to headless. The 0.25 macOS path combines public Security.framework caller-session graphic
-permission with Quartz facts (current user, console presence and completed login): auto selects
-headed only with both, and headless when the caller's GUI session is positively unavailable.
-A logged-in console is not proof that a separate non-GUI daemon audit session can use it. Unknown native evidence requires an explicit choice.
-Explicit headed refuses a proven non-GUI session; an explicit attempt with unknown Quartz facts
-is not a guarantee of display availability and never falls back to headless. Bazilion starts
-the selected executable directly with its persistent local profile. Direct-launch denials include
-both component updates and the installed-browser updater scheduler; these are distinct mechanisms.
-Disabling the latter prevents its normal scheduled startup, but does not prove arbitrary installed
-browser builds have no other account-level side effects. Bazilion then attaches Playwright
-through CDP, like OpenClaw's managed-browser approach. It does not use
-Playwright's browser-launch defaults or attach to your personal browser. X11 and Wayland access
-are forwarded only for headed launches. Discovery also considers per-user macOS Applications
-and native-architecture full Playwright bundles, never the headless shell.
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `BROWSER_ENABLED` | `true` | Give Agent turns the browser tools. |
+| `BROWSER_EXECUTABLE_PATH` | discovery | Browser binary to run. Without it: the first Chrome, Brave, Edge or Chromium in the usual install paths, then the Chromium Playwright downloaded at install time. |
+| `BROWSER_HEADLESS` | `true` | `false` opens a visible window on the desktop the daemon runs in. |
+| `BROWSER_ALLOW_PRIVATE_NETWORK` | `false` | Let pages reach loopback and private addresses by turning the SSRF proxy off. Local development only. |
+| `BROWSER_IDLE_MS` | `900000` | Stop a browser after this much inactivity (15 minutes). |
+| `BROWSER_MAX_SESSIONS` | `4` | Browsers running at the same time. |
 
-For the **0.25 alpha**, actual installed **macOS 27.0.1 (26A434), arm64 / Node 26.12.1** non-GUI
-qualification includes native caller-session evidence (graphic access false), private-keychain
-launch, RFC reading, snapshots, real PNG delivery, private-network denial and main-process
-shutdown/restart/restore. Stop preserves the profile; backup excludes it, and restore starts a fresh
-owned browser only on a new explicit turn. The operator accepts this observed **27.x major line**;
-a newer minor is not a release gate. **Mac headed/desktop qualification is deferred to a later
-version**, not passed or required for 0.25 publication. No personal profile/keychain, privilege or
-SSRF exception is introduced. Public-page/PNG checks do not establish live-model or arbitrary-site
-entitlement.
+Changes apply from the Agent's next turn. A new executable, `BROWSER_HEADLESS` or
+`BROWSER_ALLOW_PRIVATE_NETWORK` value restarts a running browser at its next action; the other
+settings need no restart.
 
-Historical pre-amendment observations below are not current Node 26.12.1 desktop qualification.
-The macOS candidate passed headed, non-GUI, private-keychain,
-reset/relaunch, lifecycle and SSRF/service-worker checks on macOS 26.6.2 (25G83) arm64 with Node
-24.22.0 and 26.4.0. Protected/Docker suites subsequently passed on actual latest-stable
-27.0.1 (26A434) arm64 with both baselines. That target now also passes all 28 browser/CLI cases
-per baseline across separate non-GUI and real operator-desktop collections. Saved desktop cases
-prove software-observed native headed launch/retirement, not an independently reported human
-visual verdict. Broader BAZ-072 release acceptance remains separate; this evidence does not
-guarantee arbitrary browser builds or sites.
+## Network
 
-On macOS the browser creates a native keychain and native preference selection **inside each
-Agent's managed HOME**, with a generated owner-only secret stored beside it. The short-lived,
-ordinary-user helper uses public Security.framework calls, disables authentication UI, and receives
-the secret on stdin only after live process ownership admission. It never opens/unlocks the
-operator's login keychain, inherits provider credentials, or changes the operator's keychain
-selection. Failed native admission refuses browser startup; unknown helper settlement retains the
-profile owner marker. This is not a mock keychain or an encryption-disable flag. A party able to
-read the entire private profile can also read its keychain secret: filesystem permissions, not a
-separate personal credential, protect this store. Stop preserves it; reset/delete/transfer clear it
-with the profile; backup/restore still excludes it. Qualification scope and remaining integrated
-release checks are recorded in BAZ-072.
+All browser traffic goes through a proxy in the daemon. It refuses loopback, private and link-local
+addresses, including host names that resolve to one, and connects only to the address it checked.
+Navigation to `file:` and similar local schemes is refused. Downloads are refused, WebRTC is removed
+from pages and QUIC is off, so no traffic goes around the proxy. Service workers can register and
+keep running, but their requests go through the same proxy. `BROWSER_ALLOW_PRIVATE_NETWORK=true`
+turns off the proxy and the URL check, so `file:` pages open too; downloads stay refused and WebRTC
+and QUIC stay off.
 
-## Network boundary
+## Profile
 
-Normal managed launches use Bazilion's validating SSRF proxy. It rejects loopback, private,
-link-local and unsafe DNS results, pins the validated public address, and disables the browser's
-implicit loopback proxy bypass. Browser-layer controls deny downloads, remove the standard and
-prefixed WebRTC peer-connection constructors, and disable QUIC. Service workers **can register and persist** in the CDP-attached
-profile; their network requests must pass through the same validating proxy. This replaces the
-previous Playwright-launched adapter's service-worker registration block, not the SSRF boundary.
-The ordinary host internet policy still applies; a working browser binary does not guarantee
-egress or access to any domain.
+`~/.bazilion/browsers/<agent-id>/` holds the profile (`user-data/`) and the browser's own home
+directory (`home/`). It contains the Agent's cookies, logins and site data. It is separate from the
+Agent's and the Team's files, is never mounted into the Docker sandbox and is left out of backups.
+Saved passwords stay in the profile, not in your desktop keyring.
 
-The debugging listener is loopback-only and verified against the freshly spawned child before
-attachment. Its endpoint is private to the daemon, never exposed through browser tools, status,
-or the web gateway. A local process running as the same OS user is not isolated from this control
-surface. Stop requests close Chromium itself and verify owned-process/group exit, rather than
-merely disconnecting Playwright. Signalling authority requires live process birth identity and
-expires at the end of bounded cleanup, including failure; disk recovery markers never authorize
-signalling. The macOS path uses public libproc uid and exact BSD/monotonic birth identity,
-not second-resolution `ps` timestamps, and requires the launcher's live ChildProcess. Listener
-inspection also checks native birth identity before and after its bounded socket observation.
-Startup failure and uncertain cleanup fail closed.
+- **Stop** quits the browser and keeps the profile. Archiving the Agent does the same.
+- **Reset** quits the browser and deletes the profile. Deleting the Agent deletes it too.
+- Moving the Agent to another Team keeps both the browser and the profile.
+- `bazilion uninstall`, which refuses while the daemon runs, deletes the profiles with the rest of
+  the Agent data.
 
-`BROWSER_ALLOW_PRIVATE_NETWORK=true` disables the validating proxy and opens loopback/private
-network access for local development. This is a security-sensitive exception, not a workaround for
-production browsing. Do not enable it while browsing untrusted or public sites. Protected workers
-remain without browser capability regardless of this setting.
+A browser left running by a daemon that crashed is killed the next time that Agent's browser
+starts, or when its profile is reset or the Agent is deleted.
 
-Ordinary default discovery now prefers the admitted daemon-owned search route; see
-[web research](web-research.md) for native OpenAI/API and ChatGPT subscription search, experimental
-qualification, config/CLI/web readiness and source receipts. Browser guide v6 retains optional
-reading/interaction, not an automatic workaround after unavailable/failed discovery.
+## Status, stop and reset
 
-Browser research is different from `web_search` and `web_fetch`: it uses the page the browser
-actually displays. Optional search backends do not gate the browser, and browser search does not
-make protected or scheduled turns capable of search. A site challenge is a blocker, not evidence
-that the site worked.
-
-## Persistent profile privacy and lifecycle
-
-Each Agent has an isolated managed profile outside both its private Agent documents and its Team
-workspace:
-
-```text
-~/.bazilion/browsers/<agent-id>/{home,user-data}/
-```
-
-It can contain cookies, authenticated sessions, open-tab state and other site identity. Treat it as
-sensitive local operator data. It is not exposed to Team file tools or mounted into protected
-workers. The exact home-root `browsers/` tree is excluded from normal backups/exports; restoring an
-archive that contains browser-profile entries is refused. Other files merely named `browsers/` in a
-Team workspace are ordinary Team data and are not excluded by that rule.
-
-The Agent settings card and CLI offer these operator controls:
+On the web, the **Managed browser** card on the Agent page shows whether the browser runs, whether a
+profile exists, which browser and mode are used and the last launch error, with **Stop session** and
+**Reset profile** buttons. From the CLI:
 
 ```sh
-bazilion agent browser stop <agent-id>
-bazilion agent browser reset <agent-id>   # prompts for the exact Agent id
-bazilion agent browser reset <agent-id> --yes
+bazilion agent browser status <agent>   # JSON; never starts the browser
+bazilion agent browser stop <agent>
+bazilion agent browser reset <agent>    # asks you to type the agent id; --yes skips the prompt
 ```
 
-Status never launches the browser. **Stop** closes the live session but preserves the profile, so
-cookies and logins remain. A new launch starts with a blank tab rather than restoring old pages;
-open tabs survive turns only while the browser remains running. Archiving an Agent also stops the
-session and preserves its profile.
-Deleting an Agent, transferring it to another Team, or explicitly resetting the profile removes
-that Agent's browser state. Reset is destructive and irreversible; cookies, logins and site state
-are lost. Team transfer deliberately clears the profile rather than carrying identity into the new
-workspace. Backups do not preserve it.
+Stop and reset are refused while the Agent has a turn running.
 
-A live browser or unconfirmed shutdown may make stop/reset/delete/transfer return a conflict. An
-unknown or interrupted ownership marker is **recovery required**, not permission to delete files.
-Stop using the slot and use the reported operator remedy; do not manually remove the profile,
-owner marker, singleton lock or guessed browser processes. There is intentionally no Agent tool or
-HTTP bypass for recovery. If safe ownership cannot be established, the cleanup remains blocked.
-Uncertain retirement also continues to reserve browser-pool capacity. Uninstall refuses unknown
-browser ownership, including a starting marker without process identity, and rechecks ownership
-under its exclusive home lock after confirmation prompts. Retirement diagnostics distinguish a
-failed process close, profile-lock check or owner-marker update; those closed step labels never
-prove absence or authorize recovery, and do not disclose the raw failure.
+## Limits
 
-Cancelling active browser work requests retirement of that specific session, not a later turn's
-replacement. No later steps may be dispatched after cancellation; effects already sent may still
-have happened. Unconfirmed retirement remains recovery required, not a successful cleanup claim.
-
-## Research behavior and evidence
-
-The browser guide is injected only when browser tools are admitted. It requires current observation
-refs and their `observationId`, re-observation after page changes, bounded capture, source URLs and
-honest blocker reporting. If an action times out after a request may have landed, the result is
-uncertain: observe and verify before deciding what to do; never blindly replay a submission.
-When a broad snapshot is unavailable, the Agent can request `browser_snapshot` with
-`scope: "dialog"`, `"main"` or `"search"` without an old ref. This reads exactly one accessible
-semantic region (native or ARIA); missing, multiple, unknown or over-budget regions refuse.
-Do not combine `scope` with `ref` or `cursor`. These are explicitly partial page views, not a
-consent decision or evidence that no other blocker exists. Body capture is budgeted against
-body, not head scripts, and main fallback recognizes ARIA landmarks. New refs still require
-whole-document freshness; a failed capture cannot revive old refs. No arbitrary selectors or
-screenshot-coordinate actions are added, and byte/coverage limits are unchanged.
-
-A post-action capture waits at most two seconds for a body to attach, not for network idle. If
-capture still fails, the result explicitly says the action's effect is unverified; it never
-replays the action. If a read-only link remains stale after re-observation, the Agent may follow
-its exact observed href instead, within the original research scope. It should verify the effective
-destination with `browser_tabs` before citing it.
-
-Page text is untrusted data and cannot grant permissions or authorize posting, purchases or other
-egress.
-
-Ref actions check document/mutation freshness, including discovered open shadow roots and
-attribute changes. Unknown or incomplete freshness coverage refuses the action. Retained snapshots
-are capped at 512 KiB and responses at 32 KiB. Known over-large scopes are not serialized wholesale:
-a bounded main region may yield a labelled partial preview, otherwise capture reports unavailable.
-DOM estimates are not a strict bound on Chromium/Playwright transient memory use.
-
-The deterministic offline daemon/worker journey is `apps/cli/test/browser-research.test.ts` and is
-opt-in because it launches an installed browser:
-
-```sh
-BAZILION_TEST_BROWSER=1 pnpm vitest run apps/cli/test/browser-research.test.ts
-```
-
-It verifies the managed process/proxy posture and exercises local search/article/blocker fixtures
-with canned model responses. It proves the browser IPC and tool contract, not model judgment, live
-search quality, Google availability, real-world site access or publication permission. Live browser
-and live-model qualification remain separate operator-authorized work (BAZ-069 T18).
+- Sites may still block the browser or show CAPTCHAs, consent walls or logins. The Agent is told to
+  stop there and tell you, not to get around them.
+- An action uses the refs of the latest snapshot; if the page changed meanwhile, the click can land
+  on a changed page. A failed action may still have taken effect, and the Agent is told to check the
+  fresh snapshot before trying again.
+- Screenshots larger than 4 MB are refused; take one of the visible area instead of `full_page`.
+- Results are bounded: page URLs and titles are cut at 500 characters, console messages at 2,000,
+  and any other text or error at about 28,000 (long snapshots come in pages instead).
+- Tested on Linux. On other systems the browser may work but is untested.

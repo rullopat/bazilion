@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import type {
   Agent,
   AgentSkillAttachment,
@@ -19,7 +20,6 @@ interface RawAgent {
   review_reasoning_level: string
   review_turns_since_last: number
   status: string
-  dir: string
   team_id: string
   telegram_topic_id: number | null
   telegram_mirror_mode: string
@@ -28,7 +28,7 @@ interface RawAgent {
   archived_at: number | null
 }
 
-function toAgent(r: RawAgent): Agent {
+function toAgent(db: BazilionDb, r: RawAgent): Agent {
   return {
     id: r.id,
     profileId: r.profile_id,
@@ -41,7 +41,7 @@ function toAgent(r: RawAgent): Agent {
     reviewReasoningLevel: r.review_reasoning_level as ReasoningLevel,
     reviewTurnsSinceLast: r.review_turns_since_last,
     status: r.status as AgentStatus,
-    dir: r.dir,
+    dir: agentDir(db, r.id),
     teamId: r.team_id,
     telegramTopicId: r.telegram_topic_id,
     telegramMirrorMode: (r.telegram_mirror_mode ?? 'minimal') as TelegramMirrorMode,
@@ -51,62 +51,26 @@ function toAgent(r: RawAgent): Agent {
   }
 }
 
-/**
- * Insert an agent row. Telegram-specific fields (`telegramTopicId`,
- * `telegramMirrorMode`) are excluded from the required input — the
- * schema's defaults apply (NULL topic, 'minimal' mirror mode). Lets
- * existing call sites stay focused on the fields they care about; only
- * the bind/talk paths populate the topic id later.
- */
+function agentDir(db: BazilionDb, id: string): string {
+  return join(db.home, 'agents', id)
+}
+
+/** Insert an Agent row; every other column starts at its schema default. */
 export function insert(
   db: BazilionDb,
-  a: Omit<
+  a: Pick<
     Agent,
-    | 'createdAt'
-    | 'archivedAt'
-    | 'telegramTopicId'
-    | 'telegramMirrorMode'
-    | 'telegramIconEmoji'
-    | 'reviewEnabled'
-    | 'reviewEveryNTurns'
-    | 'reviewModel'
-    | 'reviewReasoningLevel'
-    | 'reviewTurnsSinceLast'
-  > & {
-    telegramMirrorMode?: Agent['telegramMirrorMode']
-  },
+    'id' | 'profileId' | 'name' | 'modelOverride' | 'reasoningLevel' | 'status' | 'teamId'
+  >,
 ): Agent {
-  const now = Date.now()
-  const mirrorMode = a.telegramMirrorMode ?? 'minimal'
   db.raw.run(
-    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, dir, team_id, telegram_mirror_mode, created_at, archived_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-    [
-      a.id,
-      a.profileId,
-      a.name,
-      a.modelOverride,
-      a.reasoningLevel,
-      a.status,
-      a.dir,
-      a.teamId,
-      mirrorMode,
-      now,
-    ],
+    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, team_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [a.id, a.profileId, a.name, a.modelOverride, a.reasoningLevel, a.status, a.teamId, Date.now()],
   )
-  return {
-    ...a,
-    telegramTopicId: null,
-    telegramMirrorMode: mirrorMode,
-    telegramIconEmoji: null,
-    reviewEnabled: false,
-    reviewEveryNTurns: 8,
-    reviewModel: null,
-    reviewReasoningLevel: 'low',
-    reviewTurnsSinceLast: 0,
-    createdAt: now,
-    archivedAt: null,
-  }
+  const agent = get(db, a.id)
+  if (!agent) throw new Error(`agent insert failed: ${a.id}`)
+  return agent
 }
 
 export function setReasoningLevel(db: BazilionDb, id: string, level: ReasoningLevel): void {
@@ -139,7 +103,7 @@ export function setName(db: BazilionDb, id: string, name: string): void {
 }
 
 /** Move the agent to a different team. The new team must exist. */
-export function setGroup(db: BazilionDb, id: string, teamId: string): void {
+export function setTeam(db: BazilionDb, id: string, teamId: string): void {
   db.raw.run('UPDATE agents SET team_id = ? WHERE id = ?', [teamId, id])
 }
 
@@ -159,33 +123,27 @@ export function get(db: BazilionDb, idOrName: string): Agent | null {
   const exactId = db.raw
     .query<RawAgent, [string]>('SELECT * FROM agents WHERE id = ?')
     .get(idOrName)
-  if (exactId) return toAgent(exactId)
+  if (exactId) return toAgent(db, exactId)
   const byName = db.raw
     .query<RawAgent, [string]>('SELECT * FROM agents WHERE name = ? LIMIT 2')
     .all(idOrName)
-  if (byName.length === 1 && byName[0]) return toAgent(byName[0])
+  if (byName.length === 1 && byName[0]) return toAgent(db, byName[0])
   if (byName.length > 1) return null
   if (idOrName.length < 4) return null
   const byPrefix = db.raw
     .query<RawAgent, [string]>('SELECT * FROM agents WHERE id LIKE ? LIMIT 2')
     .all(`${idOrName}%`)
-  return byPrefix.length === 1 && byPrefix[0] ? toAgent(byPrefix[0]) : null
-}
-
-/**
- * Resolve `idOrPrefix` to a full agent ID, or null if not found / ambiguous.
- * Thin wrapper around `get` for callers that want the canonical ID without
- * the rest of the row (e.g. URL param normalization).
- */
-export function resolveId(db: BazilionDb, idOrPrefix: string): string | null {
-  return get(db, idOrPrefix)?.id ?? null
+  return byPrefix.length === 1 && byPrefix[0] ? toAgent(db, byPrefix[0]) : null
 }
 
 export function list(db: BazilionDb, opts?: { includeArchived?: boolean }): Agent[] {
   const sql = opts?.includeArchived
     ? 'SELECT * FROM agents ORDER BY created_at ASC'
     : "SELECT * FROM agents WHERE status != 'archived' ORDER BY created_at ASC"
-  return db.raw.query<RawAgent, []>(sql).all().map(toAgent)
+  return db.raw
+    .query<RawAgent, []>(sql)
+    .all()
+    .map((row) => toAgent(db, row))
 }
 
 export function countByProfile(db: BazilionDb, profileId: string): number {
@@ -201,16 +159,12 @@ export function countByProfile(db: BazilionDb, profileId: string): number {
  * `agents.team_id` FK is `ON DELETE RESTRICT` — members must be moved or
  * archived before a team can go away).
  */
-export function countByGroup(db: BazilionDb, teamId: string): number {
+export function countByTeam(db: BazilionDb, teamId: string): number {
   return (
     db.raw
       .query<{ c: number }, [string]>('SELECT COUNT(*) as c FROM agents WHERE team_id = ?')
       .get(teamId)?.c ?? 0
   )
-}
-
-export function setStatus(db: BazilionDb, id: string, status: AgentStatus): void {
-  db.raw.run('UPDATE agents SET status = ? WHERE id = ?', [status, id])
 }
 
 export function archive(db: BazilionDb, id: string): void {
@@ -228,7 +182,7 @@ export function remove(db: BazilionDb, id: string): void {
   db.raw.run('DELETE FROM agents WHERE id = ?', [id])
 }
 
-// --- telegram bindings (migration 0003) ---
+// --- telegram bindings ---
 //
 // One topic per agent. `agents.telegram_topic_id` is null until the agent is
 // bound to a forum topic in the configured supergroup, then carries the
@@ -255,7 +209,7 @@ export function findByTelegramTopicId(db: BazilionDb, topicId: number): Agent | 
   const row = db.raw
     .query<RawAgent, [number]>('SELECT * FROM agents WHERE telegram_topic_id = ?')
     .get(topicId)
-  return row ? toAgent(row) : null
+  return row ? toAgent(db, row) : null
 }
 
 /**
@@ -264,10 +218,7 @@ export function findByTelegramTopicId(db: BazilionDb, topicId: number): Agent | 
  * have been deleted in Telegram).
  */
 export function setTelegramTopicId(db: BazilionDb, agentId: string, topicId: number | null): void {
-  db.raw.run(
-    'UPDATE agents SET telegram_topic_id = ?, telegram_binding_id = lower(hex(randomblob(16))) WHERE id = ?',
-    [topicId, agentId],
-  )
+  db.raw.run('UPDATE agents SET telegram_topic_id = ? WHERE id = ?', [topicId, agentId])
 }
 
 /**
@@ -302,30 +253,28 @@ export function findByName(db: BazilionDb, name: string): Agent[] {
       "SELECT * FROM agents WHERE name = ? AND status != 'archived' ORDER BY created_at ASC",
     )
     .all(name)
-    .map(toAgent)
+    .map((row) => toAgent(db, row))
 }
 
 /**
  * Agent matching `name` within a specific team. Used to resolve the
  * qualified `/talk <team>/<name>` syntax. Null when nothing matches.
  */
-export function findByNameInGroup(db: BazilionDb, teamId: string, name: string): Agent | null {
+export function findByNameInTeam(db: BazilionDb, teamId: string, name: string): Agent | null {
   const row = db.raw
     .query<RawAgent, [string, string]>(
       "SELECT * FROM agents WHERE team_id = ? AND name = ? AND status != 'archived' LIMIT 1",
     )
     .get(teamId, name)
-  return row ? toAgent(row) : null
+  return row ? toAgent(db, row) : null
 }
 
 /**
- * Bound, non-locked agent topics in a team. Drives topic-name propagation
- * when a team's `telegram_topic_name_format` changes
- * (lib/telegram/topic-rename.ts): only agents with a live topic that a human
- * hasn't manually renamed (`telegram_topic_name_locked = 0`) get re-rendered.
- * Archived agents are excluded — their topics keep whatever name they have.
+ * Bound agent topics in a team, for renaming them when the team's
+ * `telegram_topic_name_format` changes (lib/telegram/topic-rename.ts).
+ * Archived agents keep whatever name their topic has.
  */
-export function listBoundUnlockedTopicsInGroup(
+export function listBoundTopicsInTeam(
   db: BazilionDb,
   teamId: string,
 ): { agentId: string; name: string; topicId: number }[] {
@@ -334,7 +283,6 @@ export function listBoundUnlockedTopicsInGroup(
       `SELECT id, name, telegram_topic_id FROM agents
        WHERE team_id = ?
          AND telegram_topic_id IS NOT NULL
-         AND telegram_topic_name_locked = 0
          AND status != 'archived'`,
     )
     .all(teamId)
@@ -342,20 +290,6 @@ export function listBoundUnlockedTopicsInGroup(
 }
 
 // --- skill attachments ---
-
-interface RawSkill {
-  agent_id: string
-  skill_name: string
-  attached_at: number
-}
-
-function toSkillAttachment(r: RawSkill): AgentSkillAttachment {
-  return {
-    agentId: r.agent_id,
-    skillName: r.skill_name,
-    attachedAt: r.attached_at,
-  }
-}
 
 export function attachSkill(
   db: BazilionDb,
@@ -383,15 +317,6 @@ export function listAttachedSkills(db: BazilionDb, agentId: string): string[] {
     )
     .all(agentId)
     .map((r) => r.skill_name)
-}
-
-export function listSkillAttachments(db: BazilionDb, agentId: string): AgentSkillAttachment[] {
-  return db.raw
-    .query<RawSkill, [string]>(
-      'SELECT * FROM agent_skills WHERE agent_id = ? ORDER BY attached_at ASC',
-    )
-    .all(agentId)
-    .map(toSkillAttachment)
 }
 
 // --- chat history snapshot ---

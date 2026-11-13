@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { ALL_DEVICE_TOKEN_SCOPES, type DeviceTokenScope, type WebToken } from '@bazilion/api-types'
+import type { WebToken } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 
 interface RawToken {
@@ -7,22 +7,10 @@ interface RawToken {
   label: string
   kind: 'bootstrap' | 'device'
   token_hash: string
-  scopes: string
   created_at: number
   last_used_at: number | null
   expires_at: number | null
   revoked_at: number | null
-}
-
-export function parseScopes(raw: string | null | undefined): DeviceTokenScope[] {
-  if (!raw) return [...ALL_DEVICE_TOKEN_SCOPES]
-  const parsed = raw
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter((s): s is DeviceTokenScope =>
-      (ALL_DEVICE_TOKEN_SCOPES as readonly string[]).includes(s),
-    )
-  return parsed.length > 0 ? parsed : [...ALL_DEVICE_TOKEN_SCOPES]
 }
 
 function toToken(r: RawToken): WebToken {
@@ -30,7 +18,6 @@ function toToken(r: RawToken): WebToken {
     id: r.id,
     label: r.label,
     kind: r.kind,
-    scopes: parseScopes(r.scopes),
     createdAt: r.created_at,
     lastUsedAt: r.last_used_at,
     expiresAt: r.expires_at,
@@ -48,44 +35,26 @@ export interface CreatedToken {
   token: string
 }
 
+/** Every token has full access. `expiresAt` null (the default) means it never expires. */
 export function create(
   db: BazilionDb,
   label: string,
-  opts: {
-    kind?: 'bootstrap' | 'device'
-    expiresAt?: number | null
-    /** Authorization scopes. Defaults to all (pre-BAZ-055 behavior). */
-    scopes?: DeviceTokenScope[]
-  } = {},
+  opts: { kind?: 'bootstrap' | 'device'; expiresAt?: number | null } = {},
 ): CreatedToken {
   const id = randomUUID()
   const token = randomBytes(24).toString('hex')
-  const tokenHash = hashToken(token)
   const now = Date.now()
   const kind = opts.kind ?? 'device'
-  const expiresAt = kind === 'bootstrap' ? null : (opts.expiresAt ?? now + 90 * 86_400_000)
-  // The bootstrap row always holds every scope; device rows take what was asked.
-  const scopes = (
-    kind === 'bootstrap' ? ALL_DEVICE_TOKEN_SCOPES : (opts.scopes ?? ALL_DEVICE_TOKEN_SCOPES)
-  ).join(' ')
+  const expiresAt = kind === 'bootstrap' ? null : (opts.expiresAt ?? null)
   db.raw.run(
     `INSERT INTO web_tokens
-       (id, label, kind, token_hash, scopes, created_at, last_used_at, expires_at, revoked_at)
-     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, NULL)`,
-    [id, label, kind, tokenHash, scopes, now, expiresAt],
+       (id, label, kind, token_hash, created_at, last_used_at, expires_at, revoked_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
+    [id, label, kind, hashToken(token), now, expiresAt],
   )
   return {
     token,
-    meta: {
-      id,
-      label,
-      kind,
-      scopes: parseScopes(scopes),
-      createdAt: now,
-      lastUsedAt: null,
-      expiresAt,
-      revokedAt: null,
-    },
+    meta: { id, label, kind, createdAt: now, lastUsedAt: null, expiresAt, revokedAt: null },
   }
 }
 

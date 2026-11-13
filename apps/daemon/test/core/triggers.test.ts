@@ -12,7 +12,6 @@ beforeEach(() => {
   profileRepo.insert(env.db, {
     id: 'p',
     name: 'p',
-    dir: env.paths.profileDir('p'),
     defaultModel: 'lmstudio:x',
     skillsMode: 'selected',
   })
@@ -23,7 +22,6 @@ beforeEach(() => {
     modelOverride: null,
     reasoningLevel: 'medium',
     status: 'idle',
-    dir: env.paths.agentDir('a1'),
     teamId: env.teamId,
   })
   agentId = a.id
@@ -135,7 +133,7 @@ test('listEnabled filters out disabled rows', () => {
   expect(enabled[0]?.message).toBe('on')
 })
 
-test('listEnabled retains archived targets for terminal scheduler authorization', () => {
+test('listEnabled skips the triggers of archived Agents', () => {
   const other = agentRepo.insert(env.db, {
     id: 'a2',
     profileId: 'p',
@@ -143,7 +141,6 @@ test('listEnabled retains archived targets for terminal scheduler authorization'
     modelOverride: null,
     reasoningLevel: 'medium',
     status: 'idle',
-    dir: env.paths.agentDir('a2'),
     teamId: env.teamId,
   })
   triggerRepo.insert(env.db, {
@@ -162,7 +159,7 @@ test('listEnabled retains archived targets for terminal scheduler authorization'
   })
   agentRepo.archive(env.db, other.id)
   const enabled = triggerRepo.listEnabled(env.db)
-  expect(enabled.map((trigger) => trigger.message)).toEqual(['live', 'archived'])
+  expect(enabled.map((trigger) => trigger.message)).toEqual(['live'])
 })
 
 describe('ON DELETE CASCADE', () => {

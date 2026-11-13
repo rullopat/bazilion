@@ -19,11 +19,11 @@ import { SERVICES } from '../services.ts'
  * still gates accidental misuse from the generic field write endpoint.
  */
 const INTERNAL_CONFIG_KEYS: readonly string[] = [
-  // Telegram (step 2+): polling watermark + derived topic/message ids.
+  // Telegram: polling watermark + derived topic/message ids.
   'TELEGRAM_LAST_UPDATE_ID',
   'TELEGRAM_SERVICE_TOPIC_ID',
   'TELEGRAM_DIRECTORY_MESSAGE_ID',
-  // Phase 5: proposed new chat id after a migrate_to_chat_id event, pending
+  // Proposed new chat id after a migrate_to_chat_id event, pending
   // operator confirmation via POST /api/config/telegram/reconnect.
   'TELEGRAM_MIGRATED_CHAT_ID',
 ]

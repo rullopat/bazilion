@@ -1,3 +1,4 @@
+import { dirname } from 'node:path'
 import { backup, DatabaseSync, type SQLInputValue } from 'node:sqlite'
 
 export interface QueryStmt<RowType, ParamsType extends unknown[]> {
@@ -15,6 +16,8 @@ export interface QueryableDatabase {
 
 export interface BazilionDb {
   raw: QueryableDatabase
+  /** The Bazilion home, where the database file lives; Agent and Profile directories derive from it. */
+  home: string
   /**
    * Copy a transactionally-consistent image of the live database to `path`.
    * SQLite's online-backup API includes committed WAL contents without
@@ -114,6 +117,7 @@ export function openDb(path: string): BazilionDb {
   applyPragmas(raw, true)
   return {
     raw: wrap(raw),
+    home: dirname(path),
     backupTo(path) {
       return backup(raw, path)
     },
@@ -123,11 +127,16 @@ export function openDb(path: string): BazilionDb {
   }
 }
 
-export function openInMemoryDb(): BazilionDb {
+/**
+ * `home` is the Bazilion home that Agent and Profile directories derive from. Pass '' only where
+ * nothing reads those directories: they would come out relative.
+ */
+export function openInMemoryDb(home: string): BazilionDb {
   const raw = new DatabaseSync(':memory:')
   applyPragmas(raw, false)
   return {
     raw: wrap(raw),
+    home,
     backupTo(path) {
       return backup(raw, path)
     },

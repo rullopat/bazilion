@@ -1,13 +1,13 @@
 import { beforeEach, expect, test } from 'vitest'
 import { type BazilionDb, openInMemoryDb } from '../../src/core/db/client.ts'
-import { runMigrations } from '../../src/core/db/migrate.ts'
+import { initSchema } from '../../src/core/db/schema.ts'
 import * as mcpServerRepo from '../../src/core/repos/mcpServers.ts'
 
 let db: BazilionDb
 
 beforeEach(() => {
-  db = openInMemoryDb()
-  runMigrations(db)
+  db = openInMemoryDb('')
+  initSchema(db)
 })
 
 test('insert + get a stdio server', () => {
@@ -50,7 +50,7 @@ test('getByName + unique listing', () => {
 test('listEnabled excludes disabled servers', () => {
   const a = mcpServerRepo.insert(db, { name: 'a', transport: 'stdio', command: 'a' })
   mcpServerRepo.insert(db, { name: 'b', transport: 'stdio', command: 'b' })
-  mcpServerRepo.setEnabled(db, a.id, false)
+  mcpServerRepo.update(db, a.id, { enabled: false })
   expect(mcpServerRepo.listEnabled(db).map((s) => s.name)).toEqual(['b'])
 })
 

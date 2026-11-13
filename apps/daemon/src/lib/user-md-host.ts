@@ -11,9 +11,8 @@
 // would block agents for whole LLM turns (seconds-to-minutes), which is far
 // worse than the vanishingly-rare retry path.
 //
-// USER.md is capped at USER_MD_MAX_BYTES (kept in sync with the cap in
-// routes/teams.ts) because it's inlined into every agent's system prompt
-// on every turn — uncapped growth would silently blow out the context.
+// USER.md is capped at USER_MD_MAX_BYTES (the operator's PUT /api/teams/:id/user-md uses the
+// same cap) because it's inlined into every agent's system prompt on every turn.
 
 import { createHash } from 'node:crypto'
 import { type BazilionDb, teamRepo } from '../core/index.ts'

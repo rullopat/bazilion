@@ -1,60 +1,43 @@
-import type { DockerResourceLifecycle } from '../shell/docker.ts'
-// One-shot worker entry. Configured operator HTTP retains its legacy runtime;
-// protected normal turns and restricted reviews use closed typed inputs.
+// The per-turn worker process. It reads one `WorkerInput` from stdin, runs one Pi session (an
+// Agent turn, whatever its origin, or a learning review), writes NDJSON frames to stdout and
+// reaches every daemon-owned tool over Node IPC (`ipc-protocol.ts`). It never opens the database.
 
 import { randomUUID } from 'node:crypto'
-import type { ChatFrame } from '@bazilion/api-types'
-import type { AgentSession, ToolDefinition } from '@earendil-works/pi-coding-agent'
-import { Type } from 'typebox'
+import type { AgentSession } from '@earendil-works/pi-coding-agent'
 import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
-import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
+import { paceToolProgress, piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
 import {
   type BazilionSessionHandle,
   createBazilionSession,
-  createProtectedBazilionSession,
   createRestrictedReviewSession,
 } from '../pi/session.ts'
-import { ourToolToPiTool } from '../pi/tools.ts'
-import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
-import { type ReviewCapabilityHost, type ReviewRequestHost, reviewTools } from '../tools/review.ts'
-import { type VerificationRequestHost, verificationTools } from '../tools/verification.ts'
-import { createIpcApiKeyRefresher } from './api-key-refresh.ts'
+import type { BashApprovalHost } from '../shell/approval.ts'
+import {
+  createLessonReview,
+  type LessonReview,
+  REVIEW_SYSTEM_PROMPT,
+} from '../tools/propose-lesson.ts'
 import { workerFailureMessage } from './cancellation.ts'
-import { createIpcClient, type WorkerIpcCall } from './ipc-client.ts'
-import type {
-  BashApprovalResult,
-  BrowserHost,
-  McpHost,
-  MessagingHost,
-  UserMdGetResult,
-  UserMdHost,
-  UserMdWriteResult,
-} from './ipc-protocol.ts'
-import { createIpcNativeExecutionHost } from './native-execution-client.ts'
+import { createProcessIpcClient, type WorkerIpcCall } from './ipc-client.ts'
 import { WorkerOutput } from './output.ts'
 import {
-  initializeMinimalWorkerProcessEnv,
   parseWorkerInput,
-  protectedRuntimeSecrets,
-  redactJsonValue,
+  redactExactValues,
+  reviewRuntimeSecrets,
+  type WorkerFrame,
   type WorkerInput,
 } from './runtime.ts'
 
-interface ReviewWorkerProposal {
-  scope: 'private' | 'shared'
-  text: string
-  evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
-}
+type AgentTurnInput = Extract<WorkerInput, { kind: 'agent_turn' }>
+type ReviewInput = Extract<WorkerInput, { kind: 'restricted_review' }>
 
-type WorkerFrame = ChatFrame | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
-
-const activeAccessTokens: string[] = []
 const output = new WorkerOutput(process.stdout)
 let exiting: Promise<never> | undefined
 
+/** The daemon redacts the turn's credentials from every frame it reads. */
 function emit(frame: WorkerFrame): void {
-  output.write(`${JSON.stringify(redactJsonValue(frame, activeAccessTokens))}\n`)
+  output.write(`${JSON.stringify(frame)}\n`)
 }
 
 function exitWorker(code: number): Promise<never> {
@@ -65,434 +48,135 @@ function exitWorker(code: number): Promise<never> {
 async function readInput(): Promise<WorkerInput> {
   const chunks: Buffer[] = []
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
-  const raw = Buffer.concat(chunks).toString('utf8').trim()
-  if (!raw) throw new Error('worker: empty stdin input')
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new Error('worker: stdin is not valid JSON')
-  }
-  return parseWorkerInput(parsed)
+  return parseWorkerInput(JSON.parse(Buffer.concat(chunks).toString('utf8')))
 }
 
-function createWorkerIpcCall(): WorkerIpcCall {
-  return createIpcClient({
-    send: process.send
-      ? (ipcMessage, done) => {
-          process.send?.(ipcMessage, undefined, undefined, done)
-        }
-      : undefined,
-    onMessage: (listener) => process.on('message', listener),
-    onDisconnect: (listener) => process.on('disconnect', listener),
-  })
+function ipcRefresher(input: WorkerInput, call: WorkerIpcCall) {
+  if (!input.hosts.includes('apiKeyRefreshHost')) return undefined
+  return (providerName: string) => call('refreshApiKey', { providerName })
 }
 
-function createTrackedIpcApiKeyRefresher(
-  call: WorkerIpcCall,
-  context: { providerName: string; agentId: string; turnId: string },
-): (providerName: string) => Promise<string> {
-  const refresh = createIpcApiKeyRefresher(call, context)
-  return async (providerName) => {
-    const token = await refresh(providerName)
-    if (token && !activeAccessTokens.includes(token)) activeAccessTokens.push(token)
-    return token
-  }
-}
-
-function createIpcMessagingHost(call: WorkerIpcCall): MessagingHost {
-  return {
-    agentExists: (agentId) => call<boolean>('agentExists', { agentId }),
-    sendMessage: (input) => call<{ messageId: string }>('sendMessage', input),
-    listInbox: (agentId, opts) => call('listInbox', { agentId, unreadOnly: opts.unreadOnly }),
-    markRead: async (messageId) => {
-      await call<null>('markRead', { messageId })
-    },
-    findReplies: (agentId, replyTo) => call('findReplies', { agentId, replyTo }),
-    approvalStatus: (agentId, approvalId) => call('approvalStatus', { agentId, approvalId }),
-  }
-}
-
-function createIpcDockerLifecycle(
-  namespace: string | undefined,
-  call: WorkerIpcCall,
-): DockerResourceLifecycle | undefined {
-  if (!namespace) return undefined
-  return {
-    name: (kind) => `bazilion-${namespace}-${kind}-${randomUUID()}`,
-    beforeCreate: async (identity) => {
-      await call('containerBeforeCreate', { containerName: identity.containerName })
-    },
-    afterCreate: async (containerName) => {
-      await call('containerAfterCreate', { containerName })
-    },
-    afterRemove: async (containerName) => {
-      await call('containerAfterRemove', { containerName })
-    },
-  }
-}
-
-function createIpcUserMdHost(call: WorkerIpcCall): UserMdHost {
-  return {
-    get: (teamId) => call<UserMdGetResult>('userMdGet', { teamId }),
-    write: (teamId, content, ifMatch) =>
-      call<UserMdWriteResult>('userMdWrite', { teamId, content, ifMatch }),
-  }
-}
-
-function createIpcBrowserHost(call: WorkerIpcCall): BrowserHost {
-  return {
-    invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }),
-  }
-}
-
-function createIpcMcpHost(call: WorkerIpcCall): McpHost {
-  return {
-    invoke: (serverId, toolName, args) => call('mcpInvoke', { serverId, toolName, args }),
-  }
-}
-
-function createIpcBashApprovalHost(
-  call: WorkerIpcCall,
-  input: {
-    agentId: string
-    teamId: string
-    turnId: string
-    mode: 'interactive' | 'auto_deny'
-  },
-): ShellBashApprovalHost {
+function ipcBashApproval(call: WorkerIpcCall, input: AgentTurnInput): BashApprovalHost {
   return {
     async requestApproval(request) {
-      const result = await call<BashApprovalResult>('bashApproval', {
+      const approval = await call('bashApproval', {
         id: randomUUID(),
         turnId: input.turnId,
         toolCallId: request.toolCallId,
-        agentId: input.agentId,
-        teamId: input.teamId,
+        agentId: input.agent.agent.id,
+        teamId: input.agent.team.id,
         command: request.command,
         risks: [...request.risks],
-        mode: input.mode,
+        mode: input.bashApprovalMode,
       })
-      return result.decision === 'allow' ? 'approved' : 'denied'
+      return approval.status === 'allowed' ? 'approved' : 'denied'
     },
   }
 }
 
-interface ReviewState {
-  proposals: ReviewWorkerProposal[]
-  submitted(): boolean
-  validationFailures(): number
-  recordValidationFailure(): void
-  tools: ToolDefinition[]
-}
-
-function createReviewState(
-  evidenceItems: Array<{ sessionId: string; entryOrdinal: number }>,
-): ReviewState {
-  const proposals: ReviewWorkerProposal[] = []
-  let proposalBatchSubmitted = false
-  let reviewValidationFailures = 0
-  const allowedEvidence = new Set(
-    evidenceItems.map((item) => `${item.sessionId}:${item.entryOrdinal}`),
-  )
-  const tools: ToolDefinition[] = [
-    {
-      name: 'propose_lesson',
-      label: 'propose_lesson',
-      description:
-        'Submit zero to five evidence-backed lesson proposals in one final batch. This is the only available action.',
-      parameters: Type.Object({
-        proposals: Type.Array(
-          Type.Object({
-            scope: Type.Union([Type.Literal('private'), Type.Literal('shared')]),
-            text: Type.String({ minLength: 1, maxLength: 500 }),
-            evidenceEntryIds: Type.Array(
-              Type.Object({ sessionId: Type.String(), entryOrdinal: Type.Integer({ minimum: 0 }) }),
-              { minItems: 1 },
-            ),
-          }),
-          { maxItems: 5 },
-        ),
-      }),
-      async execute(_toolCallId, params) {
-        if (proposalBatchSubmitted) throw new Error('propose_lesson may be called only once')
-        const input = params as { proposals: ReviewWorkerProposal[] }
-        const validated: ReviewWorkerProposal[] = []
-        for (const candidate of input.proposals) {
-          const text = candidate.text.trim()
-          if (!text || text.length > 500) throw new Error('proposal text must be 1-500 characters')
-          for (const evidence of candidate.evidenceEntryIds) {
-            if (!allowedEvidence.has(`${evidence.sessionId}:${evidence.entryOrdinal}`)) {
-              throw new Error('proposal cites evidence outside the supplied digest')
-            }
-          }
-          validated.push({ ...candidate, text })
-        }
-        proposalBatchSubmitted = true
-        proposals.push(...validated)
-        return {
-          content: [{ type: 'text', text: `accepted ${proposals.length} proposals` }],
-          details: {},
-          terminate: true,
-        }
-      },
-    },
-  ]
-  return {
-    proposals,
-    submitted: () => proposalBatchSubmitted,
-    validationFailures: () => reviewValidationFailures,
-    recordValidationFailure: () => {
-      reviewValidationFailures += 1
-    },
-    tools,
-  }
-}
-
-/**
- * Proxy the capability over IPC. Only the ordinal travels; the request identity is bound here from
- * the worker's own input, so a worker cannot address another request's attempt.
- */
-/**
- * BAZ-044 requester side. Only the protected coding turn receives this, so an ordinary turn can ask a
- * specialist for verification and no restricted turn can ask for anything.
- */
-function createIpcVerificationRequestHost(ipcCall: WorkerIpcCall): VerificationRequestHost {
-  return {
-    capture: (intent) => ipcCall('verificationCapture', intent),
-  }
-}
-
-/** BAZ-043: the reviewer's capability, proxied to the daemon that owns the packet. */
-/** BAZ-043 requester side: only an ordinary coding turn gets this, and only to *ask*. */
-function createIpcReviewRequestHost(ipcCall: WorkerIpcCall): ReviewRequestHost {
-  return {
-    capture: (intent) => ipcCall('reviewPacketCapture', intent),
-  }
-}
-
-function createIpcChangeReviewHost(
-  ipcCall: WorkerIpcCall,
-  identity: { packetId: string; attemptId: string },
-): ReviewCapabilityHost {
-  const { packetId, attemptId } = identity
-  return {
-    read: () => ipcCall('reviewPacketRead', { packetId, attemptId }),
-    path: (path) => ipcCall('reviewPathRead', { packetId, attemptId, path }),
-    addFinding: (finding) => ipcCall('reviewFindingAdd', { packetId, attemptId, finding }),
-    conclude: (conclusion) => ipcCall('reviewConclusion', { packetId, attemptId, conclusion }),
-  }
-}
-
-function createIpcVerificationHost(
-  ipcCall: WorkerIpcCall,
-  identity: { requestId: string; attemptId: string },
-): import('../tools/verification.ts').VerificationCapabilityHost {
-  return {
-    // The request identity is bound here from the worker's own input, so a tool call cannot address
-    // another request's attempt: only an ordinal travels.
-    read: () => ipcCall('verificationRead', identity),
-    invoke: (ordinal: number) => ipcCall('verificationRun', { ...identity, ordinal }),
-  }
-}
-
-async function createSessionForInput(
-  input: WorkerInput,
-  ipcCall: WorkerIpcCall,
-): Promise<{ handle: BazilionSessionHandle; reviewState?: ReviewState }> {
-  if (
-    input.kind !== 'restricted_review' &&
-    input.kind !== 'specialist_verification' &&
-    input.kind !== 'packet_review' &&
-    !input.repositoryContext
-  )
-    throw new Error('Coding turn requires daemon-prepared repository context')
-  const imageGenerationHost =
-    (input.kind === 'configured_operator_http' || input.kind === 'protected') &&
-    input.imageGenerationEnabled
-      ? {
-          generate: async (request: import('@bazilion/api-types').ImageGenerationInput) => {
-            const output = await ipcCall<import('@bazilion/api-types').ImageGenerationOutput>(
-              'generateImages',
-              request,
-            )
-            for (const file of output.files)
-              emit({ kind: 'event', event: { type: 'file', ...file } })
-            return output
-          },
-        }
-      : undefined
-  const webSearchHost =
-    (input.kind === 'configured_operator_http' || input.kind === 'protected') &&
-    input.webSearchEnabled
-      ? {
-          search: async (args: import('./ipc-protocol.ts').WebSearchArgs) =>
-            ipcCall<import('./ipc-protocol.ts').WebSearchOutput>('webSearch', args),
-        }
-      : undefined
-  if (input.kind === 'configured_operator_http') {
-    const paths = resolvePaths()
-    const memory = qmdBackend(`${input.agent.team.path}/memory`)
-    await memory.init()
-    const messagingHost = createIpcMessagingHost(ipcCall)
-    const userMdHost = createIpcUserMdHost(ipcCall)
-    const browserHost = input.browserEnabled ? createIpcBrowserHost(ipcCall) : undefined
-    const mcpHost = input.mcpTools?.length ? createIpcMcpHost(ipcCall) : undefined
-    const bashApprovalHost = createIpcBashApprovalHost(ipcCall, {
-      agentId: input.agent.agent.id,
-      teamId: input.agent.team.id,
-      turnId: input.turnId,
-      mode: input.bashApprovalMode,
-    })
-    const refreshApiKey = input.apiKeyRefreshEnabled
-      ? createTrackedIpcApiKeyRefresher(ipcCall, {
-          providerName: input.agent.model.split(':', 1)[0] ?? '',
-          agentId: input.agent.agent.id,
-          turnId: input.turnId,
-        })
-      : undefined
-    const handle = await createBazilionSession({
-      agent: input.agent,
-      nativeExecution: input.nativeExecution
-        ? { cwd: input.nativeExecution.cwd, host: createIpcNativeExecutionHost(ipcCall) }
-        : undefined,
-      preparedDocker: input.configuredDocker?.docker,
-      dockerLifecycle: createIpcDockerLifecycle(input.containerNamespace, ipcCall),
-      conversation: input.conversation,
-      repositoryContext: input.repositoryContext,
-      repositoryContextHost: (target) => ipcCall('repositoryContext', { target }),
-      codingHost: { invoke: (request) => ipcCall('coding', request) },
-      paths,
-      env: process.env,
-      memory,
-      enabledProviders: new Set(input.enabledProviders),
-      messagingHost,
-      userMdHost,
-      // The requester's halves of specialist verification and review. Only the configured/browser-enabled
-      // worker kind reaches this builder, and it is an ordinary coding turn.
-      verificationRequestHost:
-        !input.nativeExecution || input.nativeVerificationRequestEnabled
-          ? createIpcVerificationRequestHost(ipcCall)
-          : undefined,
-      reviewRequestHost: createIpcReviewRequestHost(ipcCall),
-      imageGenerationHost,
-      webSearchHost,
-      apiKey: input.apiKey,
-      refreshApiKey,
-      browserHost,
-      mcpHost,
-      mcpTools: input.mcpTools,
-      bashApprovalHost,
-      askUser: input.questionEnabled
-        ? (toolCallId, question) => ipcCall('askUser', { toolCallId, question })
-        : undefined,
-      fileSink: async (file, source) => {
-        const result = await ipcCall<import('@bazilion/api-types').ResultReference>(
-          'publishResult',
-          { ...file, ...source },
-        )
-        emit({ kind: 'event', event: { type: 'file', ...file, result } })
-        return result
-      },
-    })
-    return { handle }
-  }
-
-  const refreshApiKey = createTrackedIpcApiKeyRefresher(ipcCall, {
-    providerName: input.runtime.providerName,
-    agentId: input.kind === 'protected' ? input.agent.agent.id : input.agentId,
-    turnId: input.turnId,
-  })
-  if (input.kind === 'specialist_verification') {
-    // A restricted session whose entire tool surface is the captured-check capability. Reusing the
-    // restricted session factory is deliberate: the difference between this and a review turn is the
-    // injected tool list, and neither path can reach a general coding tool.
-    const handle = await createRestrictedReviewSession({
-      runtime: input.runtime,
-      scratch: input.scratch,
-      systemPrompt: VERIFICATION_SYSTEM_PROMPT,
-      tools: verificationTools(createIpcVerificationHost(ipcCall, input.verification)).map(
-        ourToolToPiTool,
-      ),
-      refreshApiKey,
-    })
-    return { handle }
-  }
-
-  if (input.kind === 'packet_review') {
-    // Same restricted session factory as the other read-only kinds: the difference is the injected tool
-    // list, and none of the three can reach a general coding tool.
-    const handle = await createRestrictedReviewSession({
-      runtime: input.runtime,
-      scratch: input.scratch,
-      systemPrompt: STATIC_REVIEW_SYSTEM_PROMPT,
-      tools: reviewTools(createIpcChangeReviewHost(ipcCall, input.review)).map(ourToolToPiTool),
-      refreshApiKey,
-    })
-    return { handle }
-  }
-
-  if (input.kind === 'restricted_review') {
-    const reviewState = createReviewState(input.review.evidence)
-    const handle = await createRestrictedReviewSession({
-      runtime: input.runtime,
-      scratch: input.scratch,
-      systemPrompt: REVIEW_SYSTEM_PROMPT,
-      tools: reviewState.tools,
-      refreshApiKey,
-    })
-    return { handle, reviewState }
-  }
-
-  const memory = qmdBackend(input.paths.memoryDir)
+/** An Agent turn's session, with an IPC proxy for each tool host the daemon serves this turn. */
+async function openAgentTurn(
+  input: AgentTurnInput,
+  call: WorkerIpcCall,
+): Promise<BazilionSessionHandle> {
+  const served = new Set(input.hosts)
+  const memory = qmdBackend(`${input.agent.team.path}/memory`)
   await memory.init()
-  const messagingHost = createIpcMessagingHost(ipcCall)
-  const userMdHost = createIpcUserMdHost(ipcCall)
-  const bashApprovalHost = createIpcBashApprovalHost(ipcCall, {
-    agentId: input.agent.agent.id,
-    teamId: input.agent.team.id,
-    turnId: input.turnId,
-    mode: 'auto_deny',
-  })
-  const handle = await createProtectedBazilionSession({
+  return createBazilionSession({
     agent: input.agent,
     conversation: input.conversation,
-    repositoryContext: input.repositoryContext,
-    repositoryContextHost: (target) => ipcCall('repositoryContext', { target }),
-    codingHost: { invoke: (request) => ipcCall('coding', request) },
-    imageGenerationHost,
-    webSearchHost,
-    runtime: input.runtime,
-    paths: input.paths,
-    scratch: input.scratch,
     docker: input.docker,
-    nativeExecution: input.nativeExecution
-      ? { cwd: input.nativeExecution.cwd, host: createIpcNativeExecutionHost(ipcCall) }
-      : undefined,
-    dockerLifecycle: createIpcDockerLifecycle(input.containerNamespace, ipcCall),
+    repositoryInstructions: input.repositoryInstructions,
+    paths: resolvePaths(),
+    env: process.env,
     memory,
-    messagingHost,
-    userMdHost,
-    bashApprovalHost,
-    verificationRequestHost:
-      !input.nativeExecution || input.nativeVerificationRequestEnabled
-        ? createIpcVerificationRequestHost(ipcCall)
-        : undefined,
-    reviewRequestHost: createIpcReviewRequestHost(ipcCall),
-    askUser: input.questionEnabled
-      ? (toolCallId, question) => ipcCall('askUser', { toolCallId, question })
+    apiKey: input.apiKey,
+    refreshApiKey: ipcRefresher(input, call),
+    mcpTools: input.mcpTools,
+    messagingHost: served.has('messagingHost')
+      ? {
+          agentExists: (agentId) => call('agentExists', { agentId }),
+          sendMessage: (args) => call('sendMessage', args),
+          listInbox: (agentId, { unreadOnly }) => call('listInbox', { agentId, unreadOnly }),
+          markRead: async (messageId) => {
+            await call('markRead', { messageId })
+          },
+          findReplies: (agentId, replyTo) => call('findReplies', { agentId, replyTo }),
+        }
       : undefined,
-    refreshApiKey,
-    fileSink: async (file, source) => {
-      const result = await ipcCall<import('@bazilion/api-types').ResultReference>('publishResult', {
-        ...file,
-        ...source,
-      })
-      emit({ kind: 'event', event: { type: 'file', ...file, result } })
-      return result
-    },
+    userMdHost: served.has('userMdHost')
+      ? {
+          get: (teamId) => call('userMdGet', { teamId }),
+          write: (teamId, content, ifMatch) => call('userMdWrite', { teamId, content, ifMatch }),
+        }
+      : undefined,
+    browserHost: served.has('browserHost')
+      ? { invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }) }
+      : undefined,
+    mcpHost: served.has('mcpHost')
+      ? { invoke: (serverId, toolName, args) => call('mcpInvoke', { serverId, toolName, args }) }
+      : undefined,
+    webSearchHost: served.has('webSearchHost')
+      ? { search: (args) => call('webSearch', args) }
+      : undefined,
+    imageGenerationHost: served.has('imageGenerationHost')
+      ? {
+          generate: async (request) => {
+            const generated = await call('generateImages', request)
+            for (const file of generated.files) {
+              emit({ kind: 'event', event: { type: 'file', ...file } })
+            }
+            return generated
+          },
+        }
+      : undefined,
+    askUser: served.has('questionHost') ? (question) => call('askUser', { question }) : undefined,
+    fileSink: served.has('resultHost')
+      ? async (file, toolCallId) => {
+          const result = await call('publishResult', { ...file, toolCallId })
+          emit({
+            kind: 'event',
+            event: { type: 'file', result, name: file.name, mimeType: file.mimeType },
+          })
+          return result
+        }
+      : undefined,
+    bashApprovalHost: served.has('bashApprovalHost') ? ipcBashApproval(call, input) : undefined,
   })
-  return { handle }
+}
+
+async function openReview(
+  input: ReviewInput,
+  call: WorkerIpcCall,
+): Promise<{ handle: BazilionSessionHandle; review: LessonReview }> {
+  const review = createLessonReview(input.evidence)
+  const handle = await createRestrictedReviewSession({
+    runtime: input.runtime,
+    scratch: input.scratch,
+    systemPrompt: REVIEW_SYSTEM_PROMPT,
+    tools: [review.tool],
+    refreshApiKey: ipcRefresher(input, call),
+  })
+  return { handle, review }
+}
+
+/** The prompt text, without the turn's own credentials, and an Agent turn's images. */
+function promptOf(input: WorkerInput): {
+  text: string
+  images?: Array<{ type: 'image'; data: string; mimeType: string }>
+} {
+  if (input.kind === 'restricted_review') {
+    return { text: redactExactValues(input.message, reviewRuntimeSecrets(input.runtime)) }
+  }
+  const images = (input.images ?? []).map((image) => ({
+    type: 'image' as const,
+    data: image.data,
+    mimeType: image.mimeType,
+  }))
+  return {
+    text: redactExactValues(input.message, input.apiKey ? [input.apiKey] : []),
+    ...(images.length > 0 ? { images } : {}),
+  }
 }
 
 async function main(): Promise<void> {
@@ -502,126 +186,66 @@ async function main(): Promise<void> {
     aborted = true
     if (session) void session.abort()
     else {
-      try {
-        emit({ kind: 'event', event: { type: 'error', error: 'cancelled' } })
-      } catch {}
+      emit({ kind: 'event', event: { type: 'error', error: 'cancelled' } })
       void exitWorker(0)
     }
   }
   process.on('SIGTERM', onSignal)
   process.on('SIGINT', onSignal)
+  // The daemon closed the IPC channel (it exited, or ended this turn): stop working, also when
+  // that happened while this module was still loading.
+  process.on('disconnect', onSignal)
+  if (process.connected === false) onSignal()
 
   const input = await readInput()
   if (aborted) return exitWorker(0)
-  if (input.kind !== 'configured_operator_http') {
-    initializeMinimalWorkerProcessEnv(process.env, input.scratch)
-  }
-  const initialAccessTokens =
-    input.kind === 'configured_operator_http'
-      ? input.apiKey
-        ? [input.apiKey]
-        : []
-      : protectedRuntimeSecrets(input.runtime)
-  activeAccessTokens.push(...initialAccessTokens.filter(Boolean))
-  const ipcCall = createWorkerIpcCall()
-  const { handle, reviewState } = await createSessionForInput(input, ipcCall)
+  const call = createProcessIpcClient()
+  const { handle, review } =
+    input.kind === 'agent_turn'
+      ? { handle: await openAgentTurn(input, call), review: undefined }
+      : await openReview(input, call)
   if (aborted) {
     handle.dispose()
     return exitWorker(0)
   }
   session = handle.session
 
-  const consumptionAcks = new Set<Promise<void>>()
+  const events = paceToolProgress((event) =>
+    emit({
+      kind: 'event',
+      event:
+        event.type === 'error'
+          ? { ...event, error: workerFailureMessage(event.error, aborted) }
+          : event,
+    }),
+  )
   const unsubscribe = session.subscribe((piEvent) => {
     if (
-      input.kind !== 'restricted_review' &&
-      input.kind !== 'specialist_verification' &&
-      input.kind !== 'packet_review' &&
-      input.questionEnabled &&
-      piEvent.type === 'message_end' &&
-      piEvent.message.role === 'toolResult' &&
-      piEvent.message.toolName === 'ask_user' &&
-      !piEvent.message.isError
-    ) {
-      const message = piEvent.message
-      const content = message.content[0]
-      if (content?.type === 'text') {
-        try {
-          const result = JSON.parse(content.text) as { questionId?: unknown }
-          if (typeof result.questionId === 'string') {
-            // Pi notifies subscribers before synchronous session append. Wait for that
-            // append, then let the daemon verify the actual canonical bytes.
-            const ack = new Promise<void>((resolve) => setImmediate(resolve))
-              .then(() =>
-                ipcCall<void>('questionConsumed', {
-                  questionId: result.questionId,
-                  toolCallId: message.toolCallId,
-                }),
-              )
-              .catch(() => {
-                /* Missing evidence remains unconfirmed; never replay a tool. */
-              })
-              .finally(() => {
-                consumptionAcks.delete(ack)
-              })
-            consumptionAcks.add(ack)
-          }
-        } catch {
-          /* Invalid result cannot become consumption evidence. */
-        }
-      }
-    }
-    if (
-      reviewState &&
+      review &&
       piEvent.type === 'tool_execution_end' &&
       piEvent.toolName === 'propose_lesson' &&
-      piEvent.isError
+      review.recordCall(piEvent.isError)
     ) {
-      reviewState.recordValidationFailure()
-      if (reviewState.validationFailures() >= 2) void session?.abort()
+      void session?.abort()
     }
-    for (const event of translatePiEvent(piEvent))
-      emit({
-        kind: 'event',
-        event:
-          event.type === 'error'
-            ? { ...event, error: workerFailureMessage(event.error, aborted) }
-            : event,
-      })
+    for (const event of translatePiEvent(piEvent, handle.redactionSecrets)) events.send(event)
   })
 
   try {
-    const promptMessage = redactJsonValue(input.message, activeAccessTokens)
-    const restricted =
-      input.kind === 'restricted_review' ||
-      input.kind === 'specialist_verification' ||
-      input.kind === 'packet_review'
-    const sanitizedImages = restricted
-      ? []
-      : redactJsonValue(input.images ?? [], activeAccessTokens)
-    const promptImages = restricted
-      ? []
-      : sanitizedImages.map((image) => ({
-          type: 'image' as const,
-          data: image.data,
-          mimeType: image.mimeType,
-        }))
-    await session.prompt(
-      promptMessage,
-      promptImages.length > 0 ? { images: promptImages } : undefined,
-    )
+    const { text, images } = promptOf(input)
+    await session.prompt(text, images ? { images } : undefined)
     await session.agent.waitForIdle()
-    await Promise.all(consumptionAcks)
-
-    if (reviewState) {
-      if (reviewState.validationFailures() >= 2) {
-        throw new Error('review output remained invalid after one schema-repair attempt')
-      }
-      if (!reviewState.submitted()) throw new Error('review output did not submit a proposal batch')
-      emit({ kind: 'review_result', proposals: reviewState.proposals })
-    } else {
-      emit({ kind: 'done', messages: piMessagesToProviderView(session.agent.state.messages) })
-    }
+    emit(
+      review
+        ? { kind: 'review_result', proposals: review.result() }
+        : {
+            kind: 'done',
+            messages: piMessagesToProviderView(
+              session.agent.state.messages,
+              handle.redactionSecrets,
+            ),
+          },
+    )
   } catch (error) {
     const message = workerFailureMessage(
       error instanceof Error ? error.message : String(error),
@@ -632,77 +256,22 @@ async function main(): Promise<void> {
     process.exitCode = 1
   } finally {
     unsubscribe()
+    events.stop()
     process.off('SIGTERM', onSignal)
     process.off('SIGINT', onSignal)
+    process.off('disconnect', onSignal)
     handle.dispose()
     try {
       process.disconnect?.()
     } catch {}
   }
-  // The turn is complete: session disposed, IPC disconnected. Some underlying
-  // handle (native store/provider socket) can otherwise keep this process alive
-  // for tens of seconds after its work is done, holding the Team workspace
-  // lease and blocking every interleaved turn on it. Explicit exit remains,
-  // but only after bounded protocol draining (including a large done frame).
+  // The turn is complete: session disposed, IPC disconnected. A native store or provider socket
+  // could keep this process alive for seconds afterwards, so exit as soon as stdout (including a
+  // large done frame) is flushed.
   await exitWorker(Number(process.exitCode ?? 0))
 }
 
 main().catch(async (error) => {
-  try {
-    emit({ kind: 'fatal', error: error instanceof Error ? error.message : String(error) })
-  } catch {}
+  emit({ kind: 'fatal', error: error instanceof Error ? error.message : String(error) })
   await exitWorker(1)
 })
-
-const STATIC_REVIEW_SYSTEM_PROMPT = `You are a restricted code reviewer. You review one captured
-revision and report what you find. Call review_packet to read the revision, review_path to read a patch,
-review_finding to record a finding, and finish with review_conclusion.
-
-Boundaries you cannot cross, and must not try to:
-- You review the *captured revision*, not the current repository. If its content is not reproducible, say
-  so and do not describe lines you could not read: the change list and the requester's summary are what
-  you have.
-- You have no shell, no editor, no browser and no network tool. You cannot run a test, apply a fix, stage
-  anything, commit, merge or deploy. If something would need running to be sure, say that it needs running.
-- You cannot publish, and your conclusion is not an approval. It is your statement about this revision.
-
-Report what you actually found, with the path it concerns. Say when you are unsure, and say when you could
-not verify something rather than guessing. Do not repeat a finding that is already recorded.
-`
-
-const VERIFICATION_SYSTEM_PROMPT = `You are a restricted verification specialist. You verify one
-captured change against the checks your requester selected. Call verification_request to read the
-request, then verification_check once per declared check, in order.
-
-Boundaries you cannot cross, and must not try to:
-- Only the declared ordinal of a captured check can run, once. You cannot change its command, cwd,
-  timeout or environment, add a check, or retry a check that already reported.
-- You have no shell, no editor, no browser, no network tool and no deployment credential. A missing
-  toolchain, service or approval is an explicit blocker to report, never something to work around.
-- Generated output may only be written to the declared writable paths.
-
-Report what actually happened. A non-zero exit is a failure of that check; say so plainly. An exit
-code is evidence about the commands that ran, never proof about later code, and never a statement
-that the change is ready to merge. Distinguish a failure from a check you did not run, and never
-describe an unrun check as passing.
-
-Finish with a short summary: the snapshot you verified, each check with its outcome and receipt, and
-any blocker or limitation that stopped a check. Do not recommend deployment.`
-
-const REVIEW_SYSTEM_PROMPT = `You are a restricted learning reviewer. Analyze only the supplied
-transcript digest and approved-lesson index. You cannot act on the world. Call propose_lesson once
-with zero to five proposals, then stop.
-
-If propose_lesson rejects malformed output, correct the schema exactly once. If that repair is also
-rejected, stop; the review will fail.
-
-Classify before proposing:
-1. Stable human preference or biography belongs to USER.md: do not propose it.
-2. Agent-specific verified behavior or strategy is private.
-3. Reusable verified Team project knowledge, decisions, or procedures are shared.
-4. Everything else produces no proposal.
-
-Zero proposals is a successful result. Never save transient or environment-dependent failures,
-unresolved attempts, guesses, contradicted claims, one-off narratives, status updates, secrets,
-credentials, sensitive personal data, raw logs, copied text, or duplicates. Each proposal must cite
-at least one supplied evidence entry and one observation may appear in only one proposal.`

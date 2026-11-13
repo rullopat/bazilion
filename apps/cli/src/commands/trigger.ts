@@ -8,12 +8,18 @@ import type {
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
-import { columnize } from '../columnize.ts'
+import { agentArg, apiPath, positional, printRows } from '../command-helpers.ts'
+
+const triggerArg = positional('Trigger id')
+
+function spec(t: AgentTrigger): string {
+  return t.kind === 'interval' ? `every ${t.intervalSec}s` : `cron "${t.cronExpr}"`
+}
 
 const addCmd = defineCommand({
   meta: { name: 'add', description: 'Add an interval / cron trigger to an agent' },
   args: {
-    agent: { type: 'positional', required: true },
+    agent: agentArg,
     every: {
       type: 'string',
       description: 'Interval in seconds (e.g. --every 300 = every 5 minutes)',
@@ -33,7 +39,6 @@ const addCmd = defineCommand({
     if (!args.every === !args.cron) {
       throw new Error('specify exactly one of --every <seconds> or --cron "<expr>"')
     }
-    const client = createClient()
     const body: CreateTriggerRequest = args.every
       ? {
           kind: 'interval',
@@ -47,81 +52,65 @@ const addCmd = defineCommand({
           message: args.message,
           enabled: !args.disabled,
         }
-    const res = await client.post<CreateTriggerResponse>(`/api/agents/${args.agent}/triggers`, body)
-    const t = res.trigger
-    const spec = t.kind === 'interval' ? `every ${t.intervalSec}s` : `cron "${t.cronExpr}"`
-    console.log(`${t.id}\t${spec}\t${t.enabled ? 'enabled' : 'disabled'}`)
+    const { trigger } = await createClient().post<CreateTriggerResponse>(
+      apiPath('agents', args.agent, 'triggers'),
+      body,
+    )
+    console.log(`${trigger.id}\t${spec(trigger)}\t${trigger.enabled ? 'enabled' : 'disabled'}`)
   },
 })
 
 function triggerRow(t: AgentTrigger): string[] {
-  const spec = t.kind === 'interval' ? `every ${t.intervalSec}s` : `cron "${t.cronExpr}"`
   const last = t.lastFiredAt ? new Date(t.lastFiredAt).toISOString() : '(never)'
   const state = t.enabled ? 'enabled' : 'disabled'
   const msgPreview = t.message.length > 60 ? `${t.message.slice(0, 60)}…` : t.message
-  return [t.id, state, spec, `last: ${last}`, `"${msgPreview}"`]
+  return [t.id, state, spec(t), `last: ${last}`, `"${msgPreview}"`]
 }
 
 const listCmd = defineCommand({
   meta: { name: 'list', description: 'List triggers for an agent' },
-  args: {
-    agent: { type: 'positional', required: true },
-  },
+  args: { agent: agentArg },
   async run({ args }) {
-    const client = createClient()
-    const { triggers } = await client.get<ListTriggersResponse>(
-      `/api/agents/${args.agent}/triggers`,
+    const { triggers } = await createClient().get<ListTriggersResponse>(
+      apiPath('agents', args.agent, 'triggers'),
     )
-    if (triggers.length === 0) {
-      console.log('(no triggers)')
-      return
-    }
-    for (const line of columnize(triggers.map(triggerRow))) console.log(line)
+    printRows(triggers.map(triggerRow), '(no triggers)')
   },
 })
 
 const rmCmd = defineCommand({
   meta: { name: 'rm', description: 'Delete a trigger' },
-  args: {
-    id: { type: 'positional', required: true },
-  },
+  args: { id: triggerArg },
   async run({ args }) {
-    const client = createClient()
-    await client.del(`/api/triggers/${args.id}`)
+    await createClient().del(apiPath('triggers', args.id))
     console.log(`removed trigger ${args.id}`)
   },
 })
 
 const enableCmd = defineCommand({
   meta: { name: 'enable', description: 'Enable a trigger' },
-  args: {
-    id: { type: 'positional', required: true },
-  },
+  args: { id: triggerArg },
   async run({ args }) {
-    const client = createClient()
     const body: UpdateTriggerRequest = { enabled: true }
-    await client.patch(`/api/triggers/${args.id}`, body)
+    await createClient().patch(apiPath('triggers', args.id), body)
     console.log(`enabled trigger ${args.id}`)
   },
 })
 
 const disableCmd = defineCommand({
   meta: { name: 'disable', description: 'Disable a trigger' },
-  args: {
-    id: { type: 'positional', required: true },
-  },
+  args: { id: triggerArg },
   async run({ args }) {
-    const client = createClient()
     const body: UpdateTriggerRequest = { enabled: false }
-    await client.patch(`/api/triggers/${args.id}`, body)
+    await createClient().patch(apiPath('triggers', args.id), body)
     console.log(`disabled trigger ${args.id}`)
   },
 })
 
 const historyCmd = defineCommand({
-  meta: { name: 'history', description: 'Show recent dispatches for a trigger' },
+  meta: { name: 'history', description: 'Show recent runs of a trigger' },
   args: {
-    id: { type: 'positional', required: true },
+    id: triggerArg,
     limit: { type: 'string', description: 'Maximum rows (default 20)' },
   },
   async run({ args }) {
@@ -129,21 +118,17 @@ const historyCmd = defineCommand({
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
       throw new Error('--limit must be an integer from 1 to 100')
     }
-    const client = createClient()
-    const { dispatches } = await client.get<ListTriggerDispatchesResponse>(
-      `/api/triggers/${args.id}/dispatches?limit=${limit}`,
+    const { dispatches } = await createClient().get<ListTriggerDispatchesResponse>(
+      `${apiPath('triggers', args.id, 'dispatches')}?limit=${limit}`,
     )
-    if (dispatches.length === 0) {
-      console.log('(no dispatches)')
-      return
-    }
-    const rows = dispatches.map((dispatch) => [
-      new Date(dispatch.scheduledAt).toISOString(),
-      dispatch.status,
-      `attempts: ${dispatch.attemptCount}`,
-      dispatch.lastError ?? '',
-    ])
-    for (const line of columnize(rows)) console.log(line)
+    printRows(
+      dispatches.map((dispatch) => [
+        new Date(dispatch.scheduledAt).toISOString(),
+        dispatch.status,
+        dispatch.error ?? '',
+      ]),
+      '(no dispatches)',
+    )
   },
 })
 

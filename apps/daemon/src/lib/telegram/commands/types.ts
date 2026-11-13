@@ -10,11 +10,8 @@ import type { Paths } from '../../../core/paths.ts'
 import type { TopicCreateApi } from '../topic-autocreate.ts'
 
 /**
- * Narrow Bot API subset commands may call. Step 3 only needed
- * `TopicCreateApi` (for `/talk`). Step 5's topic-context commands add
- * `closeForumTopic` (used by `/close`). Future commands grow this
- * interface; per-command tests stay easy because each handler only sees
- * the methods it needs.
+ * Narrow Bot API subset commands may call: topic creation for `/talk` and `/spawn`, and
+ * `closeForumTopic` for `/close`. Tests pass a mock with just these methods.
  */
 export interface CommandApi extends TopicCreateApi {
   closeForumTopic(chatId: number, messageThreadId: number): Promise<boolean>
@@ -23,8 +20,6 @@ export interface CommandApi extends TopicCreateApi {
 export interface CommandCtx {
   db: BazilionDb
   paths: Paths
-  /** Daemon auth token — for the same secrets / config plumbing routes use. */
-  authToken: string
   api: CommandApi
   /** Supergroup chat id where the command was issued. */
   chatId: number
@@ -42,8 +37,6 @@ export interface CommandCtx {
   agent?: Agent
   /** Topic id of the agent topic this command was issued in. Mirrors `agent`. */
   topicId?: number
-  /** Message id of the message that carried the command. Used by handlers that need to edit or reply-by-id. */
-  messageId?: number
 }
 
 export interface CommandResult {

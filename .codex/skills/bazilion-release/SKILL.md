@@ -10,17 +10,9 @@ description: Bazilion release workflow for the rullopat/bazilion monorepo. Use w
 Use this workflow from the root of the `rullopat/bazilion` monorepo. Confirm the root with
 `git rev-parse --show-toplevel`; do not rely on a machine-specific absolute path.
 
-Public release packages are fixed together by `.changeset/config.json`:
-
-- `bazilion`
-- `@bazilion/client`
-- `@bazilion/api-types`
-
-Private ignored packages still matter for build/test compatibility:
-
-- `@bazilion/daemon`
-- `@bazilion/web`
-- `@bazilion/mobile`
+Only one package is published to npm: `bazilion` (the CLI in `apps/cli`, which bundles the daemon,
+the worker and the web UI). Every other workspace package (`@bazilion/daemon`, `@bazilion/web`,
+`@bazilion/api-types`, `@bazilion/client`) is private, and Changesets does not version it.
 
 ## Decision points
 
@@ -29,7 +21,7 @@ Ask the user before proceeding when any of these are unclear:
 - Release level: `patch`, `minor`, or `major`.
 - Whether to publish immediately or only prepare a release commit.
 - Whether to push directly to `main` or use a PR branch.
-- Whether to create a GitHub Release if the workflow has already published npm tags.
+- Whether to create a GitHub Release if the workflow has already published the npm tag.
 - Whether to include unrelated dirty worktree files.
 
 Default assumptions when the user says “make a new x.y.z release”:
@@ -42,44 +34,38 @@ Default assumptions when the user says “make a new x.y.z release”:
 
 ## Preflight
 
-Run these checks before versioning:
-
 ```sh
 git status --short
-cat .changeset/config.json
-node -e "for (const p of ['apps/cli/package.json','packages/client/package.json','packages/api-types/package.json']) { const j=require('fs').readFileSync(p,'utf8'); console.log(p, JSON.parse(j).version) }"
+node -p "require('./apps/cli/package.json').version"
+ls .changeset
 ```
 
 If the worktree has unexpected unrelated changes, stop and ask what to include. Do not remove or revert user files.
 
 ## Validate before release
 
-Run validation before committing a release:
-
 ```sh
+pnpm lint
 pnpm typecheck
 pnpm test
-pnpm --filter @bazilion/web typecheck
-pnpm --filter @bazilion/web build
+pnpm build
+(cd apps/cli && pnpm pack --pack-destination "$(mktemp -d)")
+node scripts/pack-smoke.mjs <path-to-the-packed-bazilion-x.y.z.tgz>
 ```
 
-Because Bazilion currently has a clean-install-only alpha database contract, also bootstrap a
-fresh temporary `BAZILION_HOME` whenever the release changes the schema, canonical Team APIs, or
-filesystem layout. Verify that `schema_migrations` contains only `0001_init` and that no removed
-Group, Profile Team, Harness, or compatibility route is advertised by current docs or CLI help.
+The pack smoke test installs the tarball into a scratch npm prefix, checks that every package the
+bundle imports is an installed dependency, serves a fresh scratch home, runs one chat turn against a
+stub provider and renders the web login page. The alpha database
+contract is clean-install only, so a release that changes the schema needs the changeset to say
+that existing homes must be backed up and reset.
 
 If sandbox loopback/process restrictions cause failures such as `listen EPERM 127.0.0.1` or empty CLI subprocess output, rerun the same test command outside the sandbox with escalation. Treat the sandbox failure as environmental only after the escalated run passes.
 
-For dependency/provider releases, also verify pi provider coverage when relevant:
+For dependency/provider releases, also check Pi's provider coverage when relevant, from `apps/daemon`:
 
 ```sh
-node - <<'NODE'
-import { getProviders, getModels } from '@earendil-works/pi-ai'
-for (const p of getProviders()) console.log(p, (getModels(p) || []).length)
-NODE
+node --input-type=module -e "import { getProviders, getModels } from '@earendil-works/pi-ai'; for (const p of getProviders()) console.log(p, (getModels(p) || []).length)"
 ```
-
-Run that from `apps/daemon` if the root package cannot import `@earendil-works/pi-ai` directly.
 
 ## Version with Changesets
 
@@ -95,19 +81,15 @@ cat > .changeset/<short-release-name>.md <<'EOF_CHANGESET'
 EOF_CHANGESET
 ```
 
-Then version packages:
+Then version the package and review the result:
 
 ```sh
 pnpm changeset version
+node -p "require('./apps/cli/package.json').version"
+git diff --stat
 ```
 
-Confirm the fixed public package group moved together:
-
-```sh
-node -e "for (const p of ['apps/cli/package.json','packages/client/package.json','packages/api-types/package.json']) { const j=require('fs').readFileSync(p,'utf8'); console.log(p, JSON.parse(j).version) }"
-```
-
-Review changelogs and `git diff --stat`. Changesets may update changelogs for dependency-only fixed-package bumps; that is expected.
+`changeset version` bumps `apps/cli/package.json` and prepends the release notes to `apps/cli/CHANGELOG.md`.
 
 ## Commit and push
 
@@ -130,7 +112,7 @@ Do not force-push `main` for releases unless the user explicitly approves.
 
 ## Watch publish workflow
 
-The `Release` GitHub Actions workflow runs on pushes to `main` and executes install, typecheck, test, Changesets publish, and tag push.
+The `Release` GitHub Actions workflow runs on pushes to `main`: install, typecheck, test, then Changesets publishes `bazilion` and pushes its `bazilion@X.Y.Z` tag.
 
 ```sh
 gh run list --repo rullopat/bazilion --branch main --limit 5
@@ -141,13 +123,7 @@ If the workflow fails, inspect the failing job logs, fix locally, rerun validati
 
 ## Create GitHub Release
 
-After the workflow succeeds, it should push per-package tags such as:
-
-- `bazilion@X.Y.Z`
-- `@bazilion/client@X.Y.Z`
-- `@bazilion/api-types@X.Y.Z`
-
-Create the umbrella GitHub Release `vX.Y.Z`. First check whether it exists:
+After the workflow succeeds, create the umbrella GitHub Release `vX.Y.Z`. First check whether it exists:
 
 ```sh
 gh release view vX.Y.Z --repo rullopat/bazilion

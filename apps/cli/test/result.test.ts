@@ -1,28 +1,34 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterAll, beforeAll, expect, test } from 'vitest'
+import type { ResultListResponse, UserQueueListResponse } from '@bazilion/api-types'
+import { afterAll, beforeAll, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../daemon/src/core/agent/spawn.ts'
 import { openDb } from '../../daemon/src/core/db/client.ts'
 import { resolvePaths } from '../../daemon/src/core/paths.ts'
 import { createProfile } from '../../daemon/src/core/profile/create.ts'
-import * as operations from '../../daemon/src/core/repos/image-generations.ts'
 import * as results from '../../daemon/src/core/repos/results.ts'
+import { type MockLlm, reply, startLmStudioMock, toolCall } from './fixtures/mock-lmstudio.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
+let mock: MockLlm
 let server: TestServer
 beforeAll(async () => {
-  server = await startTestServer()
+  mock = await startLmStudioMock()
+  server = await startTestServer({ LMSTUDIO_URL: mock.url, BAZILION_SCHEDULER: 'off' })
+}, 60_000)
+afterAll(async () => {
+  await server?.stop()
+  await mock?.stop()
 })
-afterAll(() => server?.stop())
+
 test('CLI lists, inspects, downloads without overwrite, and deletes saved results', async () => {
   const paths = resolvePaths(server.home)
   const db = openDb(paths.db)
   let id: string
-  let privateId: string
   try {
     createProfile(db, paths, { id: 'producer', defaultModel: 'lmstudio:test-model' })
     const agent = spawnAgent(db, paths, { profileId: 'producer' })
-    const input = {
+    id = results.publish(db, {
       teamId: 'default',
       agentId: agent.id,
       sessionId: 'session',
@@ -30,18 +36,13 @@ test('CLI lists, inspects, downloads without overwrite, and deletes saved result
       name: 'report.txt',
       mimeType: 'text/plain',
       bytes: Buffer.from('captured result'),
-    }
-    const result = results.publish(db, input)
-    id = result.id
-    privateId = results.publish(db, { ...input, toolCallId: 'held' }).id
-    results.release(db, id, agent.id)
+    }).id
   } finally {
     db.close()
   }
   let command = await server.cli(['result', 'list', '--team', 'default', '--json'])
   expect(command.exitCode).toBe(0)
   expect(command.stdout).toContain(id)
-  expect(command.stdout).not.toContain(privateId)
   command = await server.cli(['result', 'show', id])
   expect(command.stdout).toContain('sha256')
   const target = join(server.home, 'download.txt')
@@ -59,59 +60,45 @@ test('CLI lists, inspects, downloads without overwrite, and deletes saved result
   expect(existsSync(absent)).toBe(false)
 })
 
-test('CLI private image discard requires confirmation and preserves the no-regeneration tombstone', async () => {
+// A queued follow-up turn has no chat stream. Its delivered file must still be a saved
+// Result once the turn ends, exactly like a file delivered in a foreground chat.
+test('a file delivered by a queued follow-up stays in Results after the turn', async () => {
   const paths = resolvePaths(server.home)
   const db = openDb(paths.db)
-  let id: string
+  let agentId: string
   try {
-    createProfile(db, paths, { id: 'private-image-producer', defaultModel: 'lmstudio:test-model' })
-    const agent = spawnAgent(db, paths, { profileId: 'private-image-producer' })
-    const op: operations.ImageOperation = {
-      agentId: agent.id,
-      teamId: agent.teamId,
-      sessionId: 'image-session',
-      toolCallId: 'image-call',
-      turnId: 'image-turn',
-      requestSha256: 'b'.repeat(64),
-      model: 'openai:gpt-image-2',
-    }
-    id = db.raw.transaction(() => {
-      operations.admit(db, op)
-      const result = results.publish(db, {
-        ...op,
-        name: 'private.png',
-        mimeType: 'image/png',
-        imageModel: op.model,
-        bytes: Buffer.from('retained-fixture-bytes'),
-      })
-      operations.settle(db, op, 'completed')
-      return result.id
-    })()
+    createProfile(db, paths, { id: 'queued-producer', defaultModel: 'lmstudio:test-model' })
+    agentId = spawnAgent(db, paths, { profileId: 'queued-producer' }).id
   } finally {
     db.close()
   }
-  const inventory = await server.cli(['result', 'private-images', '--team', 'default', '--json'])
-  expect(inventory.exitCode).toBe(0)
-  expect(inventory.stdout).toContain(id)
-  expect(inventory.stdout).not.toContain('private.png')
-  expect(
-    (await server.cli(['result', 'discard-image', id, '--team', 'default'])).exitCode,
-  ).not.toBe(0)
-  expect(
-    (await server.cli(['result', 'discard-image', id, '--team', 'default', '--yes'])).exitCode,
-  ).toBe(0)
-  const reopened = openDb(paths.db)
-  try {
-    expect(results.getReceipt(reopened, id)).toMatchObject({
-      releasedAt: null,
-      deletedAt: expect.any(Number),
-    })
-    expect(() => results.readCaptured(reopened, id)).toThrow('unavailable')
-    expect(
-      reopened.raw.query<{ outcome: string }, []>('SELECT outcome FROM image_generations').get()
-        ?.outcome,
-    ).toBe('completed')
-  } finally {
-    reopened.close()
-  }
-})
+  writeFileSync(join(paths.teamDir('default'), 'queued-report.md'), '# Queued report\n')
+  mock.push([toolCall('deliver_file', { path: 'queued-report.md' }), reply('DELIVERED')])
+  const queued = await server.cli([
+    'queue',
+    'add',
+    agentId,
+    '--message',
+    'Deliver the queued report.',
+  ])
+  expect(queued.exitCode, queued.stderr).toBe(0)
+  const itemId = (JSON.parse(queued.stdout) as { id: string }).id
+  await vi.waitFor(
+    async () => {
+      const listed = await server.cli(['queue', 'list', agentId])
+      const { items } = JSON.parse(listed.stdout) as UserQueueListResponse
+      // A follow-up that ran leaves the list; a failed one would stay, with its reason.
+      expect(items.find((item) => item.id === itemId)).toBeUndefined()
+    },
+    { timeout: 60_000, interval: 250 },
+  )
+  const listed = await server.cli(['result', 'list', '--agent', agentId, '--json'])
+  expect(listed.exitCode).toBe(0)
+  const saved = (JSON.parse(listed.stdout) as ResultListResponse).results
+  expect(saved.map((result) => result.name)).toEqual(['queued-report.md'])
+  const [result] = saved
+  if (!result) throw new Error('Missing saved result')
+  const target = join(server.home, 'queued-download.md')
+  expect((await server.cli(['result', 'download', result.id, '--output', target])).exitCode).toBe(0)
+  expect(readFileSync(target, 'utf8')).toBe('# Queued report\n')
+}, 90_000)

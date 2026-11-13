@@ -6,32 +6,12 @@
 // once the agent's reply lands (the mirror calls clearReactionsFor on the
 // first assistant_message / error / fatal frame).
 //
-// Multiple inbounds can stack while a turn is in flight (the inbound queue
-// concatenates them); each gets its own 👀, and they all clear together
-// when the combined reply arrives. Reaction failures are silent — the
-// indicator is cosmetic and we don't want to interrupt the turn for it.
+// Several messages can wait in the queue while a turn runs; each gets its own 👀 and they all
+// clear on the next reply. Reaction failures are silent — the indicator is cosmetic.
+
+import { telegramLive } from './live.ts'
 
 const SEEN_EMOJI = '👀'
-
-/** Bot API subset reactions.ts uses. */
-export interface ReactionsApi {
-  setMessageReaction(
-    chatId: number,
-    messageId: number,
-    reaction: Array<{ type: 'emoji'; emoji: string }>,
-  ): Promise<boolean>
-}
-
-interface ReactionsDeps {
-  api: ReactionsApi
-  chatId: number
-}
-
-let _liveDepsResolver: (() => ReactionsDeps | null) | null = null
-
-export function installReactionsDepsResolver(resolver: () => ReactionsDeps | null): void {
-  _liveDepsResolver = resolver
-}
 
 interface Pending {
   chatId: number
@@ -49,12 +29,12 @@ const _pendingByAgent = new Map<string, Pending[]>()
  * for the per-chat rate budget. Failures are silently swallowed.
  */
 export function reactSeen(agentId: string, chatId: number, messageId: number): void {
-  const deps = _liveDepsResolver?.()
-  if (!deps) return
+  const live = telegramLive()
+  if (!live) return
   const list = _pendingByAgent.get(agentId) ?? []
   list.push({ chatId, messageId })
   _pendingByAgent.set(agentId, list)
-  void deps.api
+  void live.api
     .setMessageReaction(chatId, messageId, [{ type: 'emoji', emoji: SEEN_EMOJI }])
     .catch(() => undefined)
 }
@@ -68,17 +48,16 @@ export function clearReactionsFor(agentId: string): void {
   const list = _pendingByAgent.get(agentId)
   if (!list || list.length === 0) return
   _pendingByAgent.delete(agentId)
-  const deps = _liveDepsResolver?.()
-  if (!deps) return
+  const live = telegramLive()
+  if (!live) return
   for (const { chatId, messageId } of list) {
-    void deps.api.setMessageReaction(chatId, messageId, []).catch(() => undefined)
+    void live.api.setMessageReaction(chatId, messageId, []).catch(() => undefined)
   }
 }
 
 /** Drop all pending reactions (test cleanup). */
 export function _resetReactionsForTest(): void {
   _pendingByAgent.clear()
-  _liveDepsResolver = null
 }
 
 /** Test helper — current pending count for an agent. */

@@ -1,24 +1,20 @@
-import type { ComponentProps, ReactNode } from 'react'
-import { ConfigTabs } from './ConfigTabs'
+import type { ReactNode } from 'react'
 import { PageHeader, PageShell, type PageSize } from './Page'
-
-interface ConfigPageProps {
-  active: ComponentProps<typeof ConfigTabs>['active']
-  title: ReactNode
-  description: ReactNode
-  children: ReactNode
-  actions?: ReactNode
-  size?: PageSize
-}
+import { CONFIG_TABS, SectionTabs } from './SectionTabs'
 
 export function ConfigPage({
-  active,
   title,
   description,
   children,
   actions,
   size = 'default',
-}: ConfigPageProps) {
+}: {
+  title: ReactNode
+  description: ReactNode
+  children: ReactNode
+  actions?: ReactNode
+  size?: PageSize
+}) {
   return (
     <PageShell size={size}>
       <PageHeader
@@ -27,7 +23,7 @@ export function ConfigPage({
         description={description}
         actions={actions}
       />
-      <ConfigTabs active={active} className="mb-0" />
+      <SectionTabs label="Configuration sections" base="/config" tabs={CONFIG_TABS} />
       <div className="space-y-6">{children}</div>
     </PageShell>
   )

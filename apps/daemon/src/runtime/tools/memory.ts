@@ -11,7 +11,10 @@ export function memoryTools(memory: MemoryBackend): ToolHandler[] {
         parameters: {
           type: 'object',
           properties: {
-            key: { type: 'string', description: 'memory key (relative path)' },
+            key: {
+              type: 'string',
+              description: 'memory key: a relative path ending in .md, e.g. notes/topic.md',
+            },
             content: { type: 'string', description: 'note content (plain text or markdown)' },
           },
           required: ['key', 'content'],

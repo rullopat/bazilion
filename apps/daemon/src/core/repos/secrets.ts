@@ -3,20 +3,18 @@
 // Layout: one row per env-var-shaped key (`ANTHROPIC_API_KEY`,
 // `OPENAI_CODEX_OAUTH`, …). Each value is an AES-256-GCM envelope (salt +
 // iv + tag + data, hex-encoded JSON), with the key derived from the
-// bootstrap token via PBKDF2-SHA256 (100k iterations). The crypto matches
-// the previous `secrets.enc` file format byte-for-byte — only the storage
-// medium changed.
+// bootstrap token via PBKDF2-SHA256 (100k iterations).
 //
 // Why encrypt at all when the password lives in `~/.bazilion/auth.json`
-// next to the DB? Same reason as before: it's defense against accidental
-// exposure (cat'd dumps, screenshares, naive backups), not against an
-// attacker with filesystem read. Anyone who can read both files wins.
+// next to the DB? It is defense against accidental exposure (cat'd dumps,
+// screenshares, naive backups), not against an attacker with filesystem
+// read. Anyone who can read both files wins.
 //
-// Caching: `deriveKey` runs PBKDF2 once per (password, salt) pair and the
-// salt is per-row, so a busy daemon does ~one PBKDF2 per secret read. The
-// `secretCache` keeps decrypted values in-memory keyed by row id so repeated
-// reads inside one process don't repeat the work; mutations clear the cache
-// row.
+// Caching: PBKDF2 is deliberately slow and blocks the event loop, while every
+// turn and chat-history load decrypts every row (to merge and redact secrets).
+// `deriveKey` therefore runs PBKDF2 once per (password, salt) pair and keeps
+// the key in memory. Each write draws a fresh salt, so the cache never needs
+// invalidating; it is only bounded.
 
 import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:crypto'
 import type { BazilionDb } from '../db/client.ts'
@@ -33,8 +31,17 @@ interface EncryptedEnvelope {
   data: string
 }
 
+const derivedKeys = new Map<string, Buffer>()
+
 function deriveKey(password: string, salt: Buffer): Buffer {
-  return pbkdf2Sync(password, salt, ITERATIONS, KEY_LEN, DIGEST)
+  const id = `${salt.toString('hex')}:${password}`
+  let key = derivedKeys.get(id)
+  if (!key) {
+    if (derivedKeys.size >= 1024) derivedKeys.clear()
+    key = pbkdf2Sync(password, salt, ITERATIONS, KEY_LEN, DIGEST)
+    derivedKeys.set(id, key)
+  }
+  return key
 }
 
 function encrypt(plaintext: string, password: string): EncryptedEnvelope {

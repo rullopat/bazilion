@@ -9,22 +9,17 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 let env: TestEnv
 let oldLimit: string | undefined
-let oldPolicy: string | undefined
 
 beforeEach(() => {
   env = makeTestEnv()
   oldLimit = process.env.BAZILION_AGENT_LOOP_MAX_HOPS
-  oldPolicy = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
   process.env.BAZILION_AGENT_LOOP_MAX_HOPS = '1'
-  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'off'
   createProfile(env.db, env.paths, { id: 'p', defaultModel: 'lmstudio:test' })
 })
 
 afterEach(() => {
   if (oldLimit === undefined) delete process.env.BAZILION_AGENT_LOOP_MAX_HOPS
   else process.env.BAZILION_AGENT_LOOP_MAX_HOPS = oldLimit
-  if (oldPolicy === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-  else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = oldPolicy
   env.cleanup()
 })
 

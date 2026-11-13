@@ -11,72 +11,32 @@ import type {
   PublicHealthResponse,
 } from '@bazilion/api-types'
 import {
-  ALL_DEVICE_TOKEN_SCOPES,
-  DEVICE_TOKEN_SCOPES,
-  type DeviceTokenScope,
-} from '@bazilion/api-types'
-import { Hono } from 'hono'
-import {
   agentRepo,
   discoverSkills,
-  isSetupComplete,
-  mcpServerRepo,
   mergeSecretsIntoEnv,
   parseSkillFile,
   profileRepo,
-  providerStateRepo,
-  resolvePaths,
   teamRepo,
   webSessionRepo,
   webTokenRepo,
 } from '../core/index.ts'
+import { isProviderConfigured, PROVIDERS } from '../core/providers.ts'
 import { createBackupArchive, createBackupSnapshot } from '../lib/backup.ts'
-import { isBrowserEnabled } from '../lib/browser/config.ts'
-import { communicationDecisionMetrics } from '../lib/communication.ts'
 import { getCtx } from '../lib/ctx.ts'
-import { getDaemonInstanceId } from '../lib/daemon-liveness.ts'
-import { projectExecutionSecurity } from '../lib/execution-security-status.ts'
-import { projectPlatformCapabilities } from '../lib/platform-capabilities.ts'
-import { createProtectedDockerReadinessCache } from '../lib/protected-docker-readiness-cache.ts'
-import {
-  TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION,
-  teamPolicyEnforcementRequested,
-} from '../lib/team-policy-contract.ts'
-import { getOpenAICodexStatus, loadProviderConfigFromEnv } from '../runtime/index.ts'
-import { checkProtectedDockerReadiness } from '../runtime/shell/docker.ts'
-import {
-  MAC_DOCKER_EXECUTION_UNAVAILABLE,
-  MAC_NATIVE_EXECUTION_UNAVAILABLE,
-  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
-} from '../runtime/shell/platform-support.ts'
-import {
-  DEFAULT_BASH_SANDBOX_IMAGE,
-  resolveShellSecurityConfig,
-  ShellSecurityConfigError,
-} from '../runtime/shell/security.ts'
+import { hasOpenAICodexCredentials } from '../runtime/index.ts'
+import { checkDockerImage } from '../runtime/shell/docker.ts'
+import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
+import { jsonBody, newRouter } from './http.ts'
 
-export const miscRouter = new Hono()
-const protectedDockerReadiness = createProtectedDockerReadinessCache()
+export const miscRouter = newRouter()
 
-// Minimal unauthenticated liveness. The opaque instance header remains for
-// the local home-ownership protocol; all operator diagnostics are protected.
+// Minimal unauthenticated liveness; all operator diagnostics are protected.
 miscRouter.get('/health', (c) => {
-  const instanceId = getDaemonInstanceId()
-  if (instanceId) c.header('x-bazilion-daemon-instance', instanceId)
-  // BAZ-055 slice 3: introspectable auth posture — no secrets, no user data.
-  // Kills the "server is up but the client can't connect" support class.
-  return c.json({
-    ok: true,
-    auth: {
-      required: true,
-      credentialKinds: ['bootstrap', 'device', 'pairing-code'],
-      setupComplete: isSetupComplete(getCtx().db),
-    },
-  } satisfies PublicHealthResponse)
+  return c.json({ ok: true } satisfies PublicHealthResponse)
 })
 
 miscRouter.get('/health/details', async (c) => {
-  const paths = resolvePaths()
+  const { paths } = getCtx()
 
   const pathChecks = {
     home: existsSync(paths.home),
@@ -126,51 +86,28 @@ miscRouter.get('/health/details', async (c) => {
   }
 
   let effectiveEnv: NodeJS.ProcessEnv = process.env
-  let oauth: { db: import('../core/index.ts').BazilionDb; authToken: string } | undefined
-  let openAICodexEnabled = false
-  let openAICodexConnected = false
-  let openAICodexAccessCurrent = false
-  let configuredMcpEnabled = false
+  let codexConnected = false
   if (pathChecks.auth && pathChecks.db) {
     try {
       const { db, authToken } = getCtx()
       effectiveEnv = mergeSecretsIntoEnv(db, authToken)
-      oauth = { db, authToken }
-      openAICodexEnabled = providerStateRepo.listEnabled(db).has('openai-codex')
-      const openAICodexStatus = getOpenAICodexStatus(db, authToken)
-      openAICodexConnected = openAICodexStatus.connected
-      openAICodexAccessCurrent =
-        openAICodexStatus.expiresAt !== null && openAICodexStatus.expiresAt > Date.now() + 60_000
-      configuredMcpEnabled = mcpServerRepo.listEnabled(db).length > 0
+      codexConnected = hasOpenAICodexCredentials(db, authToken)
     } catch {
       // first-run / partially-initialized — fall through with bare env
     }
   }
-  const providerConfig = loadProviderConfigFromEnv(effectiveEnv, oauth)
   const openclawSkillsDir = join(homedir(), '.openclaw', 'skills')
 
-  const CLOUD_KEYS: Array<[string, keyof typeof providerConfig]> = [
-    ['anthropic', 'anthropic'],
-    ['openai', 'openai'],
-    ['google', 'google'],
-    ['azure-openai', 'azureOpenai'],
-    ['bedrock', 'bedrock'],
-    ['google-vertex', 'googleVertex'],
-    ['mistral', 'mistral'],
-    ['groq', 'groq'],
-    ['cerebras', 'cerebras'],
-    ['baseten', 'baseten'],
-    ['xai', 'xai'],
-    ['zai', 'zai'],
-    ['huggingface', 'huggingface'],
-    ['openrouter', 'openrouter'],
-    ['vercel-ai-gateway', 'vercelAiGateway'],
-  ]
   const providerSection: HealthReport['providers'] = {
-    configured: CLOUD_KEYS.filter(([, key]) => providerConfig[key]).map(([name]) => name),
+    // Hosted providers with credentials; local servers are reported below.
+    configured: PROVIDERS.filter((provider) =>
+      provider.id === 'openai-codex'
+        ? codexConnected
+        : !provider.local && isProviderConfigured(provider.id, effectiveEnv),
+    ).map((provider) => provider.id),
     lmstudio: {
       customEndpointConfigured: Boolean(effectiveEnv.LMSTUDIO_URL?.trim()),
-      keyConfigured: Boolean(providerConfig.lmstudio?.apiKey),
+      keyConfigured: Boolean(effectiveEnv.LMSTUDIO_API_KEY),
     },
     ollama: { customEndpointConfigured: Boolean(effectiveEnv.OLLAMA_URL?.trim()) },
   }
@@ -178,27 +115,26 @@ miscRouter.get('/health/details', async (c) => {
   let shellSecurity: HealthReport['shellSecurity']
   try {
     const shellConfig = resolveShellSecurityConfig(effectiveEnv)
-    if (process.platform === 'darwin' && shellConfig.sandboxMode !== 'off')
-      throw new ShellSecurityConfigError(
-        shellConfig.sandboxMode === 'native'
-          ? MAC_NATIVE_EXECUTION_UNAVAILABLE
-          : MAC_DOCKER_EXECUTION_UNAVAILABLE,
-      )
+    // The sandbox applies to every turn, so Docker readiness matters only when it is selected.
+    const docker =
+      shellConfig.sandboxMode === 'docker' ? await checkDockerImage(shellConfig.sandboxImage) : null
     shellSecurity = {
       ok: true,
       sandboxMode: shellConfig.sandboxMode,
       approvalMode: shellConfig.approvalMode,
-      sandboxImage:
-        process.platform === 'darwin' || shellConfig.sandboxMode === 'native'
-          ? null
-          : shellConfig.sandboxImage,
+      sandboxImage: shellConfig.sandboxImage,
       hostCodingTools: shellConfig.sandboxMode === 'off',
-      network:
-        shellConfig.sandboxMode === 'native'
-          ? 'denied-ip'
-          : shellConfig.sandboxMode === 'docker'
-            ? 'none'
-            : 'host',
+      network: shellConfig.sandboxMode === 'docker' ? 'none' : 'host',
+      docker: docker
+        ? docker.ok
+          ? { ready: true, image: shellConfig.sandboxImage, reason: null, remediation: null }
+          : {
+              ready: false,
+              image: shellConfig.sandboxImage,
+              reason: docker.error,
+              remediation: `Start Docker and make the image available locally (Bazilion never pulls it), e.g. \`docker pull ${shellConfig.sandboxImage}\`.`,
+            }
+        : null,
     }
   } catch (err) {
     shellSecurity = {
@@ -207,54 +143,8 @@ miscRouter.get('/health/details', async (c) => {
     }
   }
 
-  const protectedDockerImage = shellSecurity.ok
-    ? (shellSecurity.sandboxImage ?? DEFAULT_BASH_SANDBOX_IMAGE)
-    : DEFAULT_BASH_SANDBOX_IMAGE
-  const protectedDockerProbe =
-    process.platform !== 'darwin' && shellSecurity.ok && shellSecurity.sandboxMode !== 'native'
-      ? await protectedDockerReadiness.get(protectedDockerImage, () =>
-          checkProtectedDockerReadiness({ image: protectedDockerImage }),
-        )
-      : null
-  const protectedDocker = protectedDockerProbe
-    ? protectedDockerProbe.ready
-      ? { ready: true, image: protectedDockerProbe.image, reason: null }
-      : {
-          ready: false,
-          image: protectedDockerProbe.image,
-          reason: protectedDockerProbe.reason,
-        }
-    : { ready: false, image: protectedDockerImage, reason: null }
-  const executionSecurity = projectExecutionSecurity({
-    protectedUnavailableReason:
-      process.platform === 'darwin' ? MAC_PROTECTED_EXECUTION_UNAVAILABLE : undefined,
-    nativeBackend:
-      process.platform === 'linux' && ['x64', 'arm64'].includes(process.arch)
-        ? 'linux-bwrap'
-        : null,
-    configuredOperatorHttp: {
-      shellSecurity,
-      dockerImage: protectedDockerImage,
-      browserEnabled: isBrowserEnabled(effectiveEnv),
-      mcpEnabled: configuredMcpEnabled,
-    },
-    protectedUnattendedTurns: {
-      docker: {
-        ready: protectedDocker.ready,
-        image: protectedDocker.image,
-        reason: protectedDocker.reason,
-        configurationValid: shellSecurity.ok,
-      },
-      openaiCodex: {
-        enabled: openAICodexEnabled,
-        connected: openAICodexConnected,
-        accessCurrent: openAICodexAccessCurrent,
-      },
-    },
-  })
-
   const report: HealthReport = {
-    // Structural install health only. Protected work has an explicit, independent signal below.
+    // Structural install health; Docker readiness is reported separately under shellSecurity.
     ok:
       pathChecks.home &&
       pathChecks.db &&
@@ -265,8 +155,6 @@ miscRouter.get('/health/details', async (c) => {
       (database === null || database.ok) &&
       parseErrors === 0 &&
       shellSecurity.ok,
-    protectedWorkBaselineReady: executionSecurity.protectedUnattendedTurns.baseRuntimeReady,
-    platformCapabilities: projectPlatformCapabilities(),
     home: paths.home,
     paths: pathChecks,
     database,
@@ -287,27 +175,12 @@ miscRouter.get('/health/details', async (c) => {
       tickMs: Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000),
     },
     shellSecurity,
-    executionSecurity,
-    teamPolicyManagement: {
-      contractVersion: TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION,
-      enforcementRequested: teamPolicyEnforcementRequested(),
-      enforcementActive:
-        teamPolicyEnforcementRequested() && TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION >= 1,
-      releaseReady: TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION >= 1,
-      degraded: teamPolicyEnforcementRequested() && TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION < 1,
-      decisions: { ...communicationDecisionMetrics },
-    },
   }
   return c.json(report)
 })
 
 function publicShellSecurityError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
-  if (message === MAC_DOCKER_EXECUTION_UNAVAILABLE || message === MAC_NATIVE_EXECUTION_UNAVAILABLE)
-    return message
-  if (message.includes('BAZILION_BASH_SANDBOX_ENV_ALLOWLIST')) {
-    return 'Shell environment allowlist contains an invalid or unsafe variable name.'
-  }
   if (message.includes('BAZILION_BASH_SANDBOX_IMAGE')) {
     return 'Docker image must use a valid local image reference.'
   }
@@ -315,7 +188,7 @@ function publicShellSecurityError(error: unknown): string {
     return 'Dangerous-command approval must be "off" or "dangerous".'
   }
   if (message.includes('BAZILION_BASH_SANDBOX')) {
-    return 'Sandbox mode must be "off", "native" or "docker" (Linux only).'
+    return 'Sandbox mode must be "off" or "docker".'
   }
   return 'Shell-security configuration is invalid.'
 }
@@ -389,36 +262,18 @@ miscRouter.get('/tokens', (c) => {
 })
 
 miscRouter.post('/tokens', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as CreateTokenRequest | null
+  const body = await jsonBody<CreateTokenRequest>(c)
   if (!body || typeof body.label !== 'string' || !body.label.trim()) {
     return c.json({ error: 'label is required' }, 400)
   }
-  const expiresInDays = body.expiresInDays ?? 90
-  if (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 365) {
-    return c.json({ error: 'expiresInDays must be an integer from 1 to 365' }, 400)
-  }
-  // BAZ-055: optional scope subset. Absent/empty = all scopes (pre-055 behavior).
-  let scopes: DeviceTokenScope[] = [...ALL_DEVICE_TOKEN_SCOPES]
-  if (body.scopes !== undefined) {
-    if (
-      !Array.isArray(body.scopes) ||
-      body.scopes.length === 0 ||
-      body.scopes.some((s) => !(DEVICE_TOKEN_SCOPES as readonly string[]).includes(s))
-    ) {
-      return c.json(
-        {
-          error: `scopes must be a non-empty subset of: ${DEVICE_TOKEN_SCOPES.join(', ')}`,
-        },
-        400,
-      )
-    }
-    scopes = [...new Set(body.scopes)]
+  // No expiry unless asked for.
+  const expiresInDays = body.expiresInDays ?? null
+  if (expiresInDays !== null && (!Number.isInteger(expiresInDays) || expiresInDays < 1)) {
+    return c.json({ error: 'expiresInDays must be a positive integer' }, 400)
   }
   const { db } = getCtx()
   const created = webTokenRepo.create(db, body.label.trim(), {
-    kind: 'device',
-    expiresAt: Date.now() + expiresInDays * 86_400_000,
-    scopes,
+    expiresAt: expiresInDays ? Date.now() + expiresInDays * 86_400_000 : null,
   })
   return c.json({ token: created.token, meta: created.meta } satisfies CreateTokenResponse, 201)
 })
@@ -429,9 +284,8 @@ miscRouter.delete('/tokens/:id', (c) => {
   const existing = webTokenRepo.get(db, id)
   if (!existing) return c.json({ error: `token not found: ${id}` }, 404)
   if (existing.revokedAt) return c.json({ error: 'token already revoked' }, 409)
-  // Refuse to revoke the bootstrap token — that's the plaintext in auth.json
-  // the local CLI uses for loopback. Revoking it would lock the operator out
-  // of their own daemon. Match by hash (label is editable, hash isn't).
+  // The bootstrap row (kind=bootstrap) is the token in auth.json; revoking it would lock the
+  // owner out.
   if (existing.kind === 'bootstrap') {
     return c.json(
       {
@@ -442,6 +296,6 @@ miscRouter.delete('/tokens/:id', (c) => {
     )
   }
   webTokenRepo.revoke(db, id)
-  webSessionRepo.revokeForDevice(db, id)
+  webSessionRepo.revokeForToken(db, id)
   return c.body(null, 204)
 })

@@ -12,8 +12,9 @@
 
 import { existsSync, mkdirSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { Team } from '@bazilion/api-types'
+import type { Team, TeamPolicyMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { DomainError } from '../errors.ts'
 import type { Paths } from '../paths.ts'
 import { validateSlug } from '../profile/validate.ts'
 import * as teamRepo from '../repos/teams.ts'
@@ -28,18 +29,21 @@ export interface RegisterTeamInput {
    * path instead of as a real directory. Target must exist and be a dir.
    */
   link?: string
+  /** Starter USER.md; defaults to the built-in one. */
+  userMd?: string
+  policyMode?: TeamPolicyMode
 }
 
 export function registerTeam(db: BazilionDb, input: RegisterTeamInput, paths: Paths): Team {
   validateSlug(input.id)
 
   if (teamRepo.get(db, input.id, paths)) {
-    throw new Error(`team already registered: ${input.id}`)
+    throw new DomainError(400, `team already registered: ${input.id}`)
   }
 
   const slot = paths.teamDir(input.id)
   if (existsSync(slot)) {
-    throw new Error(`team slot already on disk at ${slot} (move or remove it first)`)
+    throw new DomainError(400, `team slot already on disk at ${slot} (move or remove it first)`)
   }
 
   // Make sure the parent `teams/` dir exists — the daemon's bootstrap creates
@@ -50,10 +54,10 @@ export function registerTeam(db: BazilionDb, input: RegisterTeamInput, paths: Pa
   if (input.link) {
     const target = resolve(input.link)
     if (!existsSync(target)) {
-      throw new Error(`--link target does not exist: ${target}`)
+      throw new DomainError(400, `--link target does not exist: ${target}`)
     }
     if (!statSync(target).isDirectory()) {
-      throw new Error(`--link target is not a directory: ${target}`)
+      throw new DomainError(400, `--link target is not a directory: ${target}`)
     }
     symlinkSync(target, slot, 'dir')
   } else {
@@ -66,7 +70,16 @@ export function registerTeam(db: BazilionDb, input: RegisterTeamInput, paths: Pa
 
   try {
     return db.raw.transaction(() => {
-      return teamRepo.insert(db, { id: input.id, name: input.name ?? input.id }, paths)
+      return teamRepo.insert(
+        db,
+        {
+          id: input.id,
+          name: input.name ?? input.id,
+          ...(input.userMd ? { userMd: input.userMd } : {}),
+          ...(input.policyMode ? { policyMode: input.policyMode } : {}),
+        },
+        paths,
+      )
     })()
   } catch (error) {
     // Remove only the canonical slot. For linked Teams rmSync removes the

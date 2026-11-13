@@ -35,11 +35,9 @@ function fmtBytes(n: number): string {
 export interface SaveInputFilesOptions {
   /** Alternate path shown to the model (for example the Docker /inputs mount). */
   referenceDir?: string
-  /** Exact directory already validated by protected-turn preflight. */
-  storageDir?: string
 }
 
-export function prepareInputFilesDirectory(agentDir: string): string {
+function prepareInputFilesDirectory(agentDir: string): string {
   return ensureContainedRealDirectory(join(agentDir, 'uploads'), agentDir, { create: true })
 }
 
@@ -49,9 +47,7 @@ export function saveInputFiles(
   options: SaveInputFilesOptions = {},
 ): string {
   if (!files || files.length === 0) return ''
-  const dir = options.storageDir
-    ? ensureContainedRealDirectory(options.storageDir, agentDir)
-    : prepareInputFilesDirectory(agentDir)
+  const dir = prepareInputFilesDirectory(agentDir)
   const lines: string[] = []
   for (const f of files) {
     const label = f.name ?? 'file'

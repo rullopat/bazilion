@@ -1,86 +1,44 @@
-import type { AttentionItem, AttentionKind } from '@bazilion/api-types'
-import { isLoopbackHost, resolvePublicOrigin } from './public-origin.ts'
+import { type AttentionItem, isLoopbackHost, publicOriginConfig } from '@bazilion/api-types'
+import { htmlEscape } from './telegram/html.ts'
 
-const labels: Record<AttentionKind, { title: string; action: string }> = {
-  communication_approval: { title: 'Communication approval required', action: 'Review approvals' },
-  lesson_proposal: { title: 'Lesson proposal ready', action: 'Review learning proposals' },
-  review_failure: { title: 'Agent review stopped', action: 'Inspect Agent learning' },
-  trigger_failure: { title: 'Scheduled trigger failed', action: 'Inspect Agent triggers' },
-  agent_loop_break: { title: 'Agent message loop stopped', action: 'Inspect Agent inbox' },
-  queue_interrupted: { title: 'Agent queue paused after restart', action: 'Inspect Agent queue' },
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+/** One line of untrusted text: control characters become spaces, at most 80 characters. */
 function display(value: string): string {
-  return escapeHtml(
-    Array.from(value)
-      .slice(0, 80)
-      .map((character) => {
-        const code = character.codePointAt(0) ?? 0
-        return code < 32 || (code >= 127 && code <= 159) ? ' ' : character
-      })
-      .join(''),
-  )
+  const line = Array.from(value, (character) => {
+    const code = character.codePointAt(0) ?? 0
+    return code < 32 || (code >= 127 && code <= 159) ? ' ' : character
+  })
+  return htmlEscape(line.slice(0, 80).join(''))
 }
 
-/** Resolution paths come from fixed kinds and canonical identifiers, never source-provided URLs. */
-function resolutionPath(item: AttentionItem): string | null {
-  if (item.kind === 'communication_approval') return '/approvals'
-  if (!item.agentId || !/^[a-f0-9-]{36}$/.test(item.agentId)) return null
-  const base = `/agents/${item.agentId}`
-  switch (item.kind) {
-    case 'lesson_proposal':
-    case 'review_failure':
-      return `${base}/learning`
-    case 'agent_loop_break':
-      return `${base}/inbox`
-    case 'trigger_failure':
-    case 'queue_interrupted':
-      return base
+/** A link only works through a published (non-loopback) web origin. */
+function publicOrigin(env: NodeJS.ProcessEnv): string | null {
+  try {
+    const origin = publicOriginConfig(env.BAZILION_PUBLIC_ORIGIN).origin
+    if (!origin) return null
+    const hostname = new URL(origin).hostname.replace(/\.$/, '')
+    return isLoopbackHost(hostname) || hostname.endsWith('.localhost') || /^127\./.test(hostname)
+      ? null
+      : origin
+  } catch {
+    return null
   }
 }
 
-/** Input must have passed source/egress authorization immediately before dispatch. */
+/** Telegram HTML for one Attention item. */
 export function attentionNotificationMessage(
   item: AttentionItem,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const label = labels[item.kind]
-  const lines = [
-    `<b>${label.title}</b>`,
-    `Agent: ${display(item.agentName || item.agentId || 'Unavailable')}`,
-    `Team: ${display(item.teamName || item.teamId || 'Unavailable')}`,
-    `Source: ${display(item.kind)} / ${display(item.sourceId)}`,
-  ]
-  let origin: string | null = null
-  try {
-    origin = resolvePublicOrigin(env).origin
-    if (origin) {
-      const hostname = new URL(origin).hostname.replace(/\.$/, '')
-      if (
-        isLoopbackHost(hostname) ||
-        hostname.endsWith('.localhost') ||
-        hostname.startsWith('127.') ||
-        hostname === '0.0.0.0' ||
-        hostname === '[::]'
-      )
-        origin = null
-    }
-  } catch {
-    // A malformed or credential-bearing URL is never a notification link.
-  }
-  const path = resolutionPath(item)
+  const lines = [`<b>${display(item.title)}</b>`]
+  if (item.agentName)
+    lines.push(
+      `Agent: ${display(item.agentName)}${item.teamName ? ` · Team: ${display(item.teamName)}` : ''}`,
+    )
+  const origin = publicOrigin(env)
   lines.push(
-    origin && path
-      ? `<a href="${escapeHtml(origin + path)}">${label.action}</a> (browser login required)`
-      : `Open Bazilion web → Attention → ${label.action}.`,
+    origin && item.href.startsWith('/')
+      ? `<a href="${htmlEscape(origin + item.href).replace(/"/g, '&quot;')}">Open in Bazilion</a>`
+      : 'Open Bazilion → Attention to resolve it.',
   )
-  lines.push('Receiving or opening this notice does not resolve the item.')
   return lines.join('\n')
 }

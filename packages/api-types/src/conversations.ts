@@ -1,35 +1,26 @@
-/** Routing metadata only. Pi JSONL remains the conversation transcript. */
+/** Conversation metadata. Pi's session file `<id>.jsonl` holds the transcript. */
 export interface Conversation {
   id: string
   agentId: string
   title: string
-  titleRevision: number
   createdAt: number
   updatedAt: number
 }
 
-export interface ConversationSelection {
-  conversationId: string | null
-  revision: number
-}
-
 export interface ConversationListResponse {
   conversations: Conversation[]
-  selection: ConversationSelection
+  /** The conversation new turns write to; null before the Agent's first turn. */
+  selectedId: string | null
   total: number
   offset: number
   limit: number
 }
 
 export interface NewConversationInput {
-  /** UUID retained by the client for reconciliation after a lost response. */
-  requestId: string
-  expectedSelection: ConversationSelection
   title?: string
 }
 
-/** Daemon-admitted canonical transcript binding passed to the worker. */
+/** The conversation a turn writes to, passed to the worker. Its transcript is `<id>.jsonl`. */
 export interface ConversationTarget {
   id: string
-  filename: string
 }

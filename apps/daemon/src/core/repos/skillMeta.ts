@@ -20,10 +20,6 @@ export function get(db: BazilionDb, name: string): SkillMeta | null {
   return row ? toMeta(row) : null
 }
 
-export function listAll(db: BazilionDb): SkillMeta[] {
-  return db.raw.query<RawMeta, []>('SELECT * FROM skill_meta ORDER BY name ASC').all().map(toMeta)
-}
-
 export interface UpsertInput {
   name: string
   source?: string | null

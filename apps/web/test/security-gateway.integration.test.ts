@@ -1,17 +1,13 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import {
   createServer,
-  type IncomingMessage,
   request as httpRequest,
+  type IncomingMessage,
   type ServerResponse,
 } from 'node:http'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import {
-  findFreePort,
-  startTestServer,
-  type TestServer,
-} from '../../cli/test/server-fixture.ts'
+import { findFreePort, startTestServer, type TestServer } from '../../cli/test/server-fixture.ts'
 
 const root = join(import.meta.dirname, '..', '..', '..')
 const webDist = join(root, 'apps', 'web', 'dist')
@@ -153,20 +149,16 @@ let daemon: TestServer
 let web: RunningWeb
 
 beforeAll(async () => {
-  if (process.env.BAZILION_SECURITY_ACCEPTANCE !== '1') {
-    execFileSync('pnpm', ['--filter', '@bazilion/web', 'build'], {
-      cwd: root,
-      stdio: 'inherit',
-      // Windows resolves pnpm.cmd only through the shell.
-      shell: process.platform === 'win32',
-    })
-  }
+  execFileSync('pnpm', ['--filter', '@bazilion/web', 'build'], {
+    cwd: root,
+    stdio: 'inherit',
+  })
   const port = await findFreePort()
   const origin = `https://127.0.0.1:${port}`
   daemon = await startTestServer({ BAZILION_PUBLIC_ORIGIN: origin })
   web = await startWeb(daemon.url, { port, origin })
-// The setup may build the web UI, which is slow on a loaded machine; the timeout exists to stop a
-// hung setup, not to bound a legitimate build.
+  // The setup builds the web UI, which is slow on a loaded machine; the timeout exists to stop a
+  // hung setup, not to bound a legitimate build.
 }, 240_000)
 
 afterAll(async () => {
@@ -180,13 +172,6 @@ test('production gateway rejects hostile authority before side effects and enfor
   expect(deviceSecret).toBeTruthy()
 
   const loginBody = JSON.stringify({ token: deviceSecret })
-  const bootstrapLogin = await request(
-    web,
-    '/api/login',
-    { method: 'POST', body: JSON.stringify({ token: daemon.token }) },
-    { origin: web.origin, 'content-type': 'application/json' },
-  )
-  expect(bootstrapLogin.status, await bootstrapLogin.clone().text()).toBe(401)
   const hostile = [
     rawRequest(web, '/api/login', {
       method: 'POST',
@@ -197,29 +182,54 @@ test('production gateway rejects hostile authority before side effects and enfor
         'content-type': 'application/json',
       },
     }),
-    request(web, '/api/login', { method: 'POST', body: loginBody }, {
-      origin: 'https://attacker.invalid',
-      'content-type': 'application/json',
-    }),
-    request(web, '/api/login', { method: 'POST', body: loginBody }, {
-      origin: 'null',
-      'content-type': 'application/json',
-    }),
-    request(web, '/api/login', { method: 'POST', body: loginBody }, {
-      origin: web.origin,
-      forwarded: 'host=attacker.invalid;proto=https',
-      'content-type': 'application/json',
-    }),
-    request(web, '/api/login', { method: 'POST', body: loginBody }, {
-      origin: web.origin,
-      'x-forwarded-host': 'attacker.invalid',
-      'content-type': 'application/json',
-    }),
-    request(web, '/api/login', { method: 'POST', body: loginBody }, {
-      origin: web.origin,
-      'x-forwarded-proto': 'http',
-      'content-type': 'application/json',
-    }),
+    request(
+      web,
+      '/api/login',
+      { method: 'POST', body: loginBody },
+      {
+        origin: 'https://attacker.invalid',
+        'content-type': 'application/json',
+      },
+    ),
+    request(
+      web,
+      '/api/login',
+      { method: 'POST', body: loginBody },
+      {
+        origin: 'null',
+        'content-type': 'application/json',
+      },
+    ),
+    request(
+      web,
+      '/api/login',
+      { method: 'POST', body: loginBody },
+      {
+        origin: web.origin,
+        forwarded: 'host=attacker.invalid;proto=https',
+        'content-type': 'application/json',
+      },
+    ),
+    request(
+      web,
+      '/api/login',
+      { method: 'POST', body: loginBody },
+      {
+        origin: web.origin,
+        'x-forwarded-host': 'attacker.invalid',
+        'content-type': 'application/json',
+      },
+    ),
+    request(
+      web,
+      '/api/login',
+      { method: 'POST', body: loginBody },
+      {
+        origin: web.origin,
+        'x-forwarded-proto': 'http',
+        'content-type': 'application/json',
+      },
+    ),
   ]
   expect((await Promise.all(hostile)).map((response) => response.status)).toEqual([
     404, 403, 403, 400, 400, 400,
@@ -229,10 +239,15 @@ test('production gateway rejects hostile authority before side effects and enfor
   })
   expect(await noSessions.json()).toEqual({ sessions: [] })
 
-  const login = await request(web, '/api/login', { method: 'POST', body: loginBody }, {
-    origin: web.origin,
-    'content-type': 'application/json',
-  })
+  const login = await request(
+    web,
+    '/api/login',
+    { method: 'POST', body: loginBody },
+    {
+      origin: web.origin,
+      'content-type': 'application/json',
+    },
+  )
   expect(login.status).toBe(200)
   const setCookies = login.headers.getSetCookie()
   const serializedCookies = setCookies.join('\n')
@@ -258,44 +273,92 @@ test('production gateway rejects hostile authority before side effects and enfor
   })
   expect(duplicate.status).toBe(400)
 
-  const missingCsrf = await request(web, '/api/logout', { method: 'POST' }, {
-    origin: web.origin,
-    cookie: cookies,
+  // Server functions pass the same Origin and CSRF boundary as /api/*.
+  const serverFunction = (headers: Record<string, string>) =>
+    request(
+      web,
+      '/_serverFn/gateway-probe',
+      { method: 'POST', body: '{}' },
+      { cookie: cookies, 'content-type': 'application/json', ...headers },
+    )
+  const foreignServerFn = await serverFunction({
+    origin: 'https://attacker.invalid',
+    'x-bazilion-csrf': csrf,
   })
+  expect(foreignServerFn.status).toBe(403)
+  expect(await foreignServerFn.text()).toBe('origin validation failed')
+  const unprovenServerFn = await serverFunction({ origin: web.origin })
+  expect(unprovenServerFn.status).toBe(403)
+  expect(await unprovenServerFn.text()).toBe('csrf validation failed')
+  const forgedServerFn = await serverFunction({ origin: web.origin, 'x-bazilion-csrf': 'forged' })
+  expect(forgedServerFn.status).toBe(403)
+  expect(await forgedServerFn.text()).toBe('csrf validation failed')
+  const provenServerFn = await serverFunction({ origin: web.origin, 'x-bazilion-csrf': csrf })
+  expect(await provenServerFn.text()).not.toMatch(/validation failed/)
+
+  const missingCsrf = await request(
+    web,
+    '/api/logout',
+    { method: 'POST' },
+    {
+      origin: web.origin,
+      cookie: cookies,
+    },
+  )
   expect(missingCsrf.status).toBe(403)
   const stillActive = await request(web, '/api/auth/whoami', {}, { cookie: cookies })
   expect(stillActive.status).toBe(200)
 
-  const secondLogin = await request(web, '/api/login', { method: 'POST', body: loginBody }, {
-    origin: web.origin,
-    'content-type': 'application/json',
-  })
+  const secondLogin = await request(
+    web,
+    '/api/login',
+    { method: 'POST', body: loginBody },
+    {
+      origin: web.origin,
+      'content-type': 'application/json',
+    },
+  )
   const secondCsrf = cookieValue(secondLogin.headers.getSetCookie(), '__Host-bz_csrf')
-  const crossSession = await request(web, '/api/logout', { method: 'POST' }, {
-    origin: web.origin,
-    cookie: `__Host-bz_session=${session}; __Host-bz_csrf=${secondCsrf}`,
-    'x-bazilion-csrf': secondCsrf,
-  })
+  const crossSession = await request(
+    web,
+    '/api/logout',
+    { method: 'POST' },
+    {
+      origin: web.origin,
+      cookie: `__Host-bz_session=${session}; __Host-bz_csrf=${secondCsrf}`,
+      'x-bazilion-csrf': secondCsrf,
+    },
+  )
   expect(crossSession.status).toBe(403)
   expect((await request(web, '/api/auth/whoami', {}, { cookie: cookies })).status).toBe(200)
 
-  const logout = await request(web, '/api/logout', { method: 'POST' }, {
-    origin: web.origin,
-    cookie: cookies,
-    'x-bazilion-csrf': csrf,
-  })
+  const logout = await request(
+    web,
+    '/api/logout',
+    { method: 'POST' },
+    {
+      origin: web.origin,
+      cookie: cookies,
+      'x-bazilion-csrf': csrf,
+    },
+  )
   expect(logout.status).toBe(200)
   expect((await request(web, '/api/auth/whoami', {}, { cookie: cookies })).status).toBe(401)
 
-  const bearer = await request(web, '/api/auth/whoami', {}, {
-    authorization: `Bearer ${deviceSecret}`,
-  })
+  const bearer = await request(
+    web,
+    '/api/auth/whoami',
+    {},
+    {
+      authorization: `Bearer ${deviceSecret}`,
+    },
+  )
   expect(bearer.status).toBe(200)
   expect(await bearer.json()).toMatchObject({ principal: { kind: 'device' } })
   expect(bearer.headers.getSetCookie()).toEqual([])
 })
 
-test('production gateway enforces device revocation and both session deadlines without cross-device fallout', async () => {
+test('production gateway enforces token revocation and session expiry without cross-token fallout', async () => {
   async function login(label: string) {
     const created = await daemon.cli(['token', 'create', label])
     const token = created.stdout.match(/token:\s+([0-9a-f]+)/)?.[1] as string
@@ -323,26 +386,43 @@ test('production gateway enforces device revocation and both session deadlines w
   expect(revokedId).toBeTruthy()
   expect((await daemon.cli(['token', 'revoke', revokedId as string])).exitCode).toBe(0)
   expect((await request(web, '/api/auth/whoami', {}, { cookie: revoked.cookie })).status).toBe(401)
-  expect((await request(web, '/api/auth/whoami', {}, { cookie: unaffected.cookie })).status).toBe(200)
+  expect((await request(web, '/api/auth/whoami', {}, { cookie: unaffected.cookie })).status).toBe(
+    200,
+  )
 
-  const idle = await login('idle-expiry')
-  const absolute = await login('absolute-expiry')
+  const expired = await login('expired-session')
   const paths = (await import('../../daemon/src/core/paths.ts')).resolvePaths(daemon.home)
   const { openDb } = await import('../../daemon/src/core/db/client.ts')
   const db = openDb(paths.db)
-  const sessions = db.raw
-    .query<{ id: string; device_label: string }, []>(
-      `SELECT s.id, t.label AS device_label FROM web_sessions s
-       JOIN web_tokens t ON t.id = s.device_token_id`,
-    )
-    .all()
-  const idleId = sessions.find((session) => session.device_label === 'idle-expiry')?.id
-  const absoluteId = sessions.find((session) => session.device_label === 'absolute-expiry')?.id
-  db.raw.run('UPDATE web_sessions SET idle_expires_at = 0 WHERE id = ?', [idleId])
-  db.raw.run('UPDATE web_sessions SET absolute_expires_at = 0 WHERE id = ?', [absoluteId])
+  db.raw.run(
+    `UPDATE web_sessions SET expires_at = 0
+     WHERE token_id = (SELECT id FROM web_tokens WHERE label = 'expired-session')`,
+  )
   db.close()
-  expect((await request(web, '/api/auth/whoami', {}, { cookie: idle.cookie })).status).toBe(401)
-  expect((await request(web, '/api/auth/whoami', {}, { cookie: absolute.cookie })).status).toBe(401)
+  expect((await request(web, '/api/auth/whoami', {}, { cookie: expired.cookie })).status).toBe(401)
+  expect((await request(web, '/api/auth/whoami', {}, { cookie: unaffected.cookie })).status).toBe(
+    200,
+  )
+
+  // A browser still holding the ended session's cookies signs in again with the login form, which
+  // cannot send the CSRF header; the Origin check still applies.
+  const formLogin = (origin: string) =>
+    request(
+      web,
+      '/api/login',
+      { method: 'POST', body: new URLSearchParams({ token: expired.token }), redirect: 'manual' },
+      { accept: 'text/html', origin, cookie: expired.cookie },
+    )
+  const foreign = await formLogin('https://attacker.invalid')
+  expect(foreign.status).toBe(303)
+  expect(foreign.headers.get('location')).toBe('/login?error=origin')
+  const relogin = await formLogin(web.origin)
+  expect(relogin.status).toBe(302)
+  expect(relogin.headers.get('location')).toBe('/')
+  const renewed = relogin.headers.getSetCookie()
+  const renewedCookie = `__Host-bz_session=${cookieValue(renewed, '__Host-bz_session')}; __Host-bz_csrf=${cookieValue(renewed, '__Host-bz_csrf')}`
+  expect(renewedCookie).not.toBe(expired.cookie)
+  expect((await request(web, '/api/auth/whoami', {}, { cookie: renewedCookie })).status).toBe(200)
 })
 
 test('production gateway applies security headers and bounds request bodies', async () => {
@@ -363,17 +443,31 @@ test('production gateway applies security headers and bounds request bodies', as
   expect(body).not.toContain('fonts.googleapis.com')
   expect(body).not.toContain('fonts.gstatic.com')
 
-  const oversized = await request(
+  // An anonymous request can only log in, so its body is capped at 64 KiB. A credentialed one may
+  // carry up to 64 MiB (a 25 MB attachment as base64 JSON fits under it).
+  const oversizedLogin = await request(
     web,
     '/api/login',
-    { method: 'POST', body: JSON.stringify({ padding: 'x'.repeat(2 * 1024 * 1024) }) },
+    { method: 'POST', body: new Uint8Array(64 * 1024 + 1) },
     { origin: web.origin, 'content-type': 'application/json' },
+  )
+  expect(oversizedLogin.status).toBe(413)
+  const oversized = await request(
+    web,
+    '/api/providers/test',
+    { method: 'POST', body: new Uint8Array(64 * 1024 * 1024 + 1) },
+    { authorization: `Bearer ${daemon.token}`, 'content-type': 'application/json' },
   )
   expect(oversized.status).toBe(413)
 
-  const backup = await request(web, '/api/backup', {}, {
-    authorization: `Bearer ${daemon.token}`,
-  })
+  const backup = await request(
+    web,
+    '/api/backup',
+    {},
+    {
+      authorization: `Bearer ${daemon.token}`,
+    },
+  )
   expect(backup.status).toBe(200)
   expect(backup.headers.get('content-type')).toContain('application/gzip')
   expect((await backup.arrayBuffer()).byteLength).toBeGreaterThan(100)
@@ -401,7 +495,11 @@ async function startFakeUpstream(): Promise<FakeUpstream> {
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', async () => {
-      seen.push({ path: req.url ?? '', headers: req.headers, bytes: Buffer.concat(chunks).byteLength })
+      seen.push({
+        path: req.url ?? '',
+        headers: req.headers,
+        bytes: Buffer.concat(chunks).byteLength,
+      })
       if (req.url === '/api/abort') {
         res.on('close', () => {
           if (!res.writableEnded) observeAbort()
@@ -441,33 +539,76 @@ test('production gateway preserves streaming, downloads, and uploads while strip
   const upstream = await startFakeUpstream()
   const proxy = await startWeb(upstream.url)
   try {
-    const streamed = await request(proxy, '/api/stream', {}, {
-      authorization: 'Bearer native-fixture',
-      'x-forwarded-host': new URL(proxy.origin).host,
-      'x-forwarded-proto': 'https',
-      'x-real-ip': '203.0.113.9',
-    })
+    const streamed = await request(
+      proxy,
+      '/api/stream',
+      {},
+      {
+        authorization: 'Bearer native-fixture',
+        'x-forwarded-host': new URL(proxy.origin).host,
+        'x-forwarded-proto': 'https',
+        'x-real-ip': '203.0.113.9',
+      },
+    )
     expect(streamed.status).toBe(200)
     const reader = streamed.body?.getReader()
-    expect(reader).toBeTruthy()
-    const first = await reader!.read()
+    if (!reader) throw new Error('the streamed response has no body')
+    const first = await reader.read()
     expect(new TextDecoder().decode(first.value)).toContain('"kind":"event"')
     upstream.releaseStream()
-    const second = await reader!.read()
+    const second = await reader.read()
     expect(new TextDecoder().decode(second.value)).toContain('"kind":"done"')
 
-    const download = await request(proxy, '/api/download', {}, {
-      authorization: 'Bearer native-fixture',
-    })
+    const download = await request(
+      proxy,
+      '/api/download',
+      {},
+      {
+        authorization: 'Bearer native-fixture',
+      },
+    )
     expect(await download.text()).toBe('download-proof')
 
     const form = new FormData()
     form.set('attachment', new Blob(['upload-proof']), 'proof.txt')
-    const upload = await request(proxy, '/api/upload', { method: 'POST', body: form }, {
-      authorization: 'Bearer native-fixture',
-    })
+    const upload = await request(
+      proxy,
+      '/api/upload',
+      { method: 'POST', body: form },
+      {
+        authorization: 'Bearer native-fixture',
+      },
+    )
     expect(upload.status).toBe(200)
     expect((await upload.json()) as { bytes: number }).toMatchObject({ bytes: expect.any(Number) })
+
+    // A chat message carrying a 5 MB attachment (base64 JSON) reaches the daemon whole.
+    const attachment = JSON.stringify({
+      message: 'see attached',
+      attachments: [{ name: 'photo.png', mimeType: 'image/png', data: 'A'.repeat(7_000_000) }],
+    })
+    const largeJson = await request(
+      proxy,
+      '/api/large-json',
+      { method: 'POST', body: attachment },
+      { authorization: 'Bearer native-fixture', 'content-type': 'application/json' },
+    )
+    expect(largeJson.status).toBe(200)
+    expect(await largeJson.json()).toEqual({ bytes: attachment.length })
+    // The browser session cookie earns the same body limit as a bearer.
+    const sessionJson = await request(
+      proxy,
+      '/api/large-json',
+      { method: 'POST', body: attachment },
+      {
+        cookie: '__Host-bz_session=fixture-session; __Host-bz_csrf=fixture-csrf',
+        origin: proxy.origin,
+        'x-bazilion-csrf': 'fixture-csrf',
+        'content-type': 'application/json',
+      },
+    )
+    expect(sessionJson.status).toBe(200)
+    expect(await sessionJson.json()).toEqual({ bytes: attachment.length })
 
     for (const observed of upstream.seen) {
       expect(observed.headers.forwarded).toBeUndefined()
@@ -534,7 +675,7 @@ test('production gateway propagates client disconnects to the upstream daemon re
   }
 }, 30_000)
 
-test('fresh install exchanges the bootstrap credential for a bounded setup session without a CLI prerequisite', async () => {
+test('fresh install exchanges the bootstrap credential for a session without a CLI prerequisite', async () => {
   const port = await findFreePort()
   const origin = `https://127.0.0.1:${port}`
   const freshDaemon = await startTestServer(
@@ -586,7 +727,7 @@ test('fresh install exchanges the bootstrap credential for a bounded setup sessi
       setupComplete: false,
       principal: {
         kind: 'session',
-        label: 'first-run browser session',
+        label: 'bootstrap',
       },
     })
     expect((await request(freshWeb, '/api/config/providers', {}, { cookie: cookies })).status).toBe(
@@ -608,6 +749,17 @@ test('fresh install exchanges the bootstrap credential for a bounded setup sessi
       ).status,
     ).toBe(400)
     expect((await request(freshWeb, '/api/agents', {}, { cookie: cookies })).status).toBe(409)
+    // Every Setup page works before the provider gate opens, and so does Log out.
+    for (const path of ['/api/mcp-servers', '/api/notifications']) {
+      expect((await request(freshWeb, path, {}, { cookie: cookies })).status).toBe(200)
+    }
+    const logout = await request(
+      freshWeb,
+      '/api/logout',
+      { method: 'POST' },
+      { cookie: cookies, origin, 'x-bazilion-csrf': csrf },
+    )
+    expect(logout.status).toBe(200)
 
     const cliMint = await freshDaemon.cli(['token', 'create', 'first-named-browser'])
     expect(cliMint.exitCode).toBe(0)
@@ -619,7 +771,6 @@ test('fresh install exchanges the bootstrap credential for a bounded setup sessi
     expect(await tokens.json()).toMatchObject({
       tokens: expect.arrayContaining([
         expect.objectContaining({ kind: 'bootstrap' }),
-        expect.objectContaining({ kind: 'device', label: 'first-run browser session' }),
         expect.objectContaining({ kind: 'device', label: 'first-named-browser' }),
       ]),
     })

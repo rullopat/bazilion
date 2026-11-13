@@ -13,18 +13,8 @@ beforeEach(async () => {
   mem = qmdBackend(root)
   await mem.init()
 })
-afterEach(async () => {
-  // The qmd indexer child can hold the directory briefly past the test; a
-  // plain rm races it on Windows (EPERM).
-  for (let attempt = 1; attempt <= 8; attempt++) {
-    try {
-      rmSync(root, { recursive: true, force: true })
-      return
-    } catch (error) {
-      if (attempt === 8) throw error
-      await new Promise((resolve) => setTimeout(resolve, attempt * 500))
-    }
-  }
+afterEach(() => {
+  rmSync(root, { recursive: true, force: true })
 })
 
 test('write then read returns the content', async () => {
@@ -41,8 +31,11 @@ test('write to nested key creates directories', async () => {
   expect(entry.content).toBe('today')
 })
 
-test('read missing key throws', async () => {
-  await expect(mem.read('ghost.md')).rejects.toThrow(/not found/)
+test('read missing key throws a not-found domain error', async () => {
+  await expect(mem.read('ghost.md')).rejects.toMatchObject({
+    status: 404,
+    message: 'memory entry not found: ghost.md',
+  })
 })
 
 test('list returns all entries sorted by key', async () => {
@@ -98,53 +91,52 @@ test('rejects unsafe keys with path traversal', async () => {
   await expect(mem.write('/abs/path', 'x')).rejects.toThrow(/unsafe/)
 })
 
-test.skipIf(process.platform === 'win32')(
-  'rejects symlink file escapes across read, write, remove, list, and search',
-  async () => {
-    const outside = mkdtempSync(join(tmpdir(), 'bazilion-mem-outside-'))
-    const secret = join(outside, 'secret.txt')
-    const link = join(root, 'leak.md')
-    writeFileSync(secret, 'host secret', 'utf8')
-    symlinkSync(secret, link)
+test('refuses a key that is not a markdown file, which would never be listed or found', async () => {
+  await expect(mem.write('notes/first', 'The cat is called Baziu')).rejects.toThrow(
+    'memory keys end in .md',
+  )
+  expect(existsSync(join(root, 'notes', 'first'))).toBe(false)
+})
 
-    try {
-      await expect(mem.read('leak.md')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
-      await expect(mem.write('leak.md', 'clobbered')).rejects.toThrow(
-        /unsafe memory path.*symbolic link/i,
-      )
-      await expect(mem.remove('leak.md')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
-      await expect(mem.list()).rejects.toThrow(/unsafe memory path.*symbolic link/i)
-      await expect(mem.search('secret')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+test('rejects symlink file escapes across read, write, remove, list, and search', async () => {
+  const outside = mkdtempSync(join(tmpdir(), 'bazilion-mem-outside-'))
+  const secret = join(outside, 'secret.txt')
+  const link = join(root, 'leak.md')
+  writeFileSync(secret, 'host secret', 'utf8')
+  symlinkSync(secret, link)
 
-      expect(readFileSync(secret, 'utf8')).toBe('host secret')
-      expect(existsSync(link)).toBe(true)
-    } finally {
-      rmSync(outside, { recursive: true, force: true })
-    }
-  },
-)
+  try {
+    await expect(mem.read('leak.md')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+    await expect(mem.write('leak.md', 'clobbered')).rejects.toThrow(
+      /unsafe memory path.*symbolic link/i,
+    )
+    await expect(mem.remove('leak.md')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+    await expect(mem.list()).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+    await expect(mem.search('secret')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
 
-test.skipIf(process.platform === 'win32')(
-  'rejects a symlinked directory ancestor before writing outside the root',
-  async () => {
-    const outside = mkdtempSync(join(tmpdir(), 'bazilion-mem-outside-dir-'))
-    const victim = join(outside, 'victim.md')
-    writeFileSync(victim, 'unchanged', 'utf8')
-    symlinkSync(outside, join(root, 'escape'), 'dir')
+    expect(readFileSync(secret, 'utf8')).toBe('host secret')
+    expect(existsSync(link)).toBe(true)
+  } finally {
+    rmSync(outside, { recursive: true, force: true })
+  }
+})
 
-    try {
-      await expect(mem.write('escape/victim.md', 'clobbered')).rejects.toThrow(
-        /unsafe memory path.*symbolic link/i,
-      )
-      await expect(mem.read('escape/victim.md')).rejects.toThrow(
-        /unsafe memory path.*symbolic link/i,
-      )
-      expect(readFileSync(victim, 'utf8')).toBe('unchanged')
-    } finally {
-      rmSync(outside, { recursive: true, force: true })
-    }
-  },
-)
+test('rejects a symlinked directory ancestor before writing outside the root', async () => {
+  const outside = mkdtempSync(join(tmpdir(), 'bazilion-mem-outside-dir-'))
+  const victim = join(outside, 'victim.md')
+  writeFileSync(victim, 'unchanged', 'utf8')
+  symlinkSync(outside, join(root, 'escape'), 'dir')
+
+  try {
+    await expect(mem.write('escape/victim.md', 'clobbered')).rejects.toThrow(
+      /unsafe memory path.*symbolic link/i,
+    )
+    await expect(mem.read('escape/victim.md')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+    expect(readFileSync(victim, 'utf8')).toBe('unchanged')
+  } finally {
+    rmSync(outside, { recursive: true, force: true })
+  }
+})
 
 test('persistence: a new backend instance sees previously written entries', async () => {
   await mem.write('persist.md', 'survives restart')

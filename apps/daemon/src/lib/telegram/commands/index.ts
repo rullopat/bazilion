@@ -1,22 +1,13 @@
-// Command registry + dispatcher.
-//
-// Two contexts:
-//   - SERVICE commands (`context: 'service'` or omitted) run inside the
-//     ⚙ bazilion topic and get registered in Telegram's slash menu via
-//     setMyCommands.
-//   - TOPIC commands (`context: 'topic'`) run inside bound agent topics
-//     and stay hidden from the autocomplete menu — they're documented in
-//     /help instead.
-//   - `context: 'any'` commands are callable from both surfaces. /help is
-//     the only one today; the topic-context branch enriches its output
-//     using ctx.agent.
+// Command registry and dispatcher. Service commands run in the ⚙ bazilion topic and fill
+// Telegram's slash menu; topic commands run inside an Agent topic and are listed by /help;
+// `any` commands (/help) work in both.
 
 import { handleAllow, handleAllowed, handleDeny } from './acl.ts'
 import { handle as handleClose } from './close.ts'
 import { handle as handleHealth } from './health.ts'
 import { handle as handleHelp } from './help.ts'
 import { handle as handleList } from './list.ts'
-import { handle as handleQueue } from './queue.ts'
+import { handleQueue, handleResume, handleStop } from './queue.ts'
 import { handle as handleRebind } from './rebind.ts'
 import { handle as handleSpawn } from './spawn.ts'
 import { handle as handleSpawnTeam } from './spawn-team.ts'
@@ -38,7 +29,7 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
     // Telegram command names allow only [a-z0-9_] — hence the underscore.
     // `spawn-team` is accepted as a typed alias (our parser is lenient).
     name: 'spawn_team',
-    description: 'Spawn a whole profile team (team template) at once',
+    description: 'Spawn a whole team template at once',
     handle: handleSpawnTeam,
     aliases: ['spawn-team'],
   },
@@ -59,17 +50,23 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
     handle: handleDeny,
   },
 
-  // Cross-context — /help works in either surface; the handler reads
-  // ctx.agent to decide whether to render the topic-context section.
+  // /help reads ctx.agent to decide which reference to show.
   { name: 'help', description: 'Command reference', handle: handleHelp, context: 'any' },
 
-  // Topic-context surface — hidden from setMyCommands per doc decision.
+  // Topic commands, kept out of the slash menu.
   {
     name: 'queue',
-    description: 'Inspect and control durable follow-ups',
+    description: "List or drop this agent's waiting messages",
     handle: handleQueue,
     context: 'topic',
   },
+  {
+    name: 'stop',
+    description: 'Pause the queue and cancel the running turn',
+    handle: handleStop,
+    context: 'topic',
+  },
+  { name: 'resume', description: 'Resume the queue', handle: handleResume, context: 'topic' },
   { name: 'close', description: 'Close this agent topic', handle: handleClose, context: 'topic' },
   {
     name: 'rebind',
@@ -111,8 +108,8 @@ export interface ParsedCommand {
 /**
  * Pull `{name, args}` out of a message body if it starts with a slash command.
  * Returns null when the body doesn't look like a command (no leading slash,
- * mention-only, etc.). Strips `@botname` suffix Telegram adds when commands
- * are issued in teams (`/talk@bazilion_bot foo` → `{name: 'talk', args: 'foo'}`).
+ * mention-only, etc.). Strips the `@botname` suffix Telegram adds to commands in
+ * groups (`/talk@bazilion_bot foo` → `{name: 'talk', args: 'foo'}`).
  */
 export function parseCommand(text: string | undefined): ParsedCommand | null {
   if (!text) return null

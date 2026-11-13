@@ -21,7 +21,7 @@ async function invoke(result: unknown) {
     args: [],
     url: f.url,
   }
-  return callMcpTool(server, 'foo', {}, { env: {}, idleMs: 60_000 })
+  return callMcpTool(server, 'foo', {}, { connect: () => ({}) })
 }
 test('maps text + image content blocks', async () => {
   expect(
@@ -41,10 +41,10 @@ test('maps embedded resource text', async () => {
     await invoke({ content: [{ type: 'resource', resource: { uri: 'file://x', text: 'body' } }] }),
   ).toEqual([{ type: 'text', text: 'body' }])
 })
-test('server error is an error, not success or a replay; remote secrets are not exposed', async () => {
+test('a tool error is thrown with the server text, so the model sees why', async () => {
   await expect(
-    invoke({ isError: true, content: [{ type: 'text', text: 'PRIVATE_FIXTURE_TOKEN' }] }),
-  ).rejects.toThrow(/may have taken effect.*Not replayed/)
+    invoke({ isError: true, content: [{ type: 'text', text: 'bad argument: selector' }] }),
+  ).rejects.toThrow('bad argument: selector')
   expect(fixtures[0]?.requests.filter((r) => r.method === 'tools/call')).toHaveLength(1)
 })
 test('empty content yields a placeholder part', async () => {
@@ -56,7 +56,7 @@ test.each([
   42,
   'structured text',
   false,
-])('structured JSON %j is projected without replay', async (value) => {
+])('structured JSON %j is projected as text', async (value) => {
   expect(await invoke({ structuredContent: value })).toEqual([
     { type: 'text', text: JSON.stringify(value, null, 2) },
   ])

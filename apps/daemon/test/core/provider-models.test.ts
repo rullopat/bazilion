@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import {
   type BazilionDb,
+  initSchema,
   openInMemoryDb,
   providerModelRepo,
-  runMigrations,
 } from '../../src/core/index.ts'
 
 let db: BazilionDb
 
 beforeEach(() => {
-  db = openInMemoryDb()
-  runMigrations(db)
+  db = openInMemoryDb('')
+  initSchema(db)
 })
 afterEach(() => {
   db.close()
@@ -37,21 +37,4 @@ test('replace trims whitespace and drops empties + duplicates', () => {
     'claude-opus-4-6',
   ])
   expect(providerModelRepo.list(db, 'anthropic')).toEqual(['claude-opus-4-6', 'claude-sonnet-4-6'])
-})
-
-test('listAll teams by provider and omits empties', () => {
-  providerModelRepo.replace(db, 'openai', ['gpt-4o'])
-  providerModelRepo.replace(db, 'anthropic', ['claude-opus-4-6', 'claude-sonnet-4-6'])
-  expect(providerModelRepo.listAll(db)).toEqual({
-    anthropic: ['claude-opus-4-6', 'claude-sonnet-4-6'],
-    openai: ['gpt-4o'],
-  })
-})
-
-test('remove drops a single entry', () => {
-  providerModelRepo.replace(db, 'groq', ['llama-3.3-70b', 'mixtral-8x7b'])
-  providerModelRepo.remove(db, 'groq', 'mixtral-8x7b')
-  expect(providerModelRepo.list(db, 'groq')).toEqual(['llama-3.3-70b'])
-  providerModelRepo.remove(db, 'groq', 'not-present')
-  expect(providerModelRepo.list(db, 'groq')).toEqual(['llama-3.3-70b'])
 })

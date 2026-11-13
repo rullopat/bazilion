@@ -1,8 +1,10 @@
 import { afterEach, expect, test } from 'vitest'
-import { createToolRegistry } from '../../src/runtime/tools/registry.ts'
-import { protectedWebFetchTool, webTools } from '../../src/runtime/tools/web.ts'
+import { type WebFetchOpts, webFetchTool } from '../../src/runtime/tools/web.ts'
 import { isPrivateIpAddress } from '../../src/runtime/tools/web-ssrf.ts'
+import { createToolRegistry } from '../fixtures/tool-registry.ts'
 import { type MockServer, startMockServer } from './mock-server.ts'
+
+const webTools = (opts?: WebFetchOpts) => [webFetchTool(opts)]
 
 let server: MockServer | null = null
 afterEach(async () => {
@@ -206,30 +208,6 @@ test('web_fetch swallows Firecrawl failures and returns primary extraction', asy
   expect(result).not.toThrow
 })
 
-test('web_fetch firecrawlDisabled opt suppresses fallback even with API key set', async () => {
-  let firecrawlHits = 0
-  const base = await startMock(async (req) => {
-    const u = new URL(req.url)
-    if (u.pathname === '/v1/scrape') {
-      firecrawlHits += 1
-      return new Response('should not be called', { status: 500 })
-    }
-    return new Response('<html><body></body></html>', {
-      headers: { 'content-type': 'text/html' },
-    })
-  })
-  const tools = createToolRegistry(
-    webTools({
-      fetchImpl: fetch,
-      allowPrivate: true,
-      firecrawlDisabled: true,
-      env: { FIRECRAWL_API_KEY: 'fc-test', FIRECRAWL_URL: base },
-    }),
-  )
-  await tools.invoke('web_fetch', JSON.stringify({ url: `${base}/spa` }))
-  expect(firecrawlHits).toBe(0)
-})
-
 test('web_fetch throws on non-2xx', async () => {
   const base = await startMock(() => new Response('nope', { status: 404 }))
   const tools = createToolRegistry(webTools({ fetchImpl: fetch, allowPrivate: true }))
@@ -300,35 +278,6 @@ test.each([
   expect(isPrivateIpAddress(address)).toBe(false)
 })
 
-test('protected web surface exposes fetch only and cannot re-enable private or credentialed backends', async () => {
-  let hits = 0
-  const base = await startMock(() => {
-    hits += 1
-    return new Response('<html><body></body></html>', {
-      headers: { 'content-type': 'text/html' },
-    })
-  })
-  const maliciousOptions = {
-    fetchImpl: fetch,
-    allowPrivate: true,
-    firecrawlDisabled: false,
-    env: {
-      BRAVE_API_KEY: 'must-not-pass',
-      FIRECRAWL_API_KEY: 'must-not-pass',
-      FIRECRAWL_URL: base,
-      SEARXNG_URL: base,
-    },
-  } as unknown as Parameters<typeof protectedWebFetchTool>[0]
-  const tools = createToolRegistry([protectedWebFetchTool(maliciousOptions)])
-
-  expect(tools.list().map((tool) => tool.name)).toEqual(['web_fetch'])
-  expect(tools.list()[0]?.description).toContain('Private, loopback, link-local')
-  await expect(
-    tools.invoke('web_fetch', JSON.stringify({ url: `${base}/private` })),
-  ).rejects.toThrow(/blocked|private/i)
-  expect(hits).toBe(0)
-})
-
 test('web_fetch blocks localhost by default', async () => {
   const tools = createToolRegistry(webTools())
   await expect(
@@ -343,77 +292,8 @@ test('web_fetch blocks non-http(s) schemes', async () => {
   ).rejects.toThrow(/http or https/i)
 })
 
-test('web_search tools are registered', () => {
+test('web tools provide only web_fetch; search is daemon-owned', () => {
   const tools = createToolRegistry(webTools())
-  expect(tools.has('web_search')).toBe(true)
   expect(tools.has('web_fetch')).toBe(true)
-})
-
-test('web_search rejects empty query', async () => {
-  const tools = createToolRegistry(webTools())
-  await expect(tools.invoke('web_search', JSON.stringify({ query: '' }))).rejects.toThrow(
-    /query is required/,
-  )
-})
-
-test('web_search errors when no backend is configured', async () => {
-  const tools = createToolRegistry(webTools({ env: {} }))
-  await expect(tools.invoke('web_search', JSON.stringify({ query: 'test' }))).rejects.toThrow(
-    /no search backend configured/,
-  )
-})
-
-test('web_search uses Brave when BRAVE_API_KEY is set', async () => {
-  let capturedHeaders = null as Headers | null
-  const base = await startMock((req) => {
-    capturedHeaders = req.headers
-    return new Response(
-      JSON.stringify({
-        web: {
-          results: [
-            {
-              title: 'Weather Krakow',
-              url: 'https://weather.example.com/krakow',
-              description: 'Sunny, 22°C',
-            },
-          ],
-        },
-      }),
-      { headers: { 'content-type': 'application/json' } },
-    )
-  })
-  const tools = createToolRegistry(
-    webTools({
-      fetchImpl: async (input, init) => {
-        const url =
-          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-        const redirected = url.replace('https://api.search.brave.com', base)
-        return fetch(redirected, init)
-      },
-      env: { BRAVE_API_KEY: 'test-key' },
-    }),
-  )
-  const result = await tools.invoke('web_search', JSON.stringify({ query: 'weather krakow' }))
-  expect(result).toContain('Weather Krakow')
-  expect(result).toContain('Sunny')
-  expect(result).toContain('weather.example.com')
-  expect(capturedHeaders?.get('x-subscription-token')).toBe('test-key')
-})
-
-test('web_search uses SearXNG when SEARXNG_URL is set', async () => {
-  const base = await startMock(
-    () =>
-      new Response(
-        JSON.stringify({
-          results: [
-            { title: 'News', url: 'https://news.example.com', content: 'Latest headlines' },
-          ],
-        }),
-        { headers: { 'content-type': 'application/json' } },
-      ),
-  )
-  const tools = createToolRegistry(webTools({ env: { SEARXNG_URL: base } }))
-  const result = await tools.invoke('web_search', JSON.stringify({ query: 'news' }))
-  expect(result).toContain('News')
-  expect(result).toContain('Latest headlines')
+  expect(tools.has('web_search')).toBe(false)
 })

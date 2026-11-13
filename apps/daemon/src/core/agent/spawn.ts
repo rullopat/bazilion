@@ -1,13 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Agent, ReasoningLevel, TeamPolicyPlacement } from '@bazilion/api-types'
+import { type Agent, DEFAULT_TEAM_ID, type ReasoningLevel } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { DomainError } from '../errors.ts'
 import type { Paths } from '../paths.ts'
 import { loadProfile } from '../profile/load.ts'
-import { DEFAULT_TEAM_ID } from '../profile/seed.ts'
 import * as agentRepo from '../repos/agents.ts'
-import * as teamPolicyRepo from '../repos/teamPolicies.ts'
 import * as teamRepo from '../repos/teams.ts'
 import { discoverSkills } from '../skills/discover.ts'
 
@@ -22,10 +21,6 @@ export interface SpawnAgentInput {
    * used everywhere we need a sensible cwd. Must refer to an existing team.
    */
   teamId?: string
-  /** Internal batch-spawn switch; the caller regenerates/bump the aggregate once. */
-  deferTeamPolicyUpdate?: boolean
-  teamExpectedRevision?: number
-  placement?: Exclude<TeamPolicyPlacement, 'template_snapshot'>
 }
 
 export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput): Agent {
@@ -34,9 +29,7 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
   const dir = paths.agentDir(id)
   try {
     return db.raw.transaction(() => {
-      // Agent's private home: identity files + sessions. Memory now lives at
-      // the team level (`teams/<slug>/memory/`), shared by all member agents,
-      // so we no longer create per-agent memory dirs here.
+      // Agent's private home: identity files + sessions. Memory is Team-level.
       mkdirSync(dir, { recursive: true })
       mkdirSync(join(dir, 'sessions'), { recursive: true })
 
@@ -65,40 +58,18 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
       const teamId = input.teamId ?? DEFAULT_TEAM_ID
       const team = teamRepo.get(db, teamId, paths)
       if (!team) {
-        throw new Error(
+        throw new DomainError(
+          400,
           `spawnAgent: team "${teamId}" does not exist. Pass an explicit --team or complete first-run setup first.`,
         )
       }
-      let placement = input.placement
-      if (!input.deferTeamPolicyUpdate) {
-        const teamPolicy = teamPolicyRepo.get(db, team.id)
-        if (!teamPolicy) throw new Error(`team_policy_missing: ${team.id}`)
-        const expectedRevision = input.teamExpectedRevision ?? teamPolicy.revision
-        placement ??= 'profile_defaults'
-        if (teamPolicy.revision !== expectedRevision) {
-          throw new Error(
-            `team_revision_conflict: expected ${expectedRevision}, current ${teamPolicy.revision}`,
-          )
-        }
-      }
-
-      const agentJson = {
+      const agent = agentRepo.insert(db, {
+        id,
         profileId: input.profileId,
         name: input.name ?? loaded.profile.name,
         modelOverride: input.modelOverride ?? null,
         reasoningLevel,
-        teamId: team.id,
-      }
-      writeFileSync(join(dir, 'agent.json'), `${JSON.stringify(agentJson, null, 2)}\n`)
-
-      const agent = agentRepo.insert(db, {
-        id,
-        profileId: input.profileId,
-        name: agentJson.name,
-        modelOverride: agentJson.modelOverride,
-        reasoningLevel,
         status: 'idle',
-        dir,
         teamId: team.id,
       })
 
@@ -110,18 +81,6 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
           ? discoverSkills(paths).map((s) => s.name)
           : loaded.defaultSkills
       for (const s of skills) agentRepo.attachSkill(db, id, s)
-
-      if (!input.deferTeamPolicyUpdate) {
-        teamPolicyRepo.insertAgentState(db, team.id, agent.id)
-        teamPolicyRepo.addPlacementEdges(
-          db,
-          team.id,
-          agent.id,
-          placement as Exclude<TeamPolicyPlacement, 'template_snapshot'>,
-          input.profileId,
-        )
-        teamPolicyRepo.bumpRevision(db, team.id)
-      }
 
       return agent
     })()

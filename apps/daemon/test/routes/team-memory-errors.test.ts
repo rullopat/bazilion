@@ -62,9 +62,9 @@ test('Team memory reports native qmd failures as sanitized server errors', async
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const ctx = getCtx()
   registerTeam(ctx.db, { id: 'g' }, ctx.paths)
-  const { teamsRouter } = await import('../../src/routes/teams.ts')
+  const { teamMemoryRouter } = await import('../../src/routes/team-memory.ts')
 
-  const response = await teamsRouter.request('/g/memory')
+  const response = await teamMemoryRouter.request('/g/memory')
   expect(response.status).toBe(500)
   const body = (await response.json()) as { error: string }
   expect(body.error).toMatch(
@@ -74,9 +74,9 @@ test('Team memory reports native qmd failures as sanitized server errors', async
 })
 
 test('Team memory keeps missing Teams classified as not found', async () => {
-  const { teamsRouter } = await import('../../src/routes/teams.ts')
+  const { teamMemoryRouter } = await import('../../src/routes/team-memory.ts')
 
-  const response = await teamsRouter.request('/missing/memory')
+  const response = await teamMemoryRouter.request('/missing/memory')
   expect(response.status).toBe(404)
   expect(await response.json()).toEqual({ error: 'team not found: missing' })
 })

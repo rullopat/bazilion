@@ -1,8 +1,5 @@
-// Canonical entity shapes. The daemon's DB schema (apps/daemon/src/core/db)
-// produces these, the daemon serialises them onto the wire, every client
-// (web, mobile, cli, future SDKs) consumes them. Owned here so clients never
-// have to reach into daemon source (which carries node:sqlite) just to know
-// what an Agent is.
+// Entity shapes: the daemon reads them from its database and sends them as they are, and the CLI
+// and the web consume them.
 
 export type Timestamp = number
 
@@ -25,8 +22,14 @@ export interface Team {
    * {team.slug}. Must contain {agent.name} so topics stay distinct.
    */
   telegramTopicNameFormat: string | null
+  /** Who may message whom inside the Team; see TeamPolicy. */
+  policyMode: TeamPolicyMode
   createdAt: Timestamp
 }
+
+/** The Team and the Profile first-run setup creates. */
+export const DEFAULT_TEAM_ID = 'default'
+export const DEFAULT_PROFILE_ID = 'default'
 
 export type SkillsMode = 'all' | 'selected'
 
@@ -38,243 +41,62 @@ export interface Profile {
   skillsMode: SkillsMode
   createdAt: Timestamp
   updatedAt: Timestamp
-  /** Creation-time policy defaults. Missing/null is neutral; runtime never inherits it. */
-  communicationDefaults?: ProfileCommunicationDefaults | null
 }
 
-export type ProfilePeerDefault = 'inherit_team_policy' | 'allow_all' | 'deny_all'
+/**
+ * open: Team members may message each other freely. restricted: a member may message a
+ * teammate only along an allow edge. Messages between Teams always need an edge to
+ * `outside` in the sender's Team and one from `outside` in the recipient's Team.
+ */
+export type TeamPolicyMode = 'open' | 'restricted'
 
-export interface ProfileCommunicationDefaults {
-  userInput: boolean
-  userOutput: boolean
-  outsideTeamInput: boolean
-  outsideTeamOutput: boolean
-  peerDefault: ProfilePeerDefault
-}
+/** Edge endpoint standing for every Agent in other Teams. */
+export const OUTSIDE_TEAM = 'outside'
 
-export type TeamPolicyPlacement = 'isolated' | 'profile_defaults' | 'template_snapshot'
-export type TemplateEndpointKind = 'user' | 'outside_team' | 'slot'
-export type LiveEndpointKind = 'user' | 'outside_team' | 'agent'
-
-export type CommunicationEndpoint =
-  | { kind: 'agent'; id: string }
-  | { kind: 'user'; teamId: string }
-  | { kind: 'outside_team'; teamId: string }
-export type CommunicationChannel = 'same_team' | 'cross_team' | 'user' | 'outside_team'
-export type CommunicationEdgePosture = 'allow' | 'approval_required'
-export type CommunicationDecision = 'allow' | 'deny' | 'approval_required'
-export interface CommunicationPolicyRef {
-  teamId: string
-  revision: number
-}
-export interface CommunicationComponentOutcome {
-  teamId: string
-  edge: string
-  matched: boolean
-  posture: CommunicationEdgePosture | null
-}
-export interface CommunicationAuthorizationResult {
-  decision: CommunicationDecision
-  channel: CommunicationChannel
-  reasonCode: string
-  reason: string
-  policyRefs: CommunicationPolicyRef[]
-  componentOutcomes: CommunicationComponentOutcome[]
-  matchedEdgeIds: string[]
-  requiredEdgeIds: string[]
-}
-
-export interface TeamPolicyBlockEvent {
-  id: string
-  attempt_kind: string
-  attempt_id: string
-  operation: string
-  source_kind: string
-  source_id: string
-  target_kind: string
-  target_id: string
-  source_team_id: string
-  target_team_id: string
-  channel: CommunicationChannel
-  origin: string
-  reason_code: string
-  reason: string
-  created_at: Timestamp
-  policyRefs: CommunicationPolicyRef[]
-  componentOutcomes: CommunicationComponentOutcome[]
-  matchedEdgeIds: string[]
-  requiredEdgeIds: string[]
-}
-
-export interface TeamPolicyBlockPage {
-  blocks: TeamPolicyBlockEvent[]
-  nextCursor: string | null
-}
-
-export interface TeamTemplate {
-  id: string
-  name: string
-  userMd: string | null
-  currentRevision: number
-  deletedAt: Timestamp | null
-  createdAt: Timestamp
-  updatedAt: Timestamp
-}
-
-export interface TeamTemplateSlot {
-  templateId: string
-  slotId: string
-  position: number
-  profileId: string
-  agentName: string
-  modelOverride: string | null
-  reasoningLevel: ReasoningLevel | null
-  layoutPosition: { x: number; y: number } | null
-  display: Record<string, unknown> | null
-  tombstonedAt: Timestamp | null
-}
-
-export interface TeamTemplateEdge {
-  templateId: string
-  sourceKind: TemplateEndpointKind
-  sourceId: string | null
-  targetKind: TemplateEndpointKind
-  targetId: string | null
-  posture: CommunicationEdgePosture
-}
-
-export interface TeamTemplateRevision {
-  templateId: string
-  revision: number
-  name: string
-  userMd: string | null
-  slots: TeamTemplateSlot[]
-  edges: TeamTemplateEdge[]
-  createdAt: Timestamp
-}
-
-export interface TeamTemplateDetail {
-  template: TeamTemplate
-  slots: TeamTemplateSlot[]
-  edges: TeamTemplateEdge[]
-  currentSnapshot: TeamTemplateRevision
-}
-
-export interface TeamTemplateWithCount extends TeamTemplate {
-  slotCount: number
+/** Directed allow edge between a member Agent id and another member or `outside`. */
+export interface TeamPolicyEdge {
+  from: string
+  to: string
 }
 
 export interface TeamPolicy {
   teamId: string
-  revision: number
-  baselineInstantiationId: string | null
-  updatedAt: Timestamp
-}
-
-export interface TeamPolicyEdge {
-  teamId: string
-  sourceKind: LiveEndpointKind
-  sourceId: string | null
-  targetKind: LiveEndpointKind
-  targetId: string | null
-  posture: CommunicationEdgePosture
-}
-
-export type CommunicationApprovalStatus =
-  | 'pending'
-  | 'approved'
-  | 'denied'
-  | 'expired'
-  | 'cancelled'
-  | 'delivering'
-  | 'delivered'
-  | 'delivery_failed'
-
-export interface CommunicationApproval {
-  id: string
-  attemptKind: string
-  attemptId: string
-  operation: string
-  source: CommunicationEndpoint
-  target: CommunicationEndpoint
-  sourceTeamId: string | null
-  targetTeamId: string | null
-  channel: CommunicationChannel
-  origin: string
-  requester: string
-  policyRefs: CommunicationPolicyRef[]
-  requiredEdgeIds: string[]
-  payloadKind: string
-  status: CommunicationApprovalStatus
-  expiresAt: Timestamp
-  decidedAt: Timestamp | null
-  decidedBy: string | null
-  decisionReason: string | null
-  deliveryError: string | null
-  createdAt: Timestamp
-  updatedAt: Timestamp
-}
-
-export interface CommunicationApprovalDetail extends CommunicationApproval {
-  payload: unknown
-  events: CommunicationApprovalEvent[]
-  /** Captured file metadata for review; does not grant access to held bytes. */
-  file?: { name: string; mimeType: string; byteLength: number }
-}
-
-export interface CommunicationApprovalEvent {
-  id: string
-  approvalId: string
-  event:
-    | 'requested'
-    | 'approved'
-    | 'denied'
-    | 'expired'
-    | 'cancelled'
-    | 'delivery_started'
-    | 'delivered'
-    | 'delivery_failed'
-  actor: string
-  detail: string | null
-  createdAt: Timestamp
-}
-
-export interface TemplateInstantiation {
-  id: string
-  teamId: string
-  templateId: string
-  templateRevision: number
-  createdAt: Timestamp
-}
-
-export interface SourceSlotBinding {
-  agentId: string
-  instantiationId: string
-  sourceSlotId: string
-}
-
-export interface TeamAgentState {
-  agentId: string
-  teamId: string
-  position: { x: number; y: number } | null
-  display: Record<string, unknown> | null
-}
-
-export interface TeamPolicyDetail {
-  teamPolicy: TeamPolicy
+  mode: TeamPolicyMode
   edges: TeamPolicyEdge[]
-  instantiations: TemplateInstantiation[]
-  bindings: SourceSlotBinding[]
-  agentState: TeamAgentState[]
-}
-
-export interface ResolvedTeamPolicy extends TeamPolicyDetail {
-  baseline: TemplateInstantiation | null
-  /** Canonical membership projection; includes archived Agents. */
+  /** The Team's members, archived Agents included. */
   members: Agent[]
 }
 
-export type AgentStatus = 'idle' | 'running' | 'archived'
+export interface TeamTemplateSlot {
+  profileId: string
+  agentName: string
+  modelOverride: string | null
+  reasoningLevel: ReasoningLevel | null
+  /** Node position in the template's Flow editor. */
+  layoutPosition: { x: number; y: number } | null
+}
+
+/** A slot position (index into `slots`) or `outside`. */
+export type TeamTemplateEndpoint = number | typeof OUTSIDE_TEAM
+
+export interface TeamTemplateEdge {
+  from: TeamTemplateEndpoint
+  to: TeamTemplateEndpoint
+}
+
+/** A reusable roster: spawning it creates one Agent per slot plus the edges between them. */
+export interface TeamTemplate {
+  id: string
+  name: string
+  userMd: string | null
+  policyMode: TeamPolicyMode
+  slots: TeamTemplateSlot[]
+  edges: TeamTemplateEdge[]
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+export type AgentStatus = 'idle' | 'archived'
 
 export type ReasoningLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
@@ -315,7 +137,7 @@ export interface Agent {
    * deep-link based on this.
    */
   telegramTopicId: number | null
-  /** Verbosity of the Telegram outbound mirror for this agent (Step 6). */
+  /** Verbosity of the Telegram outbound mirror for this agent. */
   telegramMirrorMode: TelegramMirrorMode
   /**
    * Per-agent override of the forum-topic emoji icon (a single emoji char,
@@ -337,13 +159,7 @@ export interface Agent {
   identity?: AgentIdentityFile | null
 }
 
-export type AgentReviewStatus =
-  | 'pending'
-  | 'running'
-  | 'retrying'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
+export type AgentReviewStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 export type AgentReviewTrigger = 'cadence' | 'manual'
 
 export interface AgentReview {
@@ -357,9 +173,6 @@ export interface AgentReview {
   inputCharacters: number
   turnsReviewed: number
   proposalCount: number
-  attemptCount: number
-  nextAttemptAt: Timestamp
-  leaseExpiresAt: Timestamp | null
   startedAt: Timestamp | null
   finishedAt: Timestamp | null
   lastError: string | null
@@ -402,8 +215,8 @@ export interface AgentSkillAttachment {
 export type TelegramAclRole = 'owner' | 'member'
 
 /**
- * A Telegram user allowed to use the bot (Phase 7). Flat scope: presence in
- * this list grants commands + chat. `owner` can manage the list and can't be
+ * A Telegram user allowed to use the bot. Presence in this list grants
+ * commands + chat. `owner` (the paired person) manages the list and can't be
  * removed; `member` can use the bot but not manage it.
  */
 export interface TelegramAllowedUser {
@@ -447,20 +260,11 @@ export interface AgentLoopBreakEvent {
   createdAt: Timestamp
 }
 
-/**
- * BAZ-055: authorization scopes for device tokens. The bootstrap token holds
- * all scopes implicitly (single operator). Stored in `web_tokens.scopes` as a
- * space-separated list.
- */
-export const DEVICE_TOKEN_SCOPES = ['read', 'write', 'approvals', 'admin'] as const
-export type DeviceTokenScope = (typeof DEVICE_TOKEN_SCOPES)[number]
-export const ALL_DEVICE_TOKEN_SCOPES: readonly DeviceTokenScope[] = DEVICE_TOKEN_SCOPES
-
+/** Every token has full access. `expiresAt` null means it never expires. */
 export interface WebToken {
   id: string
   label: string
   kind: 'bootstrap' | 'device'
-  scopes: DeviceTokenScope[]
   createdAt: Timestamp
   lastUsedAt: Timestamp | null
   expiresAt: Timestamp | null
@@ -469,13 +273,13 @@ export interface WebToken {
 
 export interface WebSession {
   id: string
-  deviceTokenId: string
-  deviceLabel: string
+  /** The token (bootstrap or device) the browser logged in with. */
+  tokenId: string
+  tokenLabel: string
   createdAt: Timestamp
   lastSeenAt: Timestamp
-  idleExpiresAt: Timestamp
-  absoluteExpiresAt: Timestamp
-  revokedAt: Timestamp | null
+  /** Moves forward on every use: a session ends once unused for 30 days. */
+  expiresAt: Timestamp
   current: boolean
 }
 
@@ -493,14 +297,10 @@ export interface AgentTrigger {
   createdAt: Timestamp
 }
 
-export type TriggerDispatchStatus =
-  | 'pending'
-  | 'running'
-  | 'retrying'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled'
+/** pending waits for a free Agent; each occurrence runs at most once. */
+export type TriggerDispatchStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
+/** One scheduled occurrence of a trigger: the trigger's run history. */
 export interface TriggerDispatch {
   conversationId: string
   id: string
@@ -508,14 +308,9 @@ export interface TriggerDispatch {
   agentId: string
   scheduledAt: Timestamp
   status: TriggerDispatchStatus
-  attemptCount: number
-  nextAttemptAt: Timestamp
-  leaseExpiresAt: Timestamp | null
   startedAt: Timestamp | null
   finishedAt: Timestamp | null
-  lastError: string | null
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  error: string | null
 }
 
 export interface OpenAICodexStatus {
@@ -596,5 +391,4 @@ export interface LoadedProfile {
   }
   /** Structured fields parsed from IDENTITY.md — null when no values are set. */
   identity: AgentIdentityFile | null
-  communicationDefaults?: ProfileCommunicationDefaults | null
 }

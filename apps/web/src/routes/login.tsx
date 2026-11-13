@@ -7,18 +7,14 @@ import { ThemeToggle } from '../components/ThemeToggle'
 export const Route = createFileRoute('/login')({
   // Failed form submissions return to this branded page with a specific,
   // actionable reason. The field stays optional for normal auth redirects.
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { error?: 'token' | 'origin'; resultId?: string } => ({
-    resultId: typeof search.resultId === 'string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(search.resultId) ? search.resultId : undefined,
-    error:
-      search.error === 'token' || search.error === 'origin' ? search.error : undefined,
+  validateSearch: (search: Record<string, unknown>): { error?: 'token' | 'origin' } => ({
+    error: search.error === 'token' || search.error === 'origin' ? search.error : undefined,
   }),
   component: LoginPage,
 })
 
 function LoginPage() {
-  const { error, resultId } = Route.useSearch()
+  const { error } = Route.useSearch()
   return (
     <main className="relative flex min-h-dvh items-center overflow-hidden bg-cream px-5 py-16 sm:px-8">
       <div
@@ -47,7 +43,10 @@ function LoginPage() {
             you can actually see and control.
           </p>
           <div className="mt-8 grid max-w-lg gap-3 sm:grid-cols-2">
-            <LoginFeature icon={<MessageSquareText className="h-4 w-4" />} label="Persistent conversations" />
+            <LoginFeature
+              icon={<MessageSquareText className="h-4 w-4" />}
+              label="Persistent conversations"
+            />
             <LoginFeature icon={<UsersRound className="h-4 w-4" />} label="Team-owned context" />
           </div>
         </section>
@@ -62,12 +61,12 @@ function LoginPage() {
           </div>
           <h2 className="font-display text-3xl text-charcoal">Open Bazilion</h2>
           <p className="mt-2 text-sm leading-6 text-mocha-light">
-            Use the fresh-install credential once, then a named device token for future sign-ins.
+            Sign in with the bootstrap token from <code>auth.json</code> or a device token.
           </p>
           {error === 'token' && (
             <div className="err mt-5" role="alert">
-              That credential was not accepted. On first run, use the bootstrap token from{' '}
-              <code>auth.json</code>; afterward, use a named device token.
+              That token was not accepted. Use the bootstrap token from <code>auth.json</code> or an
+              active, unrevoked device token.
             </div>
           )}
           {error === 'origin' && (
@@ -77,7 +76,6 @@ function LoginPage() {
             </div>
           )}
           <form method="POST" action="/api/login" className="mt-6 text-left">
-            {resultId && <input type="hidden" name="resultId" value={resultId} />}
             <label htmlFor="token" className="block text-[0.85em] font-semibold text-mocha">
               Access token
             </label>
@@ -96,9 +94,9 @@ function LoginPage() {
             </button>
           </form>
           <p className="mt-5 rounded-xl bg-ivory px-3 py-2.5 text-[0.78em] leading-relaxed text-mocha-light">
-            Fresh install? Paste the bootstrap token from <code>auth.json</code>; it is accepted
-            only until provider setup is complete and is exchanged for a bounded session. For
-            later sign-ins, run <code>bazilion token create browser</code> on the server.
+            Print the bootstrap token with <code>bazilion token show-local</code>, or mint a device
+            token with <code>bazilion token create &lt;label&gt;</code>. The browser keeps a session
+            that ends after 30 days without use.
           </p>
         </section>
       </div>

@@ -1,117 +1,64 @@
-import { type AgentResult, imageGenerationRouteLabel } from '@bazilion/api-types'
-import { useEffect, useRef, useState } from 'react'
+import type { AgentResult } from '@bazilion/api-types'
+import { useEffect, useState } from 'react'
+import { ApiError, api, apiFetch, errorMessage } from '../lib/api'
 import { Button } from './Button'
 
+const PREVIEW_IMAGE = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+const PREVIEW_TEXT = ['text/plain', 'text/markdown']
+
+/** A saved result: name, size, download and, for images and text, a preview. */
 export function ResultCard({
   resultId,
-  showPreview: requestedPreview = false,
+  result: preloaded,
+  showPreview = false,
 }: {
   resultId: string
+  /** Pass the result when it is already loaded, e.g. from a results list. */
+  result?: AgentResult
   showPreview?: boolean
 }) {
-  const [result, setResult] = useState<AgentResult | null>(null)
-  const showPreview = requestedPreview || Boolean(result?.imageModel)
+  const [result, setResult] = useState<AgentResult | null>(preloaded ?? null)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<'download' | 'preview' | null>(null)
-  const [preview, setPreview] = useState<{ text?: string; image?: string } | null>(null)
-  const requests = useRef<AbortController | null>(null)
+  const [text, setText] = useState<string | null>(null)
+  const [imageOpen, setImageOpen] = useState(false)
+  const path = `/api/results/${encodeURIComponent(resultId)}`
 
   useEffect(() => {
+    if (preloaded) return
     const controller = new AbortController()
-    requests.current = controller
-    setLoading(true)
-    setResult(null)
-    setPreview(null)
-    setError('')
-    setBusy(null)
-    fetch(`/api/results/${encodeURIComponent(resultId)}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('This result is unavailable or has not been released.')
-        const data = (await response.json()) as { result: AgentResult }
-        if (!controller.signal.aborted) setResult(data.result)
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted) setError(err.message)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+    api<{ result: AgentResult }>(path, { signal: controller.signal })
+      .then((body) => setResult(body.result))
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return
+        setError(
+          cause instanceof ApiError && cause.status === 404
+            ? 'This saved file is unavailable (it may have been deleted).'
+            : errorMessage(cause),
+        )
       })
     return () => controller.abort()
-  }, [resultId])
+  }, [path, preloaded])
 
-  async function loadPreview() {
-    const controller = requests.current
-    if (!controller || controller.signal.aborted) return
-    setBusy('preview')
+  async function toggleText() {
+    if (text !== null) return setText(null)
     setError('')
     try {
-      const response = await fetch(`/api/results/${encodeURIComponent(resultId)}/preview`, {
-        signal: controller.signal,
-      })
-      if (!response.ok) {
-        const body = await response.json()
-        throw new Error(body.error ?? 'Preview unavailable.')
-      }
-      if (response.headers.get('content-type')?.startsWith('image/')) {
-        const blob = await response.blob()
-        const image = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(String(reader.result))
-          reader.onerror = () => reject(new Error('Could not read the image preview.'))
-          reader.readAsDataURL(blob)
-        })
-        if (!controller.signal.aborted) setPreview({ image })
-      } else {
-        const text = await response.text()
-        if (!controller.signal.aborted) setPreview({ text })
-      }
-    } catch (err) {
-      if (!controller.signal.aborted)
-        setError(err instanceof Error ? err.message : 'Preview unavailable.')
-    } finally {
-      if (!controller.signal.aborted) setBusy(null)
+      setText(await (await apiFetch(`${path}/preview`)).text())
+    } catch (cause) {
+      setError(errorMessage(cause))
     }
   }
 
-  async function download() {
-    const controller = requests.current
-    if (!result || !controller || controller.signal.aborted) return
-    setBusy('download')
-    setError('')
-    try {
-      const response = await fetch(`/api/results/${encodeURIComponent(resultId)}/download`, {
-        signal: controller.signal,
-      })
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}))
-        throw new Error(body.error ?? 'Download failed. Try again.')
-      }
-      const blob = await response.blob()
-      if (controller.signal.aborted) return
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = result.name
-      link.click()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
-    } catch (err) {
-      if (!controller.signal.aborted)
-        setError(err instanceof Error ? err.message : 'Download failed.')
-    } finally {
-      if (!controller.signal.aborted) setBusy(null)
-    }
-  }
-
+  const image =
+    result && PREVIEW_IMAGE.includes(result.mimeType) && result.byteLength <= 10 * 1024 * 1024
+  const textual =
+    result && PREVIEW_TEXT.includes(result.mimeType) && result.byteLength <= 256 * 1024
   return (
     <section
       className="my-3 rounded-lg border border-fawn bg-ivory p-3 text-chocolate"
       aria-label="Saved result"
-      aria-busy={loading || busy !== null}
     >
-      {loading ? (
-        <p role="status">Loading saved result…</p>
-      ) : result ? (
+      {result ? (
         <>
           <p className="m-0 break-all font-semibold">{result.name}</p>
           <p className="my-1 text-sm text-mocha-light">
@@ -120,47 +67,38 @@ export function ResultCard({
               : `${(result.byteLength / 1024).toFixed(1)} KiB`}
             {' · '}
             {result.mimeType}
+            {result.imageModel && ` · generated with ${result.imageModel}`}
           </p>
-          {result.imageModel && <p className="text-xs text-muted-foreground">Generated via {imageGenerationRouteLabel(result.imageModel)} · Selected: {result.imageModel}</p>}
-          {result.deletedAt !== null ? (
-            <p role="status">This result was deleted.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="ghost" onClick={download} disabled={busy !== null}>
-                {busy === 'download' ? 'Downloading…' : 'Download'}
+          <div className="flex flex-wrap gap-2">
+            <a className="ghost-btn" href={`${path}/download`} download={result.name}>
+              Download
+            </a>
+            {image && !showPreview && result.imageModel === null && (
+              <Button variant="ghost" onClick={() => setImageOpen((open) => !open)}>
+                {imageOpen ? 'Close preview' : 'Preview'}
               </Button>
-              {showPreview && (
-                <Button
-                  variant="ghost"
-                  onClick={() => (preview ? setPreview(null) : void loadPreview())}
-                  disabled={busy !== null}
-                >
-                  {busy === 'preview' ? 'Loading preview…' : preview ? 'Close preview' : 'Preview'}
-                </Button>
-              )}
-            </div>
+            )}
+            {textual && (
+              <Button variant="ghost" onClick={() => void toggleText()}>
+                {text !== null ? 'Close preview' : 'Preview'}
+              </Button>
+            )}
+          </div>
+          {image && (showPreview || result.imageModel !== null || imageOpen) && (
+            <img
+              src={`${path}/preview`}
+              alt={result.name}
+              className="mt-3 max-h-80 max-w-full object-contain"
+            />
           )}
-          {showPreview && result.deletedAt === null && (
-            <>
-              {preview?.text !== undefined && (
-                <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-sm">
-                  {preview.text}
-                </pre>
-              )}
-              {preview?.image && (
-                <img
-                  src={preview.image}
-                  alt={result.name}
-                  className="mt-3 max-h-80 max-w-full object-contain"
-                  onError={() => {
-                    setPreview(null)
-                    setError('Could not display this image. Use Download.')
-                  }}
-                />
-              )}
-            </>
+          {text !== null && (
+            <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-sm">
+              {text}
+            </pre>
           )}
         </>
+      ) : !error ? (
+        <p role="status">Loading saved result…</p>
       ) : null}
       {error && (
         <p role="alert" className="mt-2 text-sm text-danger">

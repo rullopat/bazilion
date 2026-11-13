@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentLoopBreakEvent, Message } from '@bazilion/api-types'
+import { DomainError } from '../core/errors.ts'
 import { agentRepo, type BazilionDb, messageRepo, openConfig } from '../core/index.ts'
 
 const DEFAULT_MAX_HOPS = 8
@@ -36,7 +37,7 @@ function toEvent(row: RawBreakEvent): AgentLoopBreakEvent {
   }
 }
 
-export function agentLoopMaxHops(db?: BazilionDb, env: NodeJS.ProcessEnv = process.env): number {
+function agentLoopMaxHops(db?: BazilionDb, env: NodeJS.ProcessEnv = process.env): number {
   const raw =
     env.BAZILION_AGENT_LOOP_MAX_HOPS ??
     (db ? openConfig(db).get('BAZILION_AGENT_LOOP_MAX_HOPS') : undefined)
@@ -44,13 +45,13 @@ export function agentLoopMaxHops(db?: BazilionDb, env: NodeJS.ProcessEnv = proce
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_MAX_HOPS
 }
 
-export class AgentLoopLimitError extends Error {
-  constructor(readonly event: AgentLoopBreakEvent) {
+export class AgentLoopLimitError extends DomainError {
+  constructor(event: AgentLoopBreakEvent) {
     super(
+      429,
       `agent message chain ${event.causalChainId} stopped at hop ${event.attemptedHop} ` +
         `(limit ${event.maxHops})`,
     )
-    this.name = 'AgentLoopLimitError'
   }
 }
 

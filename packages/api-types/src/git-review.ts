@@ -1,15 +1,9 @@
-// Git change review wire shapes (BAZ-042). Hermetic: plain types plus one constant, no daemon code,
-// no node-only imports. The daemon, `@bazilion/client`, the CLI and the web panel all speak these.
+// Git change review of a Team workspace: the changes since a pinned base, and file feedback.
+
+import type { UserQueueItem } from './user-queue.ts'
 
 /** Machine-readable issue codes. Messages are for operators and never embed host paths. */
-export type ReviewIssueCode =
-  | 'unborn_head'
-  | 'invalid_base'
-  | 'unknown_base'
-  | 'git_output_limit'
-  | 'file_limit'
-  | 'patch_unavailable'
-  | 'unstable'
+export type ReviewIssueCode = 'invalid_base' | 'unknown_base' | 'git_output_limit' | 'file_limit'
 
 export interface ReviewIssue {
   code: ReviewIssueCode
@@ -36,7 +30,7 @@ export interface PinnedBase {
   resolvedOid: string
 }
 
-/** Bounds applied to a review or a snapshot. */
+/** Bounds applied to a review. */
 export interface ReviewLimits {
   files: number
   fileBytes: number
@@ -45,7 +39,7 @@ export interface ReviewLimits {
   patchBytes: number
 }
 
-/** Refinement limits: 1,000 files, 1 MiB per text file, 16 MiB total captured content. */
+/** 1,000 files, 1 MiB per file diff, 16 MiB of diff text in total. */
 export const REVIEW_LIMITS: ReviewLimits = {
   files: 1000,
   fileBytes: 1024 * 1024,
@@ -64,15 +58,8 @@ export type ReviewChangeStatus =
   | 'untracked'
   | 'unknown'
 
-/** Why an entry carries no content. Never a silent omission. */
-export type ContentOmission =
-  | 'untracked_not_selected'
-  | 'excluded'
-  | 'binary'
-  | 'too_large'
-  | 'total_limit'
-  | 'file_limit'
-  | 'unavailable'
+/** Why an entry carries no diff text. Never a silent omission. */
+export type ContentOmission = 'excluded' | 'binary' | 'too_large' | 'total_limit' | 'unavailable'
 
 export interface ReviewChange {
   /** Repository-relative path, destination side for renames. */
@@ -83,9 +70,7 @@ export interface ReviewChange {
   binary: boolean
   addedLines: number | null
   deletedLines: number | null
-  oldMode: string | null
-  newMode: string | null
-  /** Unified diff text, or null when content was omitted. */
+  /** Unified diff text, or null when content was omitted or not requested. */
   patch: string | null
   patchTruncated: boolean
   contentOmitted: ContentOmission | null
@@ -100,94 +85,9 @@ export interface RepositoryChanges {
   changes: ReviewChange[]
   /** True when the change list itself was cut by the file limit. */
   truncated: boolean
-  /** Counts of what was *not* captured, so an omission is never invisible. */
-  withheld: { untracked: number; excluded: number; binary: number; tooLarge: number }
+  /** Counts of what was *not* listed or captured, so an omission is never invisible. */
+  withheld: { untracked: number; excluded: number }
   issues: ReviewIssue[]
-}
-
-export type SnapshotEntryLayer = 'worktree' | 'untracked'
-
-export type SnapshotEntryKind = 'file' | 'deleted' | 'not_regular' | 'too_large' | 'unstable'
-
-export interface SnapshotEntry {
-  path: string
-  layer: SnapshotEntryLayer
-  kind: SnapshotEntryKind
-  /** sha256 of the captured bytes, or null when no content could be read. */
-  digest: string | null
-  bytes: number | null
-}
-
-/**
- * Bounded code evidence: HEAD, the index, the dirty tracked bytes and any explicitly included
- * untracked content. Paths and digests only — never file content.
- */
-export interface SourceSnapshot {
-  /** Content-addressed over the captured state; identical trees share an id. */
-  id: string
-  capturedAt: number
-  /** False whenever any entry could not be fingerprinted; applicability is then unknown. */
-  complete: boolean
-  identity: RepositoryIdentity
-  base: PinnedBase
-  head: string | null
-  indexDigest: string | null
-  indexEntries: number
-  entries: SnapshotEntry[]
-  untrackedIncluded: string[]
-  exclusions: { path: string; reason: ReviewScopeReason }[]
-  withheld: { excluded: number; tooLarge: number; notRegular: number; unstable: number }
-  limits: ReviewLimits
-  issues: ReviewIssue[]
-}
-
-/** The small immutable handoff a receipt or a verification request carries. */
-export interface SnapshotReference {
-  id: string
-  complete: boolean
-  capturedAt: number
-}
-
-/**
- * Applicability of one snapshot against another. `unknown` whenever either side is incomplete — an
- * incomplete snapshot is never reported as unchanged.
- */
-export type SnapshotComparison = 'identical' | 'changed' | 'unknown'
-
-/** Where a capture came from. An operator capture has no turn, and says so rather than faking one. */
-export type SnapshotCaptureOrigin = 'agent' | 'operator'
-
-/**
- * Compact result of an Agent- or operator-initiated capture.
- *
- * Deliberately smaller than the full document: an Agent needs the reference plus an honest count of
- * what was and was not fingerprinted, not the whole entry list.
- */
-export interface SourceSnapshotCaptureResult {
-  reference: SnapshotReference
-  head: string | null
-  baseOid: string
-  entries: number
-  includedUntracked: string[]
-  exclusions: { path: string; reason: ReviewScopeReason }[]
-  issues: ReviewIssue[]
-}
-
-/** Operator-visible snapshot record, without the manifest body. */
-export interface SourceSnapshotSummary {
-  snapshotId: string
-  teamId: string
-  capturedBy: SnapshotCaptureOrigin
-  agentId: string | null
-  turnId: string | null
-  toolCallId: string | null
-  complete: boolean
-  head: string | null
-  baseOid: string
-  entryCount: number
-  capturedContentBytes: number
-  createdAt: number
-  expiresAt: number
 }
 
 export interface RepositoryReviewResponse {
@@ -195,17 +95,17 @@ export interface RepositoryReviewResponse {
   changes: RepositoryChanges
 }
 
-export interface SourceSnapshotListResponse {
-  snapshots: SourceSnapshotSummary[]
-}
-
-export interface CaptureSourceSnapshotRequest {
-  /** Untracked paths to include by content. Names only; nothing is included implicitly. */
-  includeUntracked?: string[]
+/** Queue feedback about one changed file for a Team member. */
+export interface ReviewFeedbackRequest {
+  path: string
+  agentId: string
+  note?: string
+  /** Comparison base the operator is reviewing (default HEAD). */
   base?: string
 }
 
-export interface SourceSnapshotResponse {
-  snapshot: SourceSnapshot
-  reference: SnapshotReference
+export interface ReviewFeedbackResponse {
+  /** The exact message that was queued for the Agent. */
+  message: string
+  item: UserQueueItem
 }

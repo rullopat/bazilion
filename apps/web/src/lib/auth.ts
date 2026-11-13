@@ -1,12 +1,6 @@
-// Auth + first-run gate plumbing.
-//
-// `fetchAuthState` is a server fn that pings /api/auth/whoami with the current
-// bounded session cookie. It returns a typed result the root
-// route's `beforeLoad` consumes to decide whether to redirect (`/login` for
-// unauthenticated, `/welcome` until setup is complete). Keeping the daemon
-// call in a server fn means the client bundle never ships the daemon URL or
-// cookie machinery.
+// The login and first-run gate the root route applies before every page.
 
+import type { AuthenticatedOwnerResponse } from '@bazilion/api-types'
 import { ApiClientError } from '@bazilion/client'
 import { createServerFn } from '@tanstack/react-start'
 import { daemonClient } from './daemon-client'
@@ -14,38 +8,30 @@ import { daemonClient } from './daemon-client'
 export interface AuthState {
   authed: boolean
   setupComplete: boolean
-  degraded?: boolean
 }
 
 export const fetchAuthState = createServerFn({ method: 'GET' }).handler(
   async (): Promise<AuthState> => {
     try {
-      const res = await daemonClient().get<{ authenticated: true; setupComplete: boolean }>(
-        '/api/auth/whoami',
-      )
-      return { authed: res.authenticated, setupComplete: res.setupComplete }
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
+      const whoami = await daemonClient().get<AuthenticatedOwnerResponse>('/api/auth/whoami')
+      return { authed: whoami.authenticated, setupComplete: whoami.setupComplete }
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 401) {
         return { authed: false, setupComplete: false }
       }
-      return { authed: true, setupComplete: true, degraded: true }
+      // Any other failure (the daemon is down) lets the page load and show its own error.
+      return { authed: true, setupComplete: true }
     }
   },
 )
 
-// Reachable without a token. The login form posts here (well, to /api/login).
-// Note: /api/* is handled by the catch-all proxy + daemon's own auth, so we
-// don't gate it from beforeLoad — it shortcircuits before the auth fetch.
+/** Pages reachable without a session. */
 export const PUBLIC_PATHS = new Set(['/login'])
 
-// Authenticated users can still reach these prefixes before setup is done.
-// Everything else redirects to /welcome until at least one provider has ≥1
-// curated model.
+// Before the first provider has a model, only these pages are reachable; the rest redirect to
+// /welcome.
 const SETUP_OPEN_PREFIXES = ['/welcome', '/config']
 
 export function isSetupOpen(path: string): boolean {
-  for (const prefix of SETUP_OPEN_PREFIXES) {
-    if (path === prefix || path.startsWith(`${prefix}/`)) return true
-  }
-  return false
+  return SETUP_OPEN_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }

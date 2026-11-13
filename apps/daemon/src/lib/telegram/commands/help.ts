@@ -1,19 +1,24 @@
-// `/help` — command reference. Context-aware: when invoked inside a bound
-// agent topic, the body opens with a "You're in <agent>'s topic" header
-// and surfaces the topic-context commands first; in the service chat it
-// shows the regular service-chat reference.
+// `/help`: the command reference. Inside an Agent topic it leads with the topic commands.
 
 import { htmlEscape } from '../html.ts'
 import type { CommandHandler } from './types.ts'
 
+const TOPIC_COMMANDS = [
+  '/queue — List waiting messages; /queue drop &lt;n|all&gt; removes them',
+  '/stop — Pause the queue and cancel the running turn',
+  '/resume — Resume the queue',
+  '/close — Close this topic (the agent stays bound)',
+  '/rebind &lt;agent&gt; — Point this topic at a different agent',
+  '/unbind — Clear the binding (the topic becomes an orphan)',
+]
+
 const SERVICE_BODY = [
-  '<b>bazilion · service chat commands</b>',
+  '<b>bazilion · service topic commands</b>',
   '',
-  '<b>Available now:</b>',
   '/talk &lt;agent&gt; — Open or create the forum topic for an agent',
   '/spawn — Create a new agent from a profile (interactive)',
   '/spawn &lt;profile&gt; [&lt;name&gt;] [in &lt;team&gt;] — Create with typed args (<code>-</code> for auto-name)',
-  '/spawn_team &lt;profile-team&gt; [in &lt;team&gt;] — Spawn a whole team template',
+  '/spawn_team &lt;template&gt; [in &lt;team&gt;] — Spawn a whole team template',
   '/list — Show all agents (alias: /agents)',
   '/teams — Show bazilion teams',
   '/health — Bot identity + polling state',
@@ -23,27 +28,19 @@ const SERVICE_BODY = [
   '/deny &lt;user_id&gt; — Remove a user from the allowlist (owner only)',
   '/help — This message',
   '',
-  '<b>Topic-context commands</b> (run inside an agent topic):',
-  '/close — Close this topic (preserves the binding)',
-  '/rebind &lt;agent&gt; — Point this topic at a different agent',
-  '/unbind — Clear the binding (topic becomes orphan)',
-  '/queue — Durable follow-ups and pause/resume/Stop controls',
-  '/queue history [offset] — Completed and failed input receipts',
+  '<b>Inside an agent topic:</b>',
+  ...TOPIC_COMMANDS,
 ].join('\n')
 
 function topicBody(agentName: string, teamId: string): string {
   return [
     `<b>You're in <code>${htmlEscape(agentName)}</code>'s topic</b> (team <code>${htmlEscape(teamId)}</code>)`,
+    'Messages here go to the agent, one turn at a time.',
     '',
-    '<b>Topic-context commands:</b>',
-    '/close — Close this topic (preserves the binding)',
-    '/rebind &lt;agent&gt; — Point this topic at a different agent',
-    '/unbind — Clear the binding (topic becomes orphan)',
-    '/queue — Durable follow-ups and pause/resume/Stop controls',
-    '/queue history [offset] — Completed and failed input receipts',
+    ...TOPIC_COMMANDS,
     '/help — This message',
     '',
-    '<b>From the ⚙ bazilion service chat:</b>',
+    '<b>From the ⚙ bazilion service topic:</b>',
     '/talk, /spawn, /list, /teams, /health, /whoami',
   ].join('\n')
 }

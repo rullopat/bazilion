@@ -1,10 +1,9 @@
-import { randomUUID } from 'node:crypto'
 import type { AgentQuestionAnswer } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
+import { agentArg, jsonFlag, positional, printJson } from '../command-helpers.ts'
+import { questionLines } from '../question-prompt.ts'
 
-const positional = { type: 'positional', required: true } as const
-const output = (value: unknown) => console.log(JSON.stringify(value, null, 2))
 export function questionAnswer(args: {
   choice?: string
   text?: string
@@ -15,60 +14,42 @@ export function questionAnswer(args: {
   if (count !== 1) throw new Error('Specify exactly one of --choice, --text, or --skip')
   if (args.skip) return { kind: 'skip' }
   if (args.text !== undefined) {
-    if (!args.text.trim() || Buffer.byteLength(args.text, 'utf8') > 4096)
-      throw new Error('Answer text must contain 1–4096 UTF-8 bytes')
+    if (!args.text.trim() || args.text.length > 4096)
+      throw new Error('Answer text must be 1–4096 characters')
     return { kind: 'text', text: args.text }
   }
   if (!/^[1-4]$/.test(args.choice ?? '')) throw new Error('--choice must be a number from 1 to 4')
   return { kind: 'choice', index: Number(args.choice) - 1 }
 }
+
 export const questionCommand = defineCommand({
-  meta: {
-    name: 'question',
-    description: 'Inspect and answer an Agent clarification; answers grant no permissions',
-  },
+  meta: { name: 'question', description: "List and answer an Agent's waiting questions" },
   subCommands: {
     list: defineCommand({
-      args: { agent: positional, conversation: { type: 'string' } },
+      meta: { name: 'list', description: 'Questions the Agent is waiting on' },
+      args: { agent: agentArg, json: jsonFlag },
       async run({ args }) {
-        output(await createClient().questions(args.agent).list(args.conversation))
-      },
-    }),
-    show: defineCommand({
-      args: { agent: positional, id: positional },
-      async run({ args }) {
-        output(await createClient().questions(args.agent).get(args.id))
+        const { questions } = await createClient().questions(args.agent).list()
+        if (args.json) return printJson(questions)
+        if (!questions.length) return console.log('(no waiting questions)')
+        for (const item of questions) {
+          console.log(`${item.id} · expires ${new Date(item.expiresAt).toLocaleTimeString()}`)
+          for (const line of questionLines(item)) console.log(`  ${line}`)
+        }
       },
     }),
     answer: defineCommand({
+      meta: { name: 'answer', description: 'Answer a waiting question' },
       args: {
-        agent: positional,
-        id: positional,
+        agent: agentArg,
+        id: positional('Question id'),
         choice: { type: 'string', description: 'Choice number, starting at 1' },
         text: { type: 'string', description: 'Free-text answer' },
         skip: { type: 'boolean', description: 'Continue without an answer' },
-        'request-id': { type: 'string', description: 'Reuse the original UUID for an exact retry' },
-        conversation: {
-          type: 'string',
-          description: 'Original conversation ID; required for retries',
-        },
       },
       async run({ args }) {
-        const answer = questionAnswer(args)
-        if (args['request-id'] && !args.conversation)
-          throw new Error('Retry requires the original --conversation and identical answer')
-        const client = createClient().questions(args.agent)
-        const observed = await client.get(args.id)
-        const conversationId = args.conversation ?? observed.conversationId
-        if (conversationId !== observed.conversationId)
-          throw new Error('Question conversation differs')
-        if (answer.kind === 'choice' && answer.index >= observed.question.choices.length)
-          throw new Error('That choice does not exist for this question')
-        const requestId = args['request-id'] ?? randomUUID()
-        console.error(
-          `Question request: ${requestId}; exact retry uses --request-id ${requestId} --conversation ${conversationId} and the same answer. Acceptance does not prove consumption or task completion.`,
-        )
-        output(await client.answer(args.id, { requestId, conversationId, answer }))
+        await createClient().questions(args.agent).answer(args.id, questionAnswer(args))
+        console.log(args.skip ? 'Skipped.' : 'Answered.')
       },
     }),
   },

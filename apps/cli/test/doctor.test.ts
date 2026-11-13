@@ -9,7 +9,8 @@ beforeAll(async () => {
   server = await startTestServer({
     BAZILION_SCHEDULER: 'off',
     BROWSER_ENABLED: 'false',
-    BAZILION_BASH_SANDBOX: 'off',
+    // Unset so the default (off) applies and `config set` can select docker below.
+    BAZILION_BASH_SANDBOX: undefined,
     BAZILION_BASH_SANDBOX_IMAGE: 'bazilion-doctor-definitely-missing:v0',
   })
 })
@@ -25,26 +26,43 @@ async function health(): Promise<HealthReport> {
   return response.json() as Promise<HealthReport>
 }
 
-test('actual doctor exits zero for a healthy install while retaining unavailable protected diagnostics', async () => {
+test('actual doctor exits zero for a healthy install and states the runtime rule', async () => {
   const report = await health()
   expect(report.ok).toBe(true)
-  expect(report.protectedWorkBaselineReady).toBe(false)
+  expect(report.shellSecurity).toMatchObject({ ok: true, sandboxMode: 'off', docker: null })
   const publicReport = (await fetch(`${server.url}/api/health`).then((r) =>
     r.json(),
   )) as PublicHealthResponse
-  expect(Object.keys(publicReport).sort()).toEqual(['auth', 'ok'])
-  expect(JSON.stringify(publicReport)).not.toContain('platformCapabilities')
+  expect(publicReport).toEqual({ ok: true })
   expect((await fetch(`${server.url}/api/health/details`)).status).toBe(401)
   const result = await server.cli(['doctor'])
   expect(result.exitCode, result.stderr).toBe(0)
   expect(result.stdout).toContain('install is healthy ✓')
-  expect(result.stdout).toContain('ordinary chat execution: not checked')
-  expect(result.stdout).toContain('protected unattended baseline: unavailable')
-  expect(result.stdout).toContain('remediation:')
-  expect(result.stdout).toContain('✓ MCP: denied')
-  expect(result.stdout).toContain(`platform support: ${report.platformCapabilities.platform}`)
+  expect(result.stdout).toContain('agent runtime (every turn: chat, Telegram, schedules, inbox)')
+  expect(result.stdout).toContain('sandbox: off — bash and file tools run on the host')
   expect(result.stdout).not.toContain('all good')
   expect(result.stdout).not.toContain('installation issues found')
+})
+
+test('actual doctor reports Docker readiness and remediation when the sandbox is docker', async () => {
+  const set = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'docker'])
+  expect(set.exitCode, set.stderr).toBe(0)
+  try {
+    const report = await health()
+    expect(report.shellSecurity).toMatchObject({
+      ok: true,
+      sandboxMode: 'docker',
+      docker: { ready: false, image: 'bazilion-doctor-definitely-missing:v0' },
+    })
+    const result = await server.cli(['doctor'])
+    expect(result.exitCode, result.stderr).toBe(0)
+    expect(result.stdout).toContain('sandbox: docker (bazilion-doctor-definitely-missing:v0)')
+    expect(result.stdout).toContain('✗ Docker ready (bazilion-doctor-definitely-missing:v0)')
+    expect(result.stdout).toContain('remediation:')
+  } finally {
+    const reset = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'off'])
+    expect(reset.exitCode, reset.stderr).toBe(0)
+  }
 })
 
 test('actual doctor still exits nonzero for a structural installation fault', async () => {

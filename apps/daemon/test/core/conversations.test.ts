@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as conversations from '../../src/core/repos/conversations.ts'
-import { createConversationFile } from '../../src/lib/conversation-file.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
 let env: TestEnv
@@ -14,99 +13,35 @@ beforeEach(() => {
   agentId = spawnAgent(env.db, env.paths, { profileId: 'test', teamId: env.teamId }).id
 })
 afterEach(() => env.cleanup())
-function persist(id: string) {
-  return createConversationFile(env.paths, agentId, id, env.paths.teamDir(env.teamId))
-}
-function create() {
-  return conversations.create(
-    env.db,
-    agentId,
-    {
-      requestId: randomUUID(),
-      expectedSelection: conversations.selection(env.db, agentId),
-    },
-    persist,
-  )
-}
 
-test('creation selects once and retries cannot redirect later selection', () => {
-  const input = {
-    requestId: randomUUID(),
-    expectedSelection: { conversationId: null, revision: 0 },
-  }
-  const first = conversations.create(env.db, agentId, input, persist)
-  expect(first.selection).toEqual({ conversationId: input.requestId, revision: 1 })
-  const second = create()
-  const retried = conversations.create(
-    env.db,
-    agentId,
-    input,
-    vi.fn(() => {
-      throw new Error('must not write')
-    }),
-  )
-  expect(retried.conversation.id).toBe(first.conversation.id)
-  expect(retried.selection).toEqual(second.selection)
-  expect(conversations.list(env.db, agentId).total).toBe(2)
-  expect(() =>
-    conversations.create(env.db, agentId, { ...input, title: 'Different' }, persist),
-  ).toThrow('reused')
-  expect(() =>
-    conversations.create(
-      env.db,
-      agentId,
-      { ...input, expectedSelection: { ...input.expectedSelection, conversationId: randomUUID() } },
-      persist,
-    ),
-  ).toThrow('reused')
+test('creating a conversation selects it; the default title counts the Agent’s conversations', () => {
+  expect(conversations.selectedId(env.db, agentId)).toBeNull()
+  const first = conversations.create(env.db, agentId, randomUUID())
+  expect(first.title).toBe('Conversation 1')
+  expect(conversations.selectedId(env.db, agentId)).toBe(first.id)
+  const second = conversations.create(env.db, agentId, randomUUID(), '  Launch plan ')
+  expect(second.title).toBe('Launch plan')
+  expect(conversations.selectedId(env.db, agentId)).toBe(second.id)
+  expect(conversations.list(env.db, agentId)).toMatchObject({ total: 2, selectedId: second.id })
+  expect(() => conversations.create(env.db, agentId, randomUUID(), '\u0007')).toThrow('title')
 })
 
-test('stale creation and failed durable publication cannot alter selection', () => {
-  const first = create()
-  const writer = vi.fn(persist)
-  expect(() =>
-    conversations.create(
-      env.db,
-      agentId,
-      { requestId: randomUUID(), expectedSelection: { conversationId: null, revision: 0 } },
-      writer,
-    ),
-  ).toThrow(conversations.ConversationConflictError)
-  expect(writer).not.toHaveBeenCalled()
-  expect(() =>
-    conversations.create(
-      env.db,
-      agentId,
-      { requestId: randomUUID(), expectedSelection: first.selection },
-      () => {
-        throw new Error('disk full')
-      },
-    ),
-  ).toThrow('disk full')
-  expect(conversations.selection(env.db, agentId)).toEqual(first.selection)
-  expect(conversations.list(env.db, agentId).total).toBe(1)
+test('renaming changes the title only, never the selection', () => {
+  const first = conversations.create(env.db, agentId, randomUUID())
+  const second = conversations.create(env.db, agentId, randomUUID())
+  expect(conversations.rename(env.db, agentId, first.id, 'Earlier task').title).toBe('Earlier task')
+  expect(conversations.selectedId(env.db, agentId)).toBe(second.id)
+  expect(() => conversations.rename(env.db, agentId, first.id, '')).toThrow('title')
 })
 
-test('renaming retained history is revision checked and never selects it', () => {
-  const first = create()
-  const second = create()
-  expect(
-    conversations.rename(env.db, agentId, first.conversation.id, 'Earlier task', 1),
-  ).toMatchObject({ title: 'Earlier task', titleRevision: 2 })
-  expect(() => conversations.rename(env.db, agentId, first.conversation.id, 'Stale', 1)).toThrow()
-  expect(conversations.selection(env.db, agentId)).toEqual(second.selection)
-  expect(conversations.get(env.db, agentId, first.conversation.id)?.title).toBe('Earlier task')
-})
-
-test('Agent boundaries, pagination and lifecycle are enforced by metadata', () => {
-  const first = create()
+test('Agent boundaries, pagination and lifecycle', () => {
+  const first = conversations.create(env.db, agentId, randomUUID())
   const other = spawnAgent(env.db, env.paths, { profileId: 'test', teamId: env.teamId }).id
-  expect(conversations.get(env.db, other, first.conversation.id)).toBeNull()
-  expect(() => conversations.filename(env.db, other, first.conversation.id)).toThrow()
-  expect(() => conversations.rename(env.db, other, first.conversation.id, 'Foreign', 1)).toThrow()
+  expect(conversations.get(env.db, other, first.id)).toBeNull()
+  expect(() => conversations.rename(env.db, other, first.id, 'Foreign')).toThrow('not found')
   expect(() => conversations.list(env.db, agentId, 101)).toThrow()
   expect(() => conversations.list(env.db, agentId, 20, -1)).toThrow()
   env.db.raw.run('DELETE FROM agents WHERE id = ?', [agentId])
   expect(conversations.list(env.db, agentId).total).toBe(0)
-  expect(conversations.selection(env.db, agentId)).toEqual({ conversationId: null, revision: 0 })
+  expect(conversations.selectedId(env.db, agentId)).toBeNull()
 })

@@ -1,63 +1,48 @@
-import { createElement, type ComponentType } from 'react'
+import type { TriggerDispatch } from '@bazilion/api-types'
+import { type ComponentType, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test, vi } from 'vitest'
 
+const loaderData = vi.hoisted(() => ({
+  current: { triggers: [] as unknown[], dispatches: [] as unknown[] },
+}))
+
 vi.mock('@tanstack/react-router', () => ({
-  createFileRoute:
-    () =>
-    (options: Record<string, unknown>) => ({
-      ...options,
-      useLoaderData: vi.fn(),
-    }),
-  redirect: vi.fn(),
+  createFileRoute: () => (options: Record<string, unknown>) => ({
+    ...options,
+    useLoaderData: () => loaderData.current,
+  }),
+  getRouteApi: () => ({
+    useLoaderData: () => ({ agent: { id: 'agent-1', name: 'Scheduler agent' } }),
+  }),
   useRouter: () => ({ invalidate: vi.fn() }),
 }))
 
 vi.mock('@tanstack/react-start', () => ({
-  createServerFn: () => ({
-    validator: () => ({
-      handler: () => vi.fn(),
-    }),
-  }),
+  createServerFn: () => ({ validator: () => ({ handler: () => vi.fn() }) }),
 }))
 
 vi.mock('../src/lib/daemon-client.ts', () => ({ daemonClient: vi.fn() }))
 
 import { Route } from '../src/routes/agents/$id/triggers.tsx'
 
-test('agent trigger page renders recent dispatch status, attempts, and error diagnostics', () => {
-  const route = Route as unknown as {
-    component: ComponentType
-    useLoaderData: ReturnType<typeof vi.fn>
+test('the triggers page shows each recent run with its status and error', () => {
+  const failed: TriggerDispatch = {
+    id: 'dispatch-1',
+    triggerId: 'trigger-1',
+    agentId: 'agent-1',
+    conversationId: 'conversation-1',
+    scheduledAt: Date.UTC(2026, 7, 1, 10, 0),
+    status: 'failed',
+    startedAt: Date.UTC(2026, 7, 1, 10, 0),
+    finishedAt: Date.UTC(2026, 7, 1, 10, 1),
+    error: 'provider unavailable',
   }
-  route.useLoaderData.mockReturnValue({
-    resolved: {
-      agent: { id: 'agent-1', name: 'Scheduler agent', status: 'idle' },
-    },
-    triggers: [],
-    dispatches: [
-      {
-        id: 'dispatch-1',
-        triggerId: 'trigger-1',
-        agentId: 'agent-1',
-        scheduledAt: Date.UTC(2026, 7, 1, 10, 0),
-        status: 'retrying',
-        attemptCount: 2,
-        nextAttemptAt: Date.UTC(2026, 7, 1, 10, 1),
-        leaseExpiresAt: null,
-        startedAt: Date.UTC(2026, 7, 1, 10, 0),
-        finishedAt: null,
-        lastError: 'provider unavailable',
-        createdAt: Date.UTC(2026, 7, 1, 10, 0),
-        updatedAt: Date.UTC(2026, 7, 1, 10, 0),
-      },
-    ],
-  })
+  loaderData.current = { triggers: [], dispatches: [failed] }
 
-  const html = renderToStaticMarkup(createElement(route.component))
+  const page = (Route as unknown as { component: ComponentType }).component
+  const html = renderToStaticMarkup(createElement(page))
 
-  expect(html).toContain('Recent dispatches')
-  expect(html).toContain('<code>retrying</code>')
-  expect(html).toContain('<td>2</td>')
+  expect(html).toContain('<code>failed</code>')
   expect(html).toContain('provider unavailable')
 })

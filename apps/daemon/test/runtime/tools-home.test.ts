@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { homeTools } from '../../src/runtime/tools/home.ts'
-import { createToolRegistry } from '../../src/runtime/tools/registry.ts'
+import { createToolRegistry } from '../fixtures/tool-registry.ts'
 
 let agentDir: string
 

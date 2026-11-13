@@ -1,19 +1,11 @@
-import { randomUUID } from 'node:crypto'
-import { unlinkSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createApp } from '../../src/app.ts'
-import { resolveAgent } from '../../src/core/agent/resolve.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
-import * as conversations from '../../src/core/repos/conversations.ts'
 import * as providerModels from '../../src/core/repos/providerModels.ts'
 import * as providerState from '../../src/core/repos/providerState.ts'
 import * as results from '../../src/core/repos/results.ts'
 import * as webTokens from '../../src/core/repos/webTokens.ts'
-import { createConversationFile } from '../../src/lib/conversation-file.ts'
-import { resolveConversationTarget } from '../../src/lib/conversation-target.ts'
-import { seedSessionForTest } from '../../src/runtime/pi/session.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 let env: TestEnv
@@ -49,18 +41,16 @@ function request(path: string, method = 'GET') {
   })
 }
 
-test('requires authentication and never projects private snapshots', async () => {
-  const result = publish()
+test('requires authentication and reports unknown results as missing', async () => {
+  publish()
   expect((await createApp().request('/api/results')).status).toBe(401)
-  expect((await request(`/${result.id}`)).status).toBe(404)
-  expect((await request(`/${result.id}/download`)).status).toBe(404)
-  expect((await request(`/${result.id}`, 'DELETE')).status).toBe(404)
-  expect(await (await request('')).json()).toMatchObject({ results: [], total: 0 })
+  expect((await request('/missing')).status).toBe(404)
+  expect((await request('/missing/download')).status).toBe(404)
+  expect((await request('/missing', 'DELETE')).status).toBe(404)
 })
 
-test('lists released results and downloads active content only as an attachment', async () => {
+test('lists saved results and downloads active content only as an attachment', async () => {
   const result = publish()
-  results.release(env.db, result.id, agentId)
   const listed = await request(`?teamId=${env.teamId}&agentId=${agentId}&limit=1`)
   expect(await listed.json()).toMatchObject({ results: [{ id: result.id }], total: 1 })
   const download = await request(`/${result.id}/download`)
@@ -75,19 +65,16 @@ test('lists released results and downloads active content only as an attachment'
   expect((await request('?offset=-1')).status).toBe(400)
 })
 
-test('returns tombstones after deletion, and integrity failures without corrupted bytes', async () => {
+test('refuses corrupted bytes; a deleted result is gone', async () => {
   const result = publish()
-  results.release(env.db, result.id, agentId)
   env.db.raw.run('UPDATE agent_results SET bytes = ? WHERE id = ?', [
     Buffer.alloc(result.byteLength),
     result.id,
   ])
   expect((await request(`/${result.id}/download`)).status).toBe(409)
   expect((await request(`/${result.id}`, 'DELETE')).status).toBe(200)
-  expect((await request(`/${result.id}/download`)).status).toBe(410)
-  expect(await (await request(`/${result.id}`)).json()).toMatchObject({
-    result: { id: result.id, deletedAt: expect.any(Number) },
-  })
+  expect((await request(`/${result.id}/download`)).status).toBe(404)
+  expect((await request(`/${result.id}`)).status).toBe(404)
   expect(await (await request('')).json()).toMatchObject({ results: [], total: 0 })
 })
 
@@ -102,7 +89,6 @@ test('previews allow bounded plain text and verified raster signatures, never ac
       mimeType,
       bytes,
     })
-    results.release(env.db, result.id, agentId)
     return result.id
   }
   const text = publishFile(
@@ -126,70 +112,4 @@ test('previews allow bounded plain text and verified raster signatures, never ac
   expect((await request(`/${forged}/preview`)).status).toBe(415)
   const big = publishFile('large.txt', 'text/plain', Buffer.alloc(256 * 1024 + 1), 'big')
   expect((await request(`/${big}/preview`)).status).toBe(415)
-  expect(await (await request(`/${text}/source`)).json()).toEqual({ available: false })
-})
-
-test('browser sign-in preserves an exact saved-result destination without accepting redirect URLs', async () => {
-  const result = publish()
-  results.release(env.db, result.id, agentId)
-  const device = webTokens.create(env.db, 'result-browser').token
-  const login = (credential: string, resultId: string) =>
-    createApp().request('http://127.0.0.1:4321/api/login', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        origin: 'http://127.0.0.1:4321',
-      },
-      body: new URLSearchParams({ token: credential, resultId }),
-    })
-  const success = await login(device, result.id)
-  expect(success.status).toBe(302)
-  expect(success.headers.get('location')).toBe(`/results/${result.id}`)
-  const rejected = await login('invalid', result.id)
-  expect(rejected.headers.get('location')).toBe(`/login?error=token&resultId=${result.id}`)
-  for (const destination of [
-    'https://example.com',
-    '//example.com',
-    '../agents',
-    `${result.id}?next=//example.com`,
-  ]) {
-    expect((await login(device, destination)).headers.get('location')).toBe('/')
-  }
-})
-
-test('result source remains bound to retained history after New conversation and file loss', async () => {
-  const resolved = resolveAgent(env.db, env.paths, agentId)
-  const target = resolveConversationTarget(env.db, env.paths, agentId)
-  seedSessionForTest(
-    resolved,
-    env.paths,
-    [
-      { role: 'user', text: 'Original conversation' },
-      { role: 'assistant', text: 'Original reply' },
-    ],
-    target,
-  )
-  const sessionId = target.id
-  const result = results.publish(env.db, {
-    teamId: env.teamId,
-    agentId,
-    sessionId,
-    toolCallId: 'source',
-    name: 'report.txt',
-    mimeType: 'text/plain',
-    bytes: Buffer.from('retained'),
-  })
-  results.release(env.db, result.id, agentId)
-  conversations.create(
-    env.db,
-    agentId,
-    { requestId: randomUUID(), expectedSelection: conversations.selection(env.db, agentId) },
-    (id) => createConversationFile(env.paths, agentId, id, env.paths.teamDir(env.teamId)),
-  )
-  const source = await (await request(`/${result.id}/source`)).json()
-  expect(source).toMatchObject({ available: true, sessionId })
-  expect(JSON.stringify(source)).toContain('Original conversation')
-  unlinkSync(join(env.paths.agentDir(agentId), 'sessions', target.filename))
-  expect(await (await request(`/${result.id}/source`)).json()).toEqual({ available: false })
-  expect(await (await request(`/${result.id}/download`)).text()).toBe('retained')
 })

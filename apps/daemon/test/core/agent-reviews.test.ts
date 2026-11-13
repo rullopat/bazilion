@@ -18,7 +18,6 @@ beforeEach(() => {
   profileRepo.insert(env.db, {
     id: 'p',
     name: 'p',
-    dir: env.paths.profileDir('p'),
     defaultModel: 'lmstudio:x',
     skillsMode: 'selected',
   })
@@ -29,7 +28,6 @@ beforeEach(() => {
     modelOverride: null,
     reasoningLevel: 'medium',
     status: 'idle',
-    dir: env.paths.agentDir('a1'),
     teamId: env.teamId,
   })
 })
@@ -55,30 +53,37 @@ test('reviews are disabled by default and cadence enqueue is atomic', () => {
   expect(agentReviewRepo.enqueueManual(env.db, 'a1', 4_000).id).toBe(due?.id)
 })
 
-test('claim is exclusive and expired leases recover with bounded failure', () => {
+test('claim is exclusive, and a failed review is not run again', () => {
   const review = agentReviewRepo.enqueueManual(env.db, 'a1', 1_000)
-  expect(agentReviewRepo.claim(env.db, review.id, { now: 1_000, leaseMs: 100 })).toMatchObject({
-    status: 'running',
-    attemptCount: 1,
-  })
-  expect(agentReviewRepo.claim(env.db, review.id, { now: 1_050 })).toBeNull()
-  expect(agentReviewRepo.claim(env.db, review.id, { now: 1_101 })).toMatchObject({
-    attemptCount: 2,
-  })
-  agentReviewRepo.fail(env.db, review.id, 'temporary', {
-    now: 1_200,
-    maxAttempts: 3,
-    retryDelayMs: 10,
-  })
+  expect(agentReviewRepo.listPending(env.db).map((pending) => pending.id)).toEqual([review.id])
+  expect(agentReviewRepo.claim(env.db, review.id, 1_000)).toMatchObject({ status: 'running' })
+  // However long it runs: only its own dispatcher finishes it.
+  expect(agentReviewRepo.claim(env.db, review.id, 1_050)).toBeNull()
+  expect(agentReviewRepo.listPending(env.db)).toEqual([])
+  agentReviewRepo.fail(env.db, review.id, 'temporary', 1_200)
   expect(agentReviewRepo.get(env.db, review.id)).toMatchObject({
-    status: 'retrying',
-    nextAttemptAt: 1_220,
+    status: 'failed',
+    finishedAt: 1_200,
+    lastError: 'temporary',
   })
+  expect(agentReviewRepo.claim(env.db, review.id, 1_300)).toBeNull()
+})
+
+test('a review interrupted by a daemon stop is failed at boot, not run again', () => {
+  const interrupted = agentReviewRepo.enqueueManual(env.db, 'a1', 1_000)
+  agentReviewRepo.claim(env.db, interrupted.id, 1_000)
+  agentReviewRepo.failInterrupted(env.db, 2_000)
+  expect(agentReviewRepo.get(env.db, interrupted.id)).toMatchObject({
+    status: 'failed',
+    finishedAt: 2_000,
+    lastError: agentReviewRepo.INTERRUPTED,
+  })
+  expect(agentReviewRepo.listPending(env.db)).toEqual([])
 })
 
 test('source diagnostics and errors are bounded without transcript copies', () => {
   const review = agentReviewRepo.enqueueManual(env.db, 'a1', 1_000)
-  agentReviewRepo.claim(env.db, review.id, { now: 1_000 })
+  agentReviewRepo.claim(env.db, review.id, 1_000)
   agentReviewRepo.setSource(env.db, review.id, {
     sessionId: 'session-a',
     startOrdinal: 4,
@@ -86,7 +91,7 @@ test('source diagnostics and errors are bounded without transcript copies', () =
     inputCharacters: 1234,
     turnsReviewed: 4,
   })
-  agentReviewRepo.fail(env.db, review.id, 'x'.repeat(3_000), { now: 2_000, maxAttempts: 1 })
+  agentReviewRepo.fail(env.db, review.id, 'x'.repeat(3_000), 2_000)
   expect(agentReviewRepo.get(env.db, review.id)).toMatchObject({
     status: 'failed',
     sourceSessionId: 'session-a',
@@ -113,7 +118,7 @@ test('proposal rows preserve typed evidence without copying transcript text', ()
     version: 1,
     evidence: [{ sessionId: 'session-a', entryOrdinal: 7 }],
   })
-  expect(agentLessonProposalRepo.listForReview(env.db, review.id)).toEqual([proposal])
+  expect(agentLessonProposalRepo.get(env.db, proposal.id)).toEqual(proposal)
 })
 
 test('shared approval and revocation apply a deterministic memory entry', async () => {

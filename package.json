@@ -11,10 +11,8 @@
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit && pnpm --filter @bazilion/web typecheck",
     "test": "vitest run apps/daemon/test/lib/browser-live.test.ts --maxWorkers=1 --no-file-parallelism && vitest run --exclude apps/daemon/test/lib/browser-live.test.ts",
-    "test:upgrade-harness": "node --test scripts/testing/upgrade-harness.test.mjs",
-    "security:acceptance": "node scripts/security-acceptance.mjs",
-    "build": "pnpm --filter @bazilion/web build && pnpm -r --filter @bazilion/api-types --filter @bazilion/client --filter bazilion run build",
-    "build:packages": "pnpm -r --filter='./packages/*' --filter='./apps/cli' run build",
+    "test:docker": "BAZILION_TEST_DOCKER=1 vitest run apps/daemon/test/runtime/shell-docker.integration.test.ts",
+    "build": "pnpm --filter bazilion build",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish"
@@ -28,8 +26,5 @@
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
-  },
-  "dependencies": {
-    "typebox": "^1.3.0"
   }
 }

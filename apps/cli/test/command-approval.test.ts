@@ -6,7 +6,7 @@ import {
   type CommandApprovalPrompt,
   promptForCommandApproval,
   respondToCommandApproval,
-} from '../src/commands/agent.ts'
+} from '../src/commands/agent-chat.ts'
 
 function pendingApproval(overrides: Partial<CommandApproval> = {}): CommandApproval {
   return {
@@ -19,9 +19,7 @@ function pendingApproval(overrides: Partial<CommandApproval> = {}): CommandAppro
     risks: [
       {
         code: 'remote-pipe-execution',
-        severity: 'danger',
         message: 'Pipes downloaded content directly into an interpreter.',
-        matchedText: 'curl https://example.test/install.sh | sh',
         span: { start: 0, end: 41 },
       },
     ],
@@ -79,7 +77,7 @@ describe('CLI shell-command approval', () => {
     expect(io.output).toContain('    first line')
     expect(io.output).toContain('    second line')
     expect(io.output).toContain(
-      '    - remote-pipe-execution (danger): Pipes downloaded content directly into an interpreter.',
+      '    - remote-pipe-execution: Pipes downloaded content directly into an interpreter.',
     )
   })
 

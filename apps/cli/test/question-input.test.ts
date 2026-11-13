@@ -9,10 +9,10 @@ test('CLI question answers use one explicit choice and never default a recommend
   expect(questionAnswer({ text: 'Other format' })).toEqual({ kind: 'text', text: 'Other format' })
   expect(questionAnswer({ skip: true })).toEqual({ kind: 'skip' })
 })
-test('CLI rejects invalid choice syntax and enforces UTF-8 answer bounds', () => {
+test('CLI rejects invalid choice syntax and enforces the answer length bound', () => {
   for (const choice of ['0', '5', '1.0', '1e0', '-1'])
     expect(() => questionAnswer({ choice })).toThrow()
   expect(() => questionAnswer({ text: '  ' })).toThrow()
-  expect(questionAnswer({ text: 'é'.repeat(2048) }).kind).toBe('text')
-  expect(() => questionAnswer({ text: 'é'.repeat(2049) })).toThrow()
+  expect(questionAnswer({ text: 'é'.repeat(4096) }).kind).toBe('text')
+  expect(() => questionAnswer({ text: 'é'.repeat(4097) })).toThrow()
 })

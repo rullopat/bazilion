@@ -81,15 +81,6 @@ export function get(db: BazilionDb, id: string): AgentLessonProposal | null {
   return row ? toProposal(row) : null
 }
 
-export function listForReview(db: BazilionDb, reviewId: string): AgentLessonProposal[] {
-  return db.raw
-    .query<RawProposal, [string]>(
-      'SELECT * FROM agent_lesson_proposals WHERE review_id = ? ORDER BY created_at ASC',
-    )
-    .all(reviewId)
-    .map(toProposal)
-}
-
 export function listForAgent(
   db: BazilionDb,
   agentId: string,

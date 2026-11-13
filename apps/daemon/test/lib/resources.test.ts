@@ -1,91 +1,50 @@
 import { afterEach, expect, test } from 'vitest'
-import type { ManagedBrowserEntry } from '../../src/lib/browser/pool.ts'
+import type { BrowserSession } from '../../src/lib/browser/pool.ts'
 import { reapIdleResources, resources, shutdownResources } from '../../src/lib/resources.ts'
 
 afterEach(async () => {
   await shutdownResources()
 })
 
-/**
- * A ManagedBrowserEntry double honoring the pool's contract: `close()` is the
- * graceful retirement — the entry removes itself from the registry only once
- * the retirement settles (ownership is never dropped before close).
- */
-function fakeBrowser(
-  idleMs: number,
-  lastUsedAt: number,
-  opts: { busy?: number; state?: ManagedBrowserEntry['state']; failClose?: boolean } = {},
-) {
+/** A browser session double: `close()` removes it from the registry, like the pool's. */
+function fakeSession(agentId: string, idleMs: number, lastUsedAt: number, busy = 0) {
   const state = { closed: false }
-  const entry: ManagedBrowserEntry = {
-    agentId: 'x',
-    state: opts.state ?? 'running',
-    handle: null,
-    posture: 'auto||false',
+  const session = {
+    agentId,
     lastUsedAt,
     idleMs,
-    busy: opts.busy ?? 0,
-    failure: null,
+    busy,
     async close() {
-      if (opts.failClose) {
-        entry.state = 'recovery_required'
-        entry.failure = { reasonCode: 'browser_recovery_required', detail: 'close failed (test)' }
-        return
-      }
       state.closed = true
-      entry.state = 'stopping'
-      const registry = resources().browsers
-      if (registry.get(entry.agentId) === entry) registry.delete(entry.agentId)
+      resources().browsers.delete(agentId)
     },
-  }
-  return { entry, state }
+  } as unknown as BrowserSession
+  resources().browsers.set(agentId, session)
+  return state
 }
 
-test('reaper retires sessions idle past their idleMs and keeps fresh ones', async () => {
+test('the reaper closes browsers idle past their idleMs and keeps fresh ones', () => {
   const now = 1_000_000
-  const stale = fakeBrowser(1000, now - 5000) // idle 5s > 1s
-  const fresh = fakeBrowser(1000, now - 100) // idle 0.1s < 1s
-  resources().browsers.set('x', stale.entry)
-  resources().browsers.set('fresh', fresh.entry)
-
+  const stale = fakeSession('stale', 1000, now - 5000)
+  const fresh = fakeSession('fresh', 1000, now - 100)
   reapIdleResources(now)
-
-  // The stale entry removed itself only after its retirement settled.
-  expect(resources().browsers.has('x')).toBe(false)
-  expect(resources().browsers.has('fresh')).toBe(true)
-  expect(stale.state.closed).toBe(true)
-  expect(fresh.state.closed).toBe(false)
+  expect(stale.closed).toBe(true)
+  expect(fresh.closed).toBe(false)
+  expect([...resources().browsers.keys()]).toEqual(['fresh'])
 })
 
-test('the reaper never reaps a busy session (in-flight work is protected)', async () => {
+test('the reaper never closes a busy browser', () => {
   const now = 1_000_000
-  const busy = fakeBrowser(1000, now - 5000, { busy: 1 })
-  resources().browsers.set('x', busy.entry)
+  const busy = fakeSession('busy', 1000, now - 5000, 1)
   reapIdleResources(now)
-  expect(resources().browsers.has('x')).toBe(true)
-  expect(busy.state.closed).toBe(false)
+  expect(busy.closed).toBe(false)
+  expect(resources().browsers.has('busy')).toBe(true)
 })
 
-test('idleMs <= 0 disables reaping for an entry', () => {
-  const never = fakeBrowser(0, 0)
-  resources().browsers.set('x', never.entry)
-  reapIdleResources(Number.MAX_SAFE_INTEGER)
-  expect(resources().browsers.has('x')).toBe(true)
-})
-
-test('a recovery_required slot is never reaped', async () => {
-  const now = 1_000_000
-  const broken = fakeBrowser(1000, now - 5000, { state: 'recovery_required' })
-  resources().browsers.set('x', broken.entry)
-  reapIdleResources(now)
-  expect(resources().browsers.has('x')).toBe(true)
-  expect(broken.state.closed).toBe(false)
-})
-
-test('shutdownResources retires everything and drops ownership only as each close settles', async () => {
-  const a = fakeBrowser(1000, Date.now())
-  resources().browsers.set('x', a.entry)
+test('shutdownResources closes every browser', async () => {
+  const a = fakeSession('a', 1000, Date.now())
+  const b = fakeSession('b', 1000, Date.now())
   await shutdownResources()
+  expect(a.closed && b.closed).toBe(true)
   expect(resources().browsers.size).toBe(0)
-  expect(a.state.closed).toBe(true)
 })

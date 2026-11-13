@@ -1,149 +1,117 @@
-import { ApiClientError } from '@bazilion/client'
 import type {
   Agent,
-  Team,
   Profile,
-  TeamTemplateWithCount,
   ProviderMessage,
   ResolvedAgent,
   SessionHeadResponse,
+  Team,
+  TeamTemplate,
 } from '@bazilion/api-types'
+import { ApiClientError } from '@bazilion/client'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
-import { ChatPane } from '../components/ChatPane'
-import { Sidebar, SIDEBAR_OPEN_GROUPS_COOKIE } from '../components/Sidebar'
+import { ChatPane } from '../components/chat/ChatPane'
+import { SIDEBAR_OPEN_GROUPS_COOKIE, Sidebar } from '../components/Sidebar'
 import { daemonClient } from '../lib/daemon-client'
 
-interface SelectedView {
+interface SelectedAgent {
   resolved: ResolvedAgent
-  initialMessages: ProviderMessage[]
-  sessionHead: SessionHeadResponse
+  messages: ProviderMessage[]
+  head: SessionHeadResponse
 }
 
-interface HomeData {
-  agents: Agent[]
-  profiles: Profile[]
-  profileGroups: TeamTemplateWithCount[]
-  teams: Team[]
-  selected: SelectedView | null
-  initialOpenGroups: Record<string, boolean>
-}
-
-// Pure parser so the rule lives next to the cookie name. getCookie may or may
-// not URL-decode depending on the teamPolicy; handle either form defensively.
-function parseOpenGroupsCookie(raw: string | undefined | null): Record<string, boolean> {
-  if (!raw) return {}
+/** The sidebar's open/closed Teams; a bad cookie is ignored. */
+function parseOpenGroupsCookie(raw: string | undefined): Record<string, boolean> {
   try {
-    const decoded = raw.includes('%') ? decodeURIComponent(raw) : raw
-    const parsed = JSON.parse(decoded) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const out: Record<string, boolean> = {}
-      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof v === 'boolean') out[k] = v
-      }
-      return out
-    }
+    const parsed = JSON.parse(decodeURIComponent(raw ?? '{}')) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, boolean] => {
+        return typeof entry[1] === 'boolean'
+      }),
+    )
   } catch {
-    // bad cookie value — fall through to {}
+    return {}
   }
-  return {}
 }
 
-// POST so we can pass typed input through the server-function validator. The call site
-// is server-internal so the HTTP verb is invisible to the user.
-const fetchHomeData = createServerFn({ method: 'POST' })
-  .validator((d: { agentId?: string }) => d)
-  .handler(async ({ data }): Promise<HomeData> => {
+const fetchHome = createServerFn({ method: 'GET' })
+  .validator((data: { agentId?: string }) => data)
+  .handler(async ({ data }) => {
     const client = daemonClient()
-    const [agents, profiles, profileGroups, teams] = await Promise.all([
+    const [agents, profiles, teamTemplates, teams] = await Promise.all([
       client.get<Agent[]>('/api/agents?includeArchived=false'),
       client.get<Profile[]>('/api/profiles'),
-      client.get<TeamTemplateWithCount[]>('/api/team-templates'),
+      client.get<TeamTemplate[]>('/api/team-templates'),
       client.get<Team[]>('/api/teams'),
     ])
-
-    const initialOpenGroups = parseOpenGroupsCookie(getCookie(SIDEBAR_OPEN_GROUPS_COOKIE))
-
-    let selected: SelectedView | null = null
+    let selected: SelectedAgent | null = null
     if (data.agentId) {
       try {
         const resolved = await client.get<ResolvedAgent>(
           `/api/agents/${encodeURIComponent(data.agentId)}`,
         )
-        // Archived agents are hidden from the sidebar (includeArchived=false
-        // above), so loading their chat via a stale URL would surface a
-        // conversation no longer reachable from any UI — treat the same as
-        // 404 here so the pane goes empty. Hard-deleted agents already
-        // 404 from the GET above and are caught below.
+        // Archived Agents are not in the sidebar, so a stale ?agent= link shows the empty pane.
         if (resolved.agent.status !== 'archived') {
-          const msgs = await client.get<{ messages: ProviderMessage[]; head: SessionHeadResponse }>(
-            `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
-          )
-          selected = {
-            resolved,
-            initialMessages: msgs.messages,
-            sessionHead: msgs.head,
-          }
+          const history = await client.get<{
+            messages: ProviderMessage[]
+            head: SessionHeadResponse
+          }>(`/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`)
+          selected = { resolved, messages: history.messages, head: history.head }
         }
       } catch (err) {
-        // 404 = bad ?agent= id. Drop the selection silently and render the
-        // empty pane; surface other errors so the user sees them.
+        // An unknown ?agent= id shows the empty pane; other failures surface.
         if (!(err instanceof ApiClientError) || err.status !== 404) throw err
       }
     }
-    return { agents, profiles, profileGroups, teams, selected, initialOpenGroups }
+    const openGroups = parseOpenGroupsCookie(getCookie(SIDEBAR_OPEN_GROUPS_COOKIE))
+    return { agents, profiles, teamTemplates, teams, selected, openGroups }
   })
 
 export const Route = createFileRoute('/')({
-  validateSearch: (s: Record<string, unknown>): { agent?: string } => ({
-    agent: typeof s.agent === 'string' ? s.agent : undefined,
+  validateSearch: (search: Record<string, unknown>): { agent?: string } => ({
+    agent: typeof search.agent === 'string' ? search.agent : undefined,
   }),
   loaderDeps: ({ search }) => ({ agentId: search.agent }),
-  loader: ({ deps }) => fetchHomeData({ data: { agentId: deps.agentId } }),
+  loader: ({ deps }) => fetchHome({ data: { agentId: deps.agentId } }),
   component: HomePage,
 })
 
 function HomePage() {
-  const data = Route.useLoaderData()
-  const selectedAgentId = data.selected?.resolved.agent.id ?? null
+  const { agents, profiles, teamTemplates, teams, selected, openGroups } = Route.useLoaderData()
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-3 py-3 lg:grid-cols-[18rem_minmax(0,1fr)]">
-      <div className={`min-h-0 ${data.selected ? 'hidden lg:block' : ''}`}>
+      <div className={`min-h-0 ${selected ? 'hidden lg:block' : ''}`}>
         <Sidebar
-          agents={data.agents}
-          teams={data.teams}
-          profiles={data.profiles}
-          profileGroups={data.profileGroups}
-          selectedAgentId={selectedAgentId}
-          initialOpenGroups={data.initialOpenGroups}
+          agents={agents}
+          teams={teams}
+          profiles={profiles}
+          teamTemplates={teamTemplates}
+          selectedAgentId={selected?.resolved.agent.id ?? null}
+          initialOpenGroups={openGroups}
         />
       </div>
-      <section className={`min-h-0 overflow-hidden ${data.selected ? '' : 'hidden lg:block'}`}>
-        {data.selected ? (
+      <section className={`min-h-0 overflow-hidden ${selected ? '' : 'hidden lg:block'}`}>
+        {selected ? (
           <ChatPane
-            agentId={data.selected.resolved.agent.id}
-            agentName={data.selected.resolved.agent.name}
-            initialMessages={data.selected.initialMessages}
-            initialSessionHead={data.selected.sessionHead}
+            agentId={selected.resolved.agent.id}
+            agentName={selected.resolved.agent.name}
+            initialMessages={selected.messages}
+            initialSessionHead={selected.head}
           />
         ) : (
           <div className="flex h-full items-center justify-center rounded-2xl border border-dashed bg-card px-6 text-center text-muted-foreground">
             <div className="max-w-sm">
               <h1 className="m-0 font-body text-lg font-semibold text-foreground">
-                {data.agents.length === 0 ? 'Start your first conversation' : 'Choose an agent'}
+                {agents.length === 0 ? 'Start your first conversation' : 'Choose an agent'}
               </h1>
               <p className="mt-2 text-sm leading-6">
-                {data.agents.length === 0
+                {agents.length === 0
                   ? 'Your default Team and Agent template are ready. Use “Spawn first agent” on the left to create a working member.'
                   : 'Pick an agent in the Team list to open its persistent conversation.'}
               </p>
-              {data.agents.length === 0 && (
-                <a href="/agents" className="btn-primary mt-4 no-underline">
-                  Open agent setup
-                </a>
-              )}
             </div>
           </div>
         )}

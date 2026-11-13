@@ -1,16 +1,14 @@
 // Per-service field registry — the shape of the /config page.
 //
 // Each entry describes one "thing" the user might configure: an LLM provider
-// (Anthropic, LM Studio, …) or an ancillary service (Brave Search, SearXNG).
-// Fields know which storage backend they live in: `secret` → the encrypted
-// `secrets` table, `config` → the plaintext `config` table. The registry is
-// the single source of truth for the UI layout and for the generic
-// field-write endpoint's dispatch.
-//
-// When adding a new provider or service, append an entry here and the
-// config page + CLI pick it up automatically.
+// (from the provider table in providers.ts) or an ancillary service (Brave
+// Search, SearXNG, …). Fields know which storage backend they live in:
+// `secret` → the encrypted `secrets` table, `config` → the plaintext `config`
+// table. The registry is the single source of truth for the UI layout and for
+// the generic field-write endpoint's dispatch.
 
 import { IMAGE_MODEL_CHOICES } from './image-generation-config.ts'
+import { PROVIDERS } from './providers.ts'
 
 export type FieldKind = 'secret' | 'config'
 
@@ -28,7 +26,7 @@ export interface ServiceField {
 export type ServiceCategory = 'provider' | 'service' | 'integration'
 
 export interface ServiceDef {
-  /** Matches the provider-registry key for providers (e.g. 'anthropic'). */
+  /** For providers, the provider id (e.g. 'anthropic'). */
   id: string
   displayName: string
   category: ServiceCategory
@@ -44,441 +42,32 @@ export interface ServiceDef {
  * Order here is the display order on the config page.
  */
 export const SERVICES: ServiceDef[] = [
-  // --- LLM providers (configured via API keys / URLs) ---
-  // Top 3: openai-codex (ChatGPT OAuth), openai (API key), anthropic.
-  // Everything else in rough popularity order; locals last.
-  {
-    id: 'openai-codex',
-    displayName: 'OpenAI ChatGPT (OAuth)',
-    category: 'provider',
-    hint: 'Use your ChatGPT Plus/Pro/Team account (same login as Codex CLI)',
-    // No form fields — credentials come from an OAuth flow. The /config page
-    // renders a Connect/Disconnect card using /api/auth/openai instead of the
-    // standard field inputs.
-    fields: [],
-  },
-  {
-    id: 'openai',
-    displayName: 'OpenAI',
-    category: 'provider',
-    hint: 'GPT models · platform.openai.com',
-    fields: [{ envVar: 'OPENAI_API_KEY', kind: 'secret', label: 'API key', placeholder: 'sk-...' }],
-  },
-  {
-    id: 'anthropic',
-    displayName: 'Anthropic',
-    category: 'provider',
-    hint: 'Claude models · console.anthropic.com',
-    fields: [
-      { envVar: 'ANTHROPIC_API_KEY', kind: 'secret', label: 'API key', placeholder: 'sk-ant-...' },
-      {
-        envVar: 'ANTHROPIC_OAUTH_TOKEN',
-        kind: 'secret',
-        label: 'OAuth token (alternative to API key)',
-        description: 'Takes precedence over ANTHROPIC_API_KEY when set',
-      },
-    ],
-  },
-  {
-    id: 'google',
-    displayName: 'Google (Gemini)',
-    category: 'provider',
-    hint: 'Gemini models · ai.google.dev (free tier available)',
-    fields: [
-      { envVar: 'GEMINI_API_KEY', kind: 'secret', label: 'API key', placeholder: 'AIza...' },
-    ],
-  },
-  {
-    id: 'google-vertex',
-    displayName: 'Google Vertex AI',
-    category: 'provider',
-    hint: 'Authenticates via `gcloud auth application-default login`',
-    fields: [
-      {
-        envVar: 'GOOGLE_CLOUD_PROJECT',
-        kind: 'config',
-        label: 'GCP project ID',
-        placeholder: 'my-project-123456',
-      },
-      {
-        envVar: 'GOOGLE_CLOUD_LOCATION',
-        kind: 'config',
-        label: 'GCP region',
-        placeholder: 'us-central1',
-      },
-      {
-        envVar: 'GOOGLE_VERTEX_CREDENTIALS_JSON',
-        kind: 'secret',
-        label: 'Explicit credentials JSON (protected turns)',
-        description:
-          'Service-account or ADC JSON projected only into the selected protected worker; ambient ADC files remain unsupported.',
-      },
-    ],
-  },
-  {
-    id: 'azure-openai',
-    displayName: 'Azure OpenAI',
-    category: 'provider',
-    fields: [{ envVar: 'AZURE_OPENAI_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'bedrock',
-    displayName: 'Amazon Bedrock',
-    category: 'provider',
-    hint: 'Authenticates via AWS SDK env (AWS_PROFILE or AWS_ACCESS_KEY_ID/SECRET)',
-    fields: [],
-  },
-  {
-    id: 'github-copilot',
-    displayName: 'GitHub Copilot',
-    category: 'provider',
-    hint: 'Use a GitHub Copilot subscription to call Claude/GPT/Gemini via Copilot',
-    fields: [
-      {
-        envVar: 'COPILOT_GITHUB_TOKEN',
-        kind: 'secret',
-        label: 'GitHub token',
-        description:
-          'Generic GH_TOKEN/GITHUB_TOKEN are ignored — set this scoped variable explicitly (or run `bazilion auth copilot login` once available).',
-      },
-    ],
-  },
-  {
-    id: 'deepseek',
-    displayName: 'DeepSeek',
-    category: 'provider',
-    hint: 'DeepSeek V4 Flash / Pro · platform.deepseek.com',
-    fields: [{ envVar: 'DEEPSEEK_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'mistral',
-    displayName: 'Mistral',
-    category: 'provider',
-    hint: 'mistral.ai',
-    fields: [{ envVar: 'MISTRAL_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'xai',
-    displayName: 'xAI',
-    category: 'provider',
-    hint: 'Grok · x.ai',
-    fields: [{ envVar: 'XAI_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'groq',
-    displayName: 'Groq',
-    category: 'provider',
-    hint: 'Fast inference · groq.com',
-    fields: [{ envVar: 'GROQ_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'cerebras',
-    displayName: 'Cerebras',
-    category: 'provider',
-    fields: [{ envVar: 'CEREBRAS_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'fireworks',
-    displayName: 'Fireworks AI',
-    category: 'provider',
-    hint: 'DeepSeek/GLM/Kimi via fireworks.ai',
-    fields: [{ envVar: 'FIREWORKS_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'together',
-    displayName: 'Together AI',
-    category: 'provider',
-    hint: 'Open-weight models · together.ai',
-    fields: [{ envVar: 'TOGETHER_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'baseten',
-    displayName: 'Baseten',
-    category: 'provider',
-    hint: 'Hosted open-weight models · baseten.co',
-    fields: [{ envVar: 'BASETEN_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'moonshotai',
-    displayName: 'Moonshot AI',
-    category: 'provider',
-    hint: 'Kimi K2/K2.5/K2.6/K2.7 · platform.moonshot.ai',
-    fields: [{ envVar: 'MOONSHOT_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'moonshotai-cn',
-    displayName: 'Moonshot AI (CN)',
-    category: 'provider',
-    hint: 'Kimi models via the China endpoint · platform.moonshot.cn',
-    fields: [{ envVar: 'MOONSHOT_CN_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'kimi-coding',
-    displayName: 'Kimi Coding',
-    category: 'provider',
-    hint: 'Coding-tuned Kimi endpoint · platform.moonshot.cn',
-    fields: [{ envVar: 'KIMI_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'minimax',
-    displayName: 'MiniMax',
-    category: 'provider',
-    hint: 'MiniMax M2/M3 family · platform.minimaxi.com',
-    fields: [{ envVar: 'MINIMAX_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'minimax-cn',
-    displayName: 'MiniMax (CN)',
-    category: 'provider',
-    hint: 'MiniMax M2/M3 family via the China endpoint',
-    fields: [{ envVar: 'MINIMAX_CN_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'qwen-token-plan',
-    displayName: 'Qwen Token Plan',
-    category: 'provider',
-    hint: 'Coding-model subscription endpoint in Singapore',
-    fields: [{ envVar: 'QWEN_TOKEN_PLAN_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'qwen-token-plan-cn',
-    displayName: 'Qwen Token Plan (CN)',
-    category: 'provider',
-    hint: 'Coding-model subscription endpoint in China',
-    fields: [{ envVar: 'QWEN_TOKEN_PLAN_CN_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'qwen-token-plan-individual',
-    displayName: 'Qwen Token Plan (Individual)',
-    category: 'provider',
-    hint: 'Individual subscription models via the international endpoint',
-    fields: [{ envVar: 'QWEN_TOKEN_PLAN_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'xiaomi',
-    displayName: 'Xiaomi MiMo',
-    category: 'provider',
-    hint: 'API billing endpoint · platform.xiaomimimo.com',
-    fields: [{ envVar: 'XIAOMI_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'xiaomi-token-plan-ams',
-    displayName: 'Xiaomi MiMo Token Plan (AMS)',
-    category: 'provider',
-    hint: 'MiMo token-plan endpoint in Amsterdam',
-    fields: [{ envVar: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'xiaomi-token-plan-cn',
-    displayName: 'Xiaomi MiMo Token Plan (CN)',
-    category: 'provider',
-    hint: 'MiMo token-plan endpoint in China',
-    fields: [{ envVar: 'XIAOMI_TOKEN_PLAN_CN_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'xiaomi-token-plan-sgp',
-    displayName: 'Xiaomi MiMo Token Plan (SGP)',
-    category: 'provider',
-    hint: 'MiMo token-plan endpoint in Singapore',
-    fields: [{ envVar: 'XIAOMI_TOKEN_PLAN_SGP_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'ant-ling',
-    displayName: 'Ant Ling',
-    category: 'provider',
-    hint: 'Ling/Ring models · api.ant-ling.com',
-    fields: [{ envVar: 'ANT_LING_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'nvidia',
-    displayName: 'NVIDIA NIM',
-    category: 'provider',
-    hint: 'NVIDIA hosted models · build.nvidia.com',
-    fields: [{ envVar: 'NVIDIA_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'zai',
-    displayName: 'zAI',
-    category: 'provider',
-    fields: [{ envVar: 'ZAI_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'zai-coding-cn',
-    displayName: 'zAI Coding (CN)',
-    category: 'provider',
-    hint: 'GLM coding endpoint · open.bigmodel.cn',
-    fields: [{ envVar: 'ZAI_CODING_CN_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'meta',
-    displayName: 'Meta',
-    category: 'provider',
-    hint: 'Meta model API · api.meta.ai',
-    fields: [{ envVar: 'META_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'radius',
-    displayName: 'Radius',
-    category: 'provider',
-    hint: 'Radius gateway · radius.pi.dev',
-    fields: [{ envVar: 'RADIUS_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'huggingface',
-    displayName: 'Hugging Face',
-    category: 'provider',
-    hint: 'Inference endpoints · huggingface.co',
-    fields: [{ envVar: 'HF_TOKEN', kind: 'secret', label: 'Access token', placeholder: 'hf_...' }],
-  },
-  {
-    id: 'cloudflare-ai-gateway',
-    displayName: 'Cloudflare AI Gateway',
-    category: 'provider',
-    hint: 'Per-gateway routing to OpenAI/Anthropic/Workers AI',
-    fields: [
-      { envVar: 'CLOUDFLARE_API_KEY', kind: 'secret', label: 'API key' },
-      { envVar: 'CLOUDFLARE_ACCOUNT_ID', kind: 'config', label: 'Account ID' },
-      { envVar: 'CLOUDFLARE_GATEWAY_ID', kind: 'config', label: 'Gateway ID' },
-    ],
-  },
-  {
-    id: 'cloudflare-workers-ai',
-    displayName: 'Cloudflare Workers AI',
-    category: 'provider',
-    hint: 'Inference on Cloudflare Workers · ai.cloudflare.com',
-    fields: [
-      { envVar: 'CLOUDFLARE_API_KEY', kind: 'secret', label: 'API key' },
-      { envVar: 'CLOUDFLARE_ACCOUNT_ID', kind: 'config', label: 'Account ID' },
-    ],
-  },
-  {
-    id: 'openrouter',
-    displayName: 'OpenRouter',
-    category: 'provider',
-    hint: 'Proxy for 200+ models · openrouter.ai',
-    fields: [
-      { envVar: 'OPENROUTER_API_KEY', kind: 'secret', label: 'API key', placeholder: 'sk-or-...' },
-    ],
-  },
-  {
-    id: 'vercel-ai-gateway',
-    displayName: 'Vercel AI Gateway',
-    category: 'provider',
-    fields: [
-      { envVar: 'AI_GATEWAY_API_KEY', kind: 'secret', label: 'API key' },
-      {
-        envVar: 'AI_GATEWAY_BASE_URL',
-        kind: 'config',
-        label: 'Base URL (optional)',
-        placeholder: 'https://ai-gateway.vercel.sh/v1',
-      },
-    ],
-  },
-  {
-    id: 'opencode',
-    displayName: 'OpenCode',
-    category: 'provider',
-    hint: 'OpenAI-compatible proxy from the OpenCode CLI',
-    fields: [{ envVar: 'OPENCODE_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'opencode-go',
-    displayName: 'OpenCode Go',
-    category: 'provider',
-    hint: 'OpenCode hosted Go endpoint',
-    fields: [{ envVar: 'OPENCODE_GO_API_KEY', kind: 'secret', label: 'API key' }],
-  },
-  {
-    id: 'lmstudio',
-    displayName: 'LM Studio',
-    category: 'provider',
-    hint: 'Local inference · lmstudio.ai',
-    fields: [
-      {
-        envVar: 'LMSTUDIO_URL',
-        kind: 'config',
-        label: 'Endpoint URL',
-        placeholder: 'http://127.0.0.1:1234/v1',
-      },
-      {
-        envVar: 'LMSTUDIO_API_KEY',
-        kind: 'secret',
-        label: 'API key (rarely needed)',
-      },
-    ],
-  },
-  {
-    id: 'ollama',
-    displayName: 'Ollama',
-    category: 'provider',
-    hint: 'Local inference · ollama.com',
-    fields: [
-      {
-        envVar: 'OLLAMA_URL',
-        kind: 'config',
-        label: 'Endpoint URL',
-        placeholder: 'http://127.0.0.1:11434/v1',
-      },
-      {
-        envVar: 'OLLAMA_API_KEY',
-        kind: 'secret',
-        label: 'API key (rarely needed)',
-      },
-    ],
-  },
-  {
-    id: 'llamacpp',
-    displayName: 'llama.cpp',
-    category: 'provider',
-    hint: 'Local inference · llama.cpp llama-server (OpenAI-compat /v1 endpoint)',
-    fields: [
-      {
-        envVar: 'LLAMACPP_URL',
-        kind: 'config',
-        label: 'Endpoint URL',
-        placeholder: 'http://127.0.0.1:8080/v1',
-      },
-      {
-        envVar: 'LLAMACPP_API_KEY',
-        kind: 'secret',
-        label: 'API key (only if started with --api-key)',
-        description:
-          'llama-server runs without auth by default. Set this only if you launched the server with the `--api-key KEY` flag.',
-      },
-    ],
-  },
+  // LLM providers: one card per entry of the provider table.
+  ...PROVIDERS.map(
+    ({ id, displayName, hint, fields }): ServiceDef => ({
+      id,
+      displayName,
+      category: 'provider',
+      ...(hint ? { hint } : {}),
+      fields,
+    }),
+  ),
 
   // --- Ancillary services (web search, etc) ---
   {
     id: 'web-search',
-    displayName: 'Ordinary web search',
+    displayName: 'Web search',
     category: 'service',
     team: 'Web Search',
-    hint: 'Discovery for ordinary interactive Agents. Auto preserves configured Brave then SearXNG; otherwise follows the Agent’s own eligible OpenAI API/ChatGPT model and account. Native direct routes are experimental pending live qualification. API search may incur additional charges; subscription limits apply. No fallback or browser dependency. Protected discovery remains separate.',
+    hint: 'The web_search tool of every Agent turn. Auto uses Brave when BRAVE_API_KEY is set, else SearXNG when SEARXNG_URL is set, else the search hosted by an Agent on an OpenAI (API key) or ChatGPT model.',
     fields: [
-      {
-        envVar: 'BAZILION_WEB_SEARCH',
-        kind: 'config',
-        label: 'Ordinary search',
-        options: ['on', 'off'],
-        description:
-          'On by default for admitted ordinary turns. Off removes the search tool; does not change protected BAZ-067 discovery.',
-      },
       {
         envVar: 'BAZILION_WEB_SEARCH_ROUTE',
         kind: 'config',
-        label: 'Search route',
-        options: ['auto', 'brave', 'searxng', 'openai', 'openai-codex'],
+        label: 'Search backend',
+        options: ['auto', 'brave', 'searxng', 'native', 'off'],
         description:
-          'Explicit selection never switches after failure. Native selection must match the Agent’s provider/model; no cross-account substitution.',
-      },
-      {
-        envVar: 'BAZILION_WEB_SEARCH_MODE',
-        kind: 'config',
-        label: 'Native search mode',
-        options: ['cached', 'live'],
-        description:
-          'Cached by default. This requests provider cache/network posture; evidence does not attest actual execution mode. Provider egress is not browser-proxy-contained.',
+          'auto (default), brave, searxng, native (the Agent’s own OpenAI or ChatGPT model) or off. A chosen backend that is not configured leaves Agents without web_search.',
       },
     ],
   },
@@ -487,30 +76,22 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Image generation',
     category: 'service',
     team: 'Content tools',
-    hint: 'Automatic (default) follows your enabled OpenAI text providers: API key → separate API billing; ChatGPT/Codex login → subscription usage. If both are enabled, OpenAI/ChatGPT Agents use their own text provider; other Agents need an explicit image choice. Saved credentials alone never select a route. OpenRouter is explicit only. Provider failures never switch billing routes. Image generation still requires the separate on switch. Four requests/turn, one in flight/home; environment variables override saved settings.',
+    hint: 'The image_generate tool: images are saved to Team Results. At most four image_generate calls per turn.',
     fields: [
       {
         envVar: 'BAZILION_IMAGE_MODEL',
         kind: 'config',
-        label: 'Default image route / model',
+        label: 'Image model',
         options: IMAGE_MODEL_CHOICES,
         optionLabels: {
-          auto: 'Automatic · follow enabled OpenAI text providers',
-          'google/gemini-3.1-flash-image': 'OpenRouter · Gemini 3.1 Flash Image',
-          'openai/gpt-image-2': 'OpenRouter · GPT Image 2',
-          'openai:gpt-image-2': 'OpenAI API key · GPT Image 2',
-          'openai-codex:gpt-image-2': 'ChatGPT/Codex login · GPT Image 2 (requested)',
+          off: 'Off',
+          'openai-codex:gpt-image-2': 'GPT Image 2 · ChatGPT login',
+          'openai:gpt-image-2': 'GPT Image 2 · OpenAI API key',
+          'openrouter:google/gemini-3.1-flash-image': 'Gemini 3.1 Flash Image · OpenRouter',
+          'openrouter:openai/gpt-image-2': 'GPT Image 2 · OpenRouter',
         },
         description:
-          'Unset or Automatic follows enabled text providers. Explicit selections override automatic routing. API-key routes incur API charges; ChatGPT image entitlement is account-dependent and not tested by saving settings.',
-      },
-      {
-        envVar: 'BAZILION_IMAGE_GENERATION',
-        kind: 'config',
-        label: 'Image generation',
-        options: ['off', 'on'],
-        description:
-          'Off by default. Enabling permits image requests (API charges or subscription usage) from normal Agent turns, including background turns.',
+          'Off by default. API-key routes are billed per image; the ChatGPT login uses your subscription.',
       },
     ],
   },
@@ -565,7 +146,7 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Agent Shell Security',
     category: 'service',
     team: 'Agent Runtime',
-    hint: 'Trusted host execution is unisolated. Native and Docker isolation are Linux-only; macOS native isolation is deferred and protected Mac work is unavailable.',
+    hint: 'Applies to every Agent turn, whatever its origin. Host execution is unisolated.',
     fields: [
       {
         envVar: 'BAZILION_BASH_APPROVAL',
@@ -573,15 +154,16 @@ export const SERVICES: ServiceDef[] = [
         label: 'Dangerous-command approval',
         placeholder: 'off',
         description:
-          'Legacy host/Docker: off or dangerous (classified commands require per-call approval). Native always uses the dangerous-command gate; unattended turns auto-deny, interactive turns may approve once.',
+          'Use off or dangerous (classified commands require per-call approval). Unattended turns auto-deny; interactive turns may approve once.',
       },
       {
         envVar: 'BAZILION_BASH_SANDBOX',
         kind: 'config',
         label: 'Sandbox mode',
         placeholder: 'off',
+        options: ['off', 'docker'],
         description:
-          'Use off for trusted unisolated host tools. Linux can select native (Bubblewrap/seccomp) or transitional docker. Native macOS isolation is deferred and unqualified; macOS supports only off. Protected work never falls back to host execution.',
+          'Use off for unisolated host tools or docker (bash runs in a fresh network-disabled container; host file tools are hidden). Applies to every turn origin.',
       },
       {
         envVar: 'BAZILION_BASH_SANDBOX_IMAGE',
@@ -589,15 +171,7 @@ export const SERVICES: ServiceDef[] = [
         label: 'Docker image',
         placeholder: 'debian:bookworm-slim',
         description:
-          'Local image with /bin/bash and /usr/bin/env and no VOLUME declarations. Bazilion never falls back to host execution if it is unavailable or incompatible.',
-      },
-      {
-        envVar: 'BAZILION_BASH_SANDBOX_ENV_ALLOWLIST',
-        kind: 'config',
-        label: 'Extra environment allowlist',
-        placeholder: 'MY_SAFE_VARIABLE,ANOTHER_SAFE_VARIABLE',
-        description:
-          'Docker-only comma-separated variable names copied into the container. Native execution ignores this allowlist and accepts only the closed Team environment flags; provider credentials never enter native command environments.',
+          'Local image with /bin/bash; Bazilion never pulls it and never falls back to host execution. A Team can name its own.',
       },
       {
         envVar: 'BAZILION_AGENT_LOOP_MAX_HOPS',
@@ -614,15 +188,14 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Browser Automation',
     category: 'service',
     team: 'Browser',
-    hint: 'Managed installed-browser tools with an isolated per-Agent profile. Availability does not guarantee a site will load; profiles contain cookies/logins, are excluded from backups, and are cleared on Agent Team transfer or an explicit reset. Stop/archive preserve the profile.',
+    hint: 'Each Agent gets its own persistent browser profile (cookies, logins), kept across turns and Team moves and excluded from backups. Reset on the Agent page, or deleting the Agent, removes it.',
     fields: [
       {
         envVar: 'BROWSER_ENABLED',
         kind: 'config',
         label: 'Enable browser tools',
         placeholder: 'true',
-        description:
-          'Expose browser_* tools to ordinary Agent turns (true/false). Default true. This does not guarantee access to any particular site.',
+        description: 'Give Agent turns the browser_* tools (true/false). Default true.',
       },
       {
         envVar: 'BROWSER_EXECUTABLE_PATH',
@@ -630,15 +203,15 @@ export const SERVICES: ServiceDef[] = [
         label: 'Browser executable (optional)',
         placeholder: '/usr/bin/brave-browser',
         description:
-          'Absolute path to a supported Chromium-family browser. When unset, Bazilion discovers Chrome, Brave, Edge, Chromium, then an already-installed bundled Chromium. An invalid explicit path fails instead of running a different binary.',
+          'Absolute path to a Chromium-family browser. When unset, Bazilion uses the first installed Chrome, Brave, Edge or Chromium, then the Chromium that Playwright downloaded.',
       },
       {
         envVar: 'BROWSER_HEADLESS',
         kind: 'config',
-        label: 'Mode',
-        placeholder: 'auto',
+        label: 'Headless',
+        placeholder: 'true',
         description:
-          'true = headless, false = headed. Unset (auto) prefers headed when a desktop display is available and headless otherwise. A configured headed mode without a display fails; it never silently retries headless.',
+          'true (default) runs the browser without a window; false opens a visible browser window on the desktop the daemon runs in.',
       },
       {
         envVar: 'BROWSER_ALLOW_PRIVATE_NETWORK',
@@ -695,64 +268,23 @@ export const SERVICES: ServiceDef[] = [
       },
     ],
   },
-  {
-    id: 'publication',
-    displayName: 'Code host publication',
-    category: 'integration',
-    hint: 'Where an accepted change is committed and opened as a pull request',
-    fields: [
-      {
-        envVar: 'PUBLICATION_HOST',
-        kind: 'config',
-        label: 'Host',
-        placeholder: 'github',
-        description:
-          'The only supported host today. "local" points at a bare repository path and opens no pull request.',
-      },
-      {
-        envVar: 'PUBLICATION_REPOSITORY',
-        kind: 'config',
-        label: 'Repository',
-        placeholder: 'owner/name',
-        description:
-          "For github: owner/name. For local: an absolute path to a bare repository. The Team repository's own origin is never used.",
-      },
-      {
-        envVar: 'PUBLICATION_BASE_BRANCH',
-        kind: 'config',
-        label: 'Base branch',
-        placeholder: 'main',
-        description: 'The branch a publication is based on and its pull request targets.',
-      },
-      {
-        envVar: 'GITHUB_TOKEN',
-        kind: 'secret',
-        label: 'GitHub token',
-        placeholder: 'ghp_...',
-        description:
-          'Needs contents:write and pull_requests:write on that repository. Used only for one push and one pull request.',
-      },
-    ],
-  },
 ]
 
 /**
- * Fast lookup: envVar → the field definition + owning service.
+ * Fast lookup: envVar → the field definition.
  * Rebuilt once at module init — the list is static.
  */
-const FIELD_INDEX: Map<string, { service: ServiceDef; field: ServiceField }> = (() => {
-  const m = new Map<string, { service: ServiceDef; field: ServiceField }>()
+const FIELD_INDEX: Map<string, ServiceField> = (() => {
+  const m = new Map<string, ServiceField>()
   for (const service of SERVICES) {
     for (const field of service.fields) {
-      m.set(field.envVar, { service, field })
+      m.set(field.envVar, field)
     }
   }
   return m
 })()
 
-export function findFieldByEnvVar(
-  envVar: string,
-): { service: ServiceDef; field: ServiceField } | undefined {
+export function findFieldByEnvVar(envVar: string): ServiceField | undefined {
   return FIELD_INDEX.get(envVar)
 }
 

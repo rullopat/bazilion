@@ -1,14 +1,14 @@
-// Single config field with inline save. Shared between the providers and
-// services pages — both use the same /api/config/fields/:envVar PUT path.
-
 import type { ServiceFieldState } from '@bazilion/api-types'
 import { useRouter } from '@tanstack/react-router'
 import { useId, useState } from 'react'
+import { api, errorMessage } from '../lib/api'
 import { Button } from './Button'
 import { ConfirmDialog } from './ConfirmDialog'
 
+/** One provider or service setting, saved on its own (secrets are stored encrypted). */
 export function FieldRow({ field }: { field: ServiceFieldState }) {
   const router = useRouter()
+  const path = `/api/config/fields/${encodeURIComponent(field.envVar)}`
   const inputId = useId()
   const descriptionId = `${inputId}-description`
   const [value, setValue] = useState(field.kind === 'config' ? (field.value ?? '') : '')
@@ -31,35 +31,20 @@ export function FieldRow({ field }: { field: ServiceFieldState }) {
     setBusy(true)
     setErr(null)
     try {
-      const res = await fetch(`/api/config/fields/${encodeURIComponent(field.envVar)}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ value }),
-      })
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(j.error ?? `${res.status} ${res.statusText}`)
-      }
+      await api(path, { method: 'PUT', body: { value } })
       setSavedAt(Date.now())
-      // Secret fields don't echo the value back; clear local state so the
-      // input is empty (and the "set" pill updates via invalidation).
+      // A secret is never echoed back: clear the input; the reload updates the "set" pill.
       if (field.kind === 'secret') setValue('')
       await router.invalidate()
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(errorMessage(e))
     } finally {
       setBusy(false)
     }
   }
 
   async function removeSecret() {
-    const res = await fetch(`/api/config/fields/${encodeURIComponent(field.envVar)}`, {
-      method: 'DELETE',
-    })
-    if (!res.ok && res.status !== 204) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      throw new Error(body?.error ?? `${res.status} ${res.statusText}`)
-    }
+    await api(path, { method: 'DELETE' })
     setValue('')
     setErr(null)
     setSavedAt(Date.now())
@@ -95,8 +80,14 @@ export function FieldRow({ field }: { field: ServiceFieldState }) {
             className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring/30"
           >
             <option value="">Not set (default)</option>
-            {value && !field.options.includes(value) && <option value={value}>Unsupported: {value}</option>}
-            {field.options.map((option) => <option key={option} value={option}>{field.optionLabels?.[option] ?? option}</option>)}
+            {value && !field.options.includes(value) && (
+              <option value={value}>Unsupported: {value}</option>
+            )}
+            {field.options.map((option) => (
+              <option key={option} value={option}>
+                {field.optionLabels?.[option] ?? option}
+              </option>
+            ))}
           </select>
         ) : field.kind === 'config' ? (
           <input
@@ -140,7 +131,9 @@ export function FieldRow({ field }: { field: ServiceFieldState }) {
           </span>
         )}
         {savedAt && Date.now() - savedAt < 2000 && (
-          <span role="status" className="text-success ml-2">saved ✓</span>
+          <span role="status" className="text-success ml-2">
+            saved ✓
+          </span>
         )}
       </span>
       <div className="flex flex-wrap gap-2 md:justify-self-end">
@@ -153,7 +146,11 @@ export function FieldRow({ field }: { field: ServiceFieldState }) {
           </Button>
         )}
       </div>
-      {err && <p role="alert" className="text-xs text-danger md:col-span-4">{err}</p>}
+      {err && (
+        <p role="alert" className="text-xs text-danger md:col-span-4">
+          {err}
+        </p>
+      )}
       <ConfirmDialog
         open={confirmRemove}
         title={`Remove ${field.label}?`}

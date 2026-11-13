@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
-import { createToolRegistry } from '../../src/runtime/tools/registry.ts'
 import { userMdTools } from '../../src/runtime/tools/user-md.ts'
 import type {
   UserMdGetResult,
   UserMdHost,
   UserMdWriteResult,
 } from '../../src/runtime/worker/ipc-protocol.ts'
+import { createToolRegistry } from '../fixtures/tool-registry.ts'
 
 function etag(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 16)

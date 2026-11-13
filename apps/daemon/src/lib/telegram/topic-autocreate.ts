@@ -17,7 +17,7 @@ import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo, profileRepo, teamRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { notifyDirectoryDirty } from './directory.ts'
-import { allocateGroupColor, topicDeepLink, topicNameFor } from './naming.ts'
+import { allocateTeamColor, topicDeepLink, topicNameFor } from './naming.ts'
 import { emojiForAgent, resolveStickerId } from './profile-emojis.ts'
 
 /**
@@ -71,7 +71,7 @@ export async function ensureAgentTopic(args: EnsureTopicArgs): Promise<EnsureTop
   const team = teamRepo.get(args.db, agent.teamId, args.paths)
   if (!team) return { kind: 'team-not-found' }
 
-  const color = allocateGroupColor(args.db, team.id)
+  const color = allocateTeamColor(args.db, team.id)
   const name = topicNameFor(agent, team)
   const profile = profileRepo.get(args.db, agent.profileId)
   const stickerId = await resolveStickerId(emojiForAgent(agent, profile?.name ?? ''))

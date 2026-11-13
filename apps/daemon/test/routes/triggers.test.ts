@@ -67,7 +67,6 @@ describe('GET /:id/dispatches limit', () => {
         triggerId: trigger.id,
         agentId: trigger.agentId,
         scheduledAt,
-        now: scheduledAt,
       })
     }
 
@@ -78,4 +77,17 @@ describe('GET /:id/dispatches limit', () => {
     expect(body.dispatches[0]?.scheduledAt).toBe(101)
     expect(body.dispatches.at(-1)?.scheduledAt).toBe(2)
   })
+})
+
+test.each([
+  0.5, 1.5, 0,
+])('an interval of %s seconds is refused instead of never firing', async (intervalSec) => {
+  const { trigger } = await setupTrigger()
+  const { agentTriggersRouter } = await import('../../src/routes/triggers.ts')
+  const response = await agentTriggersRouter.request(`/${trigger.agentId}/triggers`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ kind: 'interval', intervalSec, message: 'work' }),
+  })
+  expect(response.status).toBe(400)
 })

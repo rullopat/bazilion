@@ -1,17 +1,7 @@
 /**
- * Read every value of a flag documented as repeatable.
- *
- * citty has no array argument type: a repeated `--flag value` pair is parsed last-wins, so a flag
- * declared as `type: 'string'` and described as "repeatable" silently keeps only the final value.
- * `asPaths(args.image as string | string[])` therefore looks like it collects several attachments and
- * in fact receives one.
- *
- * Reading the raw argument list is the only way to honour the documented behaviour. It also avoids
- * comma-splitting, which would corrupt any path that legitimately contains a comma.
- *
- * Known limit: this scans text, so an occurrence of the flag name *inside another option's value*
- * would be misread. The flags using this helper are not free-form message text, so that is not
- * reachable in practice; a caller passing user prose through such a flag should not use it.
+ * Every value of a repeatable flag (`--image a --image b`), read from the raw arguments: citty
+ * parses a repeated flag last-wins. Values are taken as given, never split on commas, so paths may
+ * contain them. An option value that is itself the flag name would be misread.
  */
 export function collectFlagValues(rawArgs: readonly string[], name: string): string[] {
   const values: string[] = []

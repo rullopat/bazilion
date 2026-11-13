@@ -2,7 +2,7 @@ import type { ProviderMessage } from '@bazilion/api-types'
 import { createElement } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { ChatPane } from '../src/components/ChatPane.tsx'
+import { ChatPane } from '../src/components/chat/ChatPane.tsx'
 import { renderMd } from '../src/lib/md.ts'
 
 afterEach(() => {
@@ -16,15 +16,6 @@ describe('chat Markdown hydration', () => {
     expect(renderMd('Hello **world**\n<img src=x onerror=alert(1)>', false)).toBe(
       'Hello **world**\n&lt;img src=x onerror=alert(1)&gt;',
     )
-  })
-
-  test('composer exposes queue initialization as busy before client readiness', () => {
-    const html = renderToString(createElement(ChatPane, {
-      agentId: 'agent-1',
-      agentName: 'Tour Guide',
-      initialMessages: [],
-    }))
-    expect(html).toMatch(/<form[^>]*aria-busy="true"/)
   })
 
   test('server-renders persisted assistant Markdown as the hydration fallback', () => {

@@ -1,30 +1,21 @@
-// Token verification primitives — framework-agnostic. The Hono auth middleware
-// (lib/middleware-auth.ts) wraps these; native clients (CLI, mobile) pass the
-// same token via `Authorization: Bearer …`, and browsers send the httpOnly
-// Device bearers and bounded browser sessions minted by `POST /api/login`.
+// Token verification primitives. Native clients (CLI) pass a token as
+// `Authorization: Bearer …`; browsers hold a hashed session cookie minted by
+// `POST /api/login` (lib/middleware-auth.ts accepts both).
 //
 // All tokens — including the bootstrap one minted by the daemon's first-run
-// bootstrap — live as hashed rows in the `web_tokens` table. The bootstrap
-// row's plaintext is exposed in `~/.bazilion/auth.json` so the daemon (PBKDF2
-// seed for the secrets table) and the CLI (loopback bearer) can use it.
-// Validation goes through `findActiveByToken`, no special-case loopback path.
+// bootstrap — live as hashed rows in the `web_tokens` table and grant full
+// access. The bootstrap row's plaintext is exposed in `~/.bazilion/auth.json`
+// so the daemon (PBKDF2 seed for the secrets table) and the CLI (loopback
+// bearer) can use it.
 
-import type { DeviceTokenScope } from '@bazilion/api-types'
 import { webTokenRepo } from '../core/index.ts'
 import type { AuthenticatedSession } from '../core/repos/webSessions.ts'
 import { getCtx } from './ctx.ts'
 
-/**
- * Is this string a currently-valid token? Accepts any active (non-revoked)
- * row in `web_tokens` — including the bootstrap row written by the daemon's
- * first-run bootstrap. Bumps `last_used_at` on a match so operators can see
- * idle vs active tokens in `token list`.
- */
 export interface BearerPrincipal {
   kind: 'bootstrap' | 'device'
   tokenId: string
   label: string
-  scopes: DeviceTokenScope[]
   sessionId: null
 }
 
@@ -32,7 +23,6 @@ export interface SessionPrincipal {
   kind: 'session'
   tokenId: string
   label: string
-  scopes: DeviceTokenScope[]
   sessionId: string
 }
 
@@ -43,28 +33,22 @@ export interface AuthVariables {
   authSession: AuthenticatedSession
 }
 
+/**
+ * Resolve an active (unrevoked, unexpired) token to its principal, bumping
+ * `last_used_at` so `token list` shows idle vs active tokens.
+ */
 export function authenticateToken(token: string): BearerPrincipal | null {
   try {
     const { db } = getCtx()
     const match = webTokenRepo.findActiveByToken(db, token)
     if (match) {
       webTokenRepo.markUsed(db, match.id)
-      return {
-        kind: match.kind,
-        tokenId: match.id,
-        label: match.label,
-        scopes: match.scopes,
-        sessionId: null,
-      }
+      return { kind: match.kind, tokenId: match.id, label: match.label, sessionId: null }
     }
   } catch {
     // db unavailable — treat as unauthenticated
   }
   return null
-}
-
-export function isValidToken(token: string): boolean {
-  return authenticateToken(token) !== null
 }
 
 /** Pull the bearer token out of an `Authorization: Bearer …` header. */

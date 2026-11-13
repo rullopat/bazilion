@@ -1,6 +1,5 @@
-// `bazilion telegram` — Step 1 surface. Wires the same two endpoints the
-// web UI calls (config set/clear + health). Future steps grow this tree
-// with bind, adopt, setup, etc.
+// `bazilion telegram` — the CLI side of the web Telegram page: credentials, setup checks, owner
+// pairing, the member allowlist, the bot, and agent topic bindings.
 
 import type {
   Agent,
@@ -13,6 +12,9 @@ import type {
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
+import { agentArg, apiPath, positional } from '../command-helpers.ts'
+
+const telegramUserArg = positional('Numeric Telegram user id')
 
 const setCmd = defineCommand({
   meta: {
@@ -97,23 +99,15 @@ const healthCmd = defineCommand({
     description: 'Run the four-step preflight against the Telegram Bot API',
   },
   async run() {
-    const client = createClient()
-    const h = await client.get<TelegramHealth>('/api/config/telegram/health')
+    const h = await createClient().get<TelegramHealth>('/api/config/telegram/health')
+    // Like `bot status`, an unconfigured bridge is a status report on stdout, not an error.
     if (!h.configured) {
       console.log('not configured — run `bazilion telegram config set` first')
       process.exitCode = 1
       return
     }
-    if (h.error) {
-      console.error(`error at ${h.error.step}: ${h.error.message}`)
-      process.exitCode = 1
-      return
-    }
-    if (!h.preflight) {
-      console.error('preflight returned no data')
-      process.exitCode = 1
-      return
-    }
+    if (h.error) throw new Error(`${h.error.step} failed: ${h.error.message}`)
+    if (!h.preflight) throw new Error('preflight returned no data')
     const p = h.preflight
     const line = (ok: boolean, label: string, detail: string): string =>
       `${ok ? '✓' : '✕'} ${label.padEnd(30)} ${detail}`
@@ -123,7 +117,8 @@ const healthCmd = defineCommand({
     console.log(line(p.hasManageTopics, 'can_manage_topics', String(p.hasManageTopics)))
     console.log(line(p.privacyModeOff, 'Privacy Mode is OFF', String(p.privacyModeOff)))
     console.log(line(p.chatIsPrivate, 'supergroup is private', String(p.chatIsPrivate)))
-    console.log(line(p.memberCount === 2, 'one owner + bot', String(p.memberCount ?? 'unknown')))
+    // Everyone in the group can read the agents' replies, so this is worth a look.
+    console.log(`  ${'group members'.padEnd(30)} ${p.memberCount ?? 'unknown'}`)
     if (p.ownerPresent !== null) {
       console.log(line(p.ownerPresent, 'paired owner is present', String(p.ownerPresent)))
     }
@@ -134,7 +129,6 @@ const healthCmd = defineCommand({
       p.hasManageTopics &&
       p.privacyModeOff &&
       p.chatIsPrivate &&
-      p.memberCount === 2 &&
       p.ownerPresent !== false
     if (!allOk) process.exitCode = 1
   },
@@ -196,13 +190,10 @@ const bindCmd = defineCommand({
     name: 'bind',
     description: 'Create a Telegram topic for an agent (manual fallback for /talk)',
   },
-  args: {
-    agent: { type: 'positional', required: true, description: 'Agent id or prefix' },
-  },
+  args: { agent: agentArg },
   async run({ args }) {
-    const client = createClient()
-    const result = await client.post<TelegramBindResponse>(
-      `/api/agents/${args.agent}/telegram/bind`,
+    const result = await createClient().post<TelegramBindResponse>(
+      apiPath('agents', args.agent, 'telegram', 'bind'),
     )
     const verb = result.created ? 'created topic' : 'already bound to'
     console.log(`${verb} #${result.topicId} for agent ${result.agent.name} (${result.agent.id})`)
@@ -215,12 +206,9 @@ const unbindCmd = defineCommand({
     name: 'unbind',
     description: "Clear an agent's Telegram topic binding (topic stays in Telegram as orphan)",
   },
-  args: {
-    agent: { type: 'positional', required: true, description: 'Agent id or prefix' },
-  },
+  args: { agent: agentArg },
   async run({ args }) {
-    const client = createClient()
-    await client.del(`/api/agents/${args.agent}/telegram/binding`)
+    await createClient().del(apiPath('agents', args.agent, 'telegram', 'binding'))
     console.log(`unbound agent ${args.agent}`)
   },
 })
@@ -257,7 +245,7 @@ const listBindingsCmd = defineCommand({
 const allowCmd = defineCommand({
   meta: { name: 'allow', description: 'Add a Telegram user id to the allowlist' },
   args: {
-    userId: { type: 'positional', required: true, description: 'Numeric Telegram user id' },
+    userId: telegramUserArg,
     label: { type: 'string', description: 'Optional human label' },
   },
   async run({ args }) {
@@ -273,7 +261,7 @@ const allowCmd = defineCommand({
 
 const denyCmd = defineCommand({
   meta: { name: 'deny', description: 'Remove a Telegram user id from the allowlist' },
-  args: { userId: { type: 'positional', required: true } },
+  args: { userId: telegramUserArg },
   async run({ args }) {
     const client = createClient()
     await client.del(`/api/config/telegram/acl/${Number(args.userId)}`)

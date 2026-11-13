@@ -3,15 +3,12 @@ import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { projectAttention } from '../../src/core/attention.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
-import * as approvalRepo from '../../src/core/repos/communicationApprovals.ts'
 import * as conversations from '../../src/core/repos/conversations.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as triggerDispatchRepo from '../../src/core/repos/triggerDispatches.ts'
 import * as triggerRepo from '../../src/core/repos/triggers.ts'
-import { authorizeInSnapshot } from '../../src/core/team-policy/authorization.ts'
-import { isActiveAgent, registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
-import { acquireAgentLifecycleLease } from '../../src/lib/agent-lifecycle-lease.ts'
+import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 import { seedConversationTarget, seedRegisteredConversation } from '../fixtures/conversation.ts'
 
@@ -19,33 +16,28 @@ interface TurnPlan {
   frames?: ChatFrame[]
   error?: Error
   abort?: boolean
+  /** Runs inside the turn, before it is aborted. */
+  during?: () => void
 }
 
 interface PreparedTurnInput {
-  invocation: {
-    turn: { agentId: string; message: string; conversationId: string }
-    claim?: { controller: AbortController; releaseLease: () => void }
-  }
+  agentId: string
+  message: string
+  conversationId: string
+  claim?: { controller: AbortController }
 }
 
-describe('durable scheduler dispatches', () => {
+describe('scheduler', () => {
   let env: TestEnv
   let scheduler: typeof import('../../src/lib/scheduler.ts')
   let targets: string[]
   let turnPlans: TurnPlan[]
   let turnCalls: Array<{ agentId: string; message: string }>
-  let protectedPreflightError: Error | null
-  let protectedPreflightCalls: number
-  let protectedPreflightGate: ((signal: AbortSignal | undefined) => Promise<void>) | undefined
-  let repositoryClaimError: Error | null
-  let repositorySucceedError: Error | null
-  let oldEnforcement: string | undefined
+  let prepareError: Error | null
   let oldTickMs: string | undefined
 
   beforeEach(async () => {
-    oldEnforcement = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
     oldTickMs = process.env.BAZILION_SCHEDULER_TICK_MS
-    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'off'
     process.env.BAZILION_SCHEDULER_TICK_MS = '1000'
     vi.useFakeTimers()
     vi.setSystemTime(1_700_000_000_000)
@@ -53,7 +45,6 @@ describe('durable scheduler dispatches', () => {
     profileRepo.insert(env.db, {
       id: 'p',
       name: 'p',
-      dir: env.paths.profileDir('p'),
       defaultModel: 'lmstudio:x',
       skillsMode: 'selected',
     })
@@ -64,79 +55,40 @@ describe('durable scheduler dispatches', () => {
       modelOverride: null,
       reasoningLevel: 'medium',
       status: 'idle',
-      dir: env.paths.agentDir('a1'),
       teamId: env.teamId,
     })
     seedRegisteredConversation(env.db, env.paths, 'a1')
     targets = []
     turnPlans = []
     turnCalls = []
-    protectedPreflightError = null
-    protectedPreflightCalls = 0
-    protectedPreflightGate = undefined
-    repositoryClaimError = null
-    repositorySucceedError = null
+    prepareError = null
     vi.resetModules()
-    vi.doMock('../../src/core/index.ts', async (importOriginal) => {
-      const actual = await importOriginal<typeof import('../../src/core/index.ts')>()
-      return {
-        ...actual,
-        triggerDispatchRepo: {
-          ...actual.triggerDispatchRepo,
-          claim: (...args: Parameters<typeof actual.triggerDispatchRepo.claim>) => {
-            if (repositoryClaimError) {
-              const error = repositoryClaimError
-              repositoryClaimError = null
-              throw error
-            }
-            return actual.triggerDispatchRepo.claim(...args)
-          },
-          succeed: (...args: Parameters<typeof actual.triggerDispatchRepo.succeed>) => {
-            if (repositorySucceedError) {
-              const error = repositorySucceedError
-              repositorySucceedError = null
-              throw error
-            }
-            return actual.triggerDispatchRepo.succeed(...args)
-          },
-        },
-      }
-    })
     vi.doMock('../../src/lib/ctx.ts', () => ({
       getCtx: () => ({ db: env.db, paths: env.paths, authToken: 'test-token' }),
     }))
     vi.doMock('../../src/lib/agent-turn.ts', () => ({
       prepareAgentTurn: async (turn: PreparedTurnInput) => {
-        targets.push(turn.invocation.turn.conversationId)
-        turnCalls.push({
-          agentId: turn.invocation.turn.agentId,
-          message: turn.invocation.turn.message,
-        })
-        turn.invocation.claim?.releaseLease()
+        if (prepareError) {
+          // Like the real preparation: a scheduler turn gives back its registration.
+          unregisterAgent(turn.agentId)
+          throw prepareError
+        }
+        targets.push(turn.conversationId)
+        turnCalls.push({ agentId: turn.agentId, message: turn.message })
         return turn
       },
       runAgentTurn: (turn: PreparedTurnInput) => {
         const plan = turnPlans.shift() ?? { frames: [{ kind: 'done', messages: [] }] }
         return (async function* () {
           try {
-            if (plan.abort) turn.invocation.claim?.controller.abort()
+            plan.during?.()
+            if (plan.abort) turn.claim?.controller.abort()
             for (const frame of plan.frames ?? []) yield frame
             if (plan.error) throw plan.error
           } finally {
-            unregisterAgent(turn.invocation.turn.agentId)
+            unregisterAgent(turn.agentId)
           }
         })()
-      },
-    }))
-    vi.doMock('../../src/lib/protected-execution.ts', () => ({
-      prepareSelectedProtectedExecution: async (
-        _agent: unknown,
-        options: { controller: AbortController },
-      ) => {
-        protectedPreflightCalls++
-        await protectedPreflightGate?.(options.controller.signal)
-        if (protectedPreflightError) throw protectedPreflightError
-        return { testPreparedProtectedExecution: true }
       },
     }))
     scheduler = await import('../../src/lib/scheduler.ts')
@@ -147,94 +99,14 @@ describe('durable scheduler dispatches', () => {
     scheduler._resetSchedulerForTest()
     unregisterAgent('a1')
     env.cleanup()
-    vi.doUnmock('../../src/core/index.ts')
     vi.doUnmock('../../src/lib/ctx.ts')
     vi.doUnmock('../../src/lib/agent-turn.ts')
-    vi.doUnmock('../../src/lib/protected-execution.ts')
     vi.resetModules()
     vi.restoreAllMocks()
     vi.useRealTimers()
-    if (oldEnforcement === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-    else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = oldEnforcement
     if (oldTickMs === undefined) delete process.env.BAZILION_SCHEDULER_TICK_MS
     else process.env.BAZILION_SCHEDULER_TICK_MS = oldTickMs
   })
-
-  // Collected only by the fresh-TZ parent fixture. Changing TZ inside a Vitest worker
-  // would not reliably change the process-local calendar, so the parent starts Node first.
-  if (process.env.BAZILION_TEST_CRON_CALENDAR === '1') {
-    const calendars = {
-      'America/New_York': {
-        gapStart: '2026-03-08T06:00:00Z',
-        before: '2026-03-07T07:30:00Z',
-        after: '2026-03-09T06:30:00Z',
-        repeatStart: '2026-11-01T04:00:00Z',
-        repeatCron: '30 1 * * *',
-        repeated: ['2026-11-01T05:30:00Z', '2026-11-01T06:30:00Z'],
-      },
-      'Europe/Berlin': {
-        gapStart: '2026-03-29T00:00:00Z',
-        before: '2026-03-28T01:30:00Z',
-        after: '2026-03-30T00:30:00Z',
-        repeatStart: '2026-10-24T23:00:00Z',
-        repeatCron: '30 2 * * *',
-        repeated: ['2026-10-25T00:30:00Z', '2026-10-25T01:30:00Z'],
-      },
-    }
-    const calendar = calendars[process.env.TZ as keyof typeof calendars]
-    if (!calendar) throw new Error('Unsupported isolated scheduler calendar zone')
-
-    async function ticks(instant: number) {
-      // Multiple real scheduler invocations per matching minute, not just matcher calls.
-      for (const offset of [0, 25_000, 55_000]) {
-        vi.setSystemTime(instant + offset)
-        await scheduler._tickOnce()
-      }
-    }
-    function cron(expression: string) {
-      return triggerRepo.insert(env.db, {
-        agentId: 'a1',
-        kind: 'cron',
-        intervalSec: null,
-        cronExpr: expression,
-        message: 'isolated calendar fixture',
-      })
-    }
-
-    test('controlled DST dispatcher: spring gap materializes no invented catch-up', async () => {
-      vi.setSystemTime(Date.parse(calendar.before))
-      const trigger = cron('30 2 * * *')
-      await ticks(Date.parse(calendar.before))
-      expect(turnCalls).toHaveLength(1)
-      const start = Date.parse(calendar.gapStart)
-      for (let i = 0; i < 180; i++) await ticks(start + i * 60_000)
-      expect(turnCalls).toHaveLength(1)
-      expect(triggerDispatchRepo.listForTrigger(env.db, trigger.id)).toHaveLength(1)
-      await ticks(Date.parse(calendar.after))
-      const dispatches = triggerDispatchRepo.listForTrigger(env.db, trigger.id)
-      expect(dispatches.map((d) => d.scheduledAt).sort()).toEqual(
-        [Date.parse(calendar.before), Date.parse(calendar.after)].sort(),
-      )
-      expect(dispatches.every((d) => d.status === 'succeeded' && d.attemptCount === 1)).toBe(true)
-      expect(turnCalls).toHaveLength(2)
-      expect(triggerRepo.get(env.db, trigger.id)?.lastFiredAt).toBe(Date.parse(calendar.after))
-    })
-
-    test('controlled DST dispatcher: repeated hour has two UTC occurrences without same-minute replay', async () => {
-      const start = Date.parse(calendar.repeatStart)
-      vi.setSystemTime(start)
-      const trigger = cron(calendar.repeatCron)
-      for (let i = 0; i < 240; i++) await ticks(start + i * 60_000)
-      const dispatches = triggerDispatchRepo.listForTrigger(env.db, trigger.id)
-      const expected = calendar.repeated.map((instant) => Date.parse(instant)).sort()
-      expect(dispatches.map((d) => d.scheduledAt).sort()).toEqual(expected)
-      expect(new Set(dispatches.map((d) => d.id)).size).toBe(2)
-      expect(dispatches.every((d) => d.status === 'succeeded' && d.attemptCount === 1)).toBe(true)
-      expect(turnCalls).toHaveLength(2)
-      expect((expected[1] ?? Number.NaN) - (expected[0] ?? Number.NaN)).toBe(3_600_000)
-      expect(triggerRepo.get(env.db, trigger.id)?.lastFiredAt).toBe(expected[1])
-    })
-  }
 
   function materialize() {
     const now = Date.now()
@@ -250,7 +122,6 @@ describe('durable scheduler dispatches', () => {
       triggerId: trigger.id,
       agentId: 'a1',
       scheduledAt: now,
-      now,
     })
     return { trigger, dispatch }
   }
@@ -258,19 +129,11 @@ describe('durable scheduler dispatches', () => {
   test('delayed scheduled work keeps its materialized target after New conversation', async () => {
     const { dispatch } = materialize()
     const next = seedConversationTarget(join(env.paths.agentDir('a1'), 'sessions'), env.paths.home)
-    const created = conversations.create(
-      env.db,
-      'a1',
-      {
-        requestId: next.id,
-        expectedSelection: conversations.selection(env.db, 'a1'),
-      },
-      () => next.filename,
-    )
+    conversations.create(env.db, 'a1', next.id)
     await scheduler._tickOnce()
     expect(targets).toEqual([dispatch.conversationId])
     expect(dispatch.conversationId).not.toBe(next.id)
-    expect(conversations.selection(env.db, 'a1')).toEqual(created.selection)
+    expect(conversations.selectedId(env.db, 'a1')).toBe(next.id)
     expect(triggerDispatchRepo.get(env.db, dispatch.id)?.conversationId).toBe(
       dispatch.conversationId,
     )
@@ -284,51 +147,13 @@ describe('durable scheduler dispatches', () => {
     expect(turnCalls).toEqual([{ agentId: 'a1', message: 'scheduled work' }])
     expect(triggerDispatchRepo.listForTrigger(env.db, trigger.id)[0]).toMatchObject({
       status: 'succeeded',
-      attemptCount: 1,
-      lastError: null,
+      startedAt: Date.now(),
+      finishedAt: Date.now(),
+      error: null,
     })
   })
 
-  test('releases scheduler ownership when a repository claim throws before preclaim handoff', async () => {
-    const { dispatch } = materialize()
-    repositoryClaimError = new Error('claim persistence failed')
-
-    await scheduler._tickOnce()
-    expect(turnCalls).toEqual([])
-
-    await scheduler._tickOnce()
-
-    expect(turnCalls).toHaveLength(1)
-    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
-      status: 'succeeded',
-      attemptCount: 1,
-    })
-  })
-
-  test('clears the firing guard when terminal dispatch persistence throws', async () => {
-    const { dispatch } = materialize()
-    repositorySucceedError = new Error('terminal persistence failed')
-
-    await scheduler._tickOnce()
-    expect(turnCalls).toHaveLength(1)
-    const abandoned = triggerDispatchRepo.get(env.db, dispatch.id)
-    expect(abandoned).toMatchObject({ status: 'running', attemptCount: 1 })
-
-    vi.setSystemTime((abandoned?.leaseExpiresAt as number) + 1)
-    await scheduler._tickOnce()
-
-    expect(turnCalls).toHaveLength(2)
-    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
-      status: 'succeeded',
-      attemptCount: 2,
-    })
-  })
-
-  test.each([
-    'off',
-    'on',
-  ])('inbox claim records its exact conversation with enforcement %s', async (enforcement) => {
-    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = enforcement
+  test('inbox turn targets its exact conversation', async () => {
     agentRepo.insert(env.db, {
       id: 'a2',
       profileId: 'p',
@@ -336,202 +161,189 @@ describe('durable scheduler dispatches', () => {
       modelOverride: null,
       reasoningLevel: 'medium',
       status: 'idle',
-      dir: env.paths.agentDir('a2'),
       teamId: env.teamId,
     })
-    env.db.raw.run(
-      `INSERT OR REPLACE INTO team_policy_edges
-      (team_id, source_kind, source_id, target_kind, target_id, posture)
-      VALUES (?, 'agent', 'a2', 'agent', 'a1', 'allow')`,
-      [env.teamId],
-    )
     const message = messageRepo.send(env.db, {
       from: 'a2',
       to: 'a1',
       payload: JSON.stringify({ text: 'inbox task' }),
     })
-    const selection = conversations.selection(env.db, 'a1')
+    const selected = conversations.selectedId(env.db, 'a1')
     await scheduler._tickOnce()
-    expect(targets).toEqual([selection.conversationId])
+    expect(targets).toEqual([selected])
     expect(messageRepo.get(env.db, message.id)?.readAt).not.toBeNull()
-    expect(
-      env.db.raw
-        .query<{ conversation_id: string }, [string]>(
-          'SELECT conversation_id FROM messages WHERE id = ?',
-        )
-        .get(message.id)?.conversation_id,
-    ).toBe(selection.conversationId)
   })
 
-  test('leaves inbox messages unread when protected readiness fails before claim', async () => {
-    protectedPreflightError = new Error('credential sentinel must not be persisted')
-    const message = messageRepo.send(env.db, {
-      from: 'a1',
-      to: 'a1',
-      payload: JSON.stringify({ text: 'protected inbox work' }),
+  test('a failed inbox turn preparation leaves the messages unread and retries with backoff', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
     })
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-
+    const message = messageRepo.send(env.db, {
+      from: 'a2',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'inbox task' }),
+    })
+    prepareError = new Error('BAZILION_BASH_SANDBOX must be "off" or "docker", received: bogus')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const retryDelays = () =>
+      warn.mock.calls
+        .map(([line]) => String(line))
+        .filter((line) => line.includes('"inbox_wake_unavailable"'))
+        .map((line) => (JSON.parse(line) as { retryInMs?: number }).retryInMs)
+    const failedAt = Date.now()
     await scheduler._tickOnce()
-
-    expect(protectedPreflightCalls).toBe(1)
-    expect(turnCalls).toEqual([])
-    expect(messageRepo.get(env.db, message.id)).toMatchObject({ readAt: null })
-    expect(messageRepo.listInbox(env.db, 'a1', { unreadOnly: true })).toHaveLength(1)
-  })
-
-  test('shutdown aborts and drains unregistered inbox readiness before workspace/DB close', async () => {
-    const entered = Promise.withResolvers<void>()
-    const release = Promise.withResolvers<void>()
-    let signal: AbortSignal | undefined
-    protectedPreflightGate = async (ownedSignal) => {
-      signal = ownedSignal
-      entered.resolve()
-      await release.promise
-    }
-    const message = messageRepo.send(env.db, {
-      from: 'a1',
-      to: 'a1',
-      payload: JSON.stringify({ text: 'unclaimed protected work' }),
-    })
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const tick = scheduler._tickOnce()
-    await entered.promise
-    const stopped = scheduler.stopScheduler()
-    let settled = false
-    void Promise.resolve(stopped).then(() => {
-      settled = true
-    })
-    try {
-      expect(isActiveAgent('a1')).toBe(false)
-      expect(
-        env.db.raw
-          .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
-          .get()?.count,
-      ).toBe(1)
-      expect(signal?.aborted).toBe(true)
-      await Promise.resolve()
-      expect(settled).toBe(false)
-      expect(scheduler.stopScheduler()).toBe(stopped)
-      await scheduler._tickOnce()
-      expect(protectedPreflightCalls).toBe(1)
-    } finally {
-      release.resolve()
-      await Promise.all([tick, stopped])
-    }
-    expect(settled).toBe(true)
     expect(turnCalls).toEqual([])
     expect(messageRepo.get(env.db, message.id)?.readAt).toBeNull()
-    expect(
-      env.db.raw
-        .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
-        .get()?.count,
-    ).toBe(0)
-  })
+    expect(messageRepo.listRecipientsWithUnread(env.db)).toEqual(['a1'])
+    expect(retryDelays()).toEqual([10_000])
 
-  test('shutdown drains lifecycle waiters without admitting a late inbox preflight or claim', async () => {
-    const release = await acquireAgentLifecycleLease('a1')
-    const message = messageRepo.send(env.db, {
-      from: 'a1',
-      to: 'a1',
-      payload: JSON.stringify({ text: 'waiting protected work' }),
-    })
-    const tick = scheduler._tickOnce()
-    const stopped = scheduler.stopScheduler()
-    let settled = false
-    void Promise.resolve(stopped).then(() => {
-      settled = true
-    })
-    try {
-      await Promise.resolve()
-      expect(settled).toBe(false)
-    } finally {
-      release()
-      await Promise.all([tick, stopped])
-    }
-    expect(protectedPreflightCalls).toBe(0)
-    expect(turnCalls).toEqual([])
+    // A lasting failure backs off instead of retrying on every tick, doubling each time.
+    vi.setSystemTime(failedAt + 9_999)
+    await scheduler._tickOnce()
+    expect(retryDelays()).toEqual([10_000])
+    vi.setSystemTime(failedAt + 10_000)
+    await scheduler._tickOnce()
+    expect(retryDelays()).toEqual([10_000, 20_000])
     expect(messageRepo.get(env.db, message.id)?.readAt).toBeNull()
-  })
 
-  test('provider error frames retry the materialized occurrence despite a newer watermark', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    turnPlans.push(
-      {
-        frames: [
-          { kind: 'event', event: { type: 'error', error: 'provider unavailable' } },
-          { kind: 'done', messages: [] },
-        ],
-      },
-      { frames: [{ kind: 'done', messages: [] }] },
-    )
-    const { trigger, dispatch } = materialize()
-
+    prepareError = null
+    vi.setSystemTime(failedAt + 29_999)
     await scheduler._tickOnce()
-    const retry = triggerDispatchRepo.get(env.db, dispatch.id)
-    expect(retry).toMatchObject({
-      status: 'retrying',
-      attemptCount: 1,
-      lastError: 'Protected Agent turn failed. Check Bazilion Config or bazilion doctor.',
+    expect(turnCalls).toEqual([])
+    vi.setSystemTime(failedAt + 30_000)
+    await scheduler._tickOnce()
+    expect(turnCalls).toHaveLength(1)
+    expect(messageRepo.get(env.db, message.id)?.readAt).not.toBeNull()
+
+    // A started turn clears the backoff: the next message is delivered on the next tick.
+    const next = messageRepo.send(env.db, {
+      from: 'a2',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'second inbox task' }),
     })
-
-    triggerRepo.markFired(env.db, trigger.id, dispatch.scheduledAt + 30_000)
-    vi.setSystemTime(retry?.nextAttemptAt as number)
     await scheduler._tickOnce()
-
     expect(turnCalls).toHaveLength(2)
-    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
-      status: 'succeeded',
-      attemptCount: 2,
-      lastError: null,
-    })
+    expect(messageRepo.get(env.db, next.id)?.readAt).not.toBeNull()
   })
 
-  test('provider failures become terminal after the bounded third attempt', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    turnPlans.push(
-      ...['first failure', 'second failure', 'final failure'].map((error) => ({
-        frames: [{ kind: 'event' as const, event: { type: 'error' as const, error } }],
-      })),
+  test('archived Agents get no scheduled or inbox turns until they are unarchived', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    const message = messageRepo.send(env.db, {
+      from: 'a2',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'mail from before the archive' }),
+    })
+    // This dispatch was materialized before the archive: it is cancelled when it fires.
+    const { trigger, dispatch } = materialize()
+    agentRepo.archive(env.db, 'a1')
+    expect(messageRepo.listRecipientsWithUnread(env.db)).toEqual([])
+    expect(triggerRepo.listEnabled(env.db)).toEqual([])
+
+    await scheduler._tickOnce()
+    vi.setSystemTime(Date.now() + 120_000)
+    await scheduler._tickOnce()
+    expect(turnCalls).toEqual([])
+    expect(messageRepo.get(env.db, message.id)?.readAt).toBeNull()
+    expect(triggerDispatchRepo.listForTrigger(env.db, trigger.id)).toEqual([
+      expect.objectContaining({
+        id: dispatch.id,
+        status: 'cancelled',
+        error: 'agent is archived',
+      }),
+    ])
+
+    // Once unarchived, the waiting mail is delivered and the trigger fires again.
+    agentRepo.unarchive(env.db, 'a1')
+    await scheduler._tickOnce()
+    await scheduler._tickOnce()
+    expect(messageRepo.get(env.db, message.id)?.readAt).not.toBeNull()
+    expect(turnCalls.map((call) => call.message)).toEqual(
+      expect.arrayContaining([
+        'scheduled work',
+        expect.stringContaining('mail from before the archive'),
+      ]),
     )
+    expect(triggerDispatchRepo.listForTrigger(env.db, trigger.id)).toHaveLength(2)
+  })
+
+  test('an Agent in a lifecycle mutation is skipped until it ends, without holding up the tick', async () => {
+    const { runAgentLifecycleMutation } = await import('../../src/lib/agent-cancel.ts')
+    const message = messageRepo.send(env.db, {
+      from: 'a1',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'waiting inbox work' }),
+    })
+    let finish: () => void = () => {}
+    const mutation = runAgentLifecycleMutation(
+      'a1',
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    )
+    await scheduler._tickOnce()
+    expect(turnCalls).toEqual([])
+    expect(messageRepo.get(env.db, message.id)?.readAt).toBeNull()
+    finish()
+    await mutation
+    await scheduler._tickOnce()
+    expect(messageRepo.get(env.db, message.id)?.readAt).not.toBeNull()
+    expect(turnCalls.map((call) => call.message)).toEqual([
+      expect.stringContaining('waiting inbox work'),
+    ])
+  })
+
+  test('a failed turn is recorded once as failed, shows in Attention and is never retried', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    turnPlans.push({
+      frames: [
+        { kind: 'event', event: { type: 'error', error: 'provider unavailable' } },
+        { kind: 'done', messages: [] },
+      ],
+    })
     const { dispatch } = materialize()
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      await scheduler._tickOnce()
-      const current = triggerDispatchRepo.get(env.db, dispatch.id)
-      expect(current?.attemptCount).toBe(attempt)
-      if (attempt < 3) vi.setSystemTime(current?.nextAttemptAt as number)
-    }
+    await scheduler._tickOnce()
+    // Well past the old retry delays, still before the trigger's next 60 s occurrence.
+    vi.setSystemTime(Date.now() + 30_000)
+    await scheduler._tickOnce()
 
+    expect(turnCalls).toHaveLength(1)
     expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
       status: 'failed',
-      attemptCount: 3,
-      lastError: 'Protected Agent turn failed. Check Bazilion Config or bazilion doctor.',
+      error: 'provider unavailable',
       finishedAt: expect.any(Number),
     })
-
-    // BAZ-051 visibility: the terminal failure is not just a row — the
-    // operator's Attention Center shows it with the bounded-retry diagnostic.
-    const attention = projectAttention(env.db, { state: 'open', limit: 100 }).items
-    const failureItem = attention.find(
+    const failureItem = projectAttention(env.db, { state: 'open', limit: 100 }).items.find(
       (item) => item.kind === 'trigger_failure' && item.sourceId === dispatch.id,
     )
-    expect(failureItem).toBeDefined()
     expect(failureItem?.severity).toBe('error')
-    expect(failureItem?.diagnostic).toContain('Protected Agent turn failed')
+    expect(failureItem?.diagnostic).toBe('provider unavailable')
   })
 
-  test('defers without consuming an attempt while the target agent is busy', async () => {
+  test('a busy Agent keeps the occurrence pending until it is free', async () => {
     const { dispatch } = materialize()
     registerAgent('a1', new AbortController())
 
     await scheduler._tickOnce()
-    const deferred = triggerDispatchRepo.get(env.db, dispatch.id)
-    expect(deferred).toMatchObject({ status: 'pending', attemptCount: 0 })
+    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
+      status: 'pending',
+      startedAt: null,
+    })
     expect(turnCalls).toEqual([])
 
     unregisterAgent('a1')
-    vi.setSystemTime(deferred?.nextAttemptAt as number)
     await scheduler._tickOnce()
     expect(turnCalls).toHaveLength(1)
     expect(triggerDispatchRepo.get(env.db, dispatch.id)?.status).toBe('succeeded')
@@ -555,109 +367,39 @@ describe('durable scheduler dispatches', () => {
 
     const dispatches = triggerDispatchRepo.listForTrigger(env.db, trigger.id)
     expect(dispatches).toHaveLength(1)
-    expect(dispatches[0]).toMatchObject({
-      scheduledAt: baseline + 1_000,
-      status: 'pending',
-      attemptCount: 0,
-    })
+    expect(dispatches[0]).toMatchObject({ scheduledAt: baseline + 1_000, status: 'pending' })
     expect(triggerRepo.get(env.db, trigger.id)?.lastFiredAt).toBe(baseline + 5_000)
 
     unregisterAgent('a1')
-    vi.setSystemTime(dispatches[0]?.nextAttemptAt as number)
     await scheduler._tickOnce()
     expect(turnCalls).toHaveLength(1)
     expect(triggerDispatchRepo.get(env.db, dispatches[0]?.id as string)?.status).toBe('succeeded')
   })
 
-  test('reclaims an abandoned running lease after restart', async () => {
+  test('a run interrupted by a daemon stop is failed at boot and never re-run', async () => {
     const { dispatch } = materialize()
-    triggerDispatchRepo.claim(env.db, dispatch.id, { now: Date.now(), leaseMs: 100 })
-    vi.setSystemTime(Date.now() + 101)
+    // The daemon died while this occurrence was running.
+    expect(triggerDispatchRepo.start(env.db, dispatch.id)).toBe(true)
 
-    await scheduler._tickOnce()
-
-    expect(turnCalls).toHaveLength(1)
-    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
-      status: 'succeeded',
-      attemptCount: 2,
-    })
-  })
-
-  test('keeps approval-gated work pending until a durable grant is executed by a later tick', async () => {
-    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
-    env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
-    env.db.raw.run(
-      `INSERT INTO team_policy_edges
-         (team_id, source_kind, source_id, target_kind, target_id, posture)
-       VALUES (?, 'user', '', 'agent', 'a1', 'approval_required')`,
-      [env.teamId],
-    )
-    const { dispatch } = materialize()
-
-    await scheduler._tickOnce()
-    let deferred = triggerDispatchRepo.get(env.db, dispatch.id)
-    expect(deferred).toMatchObject({ status: 'pending', attemptCount: 0 })
-    expect(turnCalls).toEqual([])
-    const approval = approvalRepo.list(env.db)[0]
-    expect(approval).toMatchObject({
-      operation: 'scheduler_trigger',
-      payloadKind: 'scheduler_trigger',
-      status: 'pending',
-    })
-
-    vi.setSystemTime(deferred?.nextAttemptAt as number)
-    await scheduler._tickOnce()
-    expect(approvalRepo.list(env.db)).toHaveLength(1)
-    expect(turnCalls).toEqual([])
-
-    const grant = approvalRepo.grantSchedulerTrigger(
-      env.db,
-      approval?.id as string,
-      'operator',
-      (item) =>
-        authorizeInSnapshot(env.db, {
-          source: item.source,
-          target: item.target,
-          origin: item.origin,
-          attemptKind: item.attemptKind,
-          attemptId: item.attemptId,
-        }),
-      () => null,
-    )
-    expect(grant).toMatchObject({ granted: true, approval: { status: 'delivered' } })
-    expect(turnCalls).toEqual([])
-
-    deferred = triggerDispatchRepo.get(env.db, dispatch.id)
-    vi.setSystemTime(deferred?.nextAttemptAt as number)
-    await scheduler._tickOnce()
-    expect(turnCalls).toHaveLength(1)
-    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
-      status: 'succeeded',
-      attemptCount: 1,
-    })
-  })
-
-  test('terminal approval denial fails the dispatch without starting a turn', async () => {
-    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
-    env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
-    env.db.raw.run(
-      `INSERT INTO team_policy_edges
-         (team_id, source_kind, source_id, target_kind, target_id, posture)
-       VALUES (?, 'user', '', 'agent', 'a1', 'approval_required')`,
-      [env.teamId],
-    )
-    const { dispatch } = materialize()
-
-    await scheduler._tickOnce()
-    approvalRepo.decide(env.db, approvalRepo.list(env.db)[0]?.id as string, 'deny', 'operator')
-    const pending = triggerDispatchRepo.get(env.db, dispatch.id)
-    vi.setSystemTime(pending?.nextAttemptAt as number)
+    triggerDispatchRepo.failInterrupted(env.db)
     await scheduler._tickOnce()
 
     expect(turnCalls).toEqual([])
     expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
       status: 'failed',
-      attemptCount: 1,
+      error: triggerDispatchRepo.INTERRUPTED,
+    })
+  })
+
+  test('a turn aborted by daemon shutdown is recorded as failed', async () => {
+    turnPlans.push({ abort: true, during: () => void scheduler.stopScheduler() })
+    const { dispatch } = materialize()
+
+    await scheduler._tickOnce()
+
+    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
+      status: 'failed',
+      error: triggerDispatchRepo.INTERRUPTED,
     })
   })
 
@@ -669,8 +411,36 @@ describe('durable scheduler dispatches', () => {
 
     expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
       status: 'cancelled',
-      attemptCount: 1,
-      lastError: 'agent turn cancelled',
+      error: 'agent turn cancelled',
     })
+  })
+
+  test('a cron minute missed while the daemon was down does not fire after restart', async () => {
+    // Local wall-clock times: cron matches in the daemon's own timezone.
+    const at = (day: number, hour: number, minute: number) =>
+      new Date(2026, 0, day, hour, minute).getTime()
+    vi.setSystemTime(at(14, 8, 0))
+    const trigger = triggerRepo.insert(env.db, {
+      agentId: 'a1',
+      kind: 'cron',
+      intervalSec: null,
+      cronExpr: '0 9 * * *',
+      message: 'daily work',
+    })
+    vi.setSystemTime(at(14, 8, 59))
+    await scheduler._tickOnce()
+    // Down across 09:00; the first tick after the restart is at 09:01.
+    vi.setSystemTime(at(14, 9, 1))
+    await scheduler._tickOnce()
+    expect(triggerDispatchRepo.listForTrigger(env.db, trigger.id)).toEqual([])
+
+    vi.setSystemTime(at(15, 9, 0))
+    await scheduler._tickOnce()
+    vi.setSystemTime(at(15, 9, 0) + 30_000)
+    await scheduler._tickOnce()
+    expect(triggerDispatchRepo.listForTrigger(env.db, trigger.id)).toEqual([
+      expect.objectContaining({ scheduledAt: at(15, 9, 0), status: 'succeeded' }),
+    ])
+    expect(turnCalls).toHaveLength(1)
   })
 })

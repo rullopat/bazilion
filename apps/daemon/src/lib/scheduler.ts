@@ -1,80 +1,62 @@
-import { workspaceLifecycle } from './coding-environment/lifecycle.ts'
-import { WorkspaceBusyError, type WorkspaceLease } from './coding-environment/workspace.ts'
-import { resolveConversationTarget } from './conversation-target.ts'
 // In-process scheduler for interval/cron agent triggers and inbox
 // auto-delivery.
 //
 // Each tick does two jobs:
 //
 //   1. Scheduled-trigger delivery. Loads enabled `agent_triggers` rows and
-//      materializes whichever occurrences are due. A trigger is "due" when:
+//      records whichever occurrences are due in `trigger_dispatches`. A
+//      trigger is "due" when:
 //        - interval: last_fired_at + intervalSec*1000 ≤ now (never-fired
 //          uses created_at as the baseline)
 //        - cron:     current minute's wall-clock matches expression AND
-//          last_fired_at's minute < current minute
-//      Materialization is idempotent on (trigger_id, scheduled_at). While a
-//      trigger has open work, later interval occurrences coalesce. Claimable
-//      dispatches are leased transactionally, deferred while their Agent is
-//      busy, and marked succeeded/retrying/failed after the turn.
+//          last_fired_at's minute < current minute (a minute that passed
+//          while the daemon was down is not caught up)
+//      While a trigger has an open occurrence, later ones coalesce. Each
+//      occurrence runs at most once: it stays pending while its Agent is busy,
+//      then runs and ends succeeded, failed or cancelled. Nothing is retried;
+//      a run cut short by a daemon stop is marked failed at the next boot.
 //
 //   2. Inbox auto-delivery (always on). Scans `messages` for recipients
 //      with unread mail. For each idle recipient (not already running /
 //      firing), drains all their unread messages in one transaction and
 //      fires a turn whose prompt embeds the messages. Marking read happens
 //      *inside* the drain transaction so two concurrent ticks can't
-//      double-dispatch. To disable both triggers AND auto-delivery, set
+//      double-dispatch. A wake whose turn cannot start puts the messages
+//      back to unread and that Agent's wakes back off (10 s, doubling to
+//      5 min) until a turn starts. To disable both triggers AND auto-delivery, set
 //      `BAZILION_SCHEDULER=off` — there is no separate inbox-only knob
 //      because free inter-agent messaging is a baseline Bazilion promise.
 //
 // Concurrency: each dispatch gets an in-memory "firing" guard so one process
-// cannot claim it twice. Auto-delivery uses the same mechanism keyed on
-// `msg-wake:<agentId>`. The DB remains authoritative: trigger_dispatches owns
-// delivery state and restart recovery, last_fired_at is the occurrence-
-// materialization watermark, and read_at owns inbox-delivery state.
+// cannot start it twice. Auto-delivery uses the same mechanism keyed on
+// `msg-wake:<agentId>`. last_fired_at is the occurrence watermark and
+// read_at owns inbox-delivery state.
 
 import type { AgentTrigger, Message, TriggerDispatch } from '@bazilion/api-types'
-import {
-  agentRepo,
-  communicationApprovalRepo,
-  messageRepo,
-  resolveAgent,
-  triggerDispatchRepo,
-  triggerRepo,
-} from '../core/index.ts'
-import { recoverExpiredPublications } from '../core/repos/publications.ts'
+import { agentRepo, messageRepo, triggerDispatchRepo, triggerRepo } from '../core/index.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
-import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { selectCausalParent } from './agent-loop-guard.ts'
 import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
-import {
-  CommunicationDeniedError,
-  claimDeliverableInbox,
-  claimSchedulerTrigger,
-} from './communication.ts'
+import { resolveConversationTarget } from './conversation-target.ts'
 import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
-import { inboxAttemptId } from './inbox-attempt.ts'
-import { isPreparedProtectedNativeExecution } from './native-execution/protected.ts'
-import {
-  type PreparedProtectedExecution,
-  prepareSelectedProtectedExecution,
-} from './protected-execution.ts'
-import { protectedFailureMessage, protectedFrameFailure } from './protected-failure.ts'
-import { dispatchableReviews, dispatchReviewPacket } from './review/dispatch.ts'
-import { dispatchClaimableReviews } from './review-dispatcher.ts'
-import { createPreclaimedTurn, createTrustedTurnInvocation } from './turn-invocation.ts'
-import { dispatchPendingVerifications } from './verification/dispatch.ts'
+import { dispatchPendingReviews } from './review-dispatcher.ts'
+import { turnFailureReason, turnFrameFailure } from './turn-outcome.ts'
 
 const SCHEDULER_KEY = Symbol.for('bazilion.scheduler')
 const TICK_MS = Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000)
+/** Delay before retrying an inbox wake whose turn could not start; doubles up to the max. */
+const INBOX_RETRY_BASE_MS = 10_000
+const INBOX_RETRY_MAX_MS = 5 * 60_000
 
 interface SchedulerState {
   timer: NodeJS.Timeout | null
   firing: Set<string>
   cronCache: Map<string, ParsedCron>
-  /** Includes readiness and lifecycle waiters before Agent-turn registration. */
+  /** Running ticks, including their lifecycle-lease waits before Agent-turn registration. */
   inFlight: Set<Promise<void>>
-  preparing: Set<AbortController>
+  /** Agents whose last inbox wake could not start a turn; cleared once one starts. */
+  inboxBackoff: Map<string, { delayMs: number; nextAttemptAt: number }>
   stopped: boolean
   stopPromise?: Promise<void>
 }
@@ -88,7 +70,7 @@ function state(): SchedulerState {
       firing: new Set(),
       cronCache: new Map(),
       inFlight: new Set(),
-      preparing: new Set(),
+      inboxBackoff: new Map(),
       stopped: false,
     }
     g[SCHEDULER_KEY] = s
@@ -139,142 +121,49 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
   const key = `trigger-dispatch:${dispatch.id}`
   if (s.stopped || s.firing.has(key)) return
   s.firing.add(key)
-  let releaseOwnedLease: (() => void) | undefined
-  let registeredAgentId: string | undefined
-
-  const releaseOwnedLifecycle = (): void => {
-    if (registeredAgentId) {
-      const agentId = registeredAgentId
-      registeredAgentId = undefined
-      unregisterAgent(agentId)
-    }
-    if (releaseOwnedLease) {
-      const release = releaseOwnedLease
-      releaseOwnedLease = undefined
-      release()
-    }
-  }
-
   try {
     const ctx = getCtx()
-    releaseOwnedLease = await acquireAgentLifecycleLease(dispatch.agentId)
-    if (s.stopped) return
-    const claimedDispatch = triggerDispatchRepo.claim(ctx.db, dispatch.id)
-    if (!claimedDispatch) return
-
-    const t = triggerRepo.get(ctx.db, claimedDispatch.triggerId)
+    const t = triggerRepo.get(ctx.db, dispatch.triggerId)
     if (!t?.enabled) {
-      triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, 'trigger is disabled or deleted', {
-        maxAttempts: 1,
-      })
+      triggerDispatchRepo.finish(ctx.db, dispatch.id, 'cancelled', 'trigger is disabled or deleted')
       return
     }
-    if (isActiveAgent(t.agentId)) {
-      triggerDispatchRepo.defer(ctx.db, claimedDispatch.id)
+    if (agentRepo.get(ctx.db, t.agentId)?.status === 'archived') {
+      triggerDispatchRepo.finish(ctx.db, dispatch.id, 'cancelled', 'agent is archived')
       return
     }
+    // A busy Agent keeps the occurrence pending; a later tick runs it.
+    if (isActiveAgent(t.agentId)) return
+    if (!triggerDispatchRepo.start(ctx.db, dispatch.id)) return
 
+    // Preparation takes over the registration (and drops it if it refuses the turn).
     const controller = new AbortController()
-    // Revalidate policy for every durable attempt. The occurrence watermark was
-    // advanced when this dispatch was materialized; execution outcome belongs
-    // to this dispatch row, not last_fired_at.
-    try {
-      const claim = claimSchedulerTrigger(ctx.db, {
-        dispatchId: claimedDispatch.id,
-        triggerId: t.id,
-        agentId: t.agentId,
-        occurrence: claimedDispatch.scheduledAt,
-        materialized: true,
-        onAllowed: () => {
-          registerAgent(t.agentId, controller)
-          registeredAgentId = t.agentId
-        },
-      })
-      if (claim.kind === 'already_claimed') {
-        triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
-        return
-      }
-      if (claim.kind === 'approval_pending') {
-        triggerDispatchRepo.defer(ctx.db, claimedDispatch.id, Date.now() + TICK_MS)
-        return
-      }
-      if (claim.kind === 'approval_terminal') {
-        triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, claim.reason, { maxAttempts: 1 })
-        return
-      }
-    } catch (err) {
-      if (err instanceof CommunicationDeniedError) {
-        triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, err.message, { maxAttempts: 1 })
-        return
-      }
-      console.warn(
-        JSON.stringify({
-          event: 'scheduled_trigger_claim_failed',
-          triggerId: t.id,
-          dispatchId: claimedDispatch.id,
-          errorName: err instanceof Error ? err.name : 'unknown',
-        }),
-      )
-      triggerDispatchRepo.fail(
-        ctx.db,
-        claimedDispatch.id,
-        protectedFailureMessage(err, 'Scheduled trigger'),
-      )
-      return
-    }
+    registerAgent(t.agentId, controller)
 
     let failure: string | null = null
-    let workspaceDeferred = false
     try {
-      const attemptId = `${t.id}:${claimedDispatch.scheduledAt}`
-      const ownedRelease = releaseOwnedLease
-      if (!ownedRelease || registeredAgentId !== t.agentId) {
-        throw new Error('scheduled trigger lifecycle ownership is incomplete')
-      }
-      const invocation = createTrustedTurnInvocation({
-        kind: 'scheduled_trigger',
-        authorization: {
-          origin: 'scheduler_trigger',
-          attemptKind: 'scheduler_trigger',
-          attemptId,
-          agentId: t.agentId,
-        },
-        turn: {
-          agentId: t.agentId,
-          message: t.message,
-          attachments: [],
-          conversationId: claimedDispatch.conversationId,
-        },
-        claim: createPreclaimedTurn({
-          agentId: t.agentId,
-          attemptId,
-          controller,
-          releaseLease: ownedRelease,
-          registered: true,
-        }),
-        bashApprovalMode: 'auto_deny',
-      })
-      // Preparation now exclusively owns both the registration and lease.
-      // Clear local ownership before the await so the outer finally cannot
-      // unregister a newer turn after preparation/run has released this one.
-      releaseOwnedLease = undefined
-      registeredAgentId = undefined
       const preparedTurn = await prepareAgentTurn({
-        invocation,
+        origin: 'trigger',
+        attemptId: `${t.id}:${dispatch.scheduledAt}`,
+        agentId: t.agentId,
+        conversationId: dispatch.conversationId,
+        message: t.message,
+        attachments: [],
+        claim: { controller },
       })
       // Drain the turn; we don't stream to anyone. The dispatch row carries the
-      // operational outcome, while pi's session JSONL remains the transcript.
+      // outcome, while pi's session JSONL remains the transcript.
       for await (const frame of runAgentTurn(preparedTurn)) {
-        const frameFailure = protectedFrameFailure(frame)
+        const frameFailure = turnFrameFailure(frame)
         if (frameFailure) {
           console.warn(
             JSON.stringify({
               event: 'scheduled_trigger_failed',
               triggerId: t.id,
-              dispatchId: claimedDispatch.id,
+              dispatchId: dispatch.id,
             }),
           )
-          failure ??= frameFailure
+          failure ??= turnFailureReason(frameFailure)
         }
       }
     } catch (err) {
@@ -282,24 +171,21 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
         JSON.stringify({
           event: 'scheduled_trigger_unavailable',
           triggerId: t.id,
-          dispatchId: claimedDispatch.id,
+          dispatchId: dispatch.id,
           errorName: err instanceof Error ? err.name : 'unknown',
         }),
       )
-      if (err instanceof WorkspaceBusyError) {
-        workspaceDeferred = true
-        triggerDispatchRepo.defer(ctx.db, claimedDispatch.id)
-      } else failure = protectedFailureMessage(err)
+      failure = turnFailureReason(err)
     } finally {
-      if (workspaceDeferred) {
-        // Existing durable occurrence retries under its normal deferral policy.
-      } else if (controller.signal.aborted) {
-        triggerDispatchRepo.cancelRunning(ctx.db, claimedDispatch.id, 'agent turn cancelled')
-      } else if (failure) triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, failure)
-      else triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
+      if (!controller.signal.aborted) {
+        triggerDispatchRepo.finish(ctx.db, dispatch.id, failure ? 'failed' : 'succeeded', failure)
+      } else if (s.stopped) {
+        triggerDispatchRepo.finish(ctx.db, dispatch.id, 'failed', triggerDispatchRepo.INTERRUPTED)
+      } else {
+        triggerDispatchRepo.finish(ctx.db, dispatch.id, 'cancelled', 'agent turn cancelled')
+      }
     }
   } finally {
-    releaseOwnedLifecycle()
     s.firing.delete(key)
   }
 }
@@ -384,121 +270,90 @@ async function fireInboxWake(agentId: string): Promise<void> {
   const s = state()
   const key = `msg-wake:${agentId}`
   if (s.stopped || s.firing.has(key)) return
+  const backoff = s.inboxBackoff.get(agentId)
+  if (backoff && Date.now() < backoff.nextAttemptAt) return
   const ctx = getCtx()
-  s.firing.add(key)
-  const releaseLease = await acquireAgentLifecycleLease(agentId)
   // Skip agents with an active turn — they'll pick up the messages on their
   // next natural turn or via the next tick after the current one ends.
-  if (s.stopped || isActiveAgent(agentId)) {
-    releaseLease()
-    s.firing.delete(key)
-    return
-  }
+  if (isActiveAgent(agentId)) return
+  s.firing.add(key)
   const controller = new AbortController()
-  s.preparing.add(controller)
   let registered = false
   let handoffStarted = false
-  let heldProtected: PreparedProtectedExecution | undefined
-  let workspaceLease: WorkspaceLease | undefined
+  let turnStarted = false
   try {
-    // Readiness must be established before `claimDeliverableInbox` marks the
-    // canonical messages read. The branded result is handed directly into
-    // final preparation under this same lifecycle lease.
-    const resolvedAgent = resolveAgent(ctx.db, ctx.paths, agentId)
-    workspaceLease = await workspaceLifecycle(ctx.db).claim(
-      resolvedAgent.team.id,
-      resolvedAgent.team.path,
-      'agent',
-    )
-    controller.signal.throwIfAborted()
-    const protectedExecution = await prepareSelectedProtectedExecution(resolvedAgent, {
-      lease: workspaceLease,
-      controller,
-    })
-    heldProtected = protectedExecution
-    controller.signal.throwIfAborted()
     const conversation = resolveConversationTarget(ctx.db, ctx.paths, agentId)
-    const msgs = claimDeliverableInbox(
-      ctx.db,
-      agentId,
-      () => {
+    // Registering inside the drain transaction puts the messages back if it fails.
+    // An Agent archived since the tick listed it keeps its mail unread until unarchived.
+    const msgs = ctx.db.raw.transaction(() => {
+      if (agentRepo.get(ctx.db, agentId)?.status === 'archived') return []
+      const drained = messageRepo.drainUnreadForAgent(ctx.db, agentId)
+      if (drained.length > 0) {
         registerAgent(agentId, controller)
         registered = true
-      },
-      conversation.id,
-    )
-    if (msgs.length === 0) {
-      // Raced with another consumer; nothing to do.
-      releaseLease()
-      return
-    }
+      }
+      return drained
+    })()
+    // Raced with another consumer, or the Agent was archived: nothing to do.
+    if (msgs.length === 0) return
     const fromIds = new Set(msgs.map((m) => m.fromAgentId))
     const fromNames = new Map<string, string>()
     for (const fid of fromIds) {
       const sender = agentRepo.get(ctx.db, fid)
       if (sender) fromNames.set(fid, sender.name)
     }
-    const prompt = buildInboxPrompt(agentId, msgs, fromNames)
-    const attemptId = inboxAttemptId(agentId, msgs)
-    const invocation = createTrustedTurnInvocation({
-      kind: 'inbox_wake',
-      authorization: {
-        origin: 'scheduler_inbox',
-        attemptKind: 'inbox_wake',
-        attemptId,
-        agentId,
-      },
-      turn: {
-        agentId,
-        message: prompt,
-        conversationId: conversation.id,
-        attachments: [],
-        causalParentMessageId: selectCausalParent(msgs),
-      },
-      claim: createPreclaimedTurn({
-        agentId,
-        attemptId,
-        controller,
-        releaseLease,
-        registered: true,
-      }),
-      bashApprovalMode: 'auto_deny',
-    })
+    const message = buildInboxPrompt(agentId, msgs, fromNames)
+    const attemptId = `inbox:${msgs[0]?.id}`
+    const causalParentMessageId = selectCausalParent(msgs)
+    // Preparation now owns the registration.
     handoffStarted = true
-    const preparedTurn = await prepareAgentTurn({
-      protectedExecution,
-      workspaceLease,
-      invocation,
-    })
+    let preparedTurn: Awaited<ReturnType<typeof prepareAgentTurn>>
+    try {
+      preparedTurn = await prepareAgentTurn({
+        origin: 'inbox',
+        attemptId,
+        agentId,
+        conversationId: conversation.id,
+        message,
+        attachments: [],
+        causalParentMessageId,
+        claim: { controller },
+      })
+    } catch (error) {
+      // No turn started (e.g. an invalid shell configuration): unread again,
+      // retried after the backoff recorded below.
+      messageRepo.releaseClaimed(
+        ctx.db,
+        msgs.map((message) => message.id),
+      )
+      throw error
+    }
+    turnStarted = true
+    s.inboxBackoff.delete(agentId)
     for await (const frame of runAgentTurn(preparedTurn)) {
       if (frame.kind === 'fatal') {
         console.warn(
-          JSON.stringify({ event: 'inbox_wake_failed', agentId, failure: 'protected_turn_failed' }),
+          JSON.stringify({ event: 'inbox_wake_failed', agentId, failure: 'turn_failed' }),
         )
       }
     }
   } catch (err) {
-    if (!handoffStarted) {
-      releaseLease()
-      if (registered) unregisterAgent(agentId)
+    if (!handoffStarted && registered) unregisterAgent(agentId)
+    let retryInMs: number | undefined
+    if (!turnStarted) {
+      retryInMs = backoff ? Math.min(backoff.delayMs * 2, INBOX_RETRY_MAX_MS) : INBOX_RETRY_BASE_MS
+      s.inboxBackoff.set(agentId, { delayMs: retryInMs, nextAttemptAt: Date.now() + retryInMs })
     }
     console.warn(
       JSON.stringify({
         event: 'inbox_wake_unavailable',
         agentId,
         errorName: err instanceof Error ? err.name : 'unknown',
+        retryInMs,
       }),
     )
   } finally {
-    try {
-      const native = isPreparedProtectedNativeExecution(heldProtected) ? heldProtected : undefined
-      const closed = native ? await native.close().catch(() => false) : true
-      if (workspaceLease) await workspaceLifecycle(ctx.db).release(workspaceLease)
-      if (!closed && native) await native.close().catch(() => false)
-    } finally {
-      s.preparing.delete(controller)
-      s.firing.delete(key)
-    }
+    s.firing.delete(key)
   }
 }
 
@@ -510,7 +365,6 @@ async function runTick(): Promise<void> {
   let triggers: AgentTrigger[]
   let recipients: string[] = []
   try {
-    communicationApprovalRepo.expirePending(ctx.db, now)
     triggers = triggerRepo.listEnabled(ctx.db)
     recipients = messageRepo.listRecipientsWithUnread(ctx.db)
   } catch (err) {
@@ -521,9 +375,7 @@ async function runTick(): Promise<void> {
     if (s.stopped) return
     if (isDue(t, now, s.cronCache)) {
       const occurrence = scheduledOccurrence(t, now)
-      const release = await acquireAgentLifecycleLease(t.agentId)
       try {
-        if (s.stopped) return
         if (!triggerDispatchRepo.hasOpenForTrigger(ctx.db, t.id)) {
           const conversation = resolveConversationTarget(ctx.db, ctx.paths, t.agentId)
           ctx.db.raw.transaction(() => {
@@ -532,7 +384,6 @@ async function runTick(): Promise<void> {
               agentId: t.agentId,
               conversationId: conversation.id,
               scheduledAt: occurrence,
-              now,
             })
             triggerRepo.markFired(ctx.db, t.id, occurrence)
           })()
@@ -545,14 +396,12 @@ async function runTick(): Promise<void> {
             errorName: error instanceof Error ? error.name : 'unknown',
           }),
         )
-      } finally {
-        release()
       }
     }
   }
   if (s.stopped) return
   const work: Promise<void>[] = []
-  for (const dispatch of triggerDispatchRepo.listClaimable(ctx.db, now)) {
+  for (const dispatch of triggerDispatchRepo.listPending(ctx.db)) {
     work.push(fireTrigger(dispatch))
   }
   for (const agentId of recipients) {
@@ -560,26 +409,7 @@ async function runTick(): Promise<void> {
     // dedup-gates and bails if the agent already has an active run.
     work.push(fireInboxWake(agentId))
   }
-  // BAZ-046: a publication whose publishing process died is settled as uncertain on the next tick, so a
-  // stuck attempt is visible in the operator's list rather than looking like work still in progress.
-  recoverExpiredPublications(ctx.db, now)
-  work.push(dispatchClaimableReviews(now))
-  // BAZ-044: specialist verification requests are dispatched by their own state machine, never by the
-  // inbox path — an eligible pending request is claimed under its own lease and admitted with the
-  // restricted capability. A busy or unavailable specialist simply leaves it pending for a later tick.
-  work.push(dispatchPendingVerifications(now))
-  // BAZ-043: a packet waiting for its reviewer is dispatched by the review state machine, never by the
-  // inbox path — the ordinary inbox wake starts a *writable coding turn*, which must never be able to
-  // consume a review packet. A busy reviewer leaves the packet open for a later tick.
-  for (const packet of dispatchableReviews()) {
-    work.push(
-      dispatchReviewPacket(packet.id)
-        .then(() => undefined)
-        .catch(() =>
-          console.warn(JSON.stringify({ event: 'review_dispatch_failed', packetId: packet.id })),
-        ),
-    )
-  }
+  work.push(dispatchPendingReviews())
   await Promise.allSettled(work)
 }
 
@@ -598,7 +428,7 @@ function tick(): Promise<void> {
 export function startScheduler(): void {
   const s = state()
   // Replace any existing timer unconditionally so a duplicate startScheduler
-  // call (e.g. test teamPolicy calling getCtx twice) doesn't leave stale loops.
+  // call (e.g. a test calling getCtx twice) doesn't leave stale loops.
   if (s.timer) clearInterval(s.timer)
   s.stopped = false
   s.stopPromise = undefined
@@ -609,7 +439,7 @@ export function startScheduler(): void {
   if (typeof s.timer.unref === 'function') s.timer.unref()
 }
 
-/** Fence admissions synchronously; settle readiness and dispatch finalizers before DB close. */
+/** Fence admissions synchronously; settle dispatch finalizers before DB close. */
 export function stopScheduler(): Promise<void> {
   const s = state()
   if (s.stopPromise) return s.stopPromise
@@ -619,7 +449,6 @@ export function stopScheduler(): Promise<void> {
     s.timer = null
   }
   s.stopPromise = Promise.allSettled([...s.inFlight]).then(() => {})
-  for (const controller of s.preparing) controller.abort()
   return s.stopPromise
 }
 
@@ -629,14 +458,6 @@ export async function _tickOnce(): Promise<void> {
   await tick()
 }
 
-export function _isDueForTest(
-  t: AgentTrigger,
-  now: number,
-  cronCache: Map<string, ParsedCron> = new Map(),
-): boolean {
-  return isDue(t, now, cronCache)
-}
-
 export function _resetSchedulerForTest(): void {
   const s = state()
   if (s.timer) clearInterval(s.timer)
@@ -644,7 +465,7 @@ export function _resetSchedulerForTest(): void {
   s.firing.clear()
   s.cronCache.clear()
   s.inFlight.clear()
-  s.preparing.clear()
+  s.inboxBackoff.clear()
   s.stopPromise = undefined
   s.stopped = false
 }

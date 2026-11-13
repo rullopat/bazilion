@@ -5,10 +5,10 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import {
   type BazilionDb,
+  initSchema,
   openDb,
   openSecrets,
   resolvePaths,
-  runMigrations,
 } from '../../src/core/index.ts'
 import {
   clearCredentials,
@@ -55,7 +55,7 @@ beforeEach(() => {
   authToken = randomBytes(24).toString('hex')
   writeFileSync(paths.authFile, JSON.stringify({ token: authToken }))
   db = openDb(paths.db)
-  runMigrations(db)
+  initSchema(db)
 })
 afterEach(() => {
   db.close()

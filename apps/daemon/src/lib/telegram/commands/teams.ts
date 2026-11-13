@@ -14,7 +14,7 @@ export const handle: CommandHandler = async (ctx) => {
 
   const lines: string[] = ['<b>bazilion teams</b>', '']
   for (const g of teams) {
-    const count = agentRepo.countByGroup(ctx.db, g.id)
+    const count = agentRepo.countByTeam(ctx.db, g.id)
     const label = `<code>${htmlEscape(g.id)}</code> · ${htmlEscape(g.name)}`
     lines.push(`${label} — ${count} agent${count === 1 ? '' : 's'}`)
   }

@@ -1,9 +1,9 @@
+import { publicOriginConfig } from '@bazilion/api-types'
 import { describe, expect, test } from 'vitest'
-import { webOriginConfig } from '../src/lib/public-origin.ts'
 
-describe('webOriginConfig', () => {
+describe('publicOriginConfig', () => {
   test('uses bounded loopback development cookie names only when origin is unset', () => {
-    expect(webOriginConfig({})).toEqual({
+    expect(publicOriginConfig(undefined)).toEqual({
       origin: null,
       production: false,
       sessionCookie: 'bz_session_dev',
@@ -12,7 +12,7 @@ describe('webOriginConfig', () => {
   })
 
   test('accepts one exact HTTPS origin and selects __Host cookies', () => {
-    expect(webOriginConfig({ BAZILION_PUBLIC_ORIGIN: 'https://server.tailnet.ts.net' })).toEqual({
+    expect(publicOriginConfig('https://server.tailnet.ts.net')).toEqual({
       origin: 'https://server.tailnet.ts.net',
       production: true,
       sessionCookie: '__Host-bz_session',
@@ -27,8 +27,6 @@ describe('webOriginConfig', () => {
     'https://server.tailnet.ts.net?query=1',
     'not a URL',
   ])('rejects an unsafe or non-origin production value: %s', (origin) => {
-    expect(() => webOriginConfig({ BAZILION_PUBLIC_ORIGIN: origin })).toThrow(
-      /exact HTTPS origin/,
-    )
+    expect(() => publicOriginConfig(origin)).toThrow(/exact HTTPS origin/)
   })
 })

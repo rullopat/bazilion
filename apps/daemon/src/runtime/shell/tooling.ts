@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import {
   createBashToolDefinition,
@@ -7,34 +7,39 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
 import { type BashApprovalHost, createApprovalGatedBashTool } from './approval.ts'
-import { codingContainerCwd } from './coding.ts'
 import {
+  CONTAINER_WORKSPACE,
+  containerWorkdir,
   createDockerBashOperations,
-  createPreparedDockerBashOperations,
-  type DockerReadOnlyMount,
-  type DockerResourceLifecycle,
-  type ProtectedDockerRuntime,
+  type DockerMount,
+  type DockerSandbox,
 } from './docker.ts'
-import {
-  buildScrubbedShellEnv,
-  resolveShellSecurityConfig,
-  type ShellSecurityConfig,
-} from './security.ts'
+import { resolveShellSecurityConfig, type ShellSecurityConfig } from './security.ts'
 
 const HOST_CODING_TOOL_NAMES = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const
 const HOST_FILE_TOOL_NAMES = ['read', 'edit', 'write', 'grep', 'find', 'ls'] as const
 
-const CONTAINER_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 export const SANDBOX_INPUTS_DIR = '/inputs'
-export const SANDBOX_MEMORY_DIR = '/workspace/memory'
+const SANDBOX_MEMORY_DIR = `${CONTAINER_WORKSPACE}/memory`
+
+/** One turn's Docker settings, chosen by the daemon from the Team defaults. */
+export interface DockerTurn {
+  image: string
+  /** Team-relative working directory of every command ('.' is the workspace root). */
+  cwd: string
+  /** Name prefix of the turn's containers (`turnContainerPrefix`). */
+  containerPrefix: string
+}
 
 export interface SessionShellToolOptions {
-  dockerLifecycle?: DockerResourceLifecycle
-  preparedDocker?: ProtectedDockerRuntime
-  /** Agent-private uploaded documents, exposed read-only at /inputs when present. */
+  /** This turn's Docker settings; sessions without them use the installation image. */
+  docker?: DockerTurn
+  /** Container name prefix when there are no turn settings (`homeContainerPrefix`). */
+  containerPrefix?: string
+  /** Agent-private uploaded files, mounted read-only at /inputs when present. */
   inputsDir?: string
-  /** Attached skill directories, each mapped to a stable read-only container path. */
-  skillMounts?: readonly DockerReadOnlyMount[]
+  /** Attached skill directories, each mounted read-only at its /skills path. */
+  skillMounts?: readonly DockerMount[]
   /** Turn-scoped dangerous-command approval bridge. Omit to deny risky commands. */
   approvalHost?: BashApprovalHost
 }
@@ -43,76 +48,13 @@ export interface SessionShellTools {
   config: ShellSecurityConfig
   /** Pi built-ins that remain host-backed and may be enabled for this session. */
   hostToolNames: readonly string[]
-  /** Same-name replacement for Pi's built-in bash when isolation or approval is active. */
+  /** Same-name replacement for Pi's built-in bash when Docker or approval is active. */
   customBash?: ToolDefinition
 }
 
-/** Build the mandatory Docker-only coding surface for a protected turn. */
-export function createProtectedSessionShellTools(
-  cwd: string,
-  runtime: ProtectedDockerRuntime,
-  approvalHost: BashApprovalHost,
-  lifecycle?: DockerResourceLifecycle,
-): SessionShellTools {
-  const operations = createPreparedDockerBashOperations(runtime, lifecycle)
-  const modelCwd = codingContainerCwd(runtime.coding?.cwd ?? '.')
-  const base = createBashToolDefinition(cwd, {
-    operations: {
-      exec(command, requestedCwd, options) {
-        // Pi supplies its model-facing session cwd to operations. Keep that virtual
-        // container path separate from the daemon-preflighted host mount identity.
-        if (requestedCwd !== modelCwd && requestedCwd !== cwd)
-          throw new Error('Protected command working directory differs from the admitted scope')
-        return operations.exec(command, cwd, options)
-      },
-    },
-  })
-  const dockerBash = defineTool({
-    ...base,
-    label: 'bash (protected Docker sandbox)',
-    description: `${base.description} Default working directory: ${codingContainerCwd(runtime.coding?.cwd ?? '.')}. Runs in an ephemeral, network-disabled Docker container with the Team workspace mounted read/write plus only the preflighted read-only memory, skill, and attachment mounts. Host files, host tools, and host credentials are unavailable.`,
-  })
-  return {
-    config: {
-      sandboxMode: 'docker',
-      approvalMode: 'dangerous',
-      sandboxImage: runtime.image,
-      envAllowlist: [],
-    },
-    hostToolNames: [],
-    customBash: createApprovalGatedBashTool(dockerBash, approvalHost),
-  }
-}
-
 /**
- * Build the only environment visible to a sandboxed command.
- *
- * Operator-allowlisted values are copied first. Container-specific basics are
- * then pinned so host paths (especially HOME) cannot leak into the sandbox or
- * point programs back at an unavailable host directory.
- */
-export function buildSandboxContainerEnv(
-  env: NodeJS.ProcessEnv,
-  allowlist: readonly string[],
-): NodeJS.ProcessEnv {
-  return {
-    ...buildScrubbedShellEnv(env, allowlist),
-    PATH: CONTAINER_PATH,
-    HOME: '/tmp',
-    LANG: 'C.UTF-8',
-    LC_ALL: 'C.UTF-8',
-    SHELL: '/bin/bash',
-    TMPDIR: '/tmp',
-  }
-}
-
-/**
- * Resolve the session's host-vs-container coding-tool surface.
- *
- * Docker mode deliberately enables no host-backed Pi coding tools. The
- * returned custom bash is still allowlisted by name by its caller, while
- * read/edit/write/grep/find/ls stay inactive so absolute host paths cannot
- * bypass the container boundary.
+ * Resolve the session's coding tools. Docker mode enables no host-backed Pi tool: read, edit,
+ * write, grep, find and ls take absolute host paths, which would bypass the container.
  */
 export function createSessionShellTools(
   cwd: string,
@@ -120,95 +62,77 @@ export function createSessionShellTools(
   options: SessionShellToolOptions = {},
 ): SessionShellTools {
   const config = resolveShellSecurityConfig(env)
-  if (config.sandboxMode === 'native')
-    throw new Error('Native coding requires a genuine daemon-admitted native execution host')
-  if (options.preparedDocker) {
-    if (config.sandboxMode !== 'docker')
-      throw new Error('Prepared coding environment cannot execute on the host')
-    const runtime = options.preparedDocker
-    const base = createBashToolDefinition(cwd, {
-      operations: createPreparedDockerBashOperations(runtime, options.dockerLifecycle),
-    })
-    const tool = defineTool({
-      ...base,
-      label: 'bash (prepared Docker sandbox)',
-      description: `${base.description} Default working directory: ${codingContainerCwd(runtime.coding?.cwd ?? '.')}. Fresh network-disabled Docker container with the Team workspace and preflighted read-only mounts.`,
-    })
+  if (config.sandboxMode === 'off') {
+    if (config.approvalMode === 'off') return { config, hostToolNames: HOST_CODING_TOOL_NAMES }
+    const base = createBashToolDefinition(cwd, { operations: createLocalBashOperations() })
     return {
-      config: { ...config, sandboxImage: runtime.image, envAllowlist: [] },
-      hostToolNames: [],
-      customBash:
-        config.approvalMode === 'dangerous'
-          ? createApprovalGatedBashTool(tool, options.approvalHost)
-          : tool,
+      config,
+      hostToolNames: HOST_FILE_TOOL_NAMES,
+      customBash: createApprovalGatedBashTool(base, options.approvalHost, cwd),
     }
   }
-  if (config.sandboxMode === 'off' && config.approvalMode === 'off') {
-    return { config, hostToolNames: HOST_CODING_TOOL_NAMES }
-  }
 
-  if (config.sandboxMode === 'off') {
-    const base = createBashToolDefinition(cwd, {
-      operations: createLocalBashOperations(),
-    })
-    const customBash = createApprovalGatedBashTool(base, options.approvalHost)
-    return { config, hostToolNames: HOST_FILE_TOOL_NAMES, customBash }
-  }
-
-  const operations = createDockerBashOperations({
-    lifecycle: options.dockerLifecycle,
+  const containerPrefix = options.docker?.containerPrefix ?? options.containerPrefix
+  if (!containerPrefix) throw new Error('Docker sandbox requires a container name prefix')
+  const turn: DockerTurn = options.docker ?? {
     image: config.sandboxImage,
-    env: buildSandboxContainerEnv(env, config.envAllowlist),
-    readOnlyMounts: [
-      ...(existsSync(join(cwd, 'memory'))
-        ? [safeReadOnlyMount(join(cwd, 'memory'), SANDBOX_MEMORY_DIR, cwd)]
-        : []),
-      ...(options.inputsDir
-        ? [safeReadOnlyMount(options.inputsDir, SANDBOX_INPUTS_DIR, dirname(options.inputsDir))]
-        : []),
-      ...(options.skillMounts ?? []).map((mount) =>
-        safeReadOnlyMount(mount.source, mount.target, dirname(mount.source)),
-      ),
-    ],
+    cwd: '.',
+    containerPrefix,
+  }
+  const sandbox = (): DockerSandbox => {
+    const workspace = realpathSync(cwd)
+    if (
+      turn.cwd !== '.' &&
+      !statSync(join(workspace, turn.cwd), { throwIfNoEntry: false })?.isDirectory()
+    )
+      throw new Error(`Working directory does not exist: ${containerWorkdir(turn.cwd)}`)
+    // The memory store is always mounted read-only, so a command cannot create it either.
+    mkdirSync(join(workspace, 'memory'), { recursive: true })
+    return {
+      image: turn.image,
+      workspace,
+      workdir: containerWorkdir(turn.cwd),
+      readOnlyMounts: [
+        readOnlyMount(join(workspace, 'memory'), SANDBOX_MEMORY_DIR, workspace),
+        ...(options.inputsDir && existsSync(options.inputsDir)
+          ? [readOnlyMount(options.inputsDir, SANDBOX_INPUTS_DIR, dirname(options.inputsDir))]
+          : []),
+        ...(options.skillMounts ?? []).map((mount) =>
+          readOnlyMount(mount.source, mount.target, dirname(mount.source)),
+        ),
+      ],
+      containerPrefix: turn.containerPrefix,
+    }
+  }
+  const base = createBashToolDefinition(cwd, {
+    operations: createDockerBashOperations(sandbox),
+    exposeSessionEnvironment: false,
   })
-  const base = createBashToolDefinition(cwd, { operations })
-  const dockerBash = defineTool({
+  const bash = defineTool({
     ...base,
     label: 'bash (Docker sandbox)',
-    description: `${base.description} Runs in an ephemeral, network-disabled Docker container with the team workspace mounted read/write plus only bounded read-only memory, skill, and attachment mounts. Other host files and host credentials are unavailable.`,
+    description: `${base.description} Each command runs in a fresh network-disabled Docker container. The Team workspace is ${CONTAINER_WORKSPACE} (memory/ is read-only), uploaded files are under ${SANDBOX_INPUTS_DIR} and attached skills under /skills, all read-only; the rest of the filesystem is read-only except /tmp, which does not persist. Host files and credentials are unavailable.`,
   })
-  const customBash =
-    config.approvalMode === 'dangerous'
-      ? createApprovalGatedBashTool(dockerBash, options.approvalHost)
-      : dockerBash
-
-  return { config, hostToolNames: [], customBash }
+  return {
+    config: { ...config, sandboxImage: turn.image },
+    hostToolNames: [],
+    customBash:
+      config.approvalMode === 'dangerous'
+        ? createApprovalGatedBashTool(bash, options.approvalHost, CONTAINER_WORKSPACE)
+        : bash,
+  }
 }
 
 /**
- * Validate and describe one read-only container mount.
- *
- * Shared with the verification executor so a captured check gets the *same* mount semantics as a
- * coding turn rather than a second, weaker implementation: the source must be a real directory
- * (never a symlink) and must stay inside the expected root.
+ * A read-only mount of a real directory (never a symlink) inside `root`: a symlink left by an
+ * earlier host-mode command must not expose its target to the container.
  */
-export function safeReadOnlyMount(
-  source: string,
-  target: string,
-  expectedRoot: string,
-): DockerReadOnlyMount {
-  const info = lstatSync(source)
-  if (info.isSymbolicLink() || !info.isDirectory()) {
+function readOnlyMount(source: string, target: string, root: string): DockerMount {
+  if (!lstatSync(source).isDirectory())
     throw new Error(`Docker sandbox read-only mount must be a real directory: ${source}`)
-  }
-
-  const sourceRoot = realpathSync(expectedRoot)
-  const canonicalSource = realpathSync(source)
-  const rel = relative(sourceRoot, canonicalSource)
-  const contained = rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-  if (!contained) {
-    throw new Error(`Docker sandbox read-only mount escaped its configured root: ${source}`)
-  }
-
-  return { source: canonicalSource, target, sourceRoot }
+  const real = realpathSync(source)
+  const rel = relative(realpathSync(root), real)
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
+    throw new Error(`Docker sandbox read-only mount escaped its root: ${source}`)
+  return { source: real, target }
 }

@@ -43,27 +43,27 @@ async function fixture() {
   )
   ctx.db.raw.run("INSERT INTO teams (id, name, created_at) VALUES ('team', 'Team', ?)", [now])
   ctx.db.raw.run(
-    `INSERT INTO profiles (id, name, dir, default_model, created_at, updated_at)
-     VALUES ('profile', 'Profile', 'profile', 'lmstudio:qa', ?, ?)`,
+    `INSERT INTO profiles (id, name, default_model, created_at, updated_at)
+     VALUES ('profile', 'Profile', 'lmstudio:qa', ?, ?)`,
     [now, now],
   )
   ctx.db.raw.run(
-    `INSERT INTO agents (id, profile_id, name, status, dir, team_id, created_at)
-     VALUES ('agent', 'profile', 'Agent', 'idle', 'agent', 'team', ?)`,
+    `INSERT INTO agents (id, profile_id, name, status, team_id, created_at)
+     VALUES ('agent', 'profile', 'Agent', 'idle', 'team', ?)`,
     [now],
   )
   ctx.db.raw.run(
     `INSERT INTO agent_reviews
-       (id, agent_id, status, trigger_kind, next_attempt_at, last_error, created_at, updated_at)
-     VALUES ('failed-review', 'agent', 'failed', 'manual', ?, 'safe failure', ?, ?)`,
-    [now, now - 2, now - 1],
+       (id, agent_id, status, trigger_kind, last_error, created_at, updated_at)
+     VALUES ('failed-review', 'agent', 'failed', 'manual', 'safe failure', ?, ?)`,
+    [now - 2, now - 1],
   )
   ctx.db.raw.run(
     `INSERT INTO agent_reviews
-       (id, agent_id, status, trigger_kind, next_attempt_at, proposal_count,
+       (id, agent_id, status, trigger_kind, proposal_count,
         finished_at, created_at, updated_at)
-     VALUES ('complete-review', 'agent', 'completed', 'manual', ?, 1, ?, ?, ?)`,
-    [now, now, now, now],
+     VALUES ('complete-review', 'agent', 'completed', 'manual', 1, ?, ?, ?)`,
+    [now, now, now],
   )
   ctx.db.raw.run(
     `INSERT INTO agent_lesson_proposals
@@ -81,10 +81,14 @@ test('attention routes require auth and validate list filters', async () => {
   const { app, auth } = await fixture()
   expect((await app.request('/api/attention')).status).toBe(401)
 
-  for (const query of ['state=invalid', 'kind=invalid', 'limit=201']) {
+  for (const [query, error] of [
+    ['state=invalid', 'invalid attention state'],
+    ['kind=invalid', 'invalid attention kind'],
+    ['limit=201', 'attention limit must be between 1 and 200'],
+  ]) {
     const response = await app.request(`/api/attention?${query}`, { headers: auth })
     expect(response.status).toBe(400)
-    expect(await response.json()).toHaveProperty('code')
+    expect(await response.json()).toEqual({ error })
   }
 
   const response = await app.request('/api/attention?state=open&kind=review_failure', {
@@ -128,14 +132,18 @@ test('acknowledgement lifecycle is idempotent and action-required work stays sou
     headers: auth,
   })
   expect(protectedResponse.status).toBe(409)
-  expect(await protectedResponse.json()).toMatchObject({ code: 'attention_action_required' })
+  expect(await protectedResponse.json()).toEqual({
+    error: 'action-required items must be resolved at their source',
+  })
 
   const stale = await app.request('/api/attention/review_failure%3Amissing/acknowledge', {
     method: 'POST',
     headers: auth,
   })
   expect(stale.status).toBe(404)
-  expect(await stale.json()).toMatchObject({ code: 'attention_source_not_found' })
+  expect(await stale.json()).toEqual({
+    error: 'attention source not found or no longer eligible',
+  })
 })
 
 test('acknowledge-all and summary use the same open projection', async () => {

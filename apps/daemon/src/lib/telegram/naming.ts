@@ -10,11 +10,9 @@
 //         is a visual hint.
 
 import type { Agent, Team } from '@bazilion/api-types'
+import { DEFAULT_TEAM_ID } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { teamRepo } from '../../core/index.ts'
-
-/** ⚙ bazilion service topic uses red; teams get the other 5. */
-export const SERVICE_TOPIC_COLOR = 16478047
 
 /** Telegram's non-red icon-color enum values, in round-robin order. */
 export const TEAM_COLORS: readonly number[] = [
@@ -25,11 +23,8 @@ export const TEAM_COLORS: readonly number[] = [
   16749490, // pink / rose
 ]
 
-/** The seeded default team id — bare topic names for its agents. */
-export const DEFAULT_TEAM_ID = 'default'
-
 /** Template tokens a team's `telegramTopicNameFormat` may reference. */
-export const TOPIC_NAME_TOKENS = ['{agent.name}', '{team.name}', '{team.slug}'] as const
+const TOPIC_NAME_TOKENS = ['{agent.name}', '{team.name}', '{team.slug}'] as const
 
 /**
  * Build the forum-topic name for an agent in a team.
@@ -97,13 +92,11 @@ export function validateTopicNameFormat(fmt: string): string | null {
  * second call returns the previously-allocated color. The first call
  * computes `TEAM_COLORS[allocatedCount % 5]` and stores it.
  */
-export function allocateGroupColor(db: BazilionDb, teamId: string): number {
+export function allocateTeamColor(db: BazilionDb, teamId: string): number {
   const existing = teamRepo.getTelegramIconColor(db, teamId)
   if (existing !== null) return existing
   const idx = teamRepo.countAllocatedColors(db) % TEAM_COLORS.length
-  // TEAM_COLORS has 5 elements; idx is bounded — non-null assert avoids the
-  // noUncheckedIndexedAccess complaint.
-  const color = TEAM_COLORS[idx]!
+  const color = TEAM_COLORS[idx] ?? 7322096
   teamRepo.setTelegramIconColor(db, teamId, color)
   return color
 }

@@ -1,37 +1,10 @@
-import { appendFileSync } from 'node:fs'
-import { join } from 'node:path'
-import type { ImageGenerationInput, ImageGenerationOutput } from '@bazilion/api-types'
-import type { AssistantImages, Models } from '@earendil-works/pi-ai'
-import { afterEach, beforeEach, expect, type Mock, test, vi } from 'vitest'
-import { resolveAgent } from '../../src/core/agent/resolve.ts'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
-import { openDb } from '../../src/core/db/client.ts'
-import {
-  IMAGE_MODELS,
-  imageGenerationConfig,
-  imageTurnEnv,
-  OPENROUTER_IMAGE_MODELS,
-} from '../../src/core/image-generation-config.ts'
+import { imageRoute } from '../../src/core/image-generation-config.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
-import { setEnabled } from '../../src/core/repos/providerState.ts'
 import * as results from '../../src/core/repos/results.ts'
-import { authorizeHttpChatFrame } from '../../src/lib/communication.ts'
 import { resolveConversationTarget } from '../../src/lib/conversation-target.ts'
-import {
-  boundedImageFetch,
-  createImageGenerationHost,
-  IMAGE_RESPONSE_BYTES,
-  imageCatalogue,
-} from '../../src/lib/image-generation.ts'
-import { reconcilePrivateResults } from '../../src/lib/result-retention.ts'
-import { createTurnToolSource } from '../../src/lib/turn-tool-source.ts'
-import {
-  clearCredentials,
-  hasCredentials,
-  loadAccessToken,
-  saveLoginCredentials,
-} from '../../src/runtime/auth/openai-codex.ts'
-import { piMessagesToProviderView } from '../../src/runtime/pi/events.ts'
+import { createImageGenerationHost } from '../../src/lib/image-generation.ts'
 import { ourToolToPiTool } from '../../src/runtime/pi/tools.ts'
 import { imageGenerateTool } from '../../src/runtime/tools/image-generate.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
@@ -40,1000 +13,235 @@ const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhK0AAAAASUVORK5CYII=',
   'base64',
 )
+const b64 = png.toString('base64')
 let env: TestEnv
 let agentId: string
-let sessionId: string
-let signal: AbortController
+let conversationId: string
 let config: NodeJS.ProcessEnv
-let host: ReturnType<typeof createImageGenerationHost>
-let models: ReturnType<typeof imageCatalogue>
-let generate: Mock<Models['generateImages']>
-let source: ReturnType<typeof createTurnToolSource>
-function response(images = 1): AssistantImages {
-  return {
-    api: 'openrouter-images',
-    provider: 'openrouter',
-    model: IMAGE_MODELS[0],
-    stopReason: 'stop',
-    timestamp: Date.now(),
-    responseId: 'provider-response',
-    output: Array.from({ length: images }, () => ({
-      type: 'image',
-      mimeType: 'image/png',
-      data: png.toString('base64'),
-    })),
-  }
-}
-function input(id = 'call', prompt = 'A little bird'): ImageGenerationInput {
-  const args = { prompt, name: 'bird' }
-  appendFileSync(
-    join(env.paths.agentDir(agentId), 'sessions', `${sessionId}.jsonl`),
-    `${JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', id, name: 'image_generate', arguments: args }] } })}\n`,
-  )
-  return { sessionId, toolCallId: id, ...args }
-}
-function firstResultId(output: ImageGenerationOutput): string {
-  const file = output.files[0]
-  if (!file) throw new Error('Missing generated image')
-  return file.result.resultId
-}
-function operationCount() {
-  return env.db.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM image_generations').get()?.n
-}
-function outcome() {
-  return env.db.raw.query<{ outcome: string }, []>('SELECT outcome FROM image_generations').get()
-    ?.outcome
-}
+let turn: AbortController
+let fetcher: ReturnType<typeof vi.fn<typeof fetch>>
 beforeEach(() => {
   env = makeTestEnv()
-  createProfile(env.db, env.paths, {
-    id: 'producer',
-    defaultModel: 'lmstudio:test',
-    communicationDefaults: {
-      userInput: true,
-      userOutput: true,
-      outsideTeamInput: false,
-      outsideTeamOutput: false,
-      peerDefault: 'allow_all',
-    },
-  })
+  createProfile(env.db, env.paths, { id: 'producer', defaultModel: 'lmstudio:test' })
   agentId = spawnAgent(env.db, env.paths, { profileId: 'producer', teamId: env.teamId }).id
-  const conversation = resolveConversationTarget(env.db, env.paths, agentId)
-  sessionId = conversation.id
-  source = createTurnToolSource(
-    env.paths,
-    resolveAgent(env.db, env.paths, agentId),
-    conversation,
-    'image_generate',
-  )
-  signal = new AbortController()
-  config = {
-    BAZILION_IMAGE_GENERATION: 'on',
-    BAZILION_IMAGE_MODEL: IMAGE_MODELS[0],
-    OPENROUTER_API_KEY: 'test-key-not-for-network',
-  }
-  models = imageCatalogue()
-  generate = vi.fn<Models['generateImages']>(async () => response())
-  models.generateImages = generate
-  host = createImageGenerationHost({
-    db: env.db,
-    agentId,
-    teamId: env.teamId,
-    turnId: 'turn-one',
-    signal: signal.signal,
-    env: () => config,
-    assertActive: () => {},
-    source,
-    models,
-  })
+  conversationId = resolveConversationTarget(env.db, env.paths, agentId).id
+  config = { BAZILION_IMAGE_MODEL: 'openai:gpt-image-2', OPENAI_API_KEY: 'sk-test' }
+  turn = new AbortController()
+  fetcher = vi.fn<typeof fetch>(async () => Response.json({ data: [{ b64_json: b64 }] }))
 })
-afterEach(() => {
-  vi.restoreAllMocks()
-  vi.unstubAllEnvs()
-  env.cleanup()
-})
+afterEach(() => env.cleanup())
 
-function automaticHost(fetcher: typeof fetch, accessToken = async () => 'oauth-private') {
-  config.BAZILION_IMAGE_MODEL = 'auto'
-  config.OPENAI_API_KEY = 'direct-private'
+function host() {
   return createImageGenerationHost({
     db: env.db,
     agentId,
     teamId: env.teamId,
-    turnId: 'auto-turn',
-    chatModel: 'lmstudio:chat',
-    signal: signal.signal,
+    conversationId,
+    signal: turn.signal,
     env: () => config,
-    source,
-    assertActive: () => {},
+    codex: { connected: () => true, accessToken: async () => 'codex-token' },
     fetch: fetcher,
-    codex: { connected: () => true, accessToken },
+  })
+}
+function sse(events: unknown[]): Response {
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+    headers: { 'content-type': 'text/event-stream' },
   })
 }
 
-function recoveredStream(data = png.toString('base64'), omitted = false, tail: unknown[] = []) {
-  const events = [
-    {
-      type: 'response.created',
-      response: { id: 'resp_image', status: 'in_progress', model: 'gpt-6-astra' },
-    },
-    {
-      type: 'response.output_item.done',
-      output_index: 0,
-      item: { id: 'ig_image', type: 'image_generation_call', status: 'completed', result: data },
-    },
-    {
-      type: 'response.completed',
-      response: { id: 'resp_image', status: 'completed', ...(omitted ? {} : { output: [] }) },
-    },
-    ...tail,
-  ]
-  return new Response(
-    new TextEncoder().encode(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')),
-  )
-}
+test('the selected route is one setting: off, or a model whose account is ready', () => {
+  expect(imageRoute({}, true)).toMatchObject({ ready: false, reason: 'Image generation is off.' })
+  expect(imageRoute({ BAZILION_IMAGE_MODEL: 'dall-e' }, true).ready).toBe(false)
+  expect(imageRoute({ BAZILION_IMAGE_MODEL: 'openai:gpt-image-2' }, true)).toMatchObject({
+    ready: false,
+    reason: expect.stringContaining('OPENAI_API_KEY'),
+  })
+  expect(imageRoute({ BAZILION_IMAGE_MODEL: 'openai-codex:gpt-image-2' }, false).ready).toBe(false)
+  expect(imageRoute({ BAZILION_IMAGE_MODEL: 'openai-codex:gpt-image-2' }, true)).toMatchObject({
+    ready: true,
+    provider: 'openai-codex',
+    modelId: 'gpt-image-2',
+  })
+  expect(
+    imageRoute(
+      { BAZILION_IMAGE_MODEL: 'openrouter:openai/gpt-image-2', OPENROUTER_API_KEY: 'k' },
+      false,
+    ),
+  ).toMatchObject({ ready: true, provider: 'openrouter', modelId: 'openai/gpt-image-2' })
+})
 
-test.each([
-  'allow',
-  'deny',
-  'approval_required',
-])('recovered Codex PNG captures, reloads and obeys %s with honest tool evidence and no replay', async (posture) => {
-  setEnabled(env.db, 'openai-codex', true)
-  vi.stubEnv('BAZILION_TEAM_POLICY_ENFORCEMENT', 'on')
-  if (posture === 'deny') {
-    env.db.raw.run(
-      "DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'agent' AND source_id = ? AND target_kind = 'user'",
-      [env.teamId, agentId],
-    )
-  } else {
-    env.db.raw.run(
-      "UPDATE team_policy_edges SET posture = ? WHERE team_id = ? AND source_kind = 'agent' AND source_id = ? AND target_kind = 'user'",
-      [posture, env.teamId, agentId],
-    )
-  }
-  const fetcher = vi.fn<typeof fetch>(async () => recoveredStream())
-  const imageHost = automaticHost(fetcher)
-  const request = input()
-  const outputs: ImageGenerationOutput[] = []
-  const tool = ourToolToPiTool(
-    imageGenerateTool(async (args) => {
-      const output = await imageHost.generate(args)
-      outputs.push(output)
-      return output
-    }, sessionId),
-  )
-  const result = await tool.execute(
-    'call',
-    { prompt: request.prompt, name: request.name },
+test('an OpenAI image is saved as a result of the turn; the tool returns references, not bytes', async () => {
+  const tool = ourToolToPiTool(imageGenerateTool(host()))
+  const output = await tool.execute(
+    'call-1',
+    { prompt: 'A little bird', name: 'bird' },
     undefined,
     undefined,
     {} as Parameters<typeof tool.execute>[4],
   )
-  expect(result.details).toMatchObject({
-    imageEvidence: { outputSource: 'completed_stream' },
-    results: [{ resultId: expect.any(String) }],
+  const [url, init] = fetcher.mock.calls[0] ?? []
+  expect(url).toBe('https://api.openai.com/v1/images/generations')
+  expect(new Headers(init?.headers).get('authorization')).toBe('Bearer sk-test')
+  expect(JSON.parse(String(init?.body))).toMatchObject({
+    model: 'gpt-image-2',
+    prompt: 'A little bird',
   })
-  expect(JSON.stringify(result)).not.toContain(png.toString('base64'))
-  expect(JSON.stringify(result)).not.toContain('oauth-private')
-  // Canonical tool-details shape survives JSON serialization; no second transcript store.
-  expect(JSON.parse(JSON.stringify(result.details)).imageEvidence.outputSource).toBe(
-    'completed_stream',
-  )
-  const output = outputs[0]
-  if (!output?.files[0]) throw new Error('Missing capture')
-  const file = output.files[0],
-    id = file.result.resultId
-  expect(results.readCaptured(env.db, id)).toEqual(png)
-  expect(results.getReleased(env.db, id)).toBeNull()
-  expect(results.getReceipt(env.db, id)).toMatchObject({
-    sessionId,
-    toolCallId: 'call',
-    imageModel: 'openai-codex:gpt-image-2',
-  })
-  const frame = { kind: 'event' as const, event: { type: 'file' as const, ...file } }
-  if (posture === 'allow') {
-    authorizeHttpChatFrame(env.db, agentId, 'recovered-image', 0, frame)
-    expect(results.readReleased(env.db, id)).toEqual(png)
-  } else {
-    expect(() => authorizeHttpChatFrame(env.db, agentId, 'recovered-image', 0, frame)).toThrow()
-    expect(results.getReleased(env.db, id)).toBeNull()
-  }
-  const replay = await imageHost.generate(request)
-  expect(replay.files).toEqual(output.files)
-  expect(replay.outputSource).toBeUndefined() // receipt replay does not re-observe provider evidence
-  const snapshot = join(env.home, 'recovered.db')
-  await env.db.backupTo(snapshot)
-  const reopened = openDb(snapshot)
-  try {
-    expect(results.readCaptured(reopened, id)).toEqual(png)
-    expect(results.getReleased(reopened, id) !== null).toBe(posture === 'allow')
-  } finally {
-    reopened.close()
-  }
-  expect(fetcher).toHaveBeenCalledTimes(1)
-  expect(outcome()).toBe('completed')
-})
-
-test('completed image captures survive orphan cleanup without release or regeneration', async () => {
-  const request = input()
-  const output = await host.generate(request)
-  const id = firstResultId(output)
-  expect(generate).toHaveBeenCalledTimes(1)
-  expect(reconcilePrivateResults(env.db)).toBe(0)
-  expect(results.readCaptured(env.db, id)).toEqual(png)
-  expect(results.getReceipt(env.db, id)).toMatchObject({ releasedAt: null, deletedAt: null })
-  expect(results.listReleased(env.db).total).toBe(0)
-  expect(
-    env.db.raw
-      .query<{ bytes: number }, []>(
-        'SELECT sum(byte_length) AS bytes FROM agent_results WHERE deleted_at IS NULL',
-      )
-      .get()?.bytes,
-  ).toBe(png.byteLength)
-
-  const snapshot = join(env.home, 'private-image.db')
-  await env.db.backupTo(snapshot)
-  const reopened = openDb(snapshot)
-  try {
-    expect(reconcilePrivateResults(reopened)).toBe(0)
-    expect(results.readCaptured(reopened, id)).toEqual(png)
-    expect(results.getReleased(reopened, id)).toBeNull()
-    expect(results.listReleased(reopened).total).toBe(0)
-  } finally {
-    reopened.close()
-  }
-  expect((await host.generate(request)).files).toEqual(output.files)
-  expect(generate).toHaveBeenCalledTimes(1)
-})
-
-test.each([
-  'uncertain',
-  'failed',
-  'missing',
-  'other_agent',
-  'other_session',
-  'other_call',
-  'other_model',
-] as const)('image metadata without a matching completed operation cannot retain private bytes: %s', async (defect) => {
-  const output = await host.generate(input())
-  const id = firstResultId(output)
-  if (defect === 'missing') env.db.raw.run('DELETE FROM image_generations')
-  else if (defect === 'uncertain' || defect === 'failed')
-    env.db.raw.run('UPDATE image_generations SET outcome = ?', [defect])
-  else {
-    const column = {
-      other_agent: 'agent_id',
-      other_session: 'session_id',
-      other_call: 'tool_call_id',
-      other_model: 'model',
-    }[defect]
-    env.db.raw.run(`UPDATE image_generations SET ${column} = ?`, ['different-source'])
-  }
-  expect(reconcilePrivateResults(env.db)).toBe(1)
-  expect(() => results.readCaptured(env.db, id)).toThrow('unavailable')
-  expect(results.listReleased(env.db).total).toBe(0)
-  expect(generate).toHaveBeenCalledTimes(1)
-})
-
-test('deleted completed image captures cannot resurrect after reconciliation', async () => {
-  const request = input()
-  const output = await host.generate(request)
-  const id = firstResultId(output)
-  vi.stubEnv('BAZILION_TEAM_POLICY_ENFORCEMENT', 'on')
-  const file = output.files[0]
-  if (!file) throw new Error('Missing captured image')
-  authorizeHttpChatFrame(env.db, agentId, 'image-deletion', 0, {
-    kind: 'event',
-    event: { type: 'file', ...file },
-  })
-  expect(results.deleteReleased(env.db, id)).toBe(true)
-  const tombstone = results.getReceipt(env.db, id)
-  expect(tombstone?.deletedAt).not.toBeNull()
-  expect(reconcilePrivateResults(env.db)).toBe(0)
-  expect(results.getReceipt(env.db, id)).toEqual(tombstone)
-  await expect(host.generate(request)).rejects.toThrow('deleted')
-  expect(generate).toHaveBeenCalledTimes(1)
-  expect(results.listReleased(env.db).total).toBe(0)
-})
-
-test('omitted output uses the same strict recovery path through host capture', async () => {
-  setEnabled(env.db, 'openai-codex', true)
-  const fetcher = vi.fn<typeof fetch>(async () => recoveredStream(png.toString('base64'), true))
-  const output = await automaticHost(fetcher).generate(input())
-  expect(output.outputSource).toBe('completed_stream')
-  expect(results.readCaptured(env.db, firstResultId(output))).toEqual(png)
-  expect(fetcher).toHaveBeenCalledTimes(1)
-})
-
-test.each([
-  'bad-base64',
-  'not-png',
-  'oversized-image',
-  'late-error',
-])('recovered %s cannot capture or replay', async (defect) => {
-  setEnabled(env.db, 'openai-codex', true)
-  const data =
-    defect === 'bad-base64'
-      ? 'not base64'
-      : defect === 'not-png'
-        ? Buffer.from('not a png').toString('base64')
-        : defect === 'oversized-image'
-          ? Buffer.alloc(results.MAX_RESULT_BYTES + 1).toString('base64')
-          : png.toString('base64')
-  const fetcher = vi.fn<typeof fetch>(async () =>
-    recoveredStream(
-      data,
-      false,
-      defect === 'late-error' ? [{ type: 'error', message: 'oauth-private' }] : [],
-    ),
-  )
-  const imageHost = automaticHost(fetcher)
-  const request = input()
-  await expect(imageHost.generate(request)).rejects.toThrow()
-  expect(outcome()).toBe('uncertain')
-  expect(operationsResultCount()).toBe(0)
-  await expect(imageHost.generate(request)).rejects.toThrow('uncertain')
-  await expect(imageHost.generate(input('another'))).rejects.toThrow('uncertain')
-  expect(fetcher).toHaveBeenCalledTimes(1)
-})
-
-test('missing-MIME strict Codex stream commits images and closed failures stay uncertain without secret disclosure', async () => {
-  setEnabled(env.db, 'openai-codex', true)
-  const fetcher = vi.fn<typeof fetch>(
-    async () =>
-      new Response(
-        new TextEncoder().encode(
-          `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [{ type: 'image_generation_call', result: png.toString('base64') }] } })}\n\n`,
-        ),
-      ),
-  )
-  const imageHost = automaticHost(fetcher)
-  const output = await imageHost.generate(input('mime-success'))
-  expect(results.readCaptured(env.db, firstResultId(output))).toEqual(png)
-  fetcher.mockImplementation(
-    async () => new Response(new TextEncoder().encode('data: {oauth-private}\n\n')),
-  )
-  await expect(imageHost.generate(input('mime-failure'))).rejects.toThrow(
-    'phase=decode; media=missing; terminal=unseen] [reason=decode_failed',
-  )
-  await expect(imageHost.generate(input('after-uncertain'))).rejects.toThrow('uncertain')
-  expect(fetcher).toHaveBeenCalledTimes(2)
-})
-
-test('automatic text enablement switches future image calls but never rewrites an admitted route or replays it', async () => {
-  setEnabled(env.db, 'openai', true)
-  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
-    if (String(url).includes('api.openai.com')) {
-      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer direct-private')
-      // Operator switches text providers while the first image request is already in flight.
-      setEnabled(env.db, 'openai', false)
-      setEnabled(env.db, 'openai-codex', true)
-      return Response.json({ data: [{ b64_json: png.toString('base64') }] })
-    }
-    expect(String(url)).toBe('https://chatgpt.com/backend-api/codex/responses')
-    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer oauth-private')
-    return new Response(
-      `data: ${JSON.stringify({ type: 'response.completed', response: { output: [{ type: 'image_generation_call', result: png.toString('base64') }] } })}\n\n`,
-      { headers: { 'content-type': 'text/event-stream' } },
-    )
-  })
-  const auto = automaticHost(fetcher)
-  const original = input()
-  const first = await auto.generate(original)
-  expect(first.model).toBe('openai:gpt-image-2')
-  expect(results.getReceipt(env.db, firstResultId(first))?.imageModel).toBe('openai:gpt-image-2')
-  await expect(auto.generate(original)).rejects.toThrow('does not match')
-  const second = await auto.generate(input('next-call'))
-  expect(second.model).toBe('openai-codex:gpt-image-2')
-  expect(fetcher).toHaveBeenCalledTimes(2)
-})
-
-test('automatic routing refuses dispatch when text enablement changes during OAuth refresh', async () => {
-  setEnabled(env.db, 'openai-codex', true)
-  let finish: (key: string) => void = () => {}
-  const token = new Promise<string>((resolve) => {
-    finish = resolve
-  })
-  const fetcher = vi.fn<typeof fetch>()
-  const auto = automaticHost(fetcher, () => token)
-  const pending = auto.generate(input())
-  setEnabled(env.db, 'openai-codex', false)
-  setEnabled(env.db, 'openai', true)
-  finish('oauth-private')
-  await expect(pending).rejects.toThrow('configuration changed before dispatch')
-  expect(fetcher).not.toHaveBeenCalled()
-  expect(outcome()).toBe('uncertain')
-})
-
-test('automatic routing never retries an uncertain operation through a newly enabled text provider', async () => {
-  setEnabled(env.db, 'openai', true)
-  const fetcher = vi.fn<typeof fetch>(async () =>
-    Response.json({ error: 'unavailable' }, { status: 401 }),
-  )
-  const getToken = vi.fn(async () => 'oauth-private')
-  const auto = automaticHost(fetcher, getToken)
-  await expect(auto.generate(input())).rejects.toThrow('No automatic retry or credential fallback')
-  setEnabled(env.db, 'openai', false)
-  setEnabled(env.db, 'openai-codex', true)
-  await expect(auto.generate(input('new-id'))).rejects.toThrow('blocked for the rest')
-  expect(fetcher).toHaveBeenCalledTimes(1)
-  expect(getToken).not.toHaveBeenCalled()
-})
-
-test.each([
-  'openai',
-  'openai-codex',
-] as const)('captures %s images under the selected billing route without replay or credential disclosure', async (provider) => {
-  config.BAZILION_IMAGE_MODEL = `${provider}:gpt-image-2`
-  config.OPENAI_API_KEY = 'direct-private'
-  saveLoginCredentials(env.db, 'password', {
-    access: 'oauth-private',
-    refresh: 'refresh-private',
-    expires: Date.now() + 3600000,
-  })
-  const credential = provider === 'openai' ? 'direct-private' : 'oauth-private'
-  const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
-    expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${credential}`)
-    return provider === 'openai'
-      ? Response.json({ id: credential, data: [{ b64_json: png.toString('base64') }] })
-      : new Response(
-          `data: ${JSON.stringify({ type: 'response.completed', response: { id: credential, output: [{ id: 'ig', type: 'image_generation_call', status: 'completed', result: png.toString('base64') }] } })}\n\n`,
-          { headers: { 'content-type': 'text/event-stream' } },
-        )
-  })
-  const getToken = vi.fn(() => loadAccessToken(env.db, 'password'))
-  const direct = createImageGenerationHost({
-    db: env.db,
-    agentId,
-    teamId: env.teamId,
-    turnId: 'direct-turn',
-    signal: signal.signal,
-    source,
-    assertActive: () => {},
-    env: () => config,
-    fetch: fetcher,
-    codex: { connected: () => hasCredentials(env.db, 'password'), accessToken: getToken },
-  })
-  const request = input()
-  const output = await direct.generate(request)
-  const replay = await direct.generate(request)
-  expect(replay).toEqual({ model: output.model, files: output.files })
-  expect(replay.outputSource).toBeUndefined()
-  expect(output.outputSource).toBe(provider === 'openai-codex' ? 'terminal' : undefined)
-  expect(fetcher).toHaveBeenCalledTimes(1)
-  expect(getToken).toHaveBeenCalledTimes(provider === 'openai-codex' ? 1 : 0)
-  expect(output.model).toBe(`${provider}:gpt-image-2`)
-  const receipt = results.getReceipt(env.db, firstResultId(output))
-  expect(receipt).toMatchObject({ imageModel: `${provider}:gpt-image-2`, releasedAt: null })
-  expect(JSON.stringify(output)).not.toContain(credential)
-  expect(
-    env.db.raw
-      .query<{ response_id: string | null }, []>('SELECT response_id FROM image_generations')
-      .get()?.response_id,
-  ).toBeNull()
-  expect(results.readCaptured(env.db, firstResultId(output))).toEqual(png)
-  config.BAZILION_IMAGE_MODEL =
-    provider === 'openai' ? 'openai-codex:gpt-image-2' : 'openai:gpt-image-2'
-  await expect(direct.generate(request)).rejects.toThrow('does not match')
-  expect(fetcher).toHaveBeenCalledTimes(1)
-  if (provider === 'openai') {
-    clearCredentials(env.db, 'password')
-    await expect(direct.generate(input('after-logout'))).rejects.toThrow('Connect ChatGPT')
-    expect(fetcher).toHaveBeenCalledTimes(1)
-  }
-})
-
-test('Codex credential refresh failure is actionable, private and cannot fall back to an API key', async () => {
-  config.BAZILION_IMAGE_MODEL = 'openai-codex:gpt-image-2'
-  config.OPENAI_API_KEY = 'available-but-not-authorized'
-  const fetcher = vi.fn<typeof fetch>()
-  const direct = createImageGenerationHost({
-    db: env.db,
-    agentId,
-    teamId: env.teamId,
-    turnId: 'direct-turn',
-    signal: signal.signal,
-    source,
-    assertActive: () => {},
-    env: () => config,
-    fetch: fetcher,
-    codex: {
-      connected: () => true,
-      accessToken: async () => {
-        throw new Error('private-refresh-secret')
-      },
+  const saved = results.list(env.db).results
+  expect(saved).toMatchObject([
+    {
+      name: 'bird.png',
+      mimeType: 'image/png',
+      imageModel: 'openai:gpt-image-2',
+      sessionId: conversationId,
+      toolCallId: 'call-1',
     },
-  })
-  await expect(direct.generate(input())).rejects.toThrow('Reconnect ChatGPT')
-  expect(fetcher).not.toHaveBeenCalled()
-  expect(outcome()).toBe('uncertain')
-  await expect(direct.generate(input('another-id'))).rejects.toThrow('blocked for the rest')
+  ])
+  expect(results.read(env.db, saved[0]?.id ?? '')).toEqual(png)
+  expect(output.details).toEqual({ results: [{ resultId: saved[0]?.id }] })
+  expect(JSON.stringify(output)).not.toContain(b64)
 })
 
-test('cancelling a shared Codex credential refresh prevents late image dispatch', async () => {
-  config.BAZILION_IMAGE_MODEL = 'openai-codex:gpt-image-2'
-  let finish: (key: string) => void = () => {}
-  const token = new Promise<string>((resolve) => {
-    finish = resolve
-  })
-  const fetcher = vi.fn<typeof fetch>()
-  const direct = createImageGenerationHost({
-    db: env.db,
-    agentId,
-    teamId: env.teamId,
-    turnId: 'direct-turn',
-    signal: signal.signal,
-    source,
-    assertActive: () => {},
-    env: () => config,
-    fetch: fetcher,
-    codex: { connected: () => true, accessToken: () => token },
-  })
-  const pending = direct.generate(input())
-  signal.abort()
-  await expect(pending).rejects.toThrow('cancelled')
-  finish('late-private-token')
-  await new Promise((resolve) => setImmediate(resolve))
-  expect(fetcher).not.toHaveBeenCalled()
-  expect(outcome()).toBe('uncertain')
-})
-
-test('resolves exactly the two curated Pi image entries without network or ambient auth', () => {
-  for (const id of OPENROUTER_IMAGE_MODELS) {
-    expect(models.getModelOfType('image', 'openrouter', id)).toMatchObject({
-      api: 'openrouter-images',
-      provider: 'openrouter',
-      baseUrl: 'https://openrouter.ai/api/v1',
+test('the ChatGPT route reads the image from the stream when the completed output is empty', async () => {
+  config = { BAZILION_IMAGE_MODEL: 'openai-codex:gpt-image-2' }
+  const image = { type: 'image_generation_call', id: 'ig_1', status: 'completed', result: b64 }
+  fetcher.mockResolvedValueOnce(
+    sse([
+      { type: 'response.output_item.done', output_index: 0, item: image },
+      { type: 'response.completed', response: { id: 'r1', status: 'completed', output: [] } },
+    ]),
+  )
+  fetcher.mockResolvedValueOnce(
+    sse([{ type: 'response.completed', response: { id: 'r2', output: [image] } }]),
+  )
+  const generator = host()
+  for (const call of ['call-1', 'call-2'])
+    expect(await generator.generate({ toolCallId: call, prompt: 'A bird' })).toMatchObject({
+      model: 'openai-codex:gpt-image-2',
+      files: [{ name: 'generated-image.png', mimeType: 'image/png' }],
     })
-    expect(models.getModelOfType('image', 'openrouter', id)?.output).toContain('image')
-  }
-  expect(imageTurnEnv(config, 'lmstudio:chat').OPENROUTER_API_KEY).toBeUndefined()
-  expect(imageTurnEnv(config, 'openrouter:chat').OPENROUTER_API_KEY).toBe(config.OPENROUTER_API_KEY)
-  expect(config.OPENROUTER_API_KEY).toBe('test-key-not-for-network')
-  expect(imageGenerationConfig({}).ready).toBe(false)
-  expect(
-    imageGenerationConfig({ ...config, OPENROUTER_API_KEY: '', OPENAI_API_KEY: 'not-an-image-key' })
-      .ready,
-  ).toBe(false)
-})
-
-test('captures all image bytes privately, keeps real source identity, and never bills duplicate IPC', async () => {
-  generate.mockResolvedValue(response(2))
-  const request = input()
-  const first = await host.generate(request)
-  expect(first.files).toHaveLength(2)
-  expect(first.files.map((file) => file.name)).toEqual(['bird-1.png', 'bird-2.png'])
-  expect(await host.generate(request)).toEqual(first)
-  expect(generate).toHaveBeenCalledTimes(1)
-  expect(generate.mock.calls[0]?.[2]).toMatchObject({
-    apiKey: config.OPENROUTER_API_KEY,
-    maxRetries: 0,
-    timeoutMs: 180000,
+  const [url, init] = fetcher.mock.calls[0] ?? []
+  expect(url).toBe('https://chatgpt.com/backend-api/codex/responses')
+  expect(new Headers(init?.headers).get('authorization')).toBe('Bearer codex-token')
+  expect(JSON.parse(String(init?.body))).toMatchObject({
+    stream: true,
+    store: false,
+    tools: [{ type: 'image_generation', model: 'gpt-image-2' }],
   })
-  expect(outcome()).toBe('completed')
-  for (const [index, file] of first.files.entries()) {
-    const id = file.result.resultId
-    expect(results.getReleased(env.db, id)).toBeNull()
-    expect(results.getReceipt(env.db, id)).toMatchObject({
-      sessionId,
-      toolCallId: 'call',
-      sourceIndex: index,
-      imageModel: IMAGE_MODELS[0],
-    })
-    results.release(env.db, id, agentId)
-    expect(results.readReleased(env.db, id)).toEqual(png)
-  }
-  results.deleteReleased(env.db, firstResultId(first))
-  await expect(host.generate(request)).rejects.toThrow('deleted')
-  expect(generate).toHaveBeenCalledTimes(1)
+  expect(results.list(env.db).total).toBe(2)
 })
 
-test.each([
-  'allow',
-  'deny',
-  'approval_required',
-])('generated file disclosure obeys %s without tool-result preview bypass', async (posture) => {
-  vi.stubEnv('BAZILION_TEAM_POLICY_ENFORCEMENT', 'on')
-  if (posture === 'deny') {
-    env.db.raw.run(
-      "DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'agent' AND source_id = ? AND target_kind = 'user'",
-      [env.teamId, agentId],
-    )
-  } else {
-    env.db.raw.run(
-      "UPDATE team_policy_edges SET posture = ? WHERE team_id = ? AND source_kind = 'agent' AND source_id = ? AND target_kind = 'user'",
-      [posture, env.teamId, agentId],
-    )
-  }
-  const output = await host.generate(input())
-  const file = output.files[0]
-  if (!file) throw new Error('Missing generated image')
-  const frame = {
-    kind: 'event' as const,
-    event: { type: 'file' as const, ...file, data: Buffer.from('forged bytes').toString('base64') },
-  }
-  if (posture === 'allow') {
-    authorizeHttpChatFrame(env.db, agentId, 'image-request', 0, frame)
-    expect(frame.event.data).toBe(png.toString('base64'))
-    expect(results.getReleased(env.db, file.result.resultId)).not.toBeNull()
-  } else {
-    expect(() => authorizeHttpChatFrame(env.db, agentId, 'image-request', 0, frame)).toThrow()
-    expect(results.getReleased(env.db, file.result.resultId)).toBeNull()
-    expect(results.listReleased(env.db).total).toBe(0)
-  }
-})
-
-test.each(
-  OPENROUTER_IMAGE_MODELS,
-)('real Pi adapter uses the fixed OpenRouter endpoint and one request, with no SDK retry (%s)', async (modelId) => {
-  config.BAZILION_IMAGE_MODEL = modelId
-  const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
-    expect(new Headers(init?.headers).get('authorization')).toBe(
-      `Bearer ${config.OPENROUTER_API_KEY}`,
-    )
-    expect(JSON.parse(String(init?.body))).toMatchObject({
-      model: modelId,
-      modalities: modelId.startsWith('google/') ? ['image', 'text'] : ['image'],
-    })
-    return new Response(
-      JSON.stringify({
-        id: 'provider-id',
-        choices: [
-          {
-            message: {
-              images: [{ image_url: { url: `data:image/png;base64,${png.toString('base64')}` } }],
-            },
+test('the OpenRouter route goes through Pi and saves each returned image', async () => {
+  config = { BAZILION_IMAGE_MODEL: 'openrouter:openai/gpt-image-2', OPENROUTER_API_KEY: 'or-key' }
+  fetcher.mockImplementation(async () =>
+    Response.json({
+      id: 'gen-1',
+      choices: [
+        {
+          message: {
+            images: [
+              { image_url: { url: `data:image/png;base64,${b64}` } },
+              { image_url: { url: `data:image/png;base64,${b64}` } },
+            ],
           },
-        ],
-        usage: { prompt_tokens: 2, completion_tokens: 3 },
-      }),
-      { headers: { 'content-type': 'application/json' } },
-    )
-  })
-  const piHost = createImageGenerationHost({
-    db: env.db,
-    agentId,
-    teamId: env.teamId,
-    turnId: 'pi-turn',
-    signal: signal.signal,
-    env: () => config,
-    assertActive: () => {},
-    source,
-    fetch: fetcher,
-  })
-  const generated = await piHost.generate(input())
-  expect(generated.files).toHaveLength(1)
-  expect(fetcher).toHaveBeenCalledTimes(1)
-  expect(
-    env.db.raw
-      .query<{ response_id: string; usage_json: string }, []>(
-        'SELECT response_id, usage_json FROM image_generations',
-      )
-      .get(),
-  ).toMatchObject({
-    response_id: 'provider-id',
-    usage_json: expect.stringContaining('estimatedCost'),
-  })
-  fetcher.mockResolvedValue(
-    new Response(JSON.stringify({ error: { message: 'private-key-echo', type: 'server_error' } }), {
-      status: 500,
-      headers: { 'content-type': 'application/json' },
+        },
+      ],
     }),
   )
-  await expect(piHost.generate(input('provider-500'))).rejects.toThrow(
-    'Check OpenRouter access/quota',
-  )
-  expect(fetcher).toHaveBeenCalledTimes(2)
-})
-
-test('deadline aborts actual Pi transport without saving a result or retrying', async () => {
-  const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
-    const fetchSignal = init?.signal
-    if (!fetchSignal) throw new Error('Missing cancellation signal')
-    fetchSignal.throwIfAborted()
-    return new Promise<Response>((_resolve, reject) =>
-      fetchSignal.addEventListener('abort', () => reject(fetchSignal.reason), { once: true }),
-    )
-  })
-  const piHost = createImageGenerationHost({
-    db: env.db,
-    agentId,
-    teamId: env.teamId,
-    turnId: 'deadline-turn',
-    signal: signal.signal,
-    env: () => config,
-    assertActive: () => {},
-    source,
-    fetch: fetcher,
-    deadlineMs: 50,
-  })
-  await expect(piHost.generate(input())).rejects.toThrow('timed out')
-  expect(fetcher).toHaveBeenCalledTimes(1)
-  expect(outcome()).toBe('uncertain')
-  expect(operationsResultCount()).toBe(0)
-})
-
-test('composite canonical identity survives image capture and cannot alias or replay another item', async () => {
-  const request = input('call_fixture|fc_fixture')
-  const output = await host.generate(request)
-  const id = firstResultId(output)
-  expect(results.getReceipt(env.db, id)?.toolCallId).toBe(request.toolCallId)
-  expect(results.readCaptured(env.db, id)).toEqual(png)
-  expect(firstResultId(await host.generate(request))).toBe(id)
-  expect(generate).toHaveBeenCalledTimes(1)
-  await expect(host.generate({ ...request, toolCallId: 'call_fixture' })).rejects.toThrow(
-    'canonical transcript',
-  )
-  await expect(host.generate({ ...request, toolCallId: 'call_fixture|fc_other' })).rejects.toThrow(
-    'canonical transcript',
-  )
-  await expect(host.generate({ ...request, sessionId: 'other' })).rejects.toThrow('conversation')
-  await expect(host.generate({ ...request, prompt: 'altered' })).rejects.toThrow('canonical')
-  const later = createTurnToolSource(
-    env.paths,
-    resolveAgent(env.db, env.paths, agentId),
-    { id: sessionId, filename: `${sessionId}.jsonl` },
-    'image_generate',
-  )
-  expect(() => later(sessionId, request.toolCallId)).toThrow('canonical transcript')
-  expect(generate).toHaveBeenCalledTimes(1)
-  expect(operationCount()).toBe(1)
-})
-
-test.each([
-  'call|',
-  '|item',
-  'call||item',
-  'call|item|extra',
-  'a'.repeat(257),
-  'call|item\n',
-])('refuses malformed canonical composite source %j before dispatch', async (id) => {
-  await expect(host.generate(input(id))).rejects.toThrow('conversation')
-  expect(generate).not.toHaveBeenCalled()
-  expect(operationCount()).toBe(0)
-})
-
-test('rework creates distinct durable results and retains the original', async () => {
-  const first = await host.generate(input())
-  const next = await host.generate(input('rework', 'A blue bird'))
-  expect(first.files[0]?.result).not.toEqual(next.files[0]?.result)
-  expect(results.readCaptured(env.db, firstResultId(first))).toEqual(png)
-  expect(generate).toHaveBeenCalledTimes(2)
-})
-
-test.each([
-  ['off', { BAZILION_IMAGE_GENERATION: 'off' }],
-  ['unknown model', { BAZILION_IMAGE_MODEL: 'gpt-image-pretend' }],
-  ['missing credential', { OPENROUTER_API_KEY: '' }],
-])('refuses %s before admission or network', async (_, values) => {
-  Object.assign(config, values)
-  await expect(host.generate(input())).rejects.toThrow()
-  expect(generate).not.toHaveBeenCalled()
-  expect(operationCount()).toBe(0)
-})
-
-test('refuses absent catalogue model, arbitrary IPC keys, altered prompt and old source', async () => {
-  const request = input()
-  await expect(host.generate({ ...request, prompt: 'different' })).rejects.toThrow('canonical')
-  await expect(
-    host.generate({ ...request, endpoint: 'https://attacker.invalid' } as ImageGenerationInput),
-  ).rejects.toThrow()
-  await expect(host.generate({ ...request, toolCallId: 'not-in-transcript' })).rejects.toThrow(
-    'canonical transcript',
-  )
-  await expect(host.generate({ ...request, sessionId: 'other' })).rejects.toThrow('conversation')
-  const laterSource = createTurnToolSource(
-    env.paths,
-    resolveAgent(env.db, env.paths, agentId),
-    { id: sessionId, filename: `${sessionId}.jsonl` },
-    'image_generate',
-  )
-  expect(() => laterSource(sessionId, request.toolCallId)).toThrow('canonical transcript')
-  vi.spyOn(models, 'getModelOfType').mockReturnValue(undefined)
-  await expect(host.generate(request)).rejects.toThrow('no fallback')
-  expect(generate).not.toHaveBeenCalled()
-  expect(operationCount()).toBe(0)
-})
-
-test.each([
-  '../escape',
-  'bad\nname',
-  '',
-  'x'.repeat(121),
-  'CON.png',
-  'name.',
-])('refuses unsafe display name %j', async (name) => {
-  await expect(host.generate({ ...input(), name })).rejects.toThrow('filename')
-  expect(operationCount()).toBe(0)
-})
-
-test('caps prompt bytes, requires live membership and obeys cancellation before admission', async () => {
-  await expect(host.generate(input('large', 'é'.repeat(4097)))).rejects.toThrow('8 KiB')
-  env.db.raw.run("UPDATE agents SET status = 'archived' WHERE id = ?", [agentId])
-  await expect(host.generate(input())).rejects.toThrow('active')
-  signal.abort()
-  await expect(host.generate(input('cancelled'))).rejects.toThrow()
-  expect(generate).not.toHaveBeenCalled()
-})
-
-test.each([
-  ['empty', { output: [] }],
-  ['text-only', { output: [{ type: 'text', text: 'No image' }] }],
-  ['too many', { output: response(5).output }],
-  [
-    'MIME mismatch',
-    { output: [{ type: 'image', mimeType: 'image/jpeg', data: png.toString('base64') }] },
-  ],
-  ['invalid base64', { output: [{ type: 'image', mimeType: 'image/png', data: '????' }] }],
-  [
-    'provider error',
-    { stopReason: 'error', errorMessage: 'test-key-not-for-network private prompt' },
-  ],
-  ['aborted', { stopReason: 'aborted' }],
-] satisfies [
-  string,
-  Partial<AssistantImages>,
-][])('never saves success for %s and never automatically regenerates', async (_, patch) => {
-  generate.mockResolvedValue({ ...response(), ...patch })
-  const request = input()
-  await expect(host.generate(request)).rejects.toThrow()
-  await expect(host.generate(request)).rejects.toThrow('automatically regenerated')
-  expect(operationsResultCount()).toBe(0)
-  expect(generate).toHaveBeenCalledTimes(1)
-})
-function operationsResultCount() {
-  return env.db.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM agent_results').get()?.n
-}
-
-test('does not retain a credential echoed in provider response metadata', async () => {
-  generate.mockResolvedValue({ ...response(), responseId: config.OPENROUTER_API_KEY })
-  await host.generate(input())
+  const output = await host().generate({ toolCallId: 'call-1', prompt: 'Two birds', name: 'birds' })
+  expect(output.files.map((file) => file.name)).toEqual(['birds-1.png', 'birds-2.png'])
+  expect(String(fetcher.mock.calls[0]?.[0])).toBe('https://openrouter.ai/api/v1/chat/completions')
   expect(
-    env.db.raw
-      .query<{ response_id: string | null }, []>('SELECT response_id FROM image_generations')
-      .get()?.response_id,
-  ).toBeNull()
+    results
+      .list(env.db)
+      .results.map((result) => result.sourceIndex)
+      .sort(),
+  ).toEqual([0, 1])
 })
 
-test('does not leak arbitrary SDK exceptions or credentials', async () => {
-  generate.mockRejectedValue(new Error('Image private data test-key-not-for-network'))
-  await expect(host.generate(input())).rejects.toThrow(
-    'Image generation failed; billing or account usage may have occurred',
+test('an OpenRouter response is read up to 40 MiB', async () => {
+  config = { BAZILION_IMAGE_MODEL: 'openrouter:openai/gpt-image-2', OPENROUTER_API_KEY: 'or-key' }
+  // An endless body: reading stops shortly after 40 MiB.
+  const chunk = new Uint8Array(1024 * 1024)
+  let sent = 0
+  fetcher.mockImplementation(
+    async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            sent++
+            controller.enqueue(chunk)
+          },
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
   )
-})
-
-test('an uncertain request also blocks model-initiated retries with a fresh tool-call ID', async () => {
-  generate.mockRejectedValue(new Error('Lost acknowledgement'))
-  await expect(host.generate(input())).rejects.toThrow('billing or account usage may have occurred')
-  await expect(host.generate(input('retry-with-new-id'))).rejects.toThrow(
-    'blocked for the rest of this turn',
+  await expect(host().generate({ toolCallId: 'call-1', prompt: 'A bird' })).rejects.toThrow(
+    'larger than 40 MiB',
   )
-  expect(generate).toHaveBeenCalledTimes(1)
-  expect(operationCount()).toBe(1)
+  expect(sent).toBeLessThan(50)
+  expect(results.list(env.db).total).toBe(0)
 })
 
-test('enforces the per-turn billable-call ceiling', async () => {
-  for (let i = 0; i < 4; i++) await host.generate(input(`call-${i}`))
-  await expect(host.generate(input('call-5'))).rejects.toThrow('four requests')
-  expect(generate).toHaveBeenCalledTimes(4)
+test('the images of one call are saved together or not at all', async () => {
+  const large = Buffer.alloc(25 * 1024 * 1024 + 1)
+  png.copy(large)
+  fetcher.mockResolvedValueOnce(
+    Response.json({ data: [{ b64_json: b64 }, { b64_json: large.toString('base64') }] }),
+  )
+  await expect(host().generate({ toolCallId: 'call-1', prompt: 'Two birds' })).rejects.toThrow(
+    '25 MiB',
+  )
+  expect(results.list(env.db).total).toBe(0)
 })
 
-test('serializes home-wide generation and discards a cancelled late success', async () => {
-  let finish!: (result: AssistantImages) => void
-  generate.mockImplementation(
-    () =>
-      new Promise<AssistantImages>((resolve) => {
-        finish = resolve
+test('the provider’s own error is shown; nothing is saved', async () => {
+  fetcher.mockResolvedValueOnce(
+    new Response('{"error":{"message":"Your request was rejected by the safety system."}}', {
+      status: 400,
+    }),
+  )
+  await expect(host().generate({ toolCallId: 'call-1', prompt: 'x' })).rejects.toThrow(
+    /HTTP 400: .*rejected by the safety system/,
+  )
+  config = { BAZILION_IMAGE_MODEL: 'openai-codex:gpt-image-2' }
+  fetcher.mockResolvedValueOnce(
+    sse([{ type: 'response.failed', response: { error: { message: 'Image quota exhausted' } } }]),
+  )
+  await expect(host().generate({ toolCallId: 'call-2', prompt: 'x' })).rejects.toThrow(
+    'Image quota exhausted',
+  )
+  fetcher.mockResolvedValueOnce(Response.json({ data: [{ b64_json: 'bm90IGFuIGltYWdl' }] }))
+  config = { BAZILION_IMAGE_MODEL: 'openai:gpt-image-2', OPENAI_API_KEY: 'sk-test' }
+  await expect(host().generate({ toolCallId: 'call-3', prompt: 'x' })).rejects.toThrow(
+    'not a PNG, JPEG or WebP',
+  )
+  expect(results.list(env.db).total).toBe(0)
+})
+
+test('a turn makes at most four calls; bad input is refused before any request', async () => {
+  const generator = host()
+  await expect(generator.generate({ toolCallId: 'c', prompt: '  ' })).rejects.toThrow('prompt')
+  await expect(
+    generator.generate({ toolCallId: 'c', prompt: 'ok', name: '../escape' }),
+  ).rejects.toThrow('file name')
+  for (const call of ['c1', 'c2', 'c3', 'c4'])
+    await generator.generate({ toolCallId: call, prompt: 'A bird' })
+  await expect(generator.generate({ toolCallId: 'c5', prompt: 'A bird' })).rejects.toThrow('four')
+  expect(fetcher).toHaveBeenCalledTimes(4)
+  // A new turn has its own allowance.
+  await host().generate({ toolCallId: 'c6', prompt: 'A bird' })
+  expect(results.list(env.db).total).toBe(5)
+})
+
+test('stopping the turn aborts the request', async () => {
+  fetcher.mockImplementationOnce(
+    (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
       }),
   )
-  const pending = host.generate(input())
-  await expect(host.generate(input('parallel'))).rejects.toThrow('busy')
-  signal.abort()
-  finish(response())
-  await expect(pending).rejects.toThrow('cancelled')
-  expect(outcome()).toBe('uncertain')
-  expect(operationsResultCount()).toBe(0)
-})
-
-test('results and completion commit together, so a partial storage failure leaves no images', async () => {
-  generate.mockResolvedValue(response(2))
-  env.db.raw.exec(`CREATE TRIGGER image_disk_full BEFORE INSERT ON agent_results
-    WHEN NEW.source_index = 1 BEGIN SELECT RAISE(ABORT, 'simulated disk full'); END`)
-  await expect(host.generate(input())).rejects.toThrow()
-  expect(outcome()).toBe('uncertain')
-  expect(operationsResultCount()).toBe(0)
-  env.db.raw.exec('DROP TRIGGER image_disk_full')
-})
-
-test('backup/reopen preserves bytes and uncertain operations cannot dispatch in a clone', async () => {
-  const good = await host.generate(input())
-  generate.mockRejectedValue(new Error('Connection lost after sending'))
-  const uncertain = input('lost-ack')
-  await expect(host.generate(uncertain)).rejects.toThrow()
-  const snapshot = join(env.home, 'images-snapshot.db')
-  await env.db.backupTo(snapshot)
-  const restored = openDb(snapshot)
-  try {
-    expect(results.readCaptured(restored, firstResultId(good))).toEqual(png)
-    const clone = createImageGenerationHost({
-      db: restored,
-      agentId,
-      teamId: env.teamId,
-      turnId: 'restored-turn',
-      signal: new AbortController().signal,
-      env: () => config,
-      assertActive: () => {},
-      source,
-      models,
-    })
-    await expect(clone.generate(uncertain)).rejects.toThrow('uncertain')
-    expect(generate).toHaveBeenCalledTimes(2)
-  } finally {
-    restored.close()
-  }
-})
-
-test('tool details persist multiple opaque Results, never raw image preview bytes', async () => {
-  generate.mockResolvedValue(response(2))
-  const request = input()
-  const tool = ourToolToPiTool(imageGenerateTool(host.generate, sessionId))
-  const output = await tool.execute(
-    'call',
-    { prompt: request.prompt, name: request.name },
-    undefined,
-    undefined,
-    {} as Parameters<typeof tool.execute>[4],
-  )
-  expect(output.content.every((part) => part.type === 'text')).toBe(true)
-  expect(output.details).toMatchObject({
-    results: [{ resultId: expect.any(String) }, { resultId: expect.any(String) }],
-  })
-  // 0.87.1 widened tool-result details to a conditional JSON representation;
-  // the tool's runtime output here is JSON by construction.
-  const history = piMessagesToProviderView([
-    {
-      role: 'toolResult',
-      toolCallId: 'call',
-      toolName: 'image_generate',
-      content: output.content,
-      details: output.details,
-      isError: false,
-      timestamp: Date.now(),
-    } as unknown as Parameters<typeof piMessagesToProviderView>[0][number],
-  ])
-  expect(history[0]?.results).toHaveLength(2)
-  expect(history[0]?.images).toBeUndefined()
-  expect(JSON.stringify(output)).not.toContain(png.toString('base64'))
-})
-
-test('bounded transport refuses another origin/path, redirects, oversized headers and streaming growth', async () => {
-  const fetcher = vi.fn<typeof fetch>(async () => new Response('small'))
-  const bounded = boundedImageFetch(fetcher)
-  await expect(bounded('https://attacker.invalid/')).rejects.toThrow('endpoint')
-  expect(fetcher).not.toHaveBeenCalled()
-  const endpoint = 'https://openrouter.ai/api/v1/chat/completions'
-  expect(await (await bounded(endpoint)).text()).toBe('small')
-  expect(fetcher.mock.calls[0]?.[1]?.redirect).toBe('error')
-  fetcher.mockResolvedValueOnce(
-    new Response('small', { headers: { 'content-length': String(IMAGE_RESPONSE_BYTES + 1) } }),
-  )
-  await expect(bounded(endpoint)).rejects.toThrow('byte limit')
-  let cancelled = false
-  let chunks = 0
-  fetcher.mockResolvedValueOnce(
-    new Response(
-      new ReadableStream({
-        pull(controller) {
-          controller.enqueue(new Uint8Array(1024 * 1024))
-          chunks++
-        },
-        cancel() {
-          cancelled = true
-        },
-      }),
-    ),
-  )
-  await expect(bounded(endpoint)).rejects.toThrow('byte limit')
-  expect(cancelled).toBe(true)
-  expect(chunks).toBeLessThan(44)
+  const pending = host().generate({ toolCallId: 'call-1', prompt: 'A bird' })
+  turn.abort()
+  await expect(pending).rejects.toThrow()
+  expect(results.list(env.db).total).toBe(0)
 })

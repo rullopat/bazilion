@@ -1,39 +1,29 @@
 import type { MemoryEntry, MemoryHit } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
+import { apiPath, positional, teamArg } from '../command-helpers.ts'
 
-function encodeKey(key: string): string {
-  return key.split('/').map(encodeURIComponent).join('/')
-}
+const keyArg = positional('Memory key (path under memory/, ending in .md)')
+
+/** A key's slashes stay path separators. */
+const entryPath = (team: string, key: string) => apiPath('teams', team, 'memory', ...key.split('/'))
 
 const writeCmd = defineCommand({
   meta: { name: 'write', description: "Write an entry into a team's shared memory" },
-  args: {
-    team: { type: 'positional', required: true, description: 'Team slug' },
-    key: { type: 'positional', required: true, description: 'Memory key (path under memory/)' },
-    content: { type: 'positional', required: true, description: 'Content to write' },
-  },
+  args: { team: teamArg, key: keyArg, content: positional('Content to write') },
   async run({ args }) {
-    const client = createClient()
-    const entry = await client.put<MemoryEntry>(
-      `/api/teams/${args.team}/memory/${encodeKey(args.key)}`,
-      { content: args.content },
-    )
+    const entry = await createClient().put<MemoryEntry>(entryPath(args.team, args.key), {
+      content: args.content,
+    })
     console.log(`wrote ${entry.key} (${entry.content.length} bytes)`)
   },
 })
 
 const readCmd = defineCommand({
   meta: { name: 'read', description: "Read an entry from a team's shared memory" },
-  args: {
-    team: { type: 'positional', required: true, description: 'Team slug' },
-    key: { type: 'positional', required: true },
-  },
+  args: { team: teamArg, key: keyArg },
   async run({ args }) {
-    const client = createClient()
-    const entry = await client.get<MemoryEntry>(
-      `/api/teams/${args.team}/memory/${encodeKey(args.key)}`,
-    )
+    const entry = await createClient().get<MemoryEntry>(entryPath(args.team, args.key))
     console.log(entry.content)
   },
 })
@@ -41,15 +31,16 @@ const readCmd = defineCommand({
 const searchCmd = defineCommand({
   meta: { name: 'search', description: "Search a team's shared memory" },
   args: {
-    team: { type: 'positional', required: true, description: 'Team slug' },
-    query: { type: 'positional', required: true },
+    team: teamArg,
+    query: positional('Search terms'),
     limit: { type: 'string', description: 'Max results (default 10)' },
   },
   async run({ args }) {
-    const client = createClient()
     const limit = args.limit ? Number.parseInt(args.limit, 10) : 10
     const params = new URLSearchParams({ q: args.query, limit: String(limit) })
-    const hits = await client.get<MemoryHit[]>(`/api/teams/${args.team}/memory/search?${params}`)
+    const hits = await createClient().get<MemoryHit[]>(
+      `${apiPath('teams', args.team, 'memory', 'search')}?${params}`,
+    )
     if (hits.length === 0) {
       console.log('(no matches)')
       return
@@ -62,12 +53,9 @@ const searchCmd = defineCommand({
 
 const listCmd = defineCommand({
   meta: { name: 'list', description: "List all entries in a team's shared memory" },
-  args: {
-    team: { type: 'positional', required: true, description: 'Team slug' },
-  },
+  args: { team: teamArg },
   async run({ args }) {
-    const client = createClient()
-    const all = await client.get<MemoryEntry[]>(`/api/teams/${args.team}/memory`)
+    const all = await createClient().get<MemoryEntry[]>(apiPath('teams', args.team, 'memory'))
     if (all.length === 0) {
       console.log('(no memory entries)')
       return
@@ -80,13 +68,9 @@ const listCmd = defineCommand({
 
 const rmCmd = defineCommand({
   meta: { name: 'rm', description: "Remove an entry from a team's shared memory" },
-  args: {
-    team: { type: 'positional', required: true, description: 'Team slug' },
-    key: { type: 'positional', required: true },
-  },
+  args: { team: teamArg, key: keyArg },
   async run({ args }) {
-    const client = createClient()
-    await client.del(`/api/teams/${args.team}/memory/${encodeKey(args.key)}`)
+    await createClient().del(entryPath(args.team, args.key))
     console.log(`removed ${args.key}`)
   },
 })

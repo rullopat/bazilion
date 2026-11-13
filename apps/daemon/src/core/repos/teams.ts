@@ -3,7 +3,7 @@
 // derive `paths.teamDir(id)` at read time. That makes the on-disk path
 // canonical: a real directory or a symlink, but always at the same slot.
 
-import type { Team } from '@bazilion/api-types'
+import type { Team, TeamPolicyMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
 import { DEFAULT_USER_MD } from '../profile/templates.ts'
@@ -13,6 +13,7 @@ interface RawTeam {
   name: string
   user_md: string
   telegram_topic_name_format: string | null
+  policy_mode: TeamPolicyMode
   created_at: number
 }
 
@@ -23,13 +24,14 @@ function toTeam(r: RawTeam, paths: Paths): Team {
     path: paths.teamDir(r.id),
     userMd: r.user_md,
     telegramTopicNameFormat: r.telegram_topic_name_format ?? null,
+    policyMode: r.policy_mode,
     createdAt: r.created_at,
   }
 }
 
 export function insert(
   db: BazilionDb,
-  g: { id: string; name: string; userMd?: string },
+  g: { id: string; name: string; userMd?: string; policyMode?: TeamPolicyMode },
   paths: Paths,
 ): Team {
   const now = Date.now()
@@ -37,18 +39,18 @@ export function insert(
   // their own non-empty content (e.g. profile-team spawn) win; an absent or
   // empty userMd falls back to DEFAULT_USER_MD so no team is born blank.
   const userMd = g.userMd && g.userMd.length > 0 ? g.userMd : DEFAULT_USER_MD
-  db.raw.run('INSERT INTO teams (id, name, user_md, created_at) VALUES (?, ?, ?, ?)', [
-    g.id,
-    g.name,
-    userMd,
-    now,
-  ])
+  const policyMode = g.policyMode ?? 'open'
+  db.raw.run(
+    'INSERT INTO teams (id, name, user_md, policy_mode, created_at) VALUES (?, ?, ?, ?, ?)',
+    [g.id, g.name, userMd, policyMode, now],
+  )
   return {
     id: g.id,
     name: g.name,
     path: paths.teamDir(g.id),
     userMd,
     telegramTopicNameFormat: null,
+    policyMode,
     createdAt: now,
   }
 }
@@ -86,7 +88,7 @@ export function setTelegramTopicNameFormat(
   db.raw.run('UPDATE teams SET telegram_topic_name_format = ? WHERE id = ?', [format, id])
 }
 
-// --- telegram bindings (migration 0003) ---
+// --- telegram bindings ---
 //
 // `teams.telegram_icon_color` holds the integer from Telegram's 6-color enum
 // allocated to this team at first-traffic. Red (16478047) is reserved for
@@ -107,7 +109,7 @@ export function setTelegramIconColor(db: BazilionDb, id: string, color: number):
 
 /**
  * Count of teams that already have a color allocated. Drives round-robin
- * allocation in lib/telegram/naming.ts:allocateGroupColor — the next color
+ * allocation in lib/telegram/naming.ts:allocateTeamColor — the next color
  * picked is `AVAILABLE_COLORS[count % AVAILABLE_COLORS.length]`.
  */
 export function countAllocatedColors(db: BazilionDb): number {

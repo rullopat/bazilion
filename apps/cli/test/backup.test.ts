@@ -1,14 +1,13 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import {
-  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   readlinkSync,
-  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -18,7 +17,7 @@ import {
 import { createServer as createHttpServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join, parse, relative, resolve } from 'node:path'
+import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as delay } from 'node:timers/promises'
 import { gunzipSync, gzipSync } from 'node:zlib'
@@ -32,19 +31,14 @@ import {
   openSecrets,
   resolveAgent,
   resolvePaths,
-  runMigrations,
-  webSessionRepo,
   webTokenRepo,
 } from '../../daemon/src/core/index.ts'
-import * as conversations from '../../daemon/src/core/repos/conversations.ts'
-import * as resultRepo from '../../daemon/src/core/repos/results.ts'
-import * as userQueue from '../../daemon/src/core/repos/user-queue.ts'
-import { createConversationFile } from '../../daemon/src/lib/conversation-file.ts'
-import { resolveConversationTarget } from '../../daemon/src/lib/conversation-target.ts'
-import { installValidatedPayload, RestoreRecoveryRequiredError } from '../src/commands/backup.ts'
-import { acquireHomeRestoreLock, daemonLivenessPath } from '../src/daemon-liveness.ts'
-import { extractAgentId, makeHome, runCli, type TestHome } from './helpers.ts'
+import { DAEMON_PID_FILE } from '../../daemon/src/lib/daemon-liveness.ts'
+import { installRestoredHome } from '../src/commands/backup.ts'
+import { extractAgentId, runCli } from './helpers.ts'
 import { restartTestServer, startTestServer, type TestServer } from './server-fixture.ts'
+
+const daemonEntry = join(import.meta.dirname, '..', '..', 'daemon', 'src', 'index.ts')
 
 let server: TestServer
 beforeAll(async () => {
@@ -55,22 +49,21 @@ beforeEach(() => server.reset())
 
 interface AppendedTarEntry {
   path: string
-  type?: 'File' | 'SymbolicLink'
+  type?: 'File' | 'SymbolicLink' | 'Link'
   body?: string
   linkpath?: string
 }
 
-function appendTarEntries(source: string, output: string, entries: AppendedTarEntry[]): void {
+/** Copy of a backup with extra raw tar entries appended (tar itself would refuse to write them). */
+function appendTarEntries(source: string, entries: AppendedTarEntry[]): string {
   const raw = gunzipSync(readFileSync(source))
   let end = 0
   while (end + 512 <= raw.length) {
     const block = raw.subarray(end, end + 512)
     if (block.every((byte) => byte === 0)) break
     const header = new Header(block)
-    if (!header.cksumValid) throw new Error(`invalid source tar header at offset ${end}`)
     end += 512 + Math.ceil((header.size ?? 0) / 512) * 512
   }
-
   const appended: Buffer[] = [raw.subarray(0, end)]
   for (const entry of entries) {
     const body = Buffer.from(entry.body ?? '')
@@ -79,282 +72,269 @@ function appendTarEntries(source: string, output: string, entries: AppendedTarEn
       type: entry.type ?? 'File',
       linkpath: entry.linkpath,
       mode: 0o600,
-      uid: 0,
-      gid: 0,
-      size: entry.type === 'SymbolicLink' ? 0 : body.length,
+      size: entry.type && entry.type !== 'File' ? 0 : body.length,
       mtime: new Date(),
     })
     const headerBlock = Buffer.alloc(512)
     header.encode(headerBlock)
     appended.push(headerBlock)
-    if (body.length > 0) {
+    if (body.length > 0 && (entry.type ?? 'File') === 'File') {
       appended.push(body, Buffer.alloc(Math.ceil(body.length / 512) * 512 - body.length))
     }
   }
   appended.push(Buffer.alloc(1024))
+  const output = join(tmpdir(), `bz-appended-${randomUUID()}.tar.gz`)
   writeFileSync(output, gzipSync(Buffer.concat(appended)))
+  return output
+}
+
+/** Copy of a backup whose extracted files were changed by `mutate`. */
+async function repack(archive: string, mutate: (dir: string) => void): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'bz-repack-'))
+  try {
+    await extract({ file: archive, cwd: dir })
+    mutate(dir)
+    const output = join(tmpdir(), `bz-repacked-${randomUUID()}.tar.gz`)
+    await create({ file: output, cwd: dir, gzip: true, portable: true }, ['.'])
+    return output
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+async function createBackup(): Promise<string> {
+  const archive = join(tmpdir(), `bz-backup-${randomUUID()}.tar.gz`)
+  const created = await server.cli(['backup', 'create', archive])
+  expect(created.exitCode, created.stderr).toBe(0)
+  return archive
+}
+
+/** A restore target `<parent>/home`; a private parent shows anything restore leaves behind. */
+function makeTarget(withData = true): { parent: string; home: string; cleanup(): void } {
+  const parent = mkdtempSync(join(tmpdir(), 'bz-restore-'))
+  const home = join(parent, 'home')
+  if (withData) {
+    mkdirSync(home)
+    writeFileSync(join(home, 'keep.txt'), 'original-data')
+  }
+  return { parent, home, cleanup: () => rmSync(parent, { recursive: true, force: true }) }
+}
+
+async function expectRefused(archive: string, message: RegExp, extraArgs = ['--force']) {
+  const target = makeTarget()
+  try {
+    const restored = await runCli(
+      ['backup', 'restore', archive, '--home', target.home, ...extraArgs],
+      target.home,
+    )
+    expect(restored.exitCode).not.toBe(0)
+    expect(restored.stderr).toMatch(message)
+    expect(readdirSync(target.parent)).toEqual(['home'])
+    expect(readdirSync(target.home)).toEqual(['keep.txt'])
+  } finally {
+    target.cleanup()
+  }
+}
+
+async function exitedProcessId(): Promise<number> {
+  const child = spawn(process.execPath, ['-e', ''])
+  await new Promise((resolve) => child.on('close', resolve))
+  return child.pid ?? 0
 }
 
 function tempEntries(prefix: string): Set<string> {
   return new Set(readdirSync(tmpdir()).filter((entry) => entry.startsWith(prefix)))
 }
 
-function cleanupLivenessArtifacts(home: string): void {
-  const runtime = daemonLivenessPath(home)
-  rmSync(runtime, { force: true })
-  const parent = dirname(runtime)
-  const reclaimPrefix = `${basename(runtime)}.reclaim-`
-  for (const entry of readdirSync(parent)) {
-    if (entry.startsWith(reclaimPrefix)) {
-      rmSync(join(parent, entry), { recursive: true, force: true })
-    }
-  }
-}
-
-function runLockContender(
-  home: string,
-  barrier: string,
-): Promise<{ exitCode: number; output: string }> {
-  const fixture = join(import.meta.dirname, 'fixtures', 'restore-lock-contender.ts')
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ['--experimental-strip-types', '--no-warnings', fixture, home, barrier],
-      { env: process.env },
-    )
-    const output: Buffer[] = []
-    child.stdout.on('data', (chunk: Buffer) => output.push(chunk))
-    child.stderr.on('data', (chunk: Buffer) => output.push(chunk))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      resolve({ exitCode: code ?? 0, output: Buffer.concat(output).toString('utf8') })
-    })
-  })
-}
-
-async function exitedProcessId(): Promise<number> {
-  const child = spawn(process.execPath, ['-e', ''])
-  const pid = child.pid
-  if (!pid) throw new Error('test process did not receive a PID')
-  await new Promise<void>((resolve, reject) => {
-    child.on('error', reject)
-    child.on('close', () => resolve())
-  })
-  return pid
-}
-
-test('backup create downloads a tar.gz with the home contents', async () => {
+test('backup create writes a tar.gz of the home around an online database snapshot', async () => {
   writeFileSync(join(server.home, 'marker.txt'), 'hello')
-  const qmdIndex = join(server.home, 'teams', 'default', 'memory', '.qmd-index.sqlite')
-  writeFileSync(qmdIndex, 'rebuildable-cache')
-  expect(existsSync(join(server.home, 'bazilion.db-wal'))).toBe(true)
-  const out = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
-
-  const res = await server.cli(['backup', 'create', out, '--plaintext'])
-  expect(res.exitCode).toBe(0)
-  expect(res.stdout).toContain('done')
-  expect(existsSync(out)).toBe(true)
-  expect(statSync(out).size).toBeGreaterThan(0)
-
-  const members: string[] = []
-  await list({ file: out, onentry: (entry) => members.push(entry.path.replace(/^\.\//, '')) })
-  expect(members.filter((path) => path === 'bazilion.db')).toHaveLength(1)
-  expect(members).not.toContain('bazilion.db-wal')
-  expect(members).not.toContain('bazilion.db-shm')
-  expect(members).not.toContain('daemon-runtime.json')
-  expect(members).not.toContain('teams/default/memory/.qmd-index.sqlite')
-
-  rmSync(out, { force: true })
-})
-
-test('backup excludes the root browser slot but retains ordinary team files (T12)', async () => {
+  writeFileSync(join(server.home, 'teams', 'default', 'memory', '.qmd-index.sqlite'), 'cache')
   mkdirSync(join(server.home, 'browsers', 'agent-x'), { recursive: true })
   writeFileSync(join(server.home, 'browsers', 'agent-x', 'cookies.db'), 'site-credentials')
-  writeFileSync(
-    join(server.home, 'browsers', 'agent-x', 'owner.json'),
-    '{"formatVersion":1,"agentId":"agent-x","teamId":"default","launchNonce":"n","daemonInstanceId":"d","phase":"running","startedAt":0}',
-  )
   mkdirSync(join(server.home, 'teams', 'default', 'browsers'), { recursive: true })
-  writeFileSync(
-    join(server.home, 'teams', 'default', 'browsers', 'notes.txt'),
-    'ordinary work product',
-  )
-  const out = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
+  writeFileSync(join(server.home, 'teams', 'default', 'browsers', 'notes.txt'), 'work product')
+  expect(existsSync(join(server.home, 'bazilion.db-wal'))).toBe(true)
+  expect(existsSync(join(server.home, DAEMON_PID_FILE))).toBe(true)
+  const archive = join(tmpdir(), `bz-backup-${randomUUID()}.tar.gz`)
 
-  const res = await server.cli(['backup', 'create', out, '--plaintext'])
-  expect(res.exitCode).toBe(0)
+  const created = await server.cli(['backup', 'create', archive])
+  expect(created.exitCode, created.stderr).toBe(0)
+  expect(created.stderr).toContain('not encrypted')
+  expect(created.stdout).toContain(`backup written to ${archive}`)
+  expect(existsSync(`${archive}.partial`)).toBe(false)
 
   const members: string[] = []
-  await list({ file: out, onentry: (entry) => members.push(entry.path.replace(/^\.\//, '')) })
-  // The sensitive root slot (marker + cookies) is entirely absent...
-  expect(members.some((path) => path === 'browsers' || path.startsWith('browsers/'))).toBe(false)
-  // ...while ordinary operator files under a team are retained.
+  await list({
+    file: archive,
+    onReadEntry: (entry) => members.push(entry.path.replace(/^\.\//, '')),
+  })
+  expect(members.filter((path) => path === 'bazilion.db')).toHaveLength(1)
+  expect(members).toContain('marker.txt')
   expect(members).toContain('teams/default/browsers/notes.txt')
-
-  rmSync(out, { force: true })
+  for (const excluded of [
+    'bazilion.db-wal',
+    'bazilion.db-shm',
+    DAEMON_PID_FILE,
+    'teams/default/memory/.qmd-index.sqlite',
+  ]) {
+    expect(members).not.toContain(excluded)
+  }
+  // Browser profiles hold site logins and never leave the home.
+  expect(members.some((path) => path === 'browsers' || path.startsWith('browsers/'))).toBe(false)
+  rmSync(archive, { force: true })
 })
 
-test('restore refuses an archive carrying browser profile state before installing anything (T12)', async () => {
-  const out = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
-  expect((await server.cli(['backup', 'create', out, '--plaintext'])).exitCode).toBe(0)
+test('restore installs a backup into a new home that the daemon then starts on', async () => {
+  writeFileSync(join(server.home, 'marker.txt'), 'restored-value')
+  const profile = await server.cli(['profile', 'create', 'kept', '--model', 'lmstudio:test-model'])
+  expect(profile.exitCode, profile.stderr).toBe(0)
+  const spawned = await server.cli(['agent', 'spawn', '--profile', 'kept', '--name', 'Kept Agent'])
+  expect(spawned.exitCode, spawned.stderr).toBe(0)
+  const agentId = extractAgentId(spawned.stdout)
+  for (const [key, value] of [
+    ['LMSTUDIO_URL', 'http://backup-config.example/v1'],
+    ['OPENAI_API_KEY', 'backup-secret-value'],
+  ] as const) {
+    expect((await server.cli(['config', 'set', key, value])).exitCode).toBe(0)
+  }
+  writeFileSync(join(server.home, 'agents', agentId, 'sessions', 'proof.jsonl'), '{"ok":true}\n')
+  writeFileSync(join(server.home, 'teams', 'default', 'memory', 'proof.md'), '# shared memory\n')
+  mkdirSync(join(server.home, 'skills', 'backup-skill'))
+  writeFileSync(join(server.home, 'skills', 'backup-skill', 'SKILL.md'), '# Backup skill\n')
+  const archive = await createBackup()
 
-  // Hostile/stale archive: a crafted entry planting browser session state.
-  const hostile = join(tmpdir(), `bz-backup-hostile-${Date.now()}.tar.gz`)
-  appendTarEntries(out, hostile, [{ path: 'browsers/agent-x/cookies', body: 'planted-session' }])
+  const target = makeTarget(false)
+  const restored = await runCli(['backup', 'restore', archive, '--home', target.home], target.home)
+  expect(restored.exitCode, restored.stderr).toBe(0)
+  expect(restored.stdout).toContain(`restored ${archive} to ${target.home}`)
+  expect(readdirSync(target.parent)).toEqual(['home'])
+  expect(readdirSync(target.home).filter((entry) => entry.startsWith('bazilion.db'))).toEqual([
+    'bazilion.db',
+  ])
+  expect(readFileSync(join(target.home, 'marker.txt'), 'utf8')).toBe('restored-value')
+  expect(
+    readFileSync(join(target.home, 'agents', agentId, 'sessions', 'proof.jsonl'), 'utf8'),
+  ).toBe('{"ok":true}\n')
+  expect(readFileSync(join(target.home, 'teams', 'default', 'memory', 'proof.md'), 'utf8')).toBe(
+    '# shared memory\n',
+  )
+  expect(readFileSync(join(target.home, 'skills', 'backup-skill', 'SKILL.md'), 'utf8')).toBe(
+    '# Backup skill\n',
+  )
+  const auth = JSON.parse(readFileSync(join(target.home, 'auth.json'), 'utf8')) as { token: string }
+  expect(auth.token).toBe(server.token)
+  // Owner-only, whatever modes the archive carried.
+  expect(statSync(target.home).mode & 0o777).toBe(0o700)
+  for (const name of ['auth.json', 'bazilion.db']) {
+    expect(statSync(join(target.home, name)).mode & 0o777).toBe(0o600)
+  }
 
-  const target = join(tmpdir(), `bz-restore-hostile-${Date.now()}`)
-  const restored = await runCli(['backup', 'restore', hostile, '--home', target], target)
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(/browser profile state|browsers\//i)
-  // Refused BEFORE install: the target home was never created/touched.
-  expect(existsSync(target)).toBe(false)
+  // Agent and Profile directories follow the home the database now lives in.
+  const paths = resolvePaths(target.home)
+  const db = openDb(paths.db)
+  try {
+    expect(loadProfile(db, 'kept').profile.dir).toBe(paths.profileDir('kept'))
+    expect(resolveAgent(db, paths, agentId).agent.dir).toBe(paths.agentDir(agentId))
+    expect(openConfig(db).get('LMSTUDIO_URL')).toBe('http://backup-config.example/v1')
+    expect(openSecrets(db, auth.token).get('OPENAI_API_KEY')).toBe('backup-secret-value')
+  } finally {
+    db.close()
+  }
 
-  rmSync(out, { force: true })
-  rmSync(hostile, { force: true })
+  const restoredServer = await restartTestServer({ home: target.home, token: auth.token })
+  try {
+    expect(existsSync(join(target.home, DAEMON_PID_FILE))).toBe(true)
+    const agents = await restoredServer.cli(['agent', 'list'])
+    expect(agents.exitCode, agents.stderr).toBe(0)
+    expect(agents.stdout).toContain('Kept Agent')
+  } finally {
+    await restoredServer.stop({ keepHome: true })
+  }
+  // A graceful shutdown (SIGTERM) releases the home.
+  expect(existsSync(join(target.home, DAEMON_PID_FILE))).toBe(false)
+  rmSync(archive, { force: true })
+  target.cleanup()
 })
 
-test('encrypted backup round-trips through an owner-only age identity', async () => {
+test('an encrypted backup round-trips through its age identity', async () => {
   const marker = `encrypted-marker-${randomUUID()}`
   writeFileSync(join(server.home, 'encrypted-proof.txt'), marker)
-  const sourceDb = openDb(resolvePaths(server.home).db)
-  const sourceDevice = webTokenRepo.create(sourceDb, 'preserved-device')
-  const sourceSession = webSessionRepo.create(sourceDb, sourceDevice.meta.id)
-  sourceDb.close()
+  const live = openDb(resolvePaths(server.home).db)
+  const device = webTokenRepo.create(live, 'preserved-device')
+  live.close()
   const identity = await generateIdentity()
-  const recipient = await identityToRecipient(identity)
-  const encrypted = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz.age`)
-  const identityFile = join(tmpdir(), `bz-identity-${Date.now()}.txt`)
-  writeFileSync(identityFile, `${identity}\n`, { mode: 0o600 })
-  chmodSync(identityFile, 0o600)
+  const encrypted = join(tmpdir(), `bz-backup-${randomUUID()}.tar.gz.age`)
+  const identityFile = join(tmpdir(), `bz-identity-${randomUUID()}.txt`)
+  writeFileSync(identityFile, `# created: test\n${identity}\n`, { mode: 0o600 })
 
-  const created = await server.cli(['backup', 'create', encrypted, '--recipient', recipient])
-  expect(created.exitCode, created.stderr + created.stdout).toBe(0)
+  const created = await server.cli([
+    'backup',
+    'create',
+    encrypted,
+    '--recipient',
+    await identityToRecipient(identity),
+  ])
+  expect(created.exitCode, created.stderr).toBe(0)
+  expect(created.stderr).not.toContain('not encrypted')
   const ciphertext = readFileSync(encrypted)
   expect(ciphertext.subarray(0, 22).toString('ascii')).toBe('age-encryption.org/v1\n')
   expect(ciphertext.includes(Buffer.from(marker))).toBe(false)
   expect(ciphertext.includes(Buffer.from('SQLite format 3'))).toBe(false)
 
-  const target = join(tmpdir(), `bz-encrypted-restore-${Date.now()}`)
+  const target = makeTarget(false)
+  const withoutIdentity = await runCli(
+    ['backup', 'restore', encrypted, '--home', target.home],
+    target.home,
+  )
+  expect(withoutIdentity.exitCode).not.toBe(0)
+  expect(withoutIdentity.stderr).toContain('this backup is encrypted; pass --identity')
   const restored = await runCli(
-    ['backup', 'restore', encrypted, '--identity', identityFile, '--home', target],
-    target,
+    ['backup', 'restore', encrypted, '--identity', identityFile, '--home', target.home],
+    target.home,
   )
-  expect(restored.exitCode, restored.stderr + restored.stdout).toBe(0)
-  expect(readFileSync(join(target, 'encrypted-proof.txt'), 'utf8')).toBe(marker)
-  expect(restored.stdout + restored.stderr).not.toContain(sourceDevice.token)
-  expect(restored.stdout + restored.stderr).not.toContain(sourceSession.cookieValue)
-  expect(restored.stdout + restored.stderr).not.toContain(sourceSession.csrfToken)
-  const restoredDb = openDb(resolvePaths(target).db)
-  expect(webTokenRepo.findActiveByToken(restoredDb, sourceDevice.token)?.label).toBe(
-    'preserved-device',
-  )
-  expect(webSessionRepo.authenticate(restoredDb, sourceSession.cookieValue)).toBeNull()
-  expect(
-    restoredDb.raw
-      .query<{ revoked_at: number | null }, [string]>(
-        'SELECT revoked_at FROM web_sessions WHERE id = ?',
-      )
-      .get(sourceSession.session.id)?.revoked_at,
-  ).not.toBeNull()
+  expect(restored.exitCode, restored.stderr).toBe(0)
+  expect(readFileSync(join(target.home, 'encrypted-proof.txt'), 'utf8')).toBe(marker)
+  const restoredDb = openDb(resolvePaths(target.home).db)
+  expect(webTokenRepo.findActiveByToken(restoredDb, device.token)?.label).toBe('preserved-device')
   restoredDb.close()
 
   rmSync(encrypted, { force: true })
   rmSync(identityFile, { force: true })
-  rmSync(target, { recursive: true, force: true })
+  target.cleanup()
 })
 
-test('offline bootstrap rotation preserves secrets and revokes other local tokens', async () => {
-  const home = makeHome()
-  const paths = resolvePaths(home.home)
-  for (const dir of [
-    paths.profilesDir,
-    paths.agentsDir,
-    paths.skillsDir,
-    paths.teamsDir,
-    paths.logsDir,
-  ]) {
-    mkdirSync(dir, { recursive: true })
-  }
-  const db = openDb(paths.db)
-  runMigrations(db)
-  const bootstrap = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
-  const device = webTokenRepo.create(db, 'lost-phone')
-  const browserSession = webSessionRepo.create(db, device.meta.id)
-  openSecrets(db, bootstrap.token).set('TELEGRAM_BOT_TOKEN', 'secret-telegram-fixture')
-  db.close()
-  writeFileSync(paths.authFile, `${JSON.stringify({ token: bootstrap.token }, null, 2)}\n`, {
-    mode: 0o600,
-  })
-
-  const inventory = await runCli(['backup', 'inventory', '--home', home.home], home.home)
-  expect(inventory.exitCode, inventory.stderr + inventory.stdout).toBe(0)
-  expect(inventory.stdout).toContain('TELEGRAM_BOT_TOKEN')
-  expect(inventory.stdout).not.toContain('secret-telegram-fixture')
-
-  const rotated = await runCli(
-    ['backup', 'rotate-bootstrap', '--home', home.home, '--yes'],
-    home.home,
-  )
-  expect(rotated.exitCode, rotated.stderr + rotated.stdout).toBe(0)
-  const nextToken = (JSON.parse(readFileSync(paths.authFile, 'utf8')) as { token: string }).token
-  expect(nextToken).not.toBe(bootstrap.token)
-  const after = openDb(paths.db)
-  expect(webTokenRepo.findActiveByToken(after, bootstrap.token)).toBeNull()
-  expect(webTokenRepo.findActiveByToken(after, nextToken)?.label).toBe('bootstrap')
-  expect(webTokenRepo.get(after, device.meta.id)?.revokedAt).not.toBeNull()
-  expect(webSessionRepo.authenticate(after, browserSession.cookieValue)).toBeNull()
-  expect(
-    after.raw
-      .query<{ revoked_at: number | null }, [string]>(
-        'SELECT revoked_at FROM web_sessions WHERE id = ?',
-      )
-      .get(browserSession.session.id)?.revoked_at,
-  ).not.toBeNull()
-  expect(openSecrets(after, nextToken).get('TELEGRAM_BOT_TOKEN')).toBe('secret-telegram-fixture')
-  after.close()
-  home.cleanup()
-})
-
-test('wrong identity and modified ciphertext leave the target home untouched', async () => {
+test('a wrong identity or modified ciphertext leaves the target home untouched', async () => {
   const identity = await generateIdentity()
-  const recipient = await identityToRecipient(identity)
-  const wrongIdentity = await generateIdentity()
-  const encrypted = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz.age`)
-  const identityFile = join(tmpdir(), `bz-identity-${Date.now()}.txt`)
-  const wrongIdentityFile = join(tmpdir(), `bz-wrong-identity-${Date.now()}.txt`)
+  const encrypted = join(tmpdir(), `bz-backup-${randomUUID()}.tar.gz.age`)
+  const identityFile = join(tmpdir(), `bz-identity-${randomUUID()}.txt`)
+  const wrongIdentityFile = join(tmpdir(), `bz-wrong-identity-${randomUUID()}.txt`)
   writeFileSync(identityFile, `${identity}\n`, { mode: 0o600 })
+  const wrongIdentity = await generateIdentity()
   writeFileSync(wrongIdentityFile, `${wrongIdentity}\n`, { mode: 0o600 })
-  const created = await server.cli(['backup', 'create', encrypted, '--recipient', recipient])
-  expect(created.exitCode, created.stderr + created.stdout).toBe(0)
+  const created = await server.cli([
+    'backup',
+    'create',
+    encrypted,
+    '--recipient',
+    await identityToRecipient(identity),
+  ])
+  expect(created.exitCode, created.stderr).toBe(0)
 
-  const target = join(tmpdir(), `bz-encrypted-preserve-${Date.now()}`)
-  mkdirSync(target)
-  writeFileSync(join(target, 'keep.txt'), 'original')
-  const wrong = await runCli(
-    ['backup', 'restore', encrypted, '--identity', wrongIdentityFile, '--home', target, '--force'],
-    target,
-  )
-  expect(wrong.exitCode).not.toBe(0)
-  expect(wrong.stderr).not.toContain(wrongIdentity)
-  expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('original')
-
+  const wrong = ['--force', '--identity', wrongIdentityFile]
+  await expectRefused(encrypted, /could not decrypt the backup/, wrong)
   const tampered = readFileSync(encrypted)
   tampered[tampered.length - 1] = (tampered[tampered.length - 1] ?? 0) ^ 1
   writeFileSync(encrypted, tampered)
-  const modified = await runCli(
-    ['backup', 'restore', encrypted, '--identity', identityFile, '--home', target, '--force'],
-    target,
-  )
-  expect(modified.exitCode).not.toBe(0)
-  expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('original')
+  await expectRefused(encrypted, /could not decrypt the backup/, [
+    '--force',
+    '--identity',
+    identityFile,
+  ])
 
-  rmSync(encrypted, { force: true })
-  rmSync(identityFile, { force: true })
-  rmSync(wrongIdentityFile, { force: true })
-  rmSync(target, { recursive: true, force: true })
+  for (const file of [encrypted, identityFile, wrongIdentityFile]) rmSync(file, { force: true })
 })
 
-test('cancelled backup download releases its online snapshot', async () => {
+test('a cancelled backup download releases its online snapshot', async () => {
   const largeFile = join(server.home, 'cancel-proof.bin')
   writeFileSync(largeFile, randomBytes(4 * 1024 * 1024))
   const before = tempEntries('bazilion-backup-')
@@ -364,276 +344,28 @@ test('cancelled backup download releases its online snapshot', async () => {
   })
   expect(response.status).toBe(200)
   const reader = response.body?.getReader()
-  expect(reader).toBeDefined()
   await reader?.read()
   await reader?.cancel('test cancellation')
 
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const leaked = [...tempEntries('bazilion-backup-')].filter((entry) => !before.has(entry))
-    if (leaked.length === 0) break
-    await delay(25)
-  }
-  expect([...tempEntries('bazilion-backup-')].filter((entry) => !before.has(entry))).toEqual([])
+  const leaked = () => [...tempEntries('bazilion-backup-')].filter((entry) => !before.has(entry))
+  for (let attempt = 0; attempt < 20 && leaked().length > 0; attempt++) await delay(25)
+  expect(leaked()).toEqual([])
   rmSync(largeFile, { force: true })
 })
 
-test('backup restore extracts the tar.gz into a fresh home', async () => {
-  writeFileSync(join(server.home, 'marker.txt'), 'restored-value')
-  expect(
-    (await server.cli(['profile', 'create', 'backup-profile', '--model', 'lmstudio:test-model']))
-      .exitCode,
-  ).toBe(0)
-  const spawned = await server.cli([
-    'agent',
-    'spawn',
-    '--profile',
-    'backup-profile',
-    '--name',
-    'Backup Agent',
-  ])
-  expect(spawned.exitCode).toBe(0)
-  const agentId = extractAgentId(spawned.stdout)
-  expect(
-    (
-      await server.cli([
-        'agent',
-        'review-config',
-        agentId,
-        '--enable',
-        '--every',
-        '8',
-        '--reasoning',
-        'low',
-      ])
-    ).exitCode,
-  ).toBe(0)
-  expect((await server.cli(['agent', 'review', agentId])).exitCode).toBe(0)
-  // Seed private evidence offline: the live daemon remains the sole DB writer.
-  // A completed CLI response does not fence its asynchronous review/queue finalizers.
-  await server.stop({ keepHome: true })
-  const sourceDb = openDb(join(server.home, 'bazilion.db'))
-  const sourcePaths = resolvePaths(server.home)
-  const originalConversation = resolveConversationTarget(sourceDb, sourcePaths, agentId)
-  conversations.rename(sourceDb, agentId, originalConversation.id, 'Retained report', 1)
-  const selectedConversation = conversations.create(
-    sourceDb,
-    agentId,
-    {
-      requestId: randomUUID(),
-      expectedSelection: conversations.selection(sourceDb, agentId),
-      title: 'Next task',
-    },
-    (id) => createConversationFile(sourcePaths, agentId, id, sourcePaths.teamDir('default')),
-  )
-  const originalBytes = readFileSync(
-    join(sourcePaths.agentDir(agentId), 'sessions', originalConversation.filename),
-  )
-  const savedResult = resultRepo.publish(sourceDb, {
-    teamId: 'default',
-    agentId,
-    sessionId: originalConversation.id,
-    toolCallId: 'deliver-report',
-    name: 'report.txt',
-    mimeType: 'text/plain',
-    bytes: Buffer.from('captured backup result'),
-  })
-  resultRepo.release(sourceDb, savedResult.id, agentId)
-  const queuedId = randomUUID()
-  const queuedInput = {
-    id: queuedId,
-    agentId,
-    teamId: 'default',
-    conversationId: selectedConversation.conversation.id,
-    source: 'http' as const,
-    attemptId: queuedId,
-    provenance: { requester: 'user' },
-    message: 'Input accepted before the snapshot',
-    attachments: [{ name: 'original.txt', mimeType: 'text/plain', data: 'eA==' }],
-  }
-  userQueue.setPaused(sourceDb, agentId, true, 0)
-  userQueue.accept(sourceDb, queuedInput)
-  const review = sourceDb.raw
-    .query<{ id: string }, [string]>('SELECT id FROM agent_reviews WHERE agent_id = ?')
-    .get(agentId)
-  expect(review).toBeDefined()
-  const proposalId = randomUUID()
-  sourceDb.raw.run(
-    `INSERT INTO agent_lesson_proposals
-       (id, review_id, agent_id, scope, text, evidence_json, status, version, decided_at,
-        applied_key, created_at, updated_at)
-     VALUES (?, ?, ?, 'shared', 'Restored reviewed lesson', ?, 'approved', 2, ?, ?, ?, ?)`,
-    [
-      proposalId,
-      review?.id ?? '',
-      agentId,
-      JSON.stringify([{ sessionId: 'proof', entryOrdinal: 1 }]),
-      Date.now(),
-      `lessons/${proposalId}.md`,
-      Date.now(),
-      Date.now(),
-    ],
-  )
-  sourceDb.close()
-  server = await restartTestServer(server)
-  await server.cli(['config', 'set', 'LMSTUDIO_URL', 'http://backup-config.example/v1'])
-  await server.cli(['config', 'set', 'OPENAI_API_KEY', 'backup-secret-value'])
-  writeFileSync(join(server.home, 'agents', agentId, 'sessions', 'proof.jsonl'), '{"ok":true}\n')
-  writeFileSync(join(server.home, 'teams', 'default', 'team-proof.txt'), 'team-work-product')
-  writeFileSync(join(server.home, 'teams', 'default', 'memory', 'proof.md'), '# shared memory\n')
-  mkdirSync(join(server.home, 'skills', 'backup-skill'))
-  writeFileSync(join(server.home, 'skills', 'backup-skill', 'SKILL.md'), '# Backup skill\n')
-  const sourceAuth = JSON.parse(readFileSync(join(server.home, 'auth.json'), 'utf8')) as {
-    token: string
-  }
-  const archive = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
-  await server.cli(['backup', 'create', archive, '--plaintext'])
-
-  // Restore into an empty dir. `runCli` doesn't need a server for this — the
-  // restore path is pure-offline — but we pass a valid home so the `--home`
-  // flag gets exercised.
-  const target: TestHome = { home: join(tmpdir(), `bz-restore-${Date.now()}`), cleanup() {} }
-  mkdirSync(target.home, { recursive: true })
-  const res = await runCli(['backup', 'restore', archive, '--home', target.home], target.home)
-  expect(res.exitCode).toBe(0)
-  expect(res.stdout).toContain('restored to')
-  expect(existsSync(join(target.home, 'marker.txt'))).toBe(true)
-  expect(readFileSync(join(target.home, 'marker.txt'), 'utf8')).toBe('restored-value')
-  expect(existsSync(join(target.home, 'bazilion.db'))).toBe(true)
-  expect(
-    readFileSync(join(target.home, 'agents', agentId, 'sessions', 'proof.jsonl'), 'utf8'),
-  ).toBe('{"ok":true}\n')
-  expect(readFileSync(join(target.home, 'teams', 'default', 'team-proof.txt'), 'utf8')).toBe(
-    'team-work-product',
-  )
-  expect(readFileSync(join(target.home, 'teams', 'default', 'memory', 'proof.md'), 'utf8')).toBe(
-    '# shared memory\n',
-  )
-  expect(readFileSync(join(target.home, 'skills', 'backup-skill', 'SKILL.md'), 'utf8')).toBe(
-    '# Backup skill\n',
-  )
-  const restoredAuth = JSON.parse(readFileSync(join(target.home, 'auth.json'), 'utf8')) as {
-    token: string
-  }
-  expect(restoredAuth.token).toBe(sourceAuth.token)
-  for (const suffix of ['-wal', '-shm', '-journal']) {
-    expect(existsSync(join(target.home, `bazilion.db${suffix}`))).toBe(false)
-  }
-  const restoredDb = openDb(join(target.home, 'bazilion.db'))
-  expect(userQueue.get(restoredDb, agentId, queuedId)).toMatchObject({
-    status: 'uncertain',
-    conversationId: selectedConversation.conversation.id,
-  })
-  expect(userQueue.control(restoredDb, agentId)).toMatchObject({
-    paused: true,
-    reason: 'restored_backup',
-  })
-  expect(userQueue.readInput(restoredDb, agentId, queuedId).attachments).toEqual(
-    queuedInput.attachments,
-  )
-  expect(userQueue.accept(restoredDb, queuedInput).status).toBe('uncertain')
-  expect(userQueue.claim(restoredDb, agentId)).toBeNull()
-  expect(() =>
-    userQueue.setPaused(
-      restoredDb,
-      agentId,
-      false,
-      userQueue.control(restoredDb, agentId).revision,
-    ),
-  ).toThrow('Reconcile uncertain')
-  expect(resultRepo.getReleased(restoredDb, savedResult.id)).toMatchObject({
-    agentId,
-    teamId: 'default',
-    sessionId: originalConversation.id,
-    toolCallId: 'deliver-report',
-    sha256: savedResult.sha256,
-  })
-  expect(conversations.list(restoredDb, agentId)).toMatchObject({
-    total: 2,
-    selection: selectedConversation.selection,
-  })
-  expect(conversations.get(restoredDb, agentId, originalConversation.id)?.title).toBe(
-    'Retained report',
-  )
-  expect(
-    readFileSync(join(target.home, 'agents', agentId, 'sessions', originalConversation.filename)),
-  ).toEqual(originalBytes)
-  expect(resultRepo.getReleased(restoredDb, savedResult.id)?.sessionId).toBe(
-    originalConversation.id,
-  )
-  expect(resultRepo.readReleased(restoredDb, savedResult.id).toString()).toBe(
-    'captured backup result',
-  )
-  const restoredPaths = resolvePaths(target.home)
-  expect(
-    restoredDb.raw
-      .query<{ id: string; dir: string }, [string]>('SELECT id, dir FROM profiles WHERE id = ?')
-      .get('backup-profile'),
-  ).toEqual({ id: 'backup-profile', dir: restoredPaths.profileDir('backup-profile') })
-  expect(
-    restoredDb.raw
-      .query<{ id: string; dir: string }, [string]>('SELECT id, dir FROM agents WHERE id = ?')
-      .get(agentId),
-  ).toEqual({ id: agentId, dir: restoredPaths.agentDir(agentId) })
-  expect(openConfig(restoredDb).get('LMSTUDIO_URL')).toBe('http://backup-config.example/v1')
-  expect(openSecrets(restoredDb, restoredAuth.token).get('OPENAI_API_KEY')).toBe(
-    'backup-secret-value',
-  )
-  expect(
-    restoredDb.raw
-      .query<{ review_enabled: number }, [string]>('SELECT review_enabled FROM agents WHERE id = ?')
-      .get(agentId),
-  ).toEqual({ review_enabled: 1 })
-  expect(
-    restoredDb.raw
-      .query<{ text: string; applied_key: string }, [string]>(
-        'SELECT text, applied_key FROM agent_lesson_proposals WHERE id = ?',
-      )
-      .get(proposalId),
-  ).toEqual({ text: 'Restored reviewed lesson', applied_key: `lessons/${proposalId}.md` })
-
-  // A portable restore must remain operational after the source tree goes
-  // away. Hide the source profile/Agent directories and exercise the same
-  // loaders used by daemon routes and Agent sessions against the restored DB.
-  const sourceProfileDir = join(server.home, 'profiles', 'backup-profile')
-  const sourceAgentDir = join(server.home, 'agents', agentId)
-  const heldProfileDir = `${sourceProfileDir}.held-for-restore-test`
-  const heldAgentDir = `${sourceAgentDir}.held-for-restore-test`
-  renameSync(sourceProfileDir, heldProfileDir)
-  renameSync(sourceAgentDir, heldAgentDir)
-  try {
-    expect(loadProfile(restoredDb, 'backup-profile').profile.dir).toBe(
-      restoredPaths.profileDir('backup-profile'),
-    )
-    expect(resolveAgent(restoredDb, restoredPaths, agentId).agent.dir).toBe(
-      restoredPaths.agentDir(agentId),
-    )
-  } finally {
-    renameSync(heldAgentDir, sourceAgentDir)
-    renameSync(heldProfileDir, sourceProfileDir)
-  }
-  restoredDb.close()
-
-  rmSync(archive, { force: true })
-  rmSync(target.home, { recursive: true, force: true })
-})
-
-test('cross-home restore preserves an external linked-Team target without following it', async () => {
-  const external = join(tmpdir(), `bz-linked-team-target-${randomUUID()}`)
-  mkdirSync(external)
+test('restore keeps a linked Team as a link to its external target', async () => {
+  const external = mkdtempSync(join(tmpdir(), 'bz-linked-team-target-'))
   writeFileSync(join(external, 'external.txt'), 'outside the backup')
   const added = await server.cli(['team', 'add', 'portable-link', '--link', external])
-  expect(added.exitCode, added.stderr + added.stdout).toBe(0)
+  expect(added.exitCode, added.stderr).toBe(0)
+  const archive = await createBackup()
 
-  const archive = join(tmpdir(), `bz-linked-team-${randomUUID()}.tar.gz`)
-  const created = await server.cli(['backup', 'create', archive, '--plaintext'])
-  expect(created.exitCode, created.stderr + created.stdout).toBe(0)
-  const target = makeHome()
+  const target = makeTarget(false)
   const restored = await runCli(['backup', 'restore', archive, '--home', target.home], target.home)
-  expect(restored.exitCode, restored.stderr + restored.stdout).toBe(0)
-
-  const restoredSlot = join(target.home, 'teams', 'portable-link')
-  expect(lstatSync(restoredSlot).isSymbolicLink()).toBe(true)
-  expect(readlinkSync(restoredSlot)).toBe(external)
+  expect(restored.exitCode, restored.stderr).toBe(0)
+  const slot = join(target.home, 'teams', 'portable-link')
+  expect(lstatSync(slot).isSymbolicLink()).toBe(true)
+  expect(readlinkSync(slot)).toBe(external)
   expect(readFileSync(join(external, 'external.txt'), 'utf8')).toBe('outside the backup')
 
   rmSync(archive, { force: true })
@@ -641,1091 +373,264 @@ test('cross-home restore preserves an external linked-Team target without follow
   rmSync(external, { recursive: true, force: true })
 })
 
-test('cross-home restore preserves contained relative symlinks in Team work product', async () => {
-  const sourceDir = join(server.home, 'teams', 'default', 'notes')
-  mkdirSync(sourceDir)
-  writeFileSync(join(sourceDir, 'current.md'), '# Current notes\n')
-  symlinkSync('current.md', join(sourceDir, 'latest.md'), 'file')
+test('restore keeps relative symbolic links inside Team work product', async () => {
+  const notes = join(server.home, 'teams', 'default', 'notes')
+  mkdirSync(notes)
+  writeFileSync(join(notes, 'current.md'), '# Current notes\n')
+  symlinkSync('current.md', join(notes, 'latest.md'), 'file')
+  const archive = await createBackup()
 
-  const archive = join(tmpdir(), `bz-relative-link-${randomUUID()}.tar.gz`)
-  const created = await server.cli(['backup', 'create', archive, '--plaintext'])
-  expect(created.exitCode, created.stderr + created.stdout).toBe(0)
-
-  const target = makeHome()
+  const target = makeTarget(false)
   const restored = await runCli(['backup', 'restore', archive, '--home', target.home], target.home)
-  expect(restored.exitCode, restored.stderr + restored.stdout).toBe(0)
-
-  const restoredLink = join(target.home, 'teams', 'default', 'notes', 'latest.md')
-  expect(lstatSync(restoredLink).isSymbolicLink()).toBe(true)
-  expect(readlinkSync(restoredLink)).toBe('current.md')
-  expect(readFileSync(restoredLink, 'utf8')).toBe('# Current notes\n')
+  expect(restored.exitCode, restored.stderr).toBe(0)
+  const link = join(target.home, 'teams', 'default', 'notes', 'latest.md')
+  expect(readlinkSync(link)).toBe('current.md')
+  expect(readFileSync(link, 'utf8')).toBe('# Current notes\n')
 
   rmSync(archive, { force: true })
   target.cleanup()
 })
 
-test('backup output inside BAZILION_HOME is rejected to prevent nested backups', async () => {
-  const output = join(server.home, 'local-backup.tar.gz')
-  const result = await server.cli(['backup', 'create', output, '--plaintext'])
-  expect(result.exitCode).not.toBe(0)
-  expect(result.stderr + result.stdout).toMatch(/output must be outside BAZILION_HOME/)
-  expect(existsSync(output)).toBe(false)
+test('backup create refuses an output inside the home or over an existing file', async () => {
+  const inside = join(server.home, 'local-backup.tar.gz')
+  const nested = await server.cli(['backup', 'create', inside])
+  expect(nested.exitCode).not.toBe(0)
+  expect(nested.stderr).toContain('write the backup outside the Bazilion home')
+  expect(existsSync(inside)).toBe(false)
+
+  const scratch = mkdtempSync(join(tmpdir(), 'bz-existing-'))
+  const existing = join(scratch, 'backup.tar.gz')
+  writeFileSync(existing, 'existing-good-backup')
+  const overwrite = await server.cli(['backup', 'create', existing])
+  expect(overwrite.exitCode).not.toBe(0)
+  expect(overwrite.stderr).toContain('refusing to overwrite')
+  expect(readFileSync(existing, 'utf8')).toBe('existing-good-backup')
+
+  // A .partial file someone else placed is neither written to nor removed.
+  const planted = join(scratch, 'planted.tar.gz')
+  writeFileSync(`${planted}.partial`, 'not yours')
+  const partial = await server.cli(['backup', 'create', planted])
+  expect(partial.exitCode).not.toBe(0)
+  expect(partial.stderr).toContain('already exists')
+  expect(readFileSync(`${planted}.partial`, 'utf8')).toBe('not yours')
+  expect(existsSync(planted)).toBe(false)
+  rmSync(scratch, { recursive: true, force: true })
 })
 
-test.skipIf(process.platform === 'win32')(
-  // chmod cannot make a directory read-only on Windows; the delivery-failure
-  // path is separately pinned by the failed-download test above.
-  'BAZ-051: a failed backup is a clean failure — home intact, daemon healthy, no partial file',
-  async () => {
-    // Inject the failure at the target: an unwritable directory makes every
-    // temp-file + rename attempt fail without touching the served home.
-    const scratch = join(tmpdir(), `bz-diskfull-${randomUUID()}`)
-    mkdirSync(scratch)
-    const readonly = join(scratch, 'read-only')
-    mkdirSync(readonly, 0o555)
-    const output = join(readonly, 'backup.tar.gz')
-    try {
-      const result = await server.cli(['backup', 'create', output, '--plaintext'])
-      expect(result.exitCode).not.toBe(0)
-      expect(result.stderr + result.stdout).not.toMatch(/Traceback|ENOENT.*bazilion\.db/)
-      expect(existsSync(output)).toBe(false)
-      // The served home is untouched and the daemon is still healthy.
-      const health = await fetch(`${server.url}/api/health`)
-      expect(health.ok).toBe(true)
-      expect(existsSync(join(server.home, 'bazilion.db'))).toBe(true)
-    } finally {
-      chmodSync(readonly, 0o755)
-      rmSync(scratch, { recursive: true, force: true })
-    }
-  },
-)
-
-test('failed download preserves an existing output and removes temporary files', async () => {
-  const scratch = join(tmpdir(), `bz-failed-download-${randomUUID()}`)
-  mkdirSync(scratch)
-  const output = join(scratch, 'backup.tar.gz')
-  writeFileSync(output, 'existing-good-backup')
-  const downloadsBefore = new Set(
-    readdirSync(tmpdir()).filter((entry) => entry.startsWith('bazilion-download-')),
-  )
-
-  const brokenHttp = createHttpServer((_request, response) => {
-    response.writeHead(200, {
-      'content-type': 'application/gzip',
-      'content-length': '1000000',
-    })
-    response.write('partial')
-    setTimeout(() => response.destroy(), 20)
+test('a download that ends early leaves no backup behind', async () => {
+  const complete = await createBackup()
+  const prefix = readFileSync(complete).subarray(0, Math.floor(statSync(complete).size / 2))
+  // A clean end of a short body looks like success at the HTTP level.
+  const shortServer = createHttpServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/gzip' })
+    response.end(prefix)
   })
-  await new Promise<void>((resolve) => brokenHttp.listen(0, '127.0.0.1', resolve))
-  const address = brokenHttp.address() as AddressInfo
-
+  await new Promise<void>((resolve) => shortServer.listen(0, '127.0.0.1', resolve))
+  const scratch = mkdtempSync(join(tmpdir(), 'bz-short-download-'))
   try {
-    const result = await server.cli(['backup', 'create', output, '--plaintext'], {
-      BAZILION_SERVER: `http://127.0.0.1:${address.port}`,
+    const result = await server.cli(['backup', 'create', join(scratch, 'backup.tar.gz')], {
+      BAZILION_SERVER: `http://127.0.0.1:${(shortServer.address() as AddressInfo).port}`,
       BAZILION_TOKEN: 'test-token',
     })
     expect(result.exitCode).not.toBe(0)
-    expect(readFileSync(output, 'utf8')).toBe('existing-good-backup')
-    expect(readdirSync(scratch)).toEqual(['backup.tar.gz'])
-    const downloadsAfter = readdirSync(tmpdir()).filter((entry) =>
-      entry.startsWith('bazilion-download-'),
-    )
-    expect(downloadsAfter.filter((entry) => !downloadsBefore.has(entry))).toEqual([])
+    expect(readdirSync(scratch)).toEqual([])
   } finally {
-    await new Promise<void>((resolve, reject) =>
-      brokenHttp.close((error) => (error ? reject(error) : resolve())),
-    )
+    await new Promise((resolve) => shortServer.close(resolve))
     rmSync(scratch, { recursive: true, force: true })
+    rmSync(complete, { force: true })
   }
 })
 
-test('backup restore refuses a non-empty target without --force', async () => {
-  const archive = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
-  await server.cli(['backup', 'create', archive, '--plaintext'])
-
-  const target = makeHome()
-  // `makeHome` returns an empty dir; drop a file so restore sees non-empty.
-  writeFileSync(join(target.home, 'stray.txt'), 'do not destroy')
-  const res = await runCli(['backup', 'restore', archive, '--home', target.home], target.home)
-  expect(res.exitCode).not.toBe(0)
-  expect(res.stderr + res.stdout).toMatch(/not empty.*--force/)
-  // File still there
-  expect(existsSync(join(target.home, 'stray.txt'))).toBe(true)
-
-  rmSync(archive, { force: true })
-  target.cleanup()
-})
-
-test('backup restore --force overwrites a non-empty target', async () => {
+test('restore needs --force for a non-empty home and then replaces it', async () => {
   writeFileSync(join(server.home, 'fresh.txt'), 'from-backup')
-  const archive = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
-  await server.cli(['backup', 'create', archive, '--plaintext'])
+  const archive = await createBackup()
+  await expectRefused(archive, /not empty; pass --force/, [])
 
-  const target = makeHome()
-  writeFileSync(join(target.home, 'stray.txt'), 'old data')
-  const res = await runCli(
+  const target = makeTarget()
+  // A pidfile naming a dead process is stale and does not block the restore.
+  writeFileSync(join(target.home, DAEMON_PID_FILE), `${await exitedProcessId()}\n`)
+  const restored = await runCli(
     ['backup', 'restore', archive, '--home', target.home, '--force'],
     target.home,
   )
-  expect(res.exitCode).toBe(0)
-  // The stray file is gone, backup content landed
-  expect(existsSync(join(target.home, 'stray.txt'))).toBe(false)
-  expect(existsSync(join(target.home, 'fresh.txt'))).toBe(true)
+  expect(restored.exitCode, restored.stderr).toBe(0)
+  expect(restored.stdout).toContain(`moving the current home aside to ${target.home}.pre-restore-`)
+  expect(readdirSync(target.parent)).toEqual(['home'])
+  expect(existsSync(join(target.home, 'keep.txt'))).toBe(false)
+  expect(existsSync(join(target.home, DAEMON_PID_FILE))).toBe(false)
+  expect(readFileSync(join(target.home, 'fresh.txt'), 'utf8')).toBe('from-backup')
 
   rmSync(archive, { force: true })
   target.cleanup()
 })
 
-test('backup restore errors clearly on a missing file', async () => {
-  const target = makeHome()
-  const res = await runCli(
+test('restore and a second daemon refuse a home whose daemon is running', async () => {
+  const archive = await createBackup()
+  const pid = readFileSync(join(server.home, DAEMON_PID_FILE), 'utf8').trim()
+  const restored = await runCli(
+    ['backup', 'restore', archive, '--home', server.home, '--force'],
+    server.home,
+  )
+  expect(restored.exitCode).not.toBe(0)
+  expect(restored.stderr).toContain(`a bazilion daemon (pid ${pid}) is running on ${server.home}`)
+
+  const second = spawn(process.execPath, ['--import', 'tsx/esm', daemonEntry], {
+    env: { ...process.env, BAZILION_HOME: server.home, HOST: '127.0.0.1', PORT: '0' },
+  })
+  let stderr = ''
+  second.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString()
+  })
+  const code = await new Promise((resolve) => second.on('close', resolve))
+  expect(code).toBe(1)
+  expect(stderr).toContain(`a bazilion daemon (pid ${pid}) is running`)
+  expect(readFileSync(join(server.home, DAEMON_PID_FILE), 'utf8').trim()).toBe(pid)
+  expect((await fetch(`${server.url}/api/health`)).ok).toBe(true)
+  rmSync(archive, { force: true })
+})
+
+test('restore refuses a missing file and the filesystem root', async () => {
+  const target = makeTarget()
+  const missing = await runCli(
     ['backup', 'restore', '/definitely/not/a/real/path.tar.gz', '--home', target.home],
     target.home,
   )
-  expect(res.exitCode).not.toBe(0)
-  expect(res.stderr + res.stdout).toMatch(/backup file not found/)
+  expect(missing.exitCode).not.toBe(0)
+  expect(missing.stderr).toContain('backup file not found')
   target.cleanup()
-})
 
-test('backup restore refuses the configured home when a custom-port daemon is reachable', async () => {
-  const archive = join(tmpdir(), `bz-custom-port-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', archive, '--plaintext'])
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-
-  const localDaemon = createHttpServer((_request, response) => {
-    response.writeHead(200, { 'content-type': 'application/json' })
-    response.end('{"ok":true}')
-  })
-  await new Promise<void>((resolve) => localDaemon.listen(0, '127.0.0.1', resolve))
-  const address = localDaemon.address() as AddressInfo
-  const serverUrl = `http://127.0.0.1:${address.port}`
-
-  try {
-    const restored = await runCli(['backup', 'restore', archive, '--force'], target.home, {
-      BAZILION_SERVER: serverUrl,
-      BAZILION_TOKEN: 'test-token',
-    })
-    expect(restored.exitCode).not.toBe(0)
-    expect(restored.stderr + restored.stdout).toContain(`running at ${serverUrl}`)
-    expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-  } finally {
-    await new Promise<void>((resolve, reject) =>
-      localDaemon.close((error) => (error ? reject(error) : resolve())),
-    )
-    rmSync(archive, { force: true })
-    target.cleanup()
-  }
-})
-
-test('restore discovers the real daemon custom port from a separate CLI invocation', async () => {
-  const archive = join(tmpdir(), `bz-real-custom-port-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', archive, '--plaintext'])
-  const runtimePath = daemonLivenessPath(server.home)
-  const runtime = JSON.parse(readFileSync(runtimePath, 'utf8')) as {
-    instanceId: string
-    port: number
-    state: string
-    home?: string
-  }
-  expect(runtime.state).toBe('listening')
-  expect(runtime.port).toBe(Number(new URL(server.url).port))
-  expect(runtime.home).toBeUndefined()
-
-  writeFileSync(join(server.home, 'keep-while-live.txt'), 'original-data')
-  const restored = await runCli(['backup', 'restore', archive, '--force'], server.home, {
-    // Deliberately do not tell this CLI process where the daemon is.
-    BAZILION_SERVER: '',
-    BAZILION_TOKEN: '',
-  })
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toContain(`running at ${server.url}`)
-  expect(readFileSync(join(server.home, 'keep-while-live.txt'), 'utf8')).toBe('original-data')
-  const health = await fetch(`${server.url}/api/health`)
-  expect(health.headers.get('x-bazilion-daemon-instance')).toBe(runtime.instanceId)
-
+  const archive = await createBackup()
+  const root = await runCli(['backup', 'restore', archive, '--home', '../'.repeat(64)], tmpdir())
+  expect(root.exitCode).not.toBe(0)
+  expect(root.stderr).toContain('refusing to restore over the filesystem root')
   rmSync(archive, { force: true })
 })
 
-test('daemon and restore hold the same exclusive pre-database ownership record', async () => {
-  const target = makeHome()
-  const alias = join(dirname(target.home), `${basename(target.home)}-alias`)
-  symlinkSync(target.home, alias, process.platform === 'win32' ? 'junction' : 'dir')
-  expect(daemonLivenessPath(alias)).toBe(daemonLivenessPath(target.home))
-  const lock = await acquireHomeRestoreLock(alias)
-  try {
-    const attemptedDaemon = await runCli(['serve', '--port', '0'], target.home)
-    expect(attemptedDaemon.exitCode).not.toBe(0)
-    expect(attemptedDaemon.stderr + attemptedDaemon.stdout).toMatch(
-      /failed to acquire daemon ownership.*restore process/s,
-    )
-    // Ownership is acquired before getCtx(), so the losing daemon never even
-    // bootstraps or opens a database in this home.
-    expect(existsSync(join(target.home, 'bazilion.db'))).toBe(false)
-  } finally {
-    lock.release()
-    cleanupLivenessArtifacts(target.home)
-    rmSync(alias, { force: true })
-    target.cleanup()
-  }
-})
-
-test('malformed ownership records fail closed for both restore and daemon startup', async () => {
-  const target = makeHome()
-  const runtimePath = daemonLivenessPath(target.home)
-  writeFileSync(
-    runtimePath,
-    `${JSON.stringify({
-      version: 2,
-      instanceId: randomUUID(),
-      pid: await exitedProcessId(),
-      owner: 'daemon',
-      // Illegal owner/state combination and deliberately missing startedAt.
-      state: 'swapping',
-    })}\n`,
-  )
-
-  try {
-    await expect(acquireHomeRestoreLock(target.home)).rejects.toThrow(/ownership record.*invalid/)
-    const attemptedDaemon = await runCli(['serve', '--port', '0'], target.home)
-    expect(attemptedDaemon.exitCode).not.toBe(0)
-    expect(attemptedDaemon.stderr + attemptedDaemon.stdout).toMatch(/ownership record.*invalid/)
-    expect(existsSync(join(target.home, 'bazilion.db'))).toBe(false)
-  } finally {
-    cleanupLivenessArtifacts(target.home)
-    target.cleanup()
-  }
-})
-
-test('a crashed daemon record is reclaimed only after its PID is dead', async () => {
-  const archive = join(tmpdir(), `bz-crash-recovery-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', archive, '--plaintext'])
-  const crashed = await startTestServer()
-  const runtimePath = daemonLivenessPath(crashed.home)
-  expect(existsSync(runtimePath)).toBe(true)
-
-  await crashed.stop({ keepHome: true, signal: 'SIGKILL' })
-  expect(existsSync(runtimePath)).toBe(true)
-
-  try {
-    const restored = await runCli(
-      ['backup', 'restore', archive, '--home', crashed.home, '--force'],
-      crashed.home,
-      { BAZILION_SERVER: '', BAZILION_TOKEN: '' },
-    )
-    expect(restored.exitCode, restored.stderr + restored.stdout).toBe(0)
-    expect(restored.stderr + restored.stdout).toMatch(/removed stale Bazilion daemon ownership/)
-    expect(existsSync(runtimePath)).toBe(false)
-  } finally {
-    rmSync(archive, { force: true })
-    cleanupLivenessArtifacts(crashed.home)
-    rmSync(crashed.home, { recursive: true, force: true })
-  }
-})
-
-test('graceful daemon shutdown closes SQLite and removes its ownership record', {
-  skip: process.platform === 'win32',
-}, async () => {
-  // Windows kill() is TerminateProcess: no graceful handler runs; the stale record is reclaimed by dead PID on next start.
-  const isolated = await startTestServer()
-  const runtimePath = daemonLivenessPath(isolated.home)
-  expect(existsSync(runtimePath)).toBe(true)
-
-  await isolated.stop({ keepHome: true })
-  try {
-    expect(existsSync(runtimePath)).toBe(false)
-    const db = new DatabaseSync(join(isolated.home, 'bazilion.db'), { readOnly: true })
-    expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
-    db.close()
-  } finally {
-    cleanupLivenessArtifacts(isolated.home)
-    rmSync(isolated.home, { recursive: true, force: true })
-  }
-})
-
-test('concurrent contenders cannot replace the winner after reclaiming one dead owner', async () => {
-  const target = makeHome()
-  const runtimePath = daemonLivenessPath(target.home)
-  const barrier = join(tmpdir(), `bz-lock-barrier-${randomUUID()}`)
-  const deadPid = await exitedProcessId()
-  writeFileSync(
-    runtimePath,
-    `${JSON.stringify({
-      version: 1,
-      instanceId: randomUUID(),
-      pid: deadPid,
-      owner: 'restore',
-      state: 'restoring',
-      startedAt: Date.now() - 60_000,
-    })}\n`,
-  )
-
-  try {
-    const first = runLockContender(target.home, barrier)
-    const second = runLockContender(target.home, barrier)
-    await delay(100)
-    writeFileSync(barrier, 'go')
-    const results = await Promise.all([first, second])
-    expect(results.filter((result) => result.exitCode === 0)).toHaveLength(1)
-    expect(results.filter((result) => result.output.includes('acquired'))).toHaveLength(1)
-    expect(results.filter((result) => result.exitCode !== 0)).toHaveLength(1)
-    expect(existsSync(runtimePath)).toBe(false)
-  } finally {
-    rmSync(barrier, { force: true })
-    cleanupLivenessArtifacts(target.home)
-    target.cleanup()
-  }
-})
-
-test('backup restore canonicalizes and refuses a relative path resolving to filesystem root', async () => {
-  const archive = join(tmpdir(), `bz-root-refusal-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', archive, '--plaintext'])
-  const target = makeHome()
-  const rootFromCwd = relative(process.cwd(), parse(process.cwd()).root)
-  expect(rootFromCwd).not.toBe('')
-
-  const restored = await runCli(['backup', 'restore', archive, '--home', rootFromCwd], target.home)
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(/refusing to restore over filesystem root/)
-
-  rmSync(archive, { force: true })
-  target.cleanup()
-})
-
-test('parallel online backups stay transactionally consistent during concurrent WAL writes', async () => {
-  // The online-backup API may briefly hold a source lock between steps.
-  // A real WAL writer waits for that lock; DatabaseSync otherwise defaults
-  // to a zero-millisecond busy timeout and makes this race spuriously fatal.
+test('parallel online backups stay consistent during concurrent WAL writes', async () => {
+  // A real WAL writer waits for the backup's brief source locks instead of failing at once.
   const liveDb = new DatabaseSync(join(server.home, 'bazilion.db'), { timeout: 5_000 })
-  liveDb.exec(`
-    PRAGMA journal_mode = WAL;
-    DELETE FROM config WHERE key LIKE 'backup_probe_left_%';
-    DELETE FROM config WHERE key LIKE 'backup_probe_right_%';
-  `)
-
-  const first = join(tmpdir(), `bz-concurrent-a-${randomUUID()}.tar.gz`)
-  const second = join(tmpdir(), `bz-concurrent-b-${randomUUID()}.tar.gz`)
+  liveDb.exec("PRAGMA journal_mode = WAL; DELETE FROM config WHERE key LIKE 'backup_probe_%';")
   const writer = (async () => {
     for (let id = 1; id <= 150; id++) {
       liveDb.exec('BEGIN IMMEDIATE')
-      try {
-        const updatedAt = Date.now()
-        liveDb
-          .prepare('INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)')
-          .run(`backup_probe_left_${id}`, String(id), updatedAt)
-        liveDb
-          .prepare('INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)')
-          .run(`backup_probe_right_${id}`, String(id), updatedAt)
-        liveDb.exec('COMMIT')
-      } catch (error) {
-        liveDb.exec('ROLLBACK')
-        throw error
-      }
+      const insert = liveDb.prepare('INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)')
+      insert.run(`backup_probe_left_${id}`, String(id), Date.now())
+      insert.run(`backup_probe_right_${id}`, String(id), Date.now())
+      liveDb.exec('COMMIT')
       await delay(2)
     }
   })()
-
-  const [firstResult, secondResult] = await Promise.all([
-    server.cli(['backup', 'create', first, '--plaintext']),
-    server.cli(['backup', 'create', second, '--plaintext']),
-    writer,
-  ])
+  const archives = await Promise.all([createBackup(), createBackup(), writer])
   liveDb.close()
-  expect(firstResult.exitCode, firstResult.stderr + firstResult.stdout).toBe(0)
-  expect(secondResult.exitCode, secondResult.stderr + secondResult.stdout).toBe(0)
 
-  for (const archive of [first, second]) {
-    const target = makeHome()
-    const restored = await runCli(
-      ['backup', 'restore', archive, '--home', target.home],
-      target.home,
-    )
-    expect(restored.exitCode, restored.stderr + restored.stdout).toBe(0)
+  for (const archive of archives.slice(0, 2) as string[]) {
+    const target = makeTarget(false)
+    const restored = await runCli(['backup', 'restore', archive, '--home', target.home], tmpdir())
+    expect(restored.exitCode, restored.stderr).toBe(0)
     const snapshot = new DatabaseSync(join(target.home, 'bazilion.db'), { readOnly: true })
-    const left = snapshot
-      .prepare("SELECT COUNT(*) AS count FROM config WHERE key LIKE 'backup_probe_left_%'")
-      .get() as { count: number }
-    const right = snapshot
-      .prepare("SELECT COUNT(*) AS count FROM config WHERE key LIKE 'backup_probe_right_%'")
-      .get() as { count: number }
-    expect(left.count).toBeGreaterThan(0)
-    expect(left.count).toBe(right.count)
-    expect(snapshot.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
+    const count = (side: string) =>
+      (
+        snapshot
+          .prepare(`SELECT COUNT(*) AS count FROM config WHERE key LIKE 'backup_probe_${side}_%'`)
+          .get() as { count: number }
+      ).count
+    expect(count('left')).toBeGreaterThan(0)
+    expect(count('left')).toBe(count('right'))
     snapshot.close()
     target.cleanup()
     rmSync(archive, { force: true })
   }
 })
 
-test('corrupt database is rejected before an existing home is replaced', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const corrupt = join(tmpdir(), `bz-corrupt-${randomUUID()}.tar.gz`)
-  const unpacked = join(tmpdir(), `bz-corrupt-source-${randomUUID()}`)
-  mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  await extract({ file: valid, cwd: unpacked })
-  writeFileSync(join(unpacked, 'bazilion.db'), 'this is not a SQLite database')
-  await create({ file: corrupt, cwd: unpacked, gzip: true }, ['.'])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', corrupt, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(/backup database is invalid/)
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(corrupt, { force: true })
-  rmSync(unpacked, { recursive: true, force: true })
-  target.cleanup()
-})
-
-test('database missing a current canonical schema object is rejected before replacement', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const incomplete = join(tmpdir(), `bz-incomplete-schema-${randomUUID()}.tar.gz`)
-  const unpacked = join(tmpdir(), `bz-incomplete-schema-source-${randomUUID()}`)
-  mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  await extract({ file: valid, cwd: unpacked })
-  const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
-  db.exec('DROP TRIGGER validate_team_policy_edge_insert')
-  expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
-  db.close()
-  await create({ file: incomplete, cwd: unpacked, gzip: true }, ['.'])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', incomplete, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(
-    /required canonical schema trigger is missing: validate_team_policy_edge_insert/,
-  )
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(incomplete, { force: true })
-  rmSync(unpacked, { recursive: true, force: true })
-  cleanupLivenessArtifacts(target.home)
-  target.cleanup()
-})
-
-test('database with an extra trigger is rejected before path rebasing or replacement', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const malicious = join(tmpdir(), `bz-extra-trigger-${randomUUID()}.tar.gz`)
-  const unpacked = join(tmpdir(), `bz-extra-trigger-source-${randomUUID()}`)
-  mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  await extract({ file: valid, cwd: unpacked })
-  const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
-  db.exec(`
-    CREATE TRIGGER malicious_profile_dir_rewrite
-    AFTER UPDATE OF dir ON profiles
-    BEGIN
-      UPDATE profiles SET dir = '/tmp/malicious-profile-dir' WHERE id = NEW.id;
-    END
-  `)
-  db.close()
-  await create({ file: malicious, cwd: unpacked, gzip: true }, ['.'])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', malicious, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(
-    /unexpected schema trigger is not canonical: malicious_profile_dir_rewrite/,
-  )
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(malicious, { force: true })
-  rmSync(unpacked, { recursive: true, force: true })
-  target.cleanup()
-})
-
-test('database path entity ids must match their canonical portable forms', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-
-  for (const entity of ['profile', 'agent', 'team'] as const) {
-    const escapeName = `bz-${entity}-id-escape-${randomUUID()}`
-    const maliciousId = `../../${escapeName}`
-    const malicious = join(tmpdir(), `bz-${entity}-id-${randomUUID()}.tar.gz`)
-    const unpacked = join(tmpdir(), `bz-${entity}-id-source-${randomUUID()}`)
-    mkdirSync(unpacked)
-    await extract({ file: valid, cwd: unpacked })
-    const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
-
-    if (entity === 'profile') {
+test.each([
+  [
+    'a damaged database',
+    (dir: string) => writeFileSync(join(dir, 'bazilion.db'), 'this is not a SQLite database'),
+    /backup database is unusable/,
+  ],
+  [
+    'a database with another schema',
+    (dir: string) => {
+      const db = new DatabaseSync(join(dir, 'bazilion.db'))
+      db.exec('DROP TABLE team_template_edges')
+      db.close()
+    },
+    /schema differs from this release/,
+  ],
+  [
+    'an auth.json that is not the database bootstrap token',
+    (dir: string) => {
+      writeFileSync(join(dir, 'auth.json'), `${JSON.stringify({ token: 'wrong-token' })}\n`)
+      // An active device token is not enough: auth.json must hold the bootstrap token.
+      const db = new DatabaseSync(join(dir, 'bazilion.db'))
       db.prepare(
-        `INSERT INTO profiles
-           (id, name, dir, default_model, skills_mode, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(maliciousId, 'malicious profile', '/outside', 'lmstudio:test-model', 'selected', 1, 1)
-    } else if (entity === 'agent') {
-      const profileId = 'agent-parent'
-      mkdirSync(join(unpacked, 'profiles', profileId), { recursive: true })
-      db.prepare(
-        `INSERT INTO profiles
-           (id, name, dir, default_model, skills_mode, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(profileId, 'Agent parent', '/outside', 'lmstudio:test-model', 'selected', 1, 1)
-      db.prepare(
-        `INSERT INTO agents
-           (id, profile_id, name, model_override, status, dir, reasoning_level,
-            team_id, created_at, archived_at)
-         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL)`,
-      ).run(maliciousId, profileId, 'malicious agent', 'idle', '/outside', 'low', 'default', 1)
-    } else {
-      db.prepare('INSERT INTO teams (id, name, user_md, created_at) VALUES (?, ?, ?, ?)').run(
-        maliciousId,
-        'malicious team',
-        '',
-        1,
+        `INSERT INTO web_tokens (id, label, kind, token_hash, created_at, expires_at)
+         VALUES (?, 'secondary', 'device', ?, ?, ?)`,
+      ).run(
+        randomUUID(),
+        createHash('sha256').update('wrong-token').digest('hex'),
+        Date.now(),
+        Date.now() + 86_400_000,
       )
-    }
-    db.close()
-    await create({ file: malicious, cwd: unpacked, gzip: true }, ['.'])
-
-    const target = makeHome()
-    writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-    const collection = entity === 'profile' ? 'profiles' : entity === 'agent' ? 'agents' : 'teams'
-    const escapedPath = resolve(target.home, collection, maliciousId)
-    expect(existsSync(escapedPath)).toBe(false)
-    const restored = await runCli(
-      ['backup', 'restore', malicious, '--home', target.home, '--force'],
-      target.home,
-    )
-    expect(restored.exitCode).not.toBe(0)
-    expect(restored.stderr + restored.stdout).toMatch(
-      new RegExp(`${entity === 'team' ? 'teams' : `${entity}s`} row has an invalid canonical id`),
-    )
-    expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-    expect(existsSync(escapedPath)).toBe(false)
-
-    rmSync(malicious, { force: true })
-    rmSync(unpacked, { recursive: true, force: true })
-    target.cleanup()
-  }
-
-  rmSync(valid, { force: true })
-})
-
-test('database entities missing their archived canonical directory are rejected', async () => {
-  expect(
-    (
-      await server.cli([
-        'profile',
-        'create',
-        'missing-dir-profile',
-        '--model',
-        'lmstudio:test-model',
-      ])
-    ).exitCode,
-  ).toBe(0)
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const incomplete = join(tmpdir(), `bz-missing-entity-dir-${randomUUID()}.tar.gz`)
-  const unpacked = join(tmpdir(), `bz-missing-entity-dir-source-${randomUUID()}`)
-  mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  await extract({ file: valid, cwd: unpacked })
-  rmSync(join(unpacked, 'profiles', 'missing-dir-profile'), { recursive: true, force: true })
-  await create({ file: incomplete, cwd: unpacked, gzip: true }, ['.'])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', incomplete, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(
-    /profiles row "missing-dir-profile" is missing its canonical directory/,
-  )
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(incomplete, { force: true })
-  rmSync(unpacked, { recursive: true, force: true })
-  target.cleanup()
-})
-
-test('database Teams missing their archived canonical slot are rejected', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const incomplete = join(tmpdir(), `bz-missing-team-slot-${randomUUID()}.tar.gz`)
-  const unpacked = join(tmpdir(), `bz-missing-team-slot-source-${randomUUID()}`)
-  mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  await extract({ file: valid, cwd: unpacked })
-  rmSync(join(unpacked, 'teams', 'default'), { recursive: true, force: true })
-  await create({ file: incomplete, cwd: unpacked, gzip: true }, ['.'])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', incomplete, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(
-    /teams row "default" is missing its canonical Team slot/,
-  )
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(incomplete, { force: true })
-  rmSync(unpacked, { recursive: true, force: true })
-  target.cleanup()
-})
-
-test('foreign-key-invalid database is rejected before an existing home is replaced', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const invalid = join(tmpdir(), `bz-invalid-fk-${randomUUID()}.tar.gz`)
-  const unpacked = join(tmpdir(), `bz-invalid-fk-source-${randomUUID()}`)
-  mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  await extract({ file: valid, cwd: unpacked })
-  const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
-  db.exec('PRAGMA foreign_keys = OFF')
-  db.prepare('INSERT INTO agent_skills (agent_id, skill_name, attached_at) VALUES (?, ?, ?)').run(
-    'missing-agent',
-    'test-skill',
-    Date.now(),
-  )
-  db.close()
-  await create({ file: invalid, cwd: unpacked, gzip: true }, ['.'])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', invalid, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(/foreign_key_check failed/)
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(invalid, { force: true })
-  rmSync(unpacked, { recursive: true, force: true })
-  target.cleanup()
-})
-
-test('path-traversing archive is rejected without writing outside or replacing the target', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const malicious = join(tmpdir(), `bz-traversal-${randomUUID()}.tar.gz`)
-  const escapedName = `bazilion-escaped-${randomUUID()}`
-  const escapedPath = join(tmpdir(), escapedName)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  appendTarEntries(valid, malicious, [{ path: `../${escapedName}`, body: 'must-not-escape' }])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', malicious, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(/backup path escapes the restore directory/)
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-  expect(existsSync(escapedPath)).toBe(false)
-
-  rmSync(valid, { force: true })
-  rmSync(malicious, { force: true })
-  rmSync(escapedPath, { force: true })
-  target.cleanup()
-})
-
-test('archive-supplied daemon runtime state is rejected before replacement', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const unsafe = join(tmpdir(), `bz-runtime-state-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  appendTarEntries(valid, unsafe, [
-    {
-      path: 'daemon-runtime.json',
-      body: JSON.stringify({ version: 1, instanceId: randomUUID(), pid: process.pid }),
+      db.close()
     },
-  ])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', unsafe, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(
-    /unsafe transient SQLite file: daemon-runtime\.json/,
-  )
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
+    /auth\.json does not match the database/,
+  ],
+  [
+    'an archive without auth.json',
+    (dir: string) => rmSync(join(dir, 'auth.json')),
+    /backup is missing auth\.json/,
+  ],
+])('restore refuses %s and leaves the target untouched', async (_name, mutate, message) => {
+  const valid = await createBackup()
+  const broken = await repack(valid, mutate)
+  await expectRefused(broken, message)
   rmSync(valid, { force: true })
-  rmSync(unsafe, { force: true })
-  cleanupLivenessArtifacts(target.home)
-  target.cleanup()
+  rmSync(broken, { force: true })
 })
 
-test('archive with an absolute symbolic link outside Team slots is rejected before replacement', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const malicious = join(tmpdir(), `bz-unsafe-link-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  appendTarEntries(valid, malicious, [
-    { path: 'logs/unsafe-link', type: 'SymbolicLink', linkpath: tmpdir() },
-  ])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', malicious, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(
-    /absolute symbolic links are only allowed for Team slots/,
-  )
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(malicious, { force: true })
-  target.cleanup()
+test('restore refuses a truncated archive and leaves the target untouched', async () => {
+  const archive = await createBackup()
+  truncateSync(archive, Math.floor(statSync(archive).size / 2))
+  await expectRefused(archive, /unexpected end of file/)
+  rmSync(archive, { force: true })
 })
 
-test('archive with an escaping relative symbolic link is rejected before replacement', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const malicious = join(tmpdir(), `bz-escaping-relative-link-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  appendTarEntries(valid, malicious, [
-    {
-      path: 'teams/default/escape',
-      type: 'SymbolicLink',
-      linkpath: '../../../outside-the-restore',
-    },
-  ])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', malicious, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(/symbolic link target escapes/)
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(malicious, { force: true })
-  target.cleanup()
-})
-
-test('archive cannot place entries beneath an allowed linked Team slot', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const malicious = join(tmpdir(), `bz-link-descendant-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  appendTarEntries(valid, malicious, [
-    { path: 'teams/linked', type: 'SymbolicLink', linkpath: tmpdir() },
-    { path: 'teams/linked/escaped.txt', body: 'must-not-follow-link' },
-  ])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', malicious, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(/entry traverses symbolic link teams\/linked/)
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(malicious, { force: true })
-  target.cleanup()
-})
-
-test('linked Team entry requires a valid slug and an absolute target', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-
-  for (const [name, entry, expected] of [
+test.each([
+  ['a path leaving the home', [{ path: '../escaped.txt', body: 'x' }], /unsafe path/],
+  ['an absolute path', [{ path: '/tmp/bz-absolute.txt', body: 'x' }], /unsafe path/],
+  ['a hard link', [{ path: 'hard', type: 'Link', linkpath: 'auth.json' }], /unsupported Link/],
+  [
+    'an absolute link outside a Team slot',
+    [{ path: 'notes/link', type: 'SymbolicLink', linkpath: tmpdir() }],
+    /symbolic link leaving the home: notes\/link/,
+  ],
+  [
+    'a relative link leaving the home',
+    [{ path: 'teams/default/escape', type: 'SymbolicLink', linkpath: '../../../outside' }],
+    /symbolic link leaving the home: teams\/default\/escape/,
+  ],
+  [
+    'an entry below a linked Team slot',
     [
-      'relative-target',
-      { path: 'teams/linked', type: 'SymbolicLink' as const, linkpath: '../external' },
-      /invalid Team link target/,
+      { path: 'teams/linked', type: 'SymbolicLink', linkpath: tmpdir() },
+      { path: 'teams/linked/escaped.txt', body: 'must not follow the link' },
     ],
-    [
-      'invalid-slug',
-      { path: 'teams/Bad Slug', type: 'SymbolicLink' as const, linkpath: tmpdir() },
-      /only allowed for Team slots/,
-    ],
-  ] as const) {
-    const malicious = join(tmpdir(), `bz-${name}-${randomUUID()}.tar.gz`)
-    appendTarEntries(valid, malicious, [entry])
-    const target = makeHome()
-    writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-    const restored = await runCli(
-      ['backup', 'restore', malicious, '--home', target.home, '--force'],
-      target.home,
-    )
-    expect(restored.exitCode).not.toBe(0)
-    expect(restored.stderr + restored.stdout).toMatch(expected)
-    expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-    rmSync(malicious, { force: true })
-    target.cleanup()
-  }
-
+    /backup places teams\/linked\/escaped\.txt below a symbolic link/,
+  ],
+] as const)('restore refuses an archive with %s', async (_name, entries, message) => {
+  const valid = await createBackup()
+  const hostile = appendTarEntries(valid, [...entries])
+  await expectRefused(hostile, message)
+  expect(existsSync('/tmp/bz-absolute.txt')).toBe(false)
   rmSync(valid, { force: true })
+  rmSync(hostile, { force: true })
 })
 
-test('truncated archive is rejected before an existing home is replaced', async () => {
-  const truncated = join(tmpdir(), `bz-truncated-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', truncated, '--plaintext'])
-  truncateSync(truncated, Math.max(1, Math.floor(statSync(truncated).size / 2)))
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', truncated, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
+test('a failed swap puts the previous home back', () => {
+  const target = makeTarget()
+  expect(() => installRestoredHome(join(target.parent, 'missing'), target.home)).toThrow()
+  expect(readdirSync(target.parent)).toEqual(['home'])
   expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(truncated, { force: true })
   target.cleanup()
-})
-
-test('auth token and database mismatch is rejected before replacement', async () => {
-  const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  const mismatched = join(tmpdir(), `bz-auth-mismatch-${randomUUID()}.tar.gz`)
-  const unpacked = join(tmpdir(), `bz-auth-mismatch-source-${randomUUID()}`)
-  mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid, '--plaintext'])
-  await extract({ file: valid, cwd: unpacked })
-  const wrongToken = 'wrong-token'
-  writeFileSync(join(unpacked, 'auth.json'), `${JSON.stringify({ token: wrongToken })}\n`)
-  // Add the wrong value as an otherwise-active secondary token. Restore must
-  // still require the canonical bootstrap row because that token is also the
-  // PBKDF2 credential for encrypted secrets.
-  const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
-  db.prepare(
-    `INSERT INTO web_tokens
-       (id, label, kind, token_hash, created_at, last_used_at, expires_at, revoked_at)
-     VALUES (?, ?, 'device', ?, ?, NULL, ?, NULL)`,
-  ).run(
-    randomUUID(),
-    'secondary',
-    createHash('sha256').update(wrongToken).digest('hex'),
-    Date.now(),
-    Date.now() + 86_400_000,
-  )
-  db.close()
-  await create({ file: mismatched, cwd: unpacked, gzip: true }, ['.'])
-
-  const target = makeHome()
-  writeFileSync(join(target.home, 'keep.txt'), 'original-data')
-  const restored = await runCli(
-    ['backup', 'restore', mismatched, '--home', target.home, '--force'],
-    target.home,
-  )
-  expect(restored.exitCode).not.toBe(0)
-  expect(restored.stderr + restored.stdout).toMatch(/auth\.json token does not match/)
-  expect(readFileSync(join(target.home, 'keep.txt'), 'utf8')).toBe('original-data')
-
-  rmSync(valid, { force: true })
-  rmSync(mismatched, { force: true })
-  rmSync(unpacked, { recursive: true, force: true })
-  target.cleanup()
-})
-
-test('install failure rolls the original home back and marks the phase safe', async () => {
-  const parent = join(tmpdir(), `bz-rollback-${randomUUID()}`)
-  const target = join(parent, 'home')
-  const staging = join(parent, 'staging')
-  mkdirSync(target, { recursive: true })
-  mkdirSync(staging)
-  writeFileSync(join(target, 'keep.txt'), 'original-data')
-  const lock = await acquireHomeRestoreLock(target)
-
-  expect(() =>
-    installValidatedPayload(join(staging, 'missing-payload'), target, staging, lock),
-  ).toThrow()
-  expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('original-data')
-  expect(existsSync(join(staging, 'previous-home'))).toBe(false)
-  expect(JSON.parse(readFileSync(lock.path, 'utf8')).state).toBe('installed')
-  lock.release()
-  expect(existsSync(lock.path)).toBe(false)
-
-  cleanupLivenessArtifacts(target)
-  rmSync(parent, { recursive: true, force: true })
-})
-
-test('successful install durably reaches installed before ownership is released', async () => {
-  const parent = join(tmpdir(), `bz-install-success-${randomUUID()}`)
-  const target = join(parent, 'home')
-  const staging = join(parent, 'staging')
-  const payload = join(staging, 'payload')
-  mkdirSync(target, { recursive: true })
-  mkdirSync(payload, { recursive: true })
-  writeFileSync(join(target, 'old.txt'), 'old')
-  writeFileSync(join(payload, 'new.txt'), 'new')
-  const lock = await acquireHomeRestoreLock(target)
-
-  installValidatedPayload(payload, target, staging, lock)
-  expect(readFileSync(join(target, 'new.txt'), 'utf8')).toBe('new')
-  const installedRecord = JSON.parse(readFileSync(lock.path, 'utf8')) as Record<string, unknown>
-  expect(installedRecord.state).toBe('installed')
-  lock.release()
-  expect(existsSync(lock.path)).toBe(false)
-
-  // A crash after `installed` is explicitly safe: a new owner may reclaim it.
-  installedRecord.pid = await exitedProcessId()
-  writeFileSync(lock.path, `${JSON.stringify(installedRecord)}\n`)
-  const replacementLock = await acquireHomeRestoreLock(target)
-  replacementLock.release()
-  expect(existsSync(lock.path)).toBe(false)
-
-  cleanupLivenessArtifacts(target)
-  rmSync(parent, { recursive: true, force: true })
-})
-
-test('failure between swap renames stays fail-closed with exact recovery path', async () => {
-  const parent = join(tmpdir(), `bz-interrupted-swap-${randomUUID()}`)
-  const target = join(parent, 'home')
-  const staging = join(parent, 'staging')
-  const payload = join(staging, 'payload')
-  const previous = join(staging, 'previous-home')
-  mkdirSync(target, { recursive: true })
-  mkdirSync(payload, { recursive: true })
-  writeFileSync(join(target, 'old.txt'), 'old')
-  writeFileSync(join(payload, 'new.txt'), 'new')
-  const lock = await acquireHomeRestoreLock(target)
-
-  expect(() =>
-    installValidatedPayload(payload, target, staging, lock, {
-      rename: renameSync,
-      afterPreviousMoved() {
-        throw new Error('simulated process interruption')
-      },
-    }),
-  ).toThrow(/simulated process interruption/)
-  lock.release()
-  expect(existsSync(target)).toBe(false)
-  expect(readFileSync(join(previous, 'old.txt'), 'utf8')).toBe('old')
-
-  const runtimePath = daemonLivenessPath(target)
-  const record = JSON.parse(readFileSync(runtimePath, 'utf8')) as Record<string, unknown>
-  expect(record.state).toBe('recovery-required')
-  expect(record.recoveryPath).toBe(previous)
-  expect(record.hadPrevious).toBe(true)
-  record.pid = await exitedProcessId()
-  writeFileSync(runtimePath, `${JSON.stringify(record)}\n`)
-
-  await expect(acquireHomeRestoreLock(target)).rejects.toThrow(/recovery data is at/)
-  await expect(acquireHomeRestoreLock(target, 'uninstalling')).rejects.toThrow(
-    /recovery data is at/,
-  )
-  const daemonAttempt = await runCli(['serve', '--port', '0'], target)
-  expect(daemonAttempt.exitCode).not.toBe(0)
-  expect(daemonAttempt.stderr + daemonAttempt.stdout).toMatch(/restore recovery is required/)
-  expect(existsSync(join(target, 'bazilion.db'))).toBe(false)
-
-  // Simulate the operator's explicit recovery before removing the marker.
-  renameSync(previous, target)
-  cleanupLivenessArtifacts(target)
-  rmSync(parent, { recursive: true, force: true })
-})
-
-test('directory sync failure after the first rename preserves the only original home', async () => {
-  const parent = join(tmpdir(), `bz-first-rename-sync-${randomUUID()}`)
-  const target = join(parent, 'home')
-  const staging = join(parent, 'staging')
-  const payload = join(staging, 'payload')
-  const previous = join(staging, 'previous-home')
-  mkdirSync(target, { recursive: true })
-  mkdirSync(payload, { recursive: true })
-  writeFileSync(join(target, 'old.txt'), 'old')
-  writeFileSync(join(payload, 'new.txt'), 'new')
-  const lock = await acquireHomeRestoreLock(target)
-
-  let failure: unknown
-  try {
-    installValidatedPayload(payload, target, staging, lock, {
-      rename: renameSync,
-      fsyncDirectory() {
-        throw new Error('simulated directory fsync failure')
-      },
-    })
-  } catch (error) {
-    failure = error
-  }
-
-  // Mirror restoreCmd's cleanup decision: recovery failures must retain the
-  // staging directory because it now owns the only original-home copy.
-  const preserveStaging = failure instanceof RestoreRecoveryRequiredError
-  if (!preserveStaging) rmSync(staging, { recursive: true, force: true })
-  lock.release()
-
-  expect(failure).toBeInstanceOf(RestoreRecoveryRequiredError)
-  expect((failure as RestoreRecoveryRequiredError).message).toContain(
-    'simulated directory fsync failure',
-  )
-  expect(existsSync(target)).toBe(false)
-  expect(readFileSync(join(previous, 'old.txt'), 'utf8')).toBe('old')
-  expect(existsSync(payload)).toBe(true)
-
-  const runtimePath = daemonLivenessPath(target)
-  const record = JSON.parse(readFileSync(runtimePath, 'utf8')) as Record<string, unknown>
-  expect(record.state).toBe('recovery-required')
-  expect(record.recoveryPath).toBe(previous)
-
-  renameSync(previous, target)
-  cleanupLivenessArtifacts(target)
-  rmSync(parent, { recursive: true, force: true })
-})
-
-test('double install and rollback failure retains a recovery-required marker', async () => {
-  const parent = join(tmpdir(), `bz-double-failure-${randomUUID()}`)
-  const target = join(parent, 'home')
-  const staging = join(parent, 'staging')
-  const payload = join(staging, 'payload')
-  const previous = join(staging, 'previous-home')
-  mkdirSync(target, { recursive: true })
-  mkdirSync(payload, { recursive: true })
-  writeFileSync(join(target, 'old.txt'), 'old')
-  writeFileSync(join(payload, 'new.txt'), 'new')
-  const lock = await acquireHomeRestoreLock(target)
-  let renameCount = 0
-
-  expect(() =>
-    installValidatedPayload(payload, target, staging, lock, {
-      rename(source, destination) {
-        renameCount++
-        if (renameCount === 1) renameSync(source, destination)
-        else throw new Error(renameCount === 2 ? 'install failed' : 'rollback failed')
-      },
-    }),
-  ).toThrow(RestoreRecoveryRequiredError)
-  lock.release()
-  expect(existsSync(target)).toBe(false)
-  expect(readFileSync(join(previous, 'old.txt'), 'utf8')).toBe('old')
-
-  const runtimePath = daemonLivenessPath(target)
-  const record = JSON.parse(readFileSync(runtimePath, 'utf8')) as Record<string, unknown>
-  expect(record.state).toBe('recovery-required')
-  expect(record.recoveryPath).toBe(previous)
-  record.pid = await exitedProcessId()
-  writeFileSync(runtimePath, `${JSON.stringify(record)}\n`)
-  await expect(acquireHomeRestoreLock(target)).rejects.toThrow(/recovery data is at/)
-
-  renameSync(previous, target)
-  cleanupLivenessArtifacts(target)
-  rmSync(parent, { recursive: true, force: true })
 })

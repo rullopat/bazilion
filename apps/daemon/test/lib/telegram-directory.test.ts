@@ -1,6 +1,5 @@
 // Directory module tests — body building, refresh path, recreate-on-delete.
 
-import type { InlineKeyboardMarkup } from 'grammy/types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
@@ -11,7 +10,7 @@ import {
   _resetDirectoryStateForTest,
   buildDirectoryBody,
   type DirectoryApi,
-  refreshDirectoryNow,
+  refreshDirectoryMessage,
 } from '../../src/lib/telegram/directory.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -125,10 +124,10 @@ describe('buildDirectoryBody', () => {
   })
 })
 
-describe('refreshDirectoryNow', () => {
+describe('refreshDirectoryMessage', () => {
   test('no-op when service topic id is not set', async () => {
     const { api, recorded } = makeApi()
-    await refreshDirectoryNow({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
+    await refreshDirectoryMessage({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     expect(recorded.sends.length).toBe(0)
     expect(recorded.edits.length).toBe(0)
   })
@@ -136,7 +135,7 @@ describe('refreshDirectoryNow', () => {
   test('creates the directory message on first refresh when none is stored', async () => {
     openConfig(env.db).set('TELEGRAM_SERVICE_TOPIC_ID', '11')
     const { api, recorded } = makeApi()
-    await refreshDirectoryNow({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
+    await refreshDirectoryMessage({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     expect(recorded.sends.length).toBe(1)
     expect(recorded.pins.length).toBe(1)
     // Persisted the new directory message id.
@@ -147,7 +146,7 @@ describe('refreshDirectoryNow', () => {
     openConfig(env.db).set('TELEGRAM_SERVICE_TOPIC_ID', '11')
     openConfig(env.db).set('TELEGRAM_DIRECTORY_MESSAGE_ID', '88')
     const { api, recorded } = makeApi()
-    await refreshDirectoryNow({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
+    await refreshDirectoryMessage({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     expect(recorded.edits.length).toBe(1)
     expect(recorded.edits[0]?.messageId).toBe(88)
     expect(recorded.sends.length).toBe(0)
@@ -160,7 +159,7 @@ describe('refreshDirectoryNow', () => {
     openConfig(env.db).set('TELEGRAM_DIRECTORY_MESSAGE_ID', '88')
     const { api, recorded } = makeApi({ editFails: 'gone' })
 
-    await refreshDirectoryNow({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
+    await refreshDirectoryMessage({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
 
     // Tried to edit, fell through to send + pin.
     expect(recorded.edits.length).toBe(1)
@@ -175,7 +174,7 @@ describe('refreshDirectoryNow', () => {
     openConfig(env.db).set('TELEGRAM_DIRECTORY_MESSAGE_ID', '88')
     const { api, recorded } = makeApi({ editFails: 'not-modified' })
 
-    await refreshDirectoryNow({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
+    await refreshDirectoryMessage({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
 
     // Edit was attempted, no recreate.
     expect(recorded.edits.length).toBe(1)
@@ -188,7 +187,7 @@ describe('refreshDirectoryNow', () => {
     openConfig(env.db).set('TELEGRAM_DIRECTORY_MESSAGE_ID', '88')
     const { api } = makeApi({ editFails: 'other' })
     await expect(
-      refreshDirectoryNow({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }),
+      refreshDirectoryMessage({ db: env.db, paths: env.paths, api, chatId: CHAT_ID }),
     ).rejects.toThrow('boom')
   })
 })

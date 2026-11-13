@@ -81,9 +81,3 @@ export function scanSkillContent(raw: string): SkillScanFinding[] {
 
   return findings
 }
-
-export function formatSkillScanFindings(findings: SkillScanFinding[]): string {
-  return findings
-    .map((f) => `${f.severity}: ${f.code}${f.line ? ` line ${f.line}` : ''} - ${f.message}`)
-    .join('\n')
-}

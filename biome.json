@@ -1,7 +1,15 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!.pi", "!apps/web", "!apps/mobile"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!.pi",
+      "!**/.tanstack",
+      "!apps/web/public",
+      "!apps/web/src/routeTree.gen.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -19,5 +27,8 @@
       "semicolons": "asNeeded",
       "trailingCommas": "all"
     }
+  },
+  "css": {
+    "parser": { "tailwindDirectives": true }
   }
 }

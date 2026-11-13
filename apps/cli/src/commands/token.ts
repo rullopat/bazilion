@@ -1,144 +1,50 @@
 import type {
-  CreatePairingCodeRequest,
-  CreatePairingCodeResponse,
   CreateTokenRequest,
   CreateTokenResponse,
   ListTokensResponse,
   WebToken,
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
-import qrcode from 'qrcode-terminal'
 import { readAuthFile } from '../auth-file.ts'
-import { createClient, loadClientConfig } from '../client.ts'
-import { columnize } from '../columnize.ts'
+import { createClient } from '../client.ts'
+import { apiPath, positional, printRows } from '../command-helpers.ts'
 import { resolveCliPaths } from '../paths.ts'
-import { collectFlagValues } from '../repeatable-args.ts'
 
 function tokenRow(t: WebToken): string[] {
   const last = t.lastUsedAt ? new Date(t.lastUsedAt).toISOString() : '(never)'
   const expired = t.expiresAt !== null && t.expiresAt <= Date.now()
   const state = t.revokedAt ? 'revoked' : expired ? 'expired' : 'active'
   const expires = t.expiresAt ? new Date(t.expiresAt).toISOString() : '(never)'
-  return [t.id, t.kind, state, t.label, t.scopes.join(' '), `expires: ${expires}`, `last: ${last}`]
-}
-
-function resolveQrServer(override: string | undefined): string {
-  const raw = override ?? loadClientConfig().serverUrl
-  const url = new URL(raw)
-  const loopback = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname)
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
-    throw new Error('pairing server must use HTTPS (HTTP is allowed only for loopback development)')
-  }
-  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error(
-      'pairing server must be an exact origin without credentials, path, query, or fragment',
-    )
-  }
-  const cfg = loadClientConfig()
-  if (loopback && !override && new URL(cfg.serverUrl).hostname === url.hostname) {
-    throw new Error(
-      'server URL is loopback-only. Pass --server https://<private-tailnet-host> for mobile pairing.',
-    )
-  }
-  return url.origin
+  return [t.id, t.kind, state, t.label, `expires: ${expires}`, `last: ${last}`]
 }
 
 const createCmd = defineCommand({
-  meta: { name: 'create', description: 'Mint a new web token (shown once)' },
+  meta: { name: 'create', description: 'Mint a new device token with full access (shown once)' },
   args: {
-    label: { type: 'positional', required: true, description: 'Human-readable label' },
-    qr: {
-      type: 'boolean',
-      description: 'Also render a pairing QR code for mobile clients (bazilion://pair?...)',
-    },
-    server: {
+    label: positional('Human-readable label'),
+    'expires-days': {
       type: 'string',
-      description:
-        'Server URL to embed in the pairing QR (default: detect LAN IP; ignored without --qr)',
-    },
-    expiresDays: {
-      type: 'string',
-      description: 'Device lifetime in days (default 90, maximum 365)',
-    },
-    scope: {
-      type: 'string',
-      description:
-        'Authorization scope; repeat for more (read, write, approvals, admin). Default: all scopes.',
+      description: 'Expire the token after this many days (default: never)',
     },
   },
-  async run({ args, rawArgs }) {
+  async run({ args }) {
     const client = createClient()
-    const expiresInDays = args.expiresDays === undefined ? undefined : Number(args.expiresDays)
-    if (expiresInDays !== undefined && !Number.isInteger(expiresInDays)) {
-      throw new Error('--expires-days must be an integer')
+    const expiresInDays =
+      args['expires-days'] === undefined ? undefined : Number(args['expires-days'])
+    if (expiresInDays !== undefined && !(Number.isInteger(expiresInDays) && expiresInDays > 0)) {
+      throw new Error('--expires-days must be a positive integer')
     }
-    const scopes = collectFlagValues(rawArgs, 'scope')
-    const body: CreateTokenRequest = {
-      label: args.label,
-      expiresInDays,
-      ...(scopes.length > 0 ? { scopes: scopes as CreateTokenRequest['scopes'] } : {}),
-    }
+    const body: CreateTokenRequest = { label: args.label, expiresInDays }
     const res = await client.post<CreateTokenResponse>('/api/tokens', body)
     console.log(`id:     ${res.meta.id}`)
     console.log(`label:  ${res.meta.label}`)
     console.log(`kind:   ${res.meta.kind}`)
-    console.log(`scopes: ${res.meta.scopes.join(' ')}`)
     console.log(
       `expires: ${res.meta.expiresAt ? new Date(res.meta.expiresAt).toISOString() : '(never)'}`,
     )
     console.log(`token: ${res.token}`)
     console.log('')
     console.log('store the token now — it is not recoverable later.')
-
-    if (!args.qr) return
-
-    const serverUrl = resolveQrServer(args.server)
-    const pairUrl = `bazilion://pair?server=${encodeURIComponent(serverUrl)}&token=${encodeURIComponent(res.token)}`
-    console.log('')
-    console.log(`pairing URL: ${pairUrl}`)
-    console.log('')
-    qrcode.generate(pairUrl, { small: true }, (qr) => console.log(qr))
-  },
-})
-
-const pairCmd = defineCommand({
-  meta: {
-    name: 'pair',
-    description: 'Mint a one-paste pairing setup code for a new device (10 min, single use)',
-  },
-  args: {
-    scope: {
-      type: 'string',
-      description:
-        'Authorization scope for the minted device credential; repeat for more. Default: all scopes.',
-    },
-    server: {
-      type: 'string',
-      description:
-        'Server URL to embed in the setup code (default: detect LAN IP; pass the gateway HTTPS origin for remote devices)',
-    },
-  },
-  async run({ args, rawArgs }) {
-    const client = createClient()
-    const scopes = collectFlagValues(rawArgs, 'scope')
-    const res = await client.post<CreatePairingCodeResponse>('/api/pair/codes', {
-      ...(scopes.length > 0 ? { scopes: scopes as CreatePairingCodeRequest['scopes'] } : {}),
-    })
-    // Re-point the setup URL at the requested server origin if overridden.
-    let setupUrl = res.setupUrl
-    if (args.server) {
-      const serverUrl = resolveQrServer(args.server)
-      setupUrl = `bazilion-pair://pair?server=${encodeURIComponent(serverUrl)}&code=${encodeURIComponent(res.code)}`
-    }
-    console.log(`id:     ${res.meta.id}`)
-    console.log(`scopes: ${res.meta.scopes.join(' ')}`)
-    console.log(`expires: ${new Date(res.meta.expiresAt).toISOString()} (10 minutes, single use)`)
-    console.log('')
-    console.log(`setup URL (paste or scan on the new device):`)
-    console.log(setupUrl)
-    console.log('')
-    console.log('the code admits exactly one credential exchange; after that it is inert.')
-    qrcode.generate(setupUrl, { small: true }, (qr) => console.log(qr))
   },
 })
 
@@ -148,14 +54,10 @@ const listCmd = defineCommand({
     all: { type: 'boolean', description: 'Include revoked tokens' },
   },
   async run({ args }) {
-    const client = createClient()
-    const qs = args.all ? '?includeRevoked=1' : ''
-    const { tokens } = await client.get<ListTokensResponse>(`/api/tokens${qs}`)
-    if (tokens.length === 0) {
-      console.log('(no tokens)')
-      return
-    }
-    for (const line of columnize(tokens.map(tokenRow))) console.log(line)
+    const { tokens } = await createClient().get<ListTokensResponse>(
+      `/api/tokens${args.all ? '?includeRevoked=1' : ''}`,
+    )
+    printRows(tokens.map(tokenRow), '(no tokens)')
   },
 })
 
@@ -171,13 +73,10 @@ const showLocalCmd = defineCommand({
 })
 
 const revokeCmd = defineCommand({
-  meta: { name: 'revoke', description: 'Revoke a web token' },
-  args: {
-    id: { type: 'positional', required: true },
-  },
+  meta: { name: 'revoke', description: 'Revoke a web token and its browser sessions' },
+  args: { id: positional('Token id') },
   async run({ args }) {
-    const client = createClient()
-    await client.del(`/api/tokens/${args.id}`)
+    await createClient().del(apiPath('tokens', args.id))
     console.log(`revoked token ${args.id}`)
   },
 })
@@ -186,7 +85,6 @@ export const tokenCommand = defineCommand({
   meta: { name: 'token', description: 'Manage web tokens for API/CLI clients' },
   subCommands: {
     create: createCmd,
-    pair: pairCmd,
     list: listCmd,
     revoke: revokeCmd,
     'show-local': showLocalCmd,

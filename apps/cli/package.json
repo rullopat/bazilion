@@ -30,8 +30,7 @@
   },
   "files": [
     "dist",
-    "README.md",
-    "LICENSE"
+    "README.md"
   ],
   "scripts": {
     "build": "pnpm --filter @bazilion/web build && tsup"
@@ -39,17 +38,12 @@
   "engines": {
     "node": "^26.12.1"
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@earendil-works/pi-coding-agent": "1.4.0",
     "@earendil-works/pi-mcp": "1.4.0",
     "@hono/node-server": "^2.0.6",
     "@mozilla/readability": "^0.6.0",
-    "@openclaw/fs-safe": "0.26.8",
     "@playwright/browser-chromium": "^1.61.0",
     "@tanstack/react-router": "1.170.18",
     "@tobilu/qmd": "^2.5.3",
@@ -57,17 +51,14 @@
     "adm-zip": "^0.5.17",
     "age-encryption": "0.3.0",
     "citty": "^0.2.2",
-    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
     "grammy": "^1.44.0",
     "hono": "^4.12.26",
-    "koffi": "3.3.3",
     "linkedom": "^0.18.12",
     "lucide-react": "^1.21.0",
     "marked": "^18.0.5",
     "playwright": "^1.61.0",
-    "qrcode-terminal": "^0.12.0",
     "radix-ui": "^1.6.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -80,7 +71,6 @@
   "devDependencies": {
     "@bazilion/api-types": "workspace:*",
     "@bazilion/client": "workspace:*",
-    "@types/adm-zip": "^0.5.8",
-    "@types/qrcode-terminal": "^0.12.2"
+    "@types/adm-zip": "^0.5.8"
   }
 }

@@ -1,58 +1,39 @@
 ---
 id: BAZ-025
-title: Durable agent-message loop circuit breaker
+title: Agent-message loop breaker
 status: done
-size: M
 created: 2026-08-03
 shipped: 2026-08-03
 release: v0.12.0
-priority: high
 ---
 
-# BAZ-025 — Durable agent-message loop circuit breaker
+# BAZ-025 — Agent-message loop breaker
 
-## User stories
+## Outcome
 
-- **As an operator**, I want agent-to-agent message chains to have a hard daemon-enforced limit so prompt drift cannot create unbounded LLM spend.
-- **As an operator diagnosing automation**, I want to see which causal chain was stopped, where, and why without retaining another copy of message payloads.
-- **As an Agent**, I want ordinary new conversations to remain independent while replies and messages emitted from an inbox wake retain their causal ancestry.
-
-## Goal
-
-Track durable causality on agent messages and reject a send before it can wake another LLM turn when the chain exceeds a configurable hop ceiling. Enforcement lives at the daemon communication boundary and does not depend on `reply_to`, prompt compliance, Team Policy, Telegram, or process-local counters.
+Agents messaging each other cannot run up unbounded model spend: a chain of messages stops at a
+hop limit the daemon enforces, and you can see which chain stopped, where and why, without a
+second copy of the messages.
 
 ## Scope
 
-- Add `causal_chain_id` and `causal_hop` to every message in the canonical clean-install schema.
-- Explicit replies inherit from `reply_to`; messages emitted during an inbox wake inherit from the highest-hop claimed message even if the tool omits `reply_to`; unrelated operator sends open a new chain.
-- Enforce `BAZILION_AGENT_LOOP_MAX_HOPS` with a conservative default of 8. Record a durable payload-free break event and reject the send before insertion.
-- Keep communication approval and Team Policy behavior intact; approval-delivered messages retain the causality captured at request time.
-- Expose recent break events through HTTP, CLI, and the Agent inbox web surface.
+- Every message carries a causal chain id and a hop count. A reply inherits from `reply_to`; a
+  message sent during an inbox wake inherits from the highest-hop message that woke the Agent,
+  even without `reply_to`; a message you send starts a new chain.
+- A send past `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) is refused before it is stored, and a
+  payload-free break event is recorded. The refusal reaches the sending Agent as a tool error.
+- Break events appear in the Agent's inbox and in Attention as `agent_loop_break`.
 
-## Out of scope
+## As built
 
-- Provider-token or currency accounting.
-- A general workflow engine, retries, or automatic resumption of a stopped chain.
-- Telegram rate limits, shell approval, or Team Policy denial semantics.
-- Compatibility migrations for pre-v0.12 alpha databases.
+- Columns `messages.causal_chain_id` and `causal_hop`; table `agent_loop_break_events`.
+- CLI: `bazilion inbox loop-breaks <agent> [--limit N]`.
+- Web: the Agent's **Inbox** tab; the hop limit is on `/config/services` (**Agent Runtime**).
+- HTTP: `GET /api/agents/:id/loop-breaks`.
+- Code: `apps/daemon/src/lib/agent-loop-guard.ts`, called from the one send path in
+  `lib/communication.ts`.
 
-## Tests
+## Known limits
 
-- New messages start at hop 0; explicit replies inherit and increment.
-- Inbox-wake sends inherit causality even without `reply_to`, including three-Agent cycles.
-- The ceiling persists across DB reopen/restart and records no payload.
-- Separate new threads do not consume each other's budget.
-- Policy-approved delivery keeps its captured chain metadata.
-- API, CLI, and web diagnostics render recent stops.
-
-## As-built
-
-- Messages persist a causal chain identifier and hop count; direct replies and inbox-triggered
-  turns preserve ancestry, while independent operator messages begin new chains.
-- The daemon rejects sends beyond `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) before message
-  insertion and records a payload-free `agent_loop_break_events` diagnostic row.
-- Team Policy approvals preserve captured causality and revalidate the hop budget at dispatch.
-- Operators can inspect recent stops through `GET /api/agents/:id/loop-breaks`,
-  `bazilion inbox loop-breaks <agent>`, and the Agent inbox web page.
-- The canonical backup schema, API types, documentation, and release Changeset include the new
-  contract. The feature shipped in v0.12.0.
+- A stopped chain is not resumed; a new message from you starts a fresh one.
+- The limit counts hops, not tokens or money.

@@ -1,62 +1,42 @@
-import type { ConversationSelection } from './conversations.ts'
-import type { Attachment } from './index.ts'
+import type { Attachment } from './chat.ts'
 
-export type UserQueueStatus =
-  | 'pending'
-  | 'claimed'
-  | 'running'
-  | 'held'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-  | 'uncertain'
-  | 'superseded'
+export type UserQueueStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
 export interface QueueAttachment {
-  id: string
   name: string | null
   mimeType: string
   byteLength: number
-  sha256: string
 }
+
+/** A follow-up: input that waits for the Agent's current turn and then runs as its own turn. */
 export interface UserQueueItem {
   id: string
   agentId: string
-  teamId: string
+  /** The conversation it was sent to, where it runs. */
   conversationId: string
   source: 'http' | 'telegram'
-  attemptId: string
-  revision: number
-  position: number
   status: UserQueueStatus
-  text: string | null
+  text: string
   attachments: QueueAttachment[]
-  payloadRetained: boolean
-  supersedesId: string | null
-  approvalId: string | null
+  /** Why it failed or was cancelled. */
   diagnostic: string | null
   createdAt: number
   updatedAt: number
   startedAt: number | null
   finishedAt: number | null
 }
-export interface UserQueueControl {
-  paused: boolean
-  revision: number
-  reason: string | null
-}
+
+/** Waiting, running and failed follow-ups, oldest first. */
 export interface UserQueueListResponse {
+  /** A paused queue starts nothing until it is resumed. */
+  paused: boolean
+  /** The Agent is running a turn (a follow-up, a chat, Telegram or a schedule); Stop cancels it. */
+  turnActive: boolean
   items: UserQueueItem[]
-  control: UserQueueControl
-  total: number
-  offset: number
-  limit: number
 }
+
+/** Queue a follow-up. Editing one (PATCH) replaces only its `message`. */
 export interface EnqueueUserInput {
-  requestId: string
-  expectedSelection: ConversationSelection
   message: string
   attachments?: Attachment[]
-}
-export interface EditQueuedInput extends EnqueueUserInput {
-  expectedRevision: number
 }

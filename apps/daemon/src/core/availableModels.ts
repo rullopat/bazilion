@@ -7,6 +7,7 @@
 // provider off either side and it disappears from the list without a UI
 // edit — the dropdowns are entirely data-driven.
 
+import type { ModelGroup } from '@bazilion/api-types'
 import type { BazilionDb } from './db/client.ts'
 import * as providerModelRepo from './repos/providerModels.ts'
 import * as providerStateRepo from './repos/providerState.ts'
@@ -39,14 +40,13 @@ export function listAvailableModels(db: BazilionDb): AvailableModel[] {
  * Same as `listAvailableModels` but grouped by provider — the shape the web
  * dropdowns consume directly via `<optgroup>`.
  */
-export function groupAvailableModels(db: BazilionDb): { provider: string; models: string[] }[] {
-  const enabled = providerStateRepo.listEnabled(db)
-  const teams: { provider: string; models: string[] }[] = []
-  for (const provider of enabled) {
+export function groupAvailableModels(db: BazilionDb): ModelGroup[] {
+  const groups: ModelGroup[] = []
+  for (const provider of providerStateRepo.listEnabled(db)) {
     const models = providerModelRepo.list(db, provider)
-    if (models.length > 0) teams.push({ provider, models })
+    if (models.length > 0) groups.push({ provider, models })
   }
-  return teams
+  return groups
 }
 
 /**

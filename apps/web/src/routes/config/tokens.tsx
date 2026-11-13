@@ -1,443 +1,278 @@
-import type { ListSessionsResponse, ListTokensResponse, WebSession, WebToken } from '@bazilion/api-types'
-import { DEVICE_TOKEN_SCOPES } from '@bazilion/api-types'
+import type {
+  CreateTokenRequest,
+  CreateTokenResponse,
+  ListSessionsResponse,
+  ListTokensResponse,
+  WebSession,
+  WebToken,
+} from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { RecoveryState } from '../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../components/Button'
-import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ConfigPage } from '../../components/ConfigPage'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ItemList, ItemRow, SectionCard, StatusBadge } from '../../components/Page'
+import { api, errorMessage } from '../../lib/api'
 import { daemonClient } from '../../lib/daemon-client'
 
-const fetchTokens = createServerFn({ method: 'POST' })
-  .validator((d: { all: boolean }) => d)
+const fetchTokens = createServerFn({ method: 'GET' })
+  .validator((data: { all: boolean }) => data)
   .handler(async ({ data }) => {
     const client = daemonClient()
-    const [tokenResult, sessionResult] = await Promise.all([
+    const [tokens, sessions] = await Promise.all([
       client.get<ListTokensResponse>(`/api/tokens${data.all ? '?includeRevoked=1' : ''}`),
       client.get<ListSessionsResponse>('/api/sessions'),
     ])
-    return { ...tokenResult, ...sessionResult }
+    return { ...tokens, ...sessions }
   })
 
 export const Route = createFileRoute('/config/tokens')({
-  errorComponent: ({ error, reset }) => <RecoveryState title="Access tokens unavailable" error={error} reset={reset} fallbackHref="/config" />,
-  validateSearch: (s: Record<string, unknown>): { all?: '1' } => ({
-    all: s.all === '1' ? '1' : undefined,
+  // The router parses `?all=1` into the number 1 (and would rewrite a string '1' as `"1"`).
+  validateSearch: (search: Record<string, unknown>): { all?: 1 } => ({
+    all: search.all === 1 ? 1 : undefined,
   }),
-  loaderDeps: ({ search }) => ({ all: search.all === '1' }),
+  loaderDeps: ({ search }) => ({ all: search.all === 1 }),
   loader: ({ deps }) => fetchTokens({ data: deps }),
   component: TokensPage,
 })
 
-function fmtTs(ts: number): string {
-  return new Date(ts).toISOString().slice(0, 16).replace('T', ' ')
+function when(timestamp: number): string {
+  return new Date(timestamp).toISOString().slice(0, 16).replace('T', ' ')
 }
 
 function TokensPage() {
   const { tokens, sessions } = Route.useLoaderData()
-  const { all } = Route.useSearch()
-  const includeRevoked = all === '1'
+  const includeRevoked = Route.useSearch().all === 1
   const router = useRouter()
-  const [label, setLabel] = useState('')
-  const [created, setCreated] = useState<string | null>(null)
-  const [expiresDays, setExpiresDays] = useState('90')
-  const [selectedScopes, setSelectedScopes] = useState<Set<string>>(new Set())
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [revokeTokenTarget, setRevokeTokenTarget] = useState<WebToken | null>(null)
-  const [revokeSessionTarget, setRevokeSessionTarget] = useState<WebSession | null>(null)
-  const [pairUrl, setPairUrl] = useState<string | null>(null)
+  const [revokeToken, setRevokeToken] = useState<WebToken | null>(null)
+  const [revokeSession, setRevokeSession] = useState<WebSession | null>(null)
+  const usesToken = (token: WebToken | null) =>
+    sessions.some((session) => session.current && session.tokenId === token?.id)
 
-  async function mintPairingCode(scopes: string[]) {
-    setErr(null)
-    setBusy(true)
-    try {
-      const res = await fetch('/api/pair/codes', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(scopes.length > 0 ? { scopes } : {}),
-      })
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(j.error ?? `${res.status} ${res.statusText}`)
-      }
-      const body = (await res.json()) as { setupUrl: string }
-      setPairUrl(body.setupUrl)
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function mint(e: React.FormEvent) {
-    e.preventDefault()
-    setErr(null)
-    setBusy(true)
-    try {
-      const res = await fetch('/api/tokens', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        // Empty selection = all scopes (pre-BAZ-055 behavior).
-        body: JSON.stringify({
-          label,
-          expiresInDays: Number(expiresDays),
-          ...(selectedScopes.size > 0 ? { scopes: [...selectedScopes] } : {}),
-        }),
-      })
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(j.error ?? `${res.status} ${res.statusText}`)
-      }
-      const body = (await res.json()) as { token: string }
-      setCreated(body.token)
-      setLabel('')
-      setSelectedScopes(new Set())
-      await router.invalidate()
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function revoke(id: string, revokesCurrentSession: boolean) {
-    const response = await fetch(`/api/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })
-    if (!response.ok && response.status !== 204) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string }
-      throw new Error(body.error ?? 'Could not revoke API token')
-    }
-    if (revokesCurrentSession) {
-      window.location.assign('/login')
-    } else {
-      await router.invalidate()
-    }
-  }
-
-  async function revokeSession(id: string, current: boolean) {
-    const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string }
-      throw new Error(body.error ?? 'Could not revoke browser session')
-    }
-    if (current) {
-      window.location.assign('/login')
-    } else {
-      await router.invalidate()
-    }
+  /** Revoking the session this browser uses signs it out. */
+  async function afterRevoke(signedOut: boolean) {
+    if (signedOut) window.location.assign('/login')
+    else await router.invalidate()
   }
 
   return (
     <ConfigPage
-      active="tokens"
       title="API tokens"
       description={
         <>
-          Manage per-client credentials for the HTTP API and CLI. The{' '}
+          Every token has full access to the HTTP API, the CLI and browser login. The{' '}
           <code className="font-mono">bootstrap</code> token from{' '}
-          <code className="font-mono">~/.bazilion/auth.json</code> remains protected; mint
-          separate credentials for mobile, LAN, and remote clients.
+          <code className="font-mono">~/.bazilion/auth.json</code> cannot be revoked; mint a
+          separate, revocable token for each other device.
         </>
       }
     >
-      <section className="rounded-lg border bg-card p-5">
-        <h3 className="font-serif text-xl mb-3">Mint a new token</h3>
-        <form
-          onSubmit={mint}
-          className="mb-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-end"
-        >
-          <label className="w-full text-sm sm:w-auto">
-            Label
-            <input
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              required
-              placeholder="e.g. laptop-tailscale"
-              autoComplete="off"
-              className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-72"
-            />
-          </label>
-          <label className="w-full text-sm sm:w-auto">
-            Expires in days
-            <input
-              type="number"
-              min={1}
-              max={365}
-              value={expiresDays}
-              onChange={(e) => setExpiresDays(e.target.value)}
-              required
-              className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-36"
-            />
-          </label>
-          <fieldset className="w-full text-sm sm:w-auto">
-            <legend className="text-muted-foreground">Scopes (none checked = all)</legend>
-            <div className="mt-1 flex flex-wrap gap-3">
-              {DEVICE_TOKEN_SCOPES.map((s) => (
-                <label key={s} className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedScopes.has(s)}
-                    onChange={(e) =>
-                      setSelectedScopes((prev) => {
-                        const next = new Set(prev)
-                        if (e.target.checked) next.add(s)
-                        else next.delete(s)
-                        return next
-                      })
-                    }
-                  />
-                  {s}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <Button variant="primary" type="submit" disabled={busy}>
-            {busy ? 'creating…' : 'create'}
-          </Button>
-        </form>
-        {created && (
-          <div className="rounded-md border border-warning/25 bg-warning/10 p-3">
-            <p className="text-xs text-warning mb-1">
-              copy this token now — it is not recoverable later.
-            </p>
-            <pre className="font-mono text-xs whitespace-pre-wrap break-all">{created}</pre>
-          </div>
-        )}
-        {err && <p role="alert" className="text-sm text-danger">{err}</p>}
-        <div className="mt-3 border-t pt-3">
-          <p className="text-sm text-muted-foreground mb-2">
-            Pair a new device with a one-paste setup code instead — the code expires in 10
-            minutes and admits exactly one credential exchange (with the scopes selected
-            above, or all if none are).
-          </p>
-          <Button
-            variant="ghost"
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setPairUrl(null)
-              void mintPairingCode([...selectedScopes])
-            }}
+      <MintTokenForm onMinted={() => router.invalidate()} />
+
+      <SectionCard
+        title="Tokens"
+        actions={
+          <a
+            className="ghost-btn"
+            href={includeRevoked ? '/config/tokens' : '/config/tokens?all=1'}
           >
-            {busy ? 'creating…' : 'mint pairing code'}
-          </Button>
-          {pairUrl && (
-            <div className="mt-2 rounded-md border border-warning/25 bg-warning/10 p-3">
-              <p className="text-xs text-warning mb-1">
-                paste or scan this on the new device — it works once, for 10 minutes.
-              </p>
-              <pre className="font-mono text-xs whitespace-pre-wrap break-all">{pairUrl}</pre>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <div>
-        <label className="text-sm flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={includeRevoked}
-            onChange={(e) => {
-              window.location.assign(e.target.checked ? '/config/tokens?all=1' : '/config/tokens')
-            }}
-          />
-          show revoked
-        </label>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead className="text-left text-muted-foreground border-b">
-            <tr>
-              <th className="py-2">label</th>
-              <th>kind</th>
-              <th>scopes</th>
-              <th>id</th>
-              <th>state</th>
-              <th>created</th>
-              <th>last used</th>
-              <th>expires</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {tokens.length === 0 && (
-              <tr>
-                <td colSpan={9} className="py-6 text-center text-muted-foreground italic">
-                  no tokens yet — mint one above
-                </td>
-              </tr>
-            )}
-            {tokens.map((t) => {
-              const isBootstrap = t.kind === 'bootstrap'
+            {includeRevoked ? 'Hide revoked' : 'Show revoked'}
+          </a>
+        }
+      >
+        {tokens.length === 0 ? (
+          <p className="muted">No tokens yet; mint one above.</p>
+        ) : (
+          <ItemList>
+            {tokens.map((token) => {
+              const bootstrap = token.kind === 'bootstrap'
+              const expired = token.expiresAt !== null && token.expiresAt <= Date.now()
               return (
-                <tr key={t.id} className="border-b last:border-0 hover:bg-accent/30">
-                  <td className="py-2">
-                    {t.label}
-                    {isBootstrap && (
-                      <span className="ml-2 text-[0.7em] uppercase tracking-wide text-muted-foreground">
-                        auth.json
-                      </span>
-                    )}
-                  </td>
-                  <td>{t.kind}</td>
-                  <td className="font-mono text-xs">{t.scopes.join(' ')}</td>
-                  <td>
-                    <code className="font-mono text-xs">{t.id}</code>
-                  </td>
-                  <td>
-                    {t.revokedAt ? (
-                      <span className="text-muted-foreground">revoked</span>
-                    ) : (
-                      <span className="text-success">active</span>
-                    )}
-                  </td>
-                  <td className="text-muted-foreground text-xs">{fmtTs(t.createdAt)}</td>
-                  <td className="text-muted-foreground text-xs">
-                    {t.lastUsedAt ? fmtTs(t.lastUsedAt) : '(never)'}
-                  </td>
-                  <td className="text-muted-foreground text-xs">
-                    {t.expiresAt ? fmtTs(t.expiresAt) : '(never)'}
-                  </td>
-                  <td>
-                    {!t.revokedAt && !isBootstrap && (
-                      <Button
-                        variant="danger"
-                        className="text-xs"
-                        onClick={() => {
-                          setErr(null)
-                          setRevokeTokenTarget(t)
-                        }}
-                      >
-                        revoke
+                <ItemRow
+                  key={token.id}
+                  title={token.label}
+                  meta={
+                    <>
+                      <StatusBadge variant={token.revokedAt || expired ? 'neutral' : 'success'}>
+                        {token.revokedAt ? 'revoked' : expired ? 'expired' : 'active'}
+                      </StatusBadge>
+                      <span>{bootstrap ? 'bootstrap (auth.json)' : token.kind}</span>
+                      <span>created {when(token.createdAt)}</span>
+                      <span>last used {token.lastUsedAt ? when(token.lastUsedAt) : 'never'}</span>
+                      <span>expires {token.expiresAt ? when(token.expiresAt) : 'never'}</span>
+                      <code>{token.id}</code>
+                    </>
+                  }
+                  actions={
+                    !token.revokedAt &&
+                    !bootstrap && (
+                      <Button variant="danger" onClick={() => setRevokeToken(token)}>
+                        Revoke
                       </Button>
-                    )}
-                  </td>
-                </tr>
+                    )
+                  }
+                />
               )
             })}
-          </tbody>
-        </table>
-      </div>
+          </ItemList>
+        )}
+      </SectionCard>
 
-      <section className="space-y-3">
-        <div>
-          <h3 className="font-serif text-xl">Browser sessions</h3>
-          <p className="text-sm text-muted-foreground">
-            Sessions expire after 12 idle hours or seven days absolute. Revoking a device also
-            revokes every session created from it.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="border-b text-left text-muted-foreground">
-              <tr>
-                <th className="py-2">device</th>
-                <th>session</th>
-                <th>last seen</th>
-                <th>idle expiry</th>
-                <th>absolute expiry</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-6 text-center italic text-muted-foreground">
-                    no active browser sessions
-                  </td>
-                </tr>
-              )}
-              {sessions.map((session) => (
-                <tr key={session.id} className="border-b last:border-0 hover:bg-accent/30">
-                  <td className="py-2">
-                    {session.deviceLabel}{' '}
-                    {session.current && <span className="text-xs text-success">current</span>}
-                  </td>
-                  <td><code className="font-mono text-xs">{session.id}</code></td>
-                  <td className="text-xs text-muted-foreground">{fmtTs(session.lastSeenAt)}</td>
-                  <td className="text-xs text-muted-foreground">{fmtTs(session.idleExpiresAt)}</td>
-                  <td className="text-xs text-muted-foreground">{fmtTs(session.absoluteExpiresAt)}</td>
-                  <td>
-                    <Button
-                      variant="danger"
-                      className="text-xs"
-                      onClick={() => {
-                        setErr(null)
-                        setRevokeSessionTarget(session)
-                      }}
-                    >
-                      revoke
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <SectionCard
+        title="Browser sessions"
+        description="A session ends after 30 days without use. Revoking a token also ends every session opened with it."
+      >
+        {sessions.length === 0 ? (
+          <p className="muted">No active browser sessions.</p>
+        ) : (
+          <ItemList>
+            {sessions.map((session) => (
+              <ItemRow
+                key={session.id}
+                title={
+                  <>
+                    {session.tokenLabel}{' '}
+                    {session.current && <StatusBadge variant="success">current</StatusBadge>}
+                  </>
+                }
+                meta={
+                  <>
+                    <span>last seen {when(session.lastSeenAt)}</span>
+                    <span>expires {when(session.expiresAt)}</span>
+                    <code>{session.id}</code>
+                  </>
+                }
+                actions={
+                  <Button variant="danger" onClick={() => setRevokeSession(session)}>
+                    Revoke
+                  </Button>
+                }
+              />
+            ))}
+          </ItemList>
+        )}
+      </SectionCard>
+
       <ConfirmDialog
-        open={revokeTokenTarget !== null}
-        title={`Revoke ${revokeTokenTarget?.label ?? ''}?`}
+        open={revokeToken !== null}
+        title={`Revoke ${revokeToken?.label ?? ''}?`}
         description={
           <p>
-            This permanently revokes device token{' '}
-            <code className="font-mono">{revokeTokenTarget?.id}</code> and every browser session
-            created from it. Clients using it will be signed out and cannot reconnect with this
-            credential.
-            {sessions.some(
-              (session) =>
-                session.current && session.deviceTokenId === revokeTokenTarget?.id,
-            ) && ' This includes the browser session you are using now.'}
+            This permanently revokes token <code className="font-mono">{revokeToken?.id}</code> and
+            ends every browser session opened with it.
+            {usesToken(revokeToken) && ' This includes the session you are using now.'}
           </p>
         }
-        confirmLabel="revoke token and sessions"
+        confirmLabel="Revoke token and sessions"
         onConfirm={async () => {
-          if (!revokeTokenTarget) return
-          try {
-            await revoke(
-              revokeTokenTarget.id,
-              sessions.some(
-                (session) =>
-                  session.current && session.deviceTokenId === revokeTokenTarget.id,
-              ),
-            )
-          } catch (error) {
-            setErr(error instanceof Error ? error.message : String(error))
-            throw error
-          }
+          if (!revokeToken) return
+          await api(`/api/tokens/${encodeURIComponent(revokeToken.id)}`, { method: 'DELETE' })
+          await afterRevoke(usesToken(revokeToken))
         }}
         onOpenChange={(open) => {
-          if (!open) setRevokeTokenTarget(null)
+          if (!open) setRevokeToken(null)
         }}
       />
       <ConfirmDialog
-        open={revokeSessionTarget !== null}
-        title={`Revoke ${revokeSessionTarget?.deviceLabel ?? ''} browser session?`}
+        open={revokeSession !== null}
+        title={`Revoke the ${revokeSession?.tokenLabel ?? ''} browser session?`}
         description={
           <p>
-            This ends browser session <code className="font-mono">{revokeSessionTarget?.id}</code>
-            {revokeSessionTarget?.current
-              ? ' and signs this browser out immediately.'
-              : '. The device token remains active for future logins.'}
+            This ends browser session <code className="font-mono">{revokeSession?.id}</code>
+            {revokeSession?.current
+              ? ' and signs this browser out.'
+              : '. The token stays active for later logins.'}
           </p>
         }
-        confirmLabel={revokeSessionTarget?.current ? 'sign out this browser' : 'revoke session'}
+        confirmLabel={revokeSession?.current ? 'Sign out this browser' : 'Revoke session'}
         onConfirm={async () => {
-          if (!revokeSessionTarget) return
-          try {
-            await revokeSession(revokeSessionTarget.id, revokeSessionTarget.current)
-          } catch (error) {
-            setErr(error instanceof Error ? error.message : String(error))
-            throw error
-          }
+          if (!revokeSession) return
+          await api(`/api/sessions/${encodeURIComponent(revokeSession.id)}`, { method: 'DELETE' })
+          await afterRevoke(revokeSession.current)
         }}
         onOpenChange={(open) => {
-          if (!open) setRevokeSessionTarget(null)
+          if (!open) setRevokeSession(null)
         }}
       />
     </ConfigPage>
+  )
+}
+
+function MintTokenForm({ onMinted }: { onMinted: () => Promise<void> }) {
+  const [label, setLabel] = useState('')
+  const [expiresDays, setExpiresDays] = useState('')
+  const [created, setCreated] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function mint(event: React.FormEvent) {
+    event.preventDefault()
+    setError(null)
+    setBusy(true)
+    try {
+      const { token } = await api<CreateTokenResponse>('/api/tokens', {
+        // An empty expiry means the token never expires.
+        body: {
+          label,
+          ...(expiresDays ? { expiresInDays: Number(expiresDays) } : {}),
+        } satisfies CreateTokenRequest,
+      })
+      setCreated(token)
+      setLabel('')
+      setExpiresDays('')
+      await onMinted()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SectionCard title="Mint a new token">
+      <form
+        onSubmit={(event) => void mint(event)}
+        className="flex flex-col items-stretch gap-x-3 sm:flex-row sm:items-end"
+      >
+        <label className="sm:w-72">
+          Label
+          <input
+            type="text"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            required
+            placeholder="e.g. laptop-tailscale"
+            autoComplete="off"
+          />
+        </label>
+        <label className="sm:w-40">
+          Expires in days
+          <input
+            type="number"
+            min={1}
+            value={expiresDays}
+            onChange={(event) => setExpiresDays(event.target.value)}
+            placeholder="never"
+          />
+        </label>
+        <Button variant="primary" type="submit" disabled={busy} className="mb-[0.6rem]">
+          {busy ? 'Creating…' : 'Create'}
+        </Button>
+      </form>
+      {created && (
+        <div className="rounded-md border border-warning/25 bg-warning/10 p-3">
+          <p className="mb-1 text-xs text-warning">
+            Copy this token now; it cannot be shown again.
+          </p>
+          <pre className="whitespace-pre-wrap break-all font-mono text-xs">{created}</pre>
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
+    </SectionCard>
   )
 }

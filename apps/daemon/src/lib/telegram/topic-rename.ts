@@ -1,36 +1,36 @@
 // Propagate topic-name changes to live Telegram forum topics.
 //
-// Called when a team's `telegram_topic_name_format` changes: every bound,
-// non-locked topic in the team is re-rendered via editForumTopic so existing
+// Called when a team's `telegram_topic_name_format` changes: every bound
+// topic in the team is re-rendered via editForumTopic so existing
 // topics pick up the new template immediately (not just newly-created ones).
 //
 // Best-effort and self-contained:
-//   - No-op when the bot isn't running (getTelegramBotApi() === null).
+//   - No-op when the bot isn't running (telegramLive() === null).
 //   - Goes through the per-supergroup outbound queue so renames share the same
 //     rate-limit budget as sends + createForumTopic.
-//   - Per-topic failures are logged, never thrown — one gone/locked topic must
+//   - Per-topic failures are logged, never thrown — one gone topic must
 //     not abort the rest of the batch.
 
 import type { BazilionDb } from '../../core/db/client.ts'
 import { profileRepo, teamRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import * as agentRepo from '../../core/repos/agents.ts'
-import { getTelegramBotApi } from './bot.ts'
+import { telegramLive } from './live.ts'
 import { topicNameFor } from './naming.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
 import { emojiForAgent, resolveStickerId } from './profile-emojis.ts'
 
-export async function syncGroupTopicNames(
+export async function syncTeamTopicNames(
   db: BazilionDb,
   paths: Paths,
   teamId: string,
 ): Promise<void> {
-  const live = getTelegramBotApi()
+  const live = telegramLive()
   if (!live) return
   const team = teamRepo.get(db, teamId, paths)
   if (!team) return
 
-  const topics = agentRepo.listBoundUnlockedTopicsInGroup(db, teamId)
+  const topics = agentRepo.listBoundTopicsInTeam(db, teamId)
   for (const t of topics) {
     const name = topicNameFor({ name: t.name }, team)
     await enqueueOutbound(live.chatId, () =>
@@ -50,7 +50,7 @@ export async function syncGroupTopicNames(
  * bound topic. Passes `icon_custom_emoji_id: ''` to clear back to color-only.
  */
 export async function syncAgentTopicIcon(db: BazilionDb, agentId: string): Promise<void> {
-  const live = getTelegramBotApi()
+  const live = telegramLive()
   if (!live) return
   const topicId = agentRepo.getTelegramTopicId(db, agentId)
   if (topicId === null) return

@@ -13,3 +13,14 @@ export function turnFrameFailure(frame: ChatFrame): string | null {
   if (frame.kind === 'event' && frame.event.type === 'error') return frame.event.error
   return null
 }
+
+/**
+ * A turn's failure as the owner reads it later (trigger history, the follow-up queue, a learning
+ * review): the real reason on one line, at most 500 characters. Frames are already redacted for
+ * the turn's credentials.
+ */
+export function turnFailureReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message === 'cancelled') return 'Agent turn cancelled.'
+  return message.replace(/\s+/g, ' ').trim().slice(0, 500) || 'Agent turn failed.'
+}

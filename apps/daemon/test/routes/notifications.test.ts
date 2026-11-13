@@ -43,69 +43,58 @@ async function fixture() {
     auth: { authorization: `Bearer ${ctx.authToken}`, 'content-type': 'application/json' },
   }
 }
-test('notification management requires authentication and returns default-off no-store state', async () => {
+test('notification settings need authentication and start switched off', async () => {
   const { app, auth } = await fixture()
-  for (const path of ['/api/notifications', '/api/notifications/receipts'])
-    expect((await app.request(path)).status).toBe(401)
+  expect((await app.request('/api/notifications')).status).toBe(401)
   const response = await app.request('/api/notifications', { headers: auth })
   expect(response.status).toBe(200)
   expect(response.headers.get('cache-control')).toBe('no-store')
-  expect(await response.json()).toMatchObject({
-    settings: { enabled: false, restorePaused: false },
-    readiness: { ready: false },
-  })
-  expect(
-    (await app.request('/api/notifications/receipts?limit=101', { headers: auth })).status,
-  ).toBe(400)
-})
-test('invalid settings and unavailable destinations do not enable notifications or leak errors', async () => {
-  const { app, auth } = await fixture()
-  const input = {
-    expectedRevision: 0,
-    enabled: true,
-    kinds: ['review_failure'],
+  expect(await response.json()).toEqual({
+    enabled: false,
+    kinds: [
+      'lesson_proposal',
+      'review_failure',
+      'trigger_failure',
+      'agent_loop_break',
+      'queue_interrupted',
+    ],
     timezone: 'UTC',
     quietHours: null,
-    destinationId: 'a'.repeat(64),
-  }
-  const response = await app.request('/api/notifications', {
-    method: 'PUT',
-    headers: auth,
-    body: JSON.stringify(input),
+    telegramReady: false,
   })
-  expect(response.status).toBe(409)
-  expect(await response.json()).toEqual({
-    error: 'notification_destination_unavailable',
-    code: 'notification_destination_unavailable',
-  })
-  expect(
-    (
-      await app.request('/api/notifications', {
-        method: 'PUT',
-        headers: auth,
-        body: JSON.stringify({ ...input, unexpected: '/home/private' }),
-      })
-    ).status,
-  ).toBe(400)
-  expect(
-    (
-      await app.request('/api/notifications/preview', {
-        method: 'POST',
-        headers: auth,
-        body: JSON.stringify({ kinds: ['review_failure'] }),
-      })
-    ).status,
-  ).toBe(409)
-  const saved = await app.request('/api/notifications', {
-    method: 'PUT',
-    headers: auth,
-    body: JSON.stringify({ ...input, enabled: false }),
-  })
-  expect(saved.status).toBe(200)
-  expect(await saved.json()).toMatchObject({ enabled: false, revision: 1 })
 })
-test('mutation body bounds and explicit retry acknowledgement are enforced before delivery', async () => {
+
+test('settings save and read back; invalid ones are refused', async () => {
   const { app, auth } = await fixture()
+  const put = (body: unknown) =>
+    app.request('/api/notifications', { method: 'PUT', headers: auth, body: JSON.stringify(body) })
+  const settings = {
+    enabled: true,
+    kinds: ['trigger_failure', 'review_failure'],
+    timezone: 'Europe/Warsaw',
+    quietHours: { start: '22:00', end: '07:00' },
+  }
+  const saved = await put(settings)
+  expect(saved.status).toBe(200)
+  // Kinds come back in their canonical order.
+  expect(await saved.json()).toMatchObject({
+    ...settings,
+    kinds: ['review_failure', 'trigger_failure'],
+  })
+  for (const invalid of [
+    { ...settings, timezone: 'Mars/Olympus' },
+    { ...settings, kinds: [] },
+    { ...settings, kinds: ['not_a_kind'] },
+    { ...settings, quietHours: { start: '22:00', end: '22:00' } },
+    { ...settings, enabled: 'yes' },
+  ]) {
+    const response = await put(invalid)
+    expect(response.status).toBe(400)
+    expect(await response.json()).toHaveProperty('error')
+  }
+  expect(await (await app.request('/api/notifications', { headers: auth })).json()).toMatchObject({
+    timezone: 'Europe/Warsaw',
+  })
   expect(
     (
       await app.request('/api/notifications', {
@@ -115,13 +104,4 @@ test('mutation body bounds and explicit retry acknowledgement are enforced befor
       })
     ).status,
   ).toBe(413)
-  expect(
-    (
-      await app.request('/api/notifications/receipts/missing/retry', {
-        method: 'POST',
-        headers: auth,
-        body: '{}',
-      })
-    ).status,
-  ).toBe(400)
 })

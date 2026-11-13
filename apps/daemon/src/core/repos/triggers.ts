@@ -77,12 +77,13 @@ export function listForAgent(db: BazilionDb, agentId: string): AgentTrigger[] {
     .map(toTrigger)
 }
 
+/** Enabled triggers of non-archived Agents: the ones the scheduler may fire. */
 export function listEnabled(db: BazilionDb): AgentTrigger[] {
   return db.raw
     .query<RawTrigger, []>(
       `SELECT t.* FROM agent_triggers t
          JOIN agents a ON a.id = t.agent_id
-         WHERE t.enabled = 1
+         WHERE t.enabled = 1 AND a.status != 'archived'
          ORDER BY t.created_at ASC`,
     )
     .all()

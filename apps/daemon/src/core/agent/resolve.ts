@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { DomainError } from '../errors.ts'
 import type { Paths } from '../paths.ts'
 import { loadIdentityFromFile } from '../profile/identity.ts'
 import * as agentLessonProposalRepo from '../repos/agentLessonProposals.ts'
@@ -11,7 +12,7 @@ import * as teamRepo from '../repos/teams.ts'
 export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): ResolvedAgent {
   // `agentRepo.get` accepts either a full UUID or an unambiguous prefix.
   const agent = agentRepo.get(db, agentId)
-  if (!agent) throw new Error(`agent not found: ${agentId}`)
+  if (!agent) throw new DomainError(404, `agent not found: ${agentId}`)
 
   // Parse the agent's OWN IDENTITY.md (not the profile's) so the detail page
   // can show avatar/creature. `null` when the file is missing or still holds
@@ -34,7 +35,7 @@ export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): Res
     model: agent.modelOverride ?? profile.defaultModel,
     reasoningLevel: agent.reasoningLevel,
     team,
-    skills: agentRepo.listAttachedSkills(db, agentId),
+    skills: agentRepo.listAttachedSkills(db, agent.id),
     privateLessons: agentLessonProposalRepo
       .listForAgent(db, agent.id, { status: 'approved', limit: 100 })
       .filter((proposal) => proposal.scope === 'private')

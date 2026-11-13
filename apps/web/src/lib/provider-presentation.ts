@@ -14,9 +14,7 @@ const LOCAL = new Set(['ollama', 'lmstudio', 'llamacpp'])
 
 export function providerHasConfiguration(provider: ProviderConfigEntry): boolean {
   return (
-    provider.enabled ||
-    provider.curated.length > 0 ||
-    provider.fields.some((field) => field.set)
+    provider.enabled || provider.curated.length > 0 || provider.fields.some((field) => field.set)
   )
 }
 
@@ -27,17 +25,13 @@ export function providerMatches(provider: ProviderConfigEntry, query: string): b
     provider.id,
     provider.displayName,
     provider.hint ?? '',
-    provider.envHint,
     ...provider.fields.flatMap((field) => [field.label, field.envVar]),
     ...provider.curated,
     ...provider.catalog,
   ].some((value) => value.toLocaleLowerCase().includes(needle))
 }
 
-export function groupProviders(
-  providers: ProviderConfigEntry[],
-  query = '',
-): ProviderSection[] {
+export function groupProviders(providers: ProviderConfigEntry[], query = ''): ProviderSection[] {
   const visible = providers.filter((provider) => providerMatches(provider, query))
   const configured = visible.filter(providerHasConfiguration)
   const configuredIds = new Set(configured.map((provider) => provider.id))
@@ -77,7 +71,7 @@ export function groupProviders(
 
 export function providerReadiness(provider: ProviderConfigEntry): {
   label: string
-  tone: 'neutral' | 'warning' | 'success'
+  tone: 'neutral' | 'warning'
 } {
   if (!provider.enabled) {
     return providerHasConfiguration(provider)
@@ -85,5 +79,6 @@ export function providerReadiness(provider: ProviderConfigEntry): {
       : { label: 'Not configured', tone: 'neutral' }
   }
   if (provider.curated.length === 0) return { label: 'Needs a model', tone: 'warning' }
-  return { label: 'Configured, unverified', tone: 'warning' }
+  // Nothing here checks the credentials; the card's Test button proves a working model.
+  return { label: 'Enabled', tone: 'neutral' }
 }

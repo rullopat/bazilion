@@ -6,7 +6,6 @@ const IDENTITY_PLACEHOLDER_VALUES = new Set([
   'ai? robot? familiar? ghost in the machine? something weirder?',
   'how do you come across? sharp? warm? chaotic? calm?',
   'your signature - pick one that feels right',
-  'workspace-relative path, http(s) url, or data uri',
   'an http(s) url or data uri - optional',
 ])
 

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
+import { type MockLlm, reply, startLmStudioMock, toolCall } from './fixtures/mock-lmstudio.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
@@ -8,10 +9,15 @@ import { startTestServer, type TestServer } from './server-fixture.ts'
 // the assertions run. We disable the scheduler for this fixture; the
 // auto-delivery flow is covered end-to-end by `inbox-autodeliver.test.ts`.
 let server: TestServer
+let mock: MockLlm
 beforeAll(async () => {
-  server = await startTestServer({ BAZILION_SCHEDULER: 'off' })
+  mock = await startLmStudioMock()
+  server = await startTestServer({ BAZILION_SCHEDULER: 'off', LMSTUDIO_URL: mock.url })
 })
-afterAll(() => server.stop())
+afterAll(async () => {
+  await server.stop()
+  await mock.stop()
+})
 beforeEach(() => server.reset())
 
 async function spawnTwoAgents(): Promise<{ a: string; b: string }> {
@@ -172,4 +178,33 @@ test('inbox loop-breaks shows daemon-stopped causal chains', async () => {
   expect(result.stdout).toContain('hop:1/0')
   expect(result.stdout).toContain('causal_hop_limit_exceeded')
   expect(result.stdout).not.toContain('payload must not appear')
+})
+
+test('send_message from a chat turn lands unread in the peer inbox without starting its turn', async () => {
+  await server.cli(['profile', 'create', 'talker', '--model', 'lmstudio:test-model'])
+  const sender = extractAgentId(
+    (await server.cli(['agent', 'spawn', '--profile', 'talker'])).stdout,
+  )
+  const peer = extractAgentId((await server.cli(['agent', 'spawn', '--profile', 'talker'])).stdout)
+  const calls = mock.callCount()
+  mock.push([
+    toolCall('send_message', { to: peer, text: 'Please review the draft.' }),
+    reply('Sent.'),
+  ])
+
+  const chat = await server.cli([
+    'agent',
+    'chat',
+    sender,
+    '--message',
+    'Ask the peer for a review.',
+  ])
+  expect(chat.exitCode, chat.stderr).toBe(0)
+  expect(chat.stdout).toContain('Sent.')
+
+  const inbox = await server.cli(['inbox', 'list', peer, '--unread'])
+  expect(inbox.stdout).toContain('Please review the draft.')
+  expect(inbox.stdout).toContain(sender.slice(0, 8))
+  // Both model calls were the sender's: with the scheduler off, delivery starts no peer turn.
+  expect(mock.callCount() - calls).toBe(2)
 })

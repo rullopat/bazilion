@@ -1,7 +1,9 @@
 import type { ListAgentLoopBreaksResponse, ListInboxResponse, Message } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
-import { columnize } from '../columnize.ts'
+import { agentArg, apiPath, positional, printRows } from '../command-helpers.ts'
+
+const messageArg = positional('Message id')
 
 function decodeText(payload: string): string {
   try {
@@ -22,31 +24,22 @@ function messageRow(m: Message): string[] {
 const listCmd = defineCommand({
   meta: { name: 'list', description: 'List messages in an agent inbox' },
   args: {
-    agent: { type: 'positional', required: true, description: 'Recipient agent id' },
+    agent: positional('Recipient agent id or prefix'),
     unread: { type: 'boolean', description: 'Only show unread messages' },
   },
   async run({ args }) {
-    const client = createClient()
-    const qs = args.unread ? '?unread=1' : ''
-    const { messages } = await client.get<ListInboxResponse>(
-      `/api/agents/${args.agent}/messages${qs}`,
+    const { messages } = await createClient().get<ListInboxResponse>(
+      `${apiPath('agents', args.agent, 'messages')}${args.unread ? '?unread=1' : ''}`,
     )
-    if (messages.length === 0) {
-      console.log(args.unread ? '(no unread messages)' : '(inbox empty)')
-      return
-    }
-    for (const line of columnize(messages.map(messageRow))) console.log(line)
+    printRows(messages.map(messageRow), args.unread ? '(no unread messages)' : '(inbox empty)')
   },
 })
 
 const showCmd = defineCommand({
   meta: { name: 'show', description: 'Show a single message in full' },
-  args: {
-    id: { type: 'positional', required: true, description: 'Message id' },
-  },
+  args: { id: messageArg },
   async run({ args }) {
-    const client = createClient()
-    const m = await client.get<Message>(`/api/messages/${args.id}`)
+    const m = await createClient().get<Message>(apiPath('messages', args.id))
     const when = new Date(m.createdAt).toISOString()
     const read = m.readAt ? new Date(m.readAt).toISOString() : '(unread)'
     console.log(`id:        ${m.id}`)
@@ -62,12 +55,9 @@ const showCmd = defineCommand({
 
 const readCmd = defineCommand({
   meta: { name: 'read', description: 'Mark a message as read' },
-  args: {
-    id: { type: 'positional', required: true, description: 'Message id' },
-  },
+  args: { id: messageArg },
   async run({ args }) {
-    const client = createClient()
-    await client.patch<Message>(`/api/messages/${args.id}`, { read: true })
+    await createClient().patch<Message>(apiPath('messages', args.id), { read: true })
     console.log(`marked read: ${args.id}`)
   },
 })
@@ -75,20 +65,15 @@ const readCmd = defineCommand({
 const loopBreaksCmd = defineCommand({
   meta: { name: 'loop-breaks', description: 'List stopped agent-message chains' },
   args: {
-    agent: { type: 'positional', required: true, description: 'Agent id' },
+    agent: agentArg,
     limit: { type: 'string', description: 'Maximum events to show (default 25)' },
   },
   async run({ args }) {
-    const client = createClient()
     const limit = args.limit ? `?limit=${encodeURIComponent(args.limit)}` : ''
-    const { events } = await client.get<ListAgentLoopBreaksResponse>(
-      `/api/agents/${args.agent}/loop-breaks${limit}`,
+    const { events } = await createClient().get<ListAgentLoopBreaksResponse>(
+      `${apiPath('agents', args.agent, 'loop-breaks')}${limit}`,
     )
-    if (events.length === 0) {
-      console.log('(no agent-message chains stopped)')
-      return
-    }
-    for (const line of columnize(
+    printRows(
       events.map((event) => [
         new Date(event.createdAt).toISOString(),
         `chain:${event.causalChainId.slice(0, 8)}`,
@@ -96,8 +81,8 @@ const loopBreaksCmd = defineCommand({
         `hop:${event.attemptedHop}/${event.maxHops}`,
         event.reason,
       ]),
-    ))
-      console.log(line)
+      '(no agent-message chains stopped)',
+    )
   },
 })
 

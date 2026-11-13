@@ -2,28 +2,25 @@ import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
-export interface CliPaths {
+interface CliPaths {
   home: string
   authFile: string
 }
 
 export function resolveCliPaths(home?: string): CliPaths {
-  // Canonicalize exactly like the daemon's resolvePaths (apps/daemon/src/core/paths.ts):
-  // the two processes hand each other absolute paths and validate them against
-  // their canonical form, so they must agree on one spelling of the home.
-  const root = canonicalHome(
-    resolve(home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion')),
-  )
+  // The daemon's resolvePaths (apps/daemon/src/core/paths.ts) spells the home the same way.
+  const root = canonicalPath(requestedHome(home))
   return { home: root, authFile: join(root, 'auth.json') }
 }
 
-/**
- * Resolve the home root to its canonical realpath (following symlinks in every
- * existing segment; a not-yet-existing tail is kept). Mirrors the daemon's
- * canonicalHome — keep the two in sync.
- */
-function canonicalHome(root: string): string {
-  let resolved = root
+/** The home as given (`--home`, BAZILION_HOME or ~/.bazilion), before symlinks are resolved. */
+export function requestedHome(home?: string): string {
+  return resolve(home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion'))
+}
+
+/** Absolute path with symlinks resolved in every existing segment; a missing tail is kept. */
+export function canonicalPath(path: string): string {
+  let resolved = resolve(path)
   const unresolvedTail: string[] = []
   while (true) {
     try {

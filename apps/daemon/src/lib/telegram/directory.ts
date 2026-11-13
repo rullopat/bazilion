@@ -1,30 +1,18 @@
-// Directory message — the pinned message at the top of the ⚙ bazilion
-// service chat that lists every agent and (when bound) deep-links to their
-// forum topic. Updated lazily after every agent CRUD event via
-// `notifyDirectoryDirty()`, which coalesces bursts of changes into a single
-// `editMessageText` call on the next tick.
-//
-// Recreate-on-delete: if a human removes the directory message from
-// Telegram, the next refresh sees a "message to edit not found" error from
-// editMessageText, falls back to sendMessage + pin, and persists the new
-// message id to `TELEGRAM_DIRECTORY_MESSAGE_ID`.
+// Directory message: the pinned message in the ⚙ bazilion service topic that lists every agent
+// and links its forum topic. `notifyDirectoryDirty()` coalesces bursts of agent changes into one
+// edit on the next tick. If someone deletes the message, the next refresh posts and pins a new
+// one.
 
 import type { InlineKeyboardMarkup } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo, openConfig, teamRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
-import { getTelegramBotState } from './bot.ts'
+import { DIRECTORY_MESSAGE_KEY, readConfigNumber, readServiceTopicId } from './config.ts'
 import { htmlEscape } from './html.ts'
+import { telegramLive } from './live.ts'
 import { topicDeepLink } from './naming.ts'
 
-const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
-const DIRECTORY_MESSAGE_KEY = 'TELEGRAM_DIRECTORY_MESSAGE_ID'
-
-/**
- * Minimal Bot API surface the directory needs. Mirrors the activation
- * pattern — production code passes grammY's `bot.api`, tests substitute a
- * recording mock.
- */
+/** The Bot API calls the directory makes; tests pass a recording mock. */
 export interface DirectoryApi {
   sendMessage(
     chatId: number,
@@ -56,16 +44,28 @@ export interface DirectoryDeps {
   chatId: number
 }
 
-/**
- * Build the directory message body. Team agents by their bazilion team;
- * within each team, show bound agents with a clickable deep-link and
- * unbound agents with an `(unbound)` marker. Empty installs show a
- * welcome / "spawn one to get started" hint.
- */
-export function buildDirectoryBody(db: BazilionDb, paths: Paths, chatId: number): string {
-  const teams = teamRepo.list(db, paths)
+/** Agents grouped by team, each with a link to its topic or an `(unbound)` marker. */
+export function agentListLines(db: BazilionDb, paths: Paths, chatId: number): string[] {
   const agents = agentRepo.list(db) // archived excluded by default
-  if (agents.length === 0) {
+  const lines: string[] = []
+  for (const team of teamRepo.list(db, paths)) {
+    const members = agents.filter((agent) => agent.teamId === team.id)
+    if (members.length === 0) continue
+    lines.push('', `<b>${htmlEscape(team.id)}</b>`)
+    for (const agent of members) {
+      const label = `  • <code>${htmlEscape(agent.name)}</code>`
+      lines.push(
+        agent.telegramTopicId === null
+          ? `${label} <i>(unbound)</i>`
+          : `${label} → <a href="${topicDeepLink(chatId, agent.telegramTopicId)}">open</a>`,
+      )
+    }
+  }
+  return lines
+}
+
+export function buildDirectoryBody(db: BazilionDb, paths: Paths, chatId: number): string {
+  if (agentRepo.list(db).length === 0) {
     return [
       '👋 <b>bazilion is online</b>',
       '',
@@ -73,59 +73,25 @@ export function buildDirectoryBody(db: BazilionDb, paths: Paths, chatId: number)
       'See /help for the command list.',
     ].join('\n')
   }
-
-  const byGroup = new Map<string, typeof agents>()
-  for (const a of agents) {
-    const bucket = byGroup.get(a.teamId) ?? []
-    bucket.push(a)
-    byGroup.set(a.teamId, bucket)
-  }
-
-  const lines: string[] = ['🛟 <b>Available agents</b>', '']
-  for (const g of teams) {
-    const members = byGroup.get(g.id)
-    if (!members || members.length === 0) continue
-    lines.push(`<b>${htmlEscape(g.id)}</b>`)
-    for (const a of members) {
-      const topicId = agentRepo.getTelegramTopicId(db, a.id)
-      const label = `  • <code>${htmlEscape(a.name)}</code>`
-      if (topicId !== null) {
-        const url = topicDeepLink(chatId, topicId)
-        lines.push(`${label} → <a href="${url}">open</a>`)
-      } else {
-        lines.push(`${label} <i>(unbound)</i>`)
-      }
-    }
-    lines.push('')
-  }
-  // Drop trailing blank line.
-  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
-  lines.push('', 'Run /help for commands.')
-  return lines.join('\n')
+  return [
+    '🛟 <b>Available agents</b>',
+    ...agentListLines(db, paths, chatId),
+    '',
+    'Run /help for commands.',
+  ].join('\n')
 }
 
 /**
- * Push the directory body into the pinned message. Tries editMessageText
- * first; on a "message to edit not found" failure (human deleted it),
- * recreates by sendMessage + pin and updates the persisted id.
- *
- * No-op when the bot isn't running, when creds aren't configured, or when
- * the service chat hasn't been activated yet — callers don't need to gate
- * around those cases.
+ * Bring the pinned directory up to date: edit it in place, or post and pin a new one when it is
+ * gone. No-op until activation has created the service topic.
  */
 export async function refreshDirectoryMessage(deps: DirectoryDeps): Promise<void> {
-  const config = openConfig(deps.db)
-  const serviceTopicRaw = config.get(SERVICE_TOPIC_KEY) ?? ''
-  if (!serviceTopicRaw) return
-  const serviceTopicId = Number(serviceTopicRaw)
-  if (!Number.isFinite(serviceTopicId)) return
-
+  const serviceTopicId = readServiceTopicId(deps.db)
+  if (serviceTopicId === null) return
   const body = buildDirectoryBody(deps.db, deps.paths, deps.chatId)
+  const messageId = readConfigNumber(deps.db, DIRECTORY_MESSAGE_KEY)
 
-  const messageIdRaw = config.get(DIRECTORY_MESSAGE_KEY) ?? ''
-  const messageId = messageIdRaw ? Number(messageIdRaw) : null
-
-  if (messageId !== null && Number.isFinite(messageId)) {
+  if (messageId !== null) {
     try {
       await deps.api.editMessageText(deps.chatId, messageId, body, {
         parse_mode: 'HTML',
@@ -133,15 +99,9 @@ export async function refreshDirectoryMessage(deps: DirectoryDeps): Promise<void
       })
       return
     } catch (e) {
-      if (isNotModifiedError(e)) {
-        // Telegram rejects edits when the new text is identical to the old —
-        // benign for us, just means the directory was already current.
-        return
-      }
-      if (!isMessageGoneError(e)) {
-        throw e
-      }
-      // Fall through to recreate.
+      // An identical body is refused as "not modified": the directory is already current.
+      if (isNotModifiedError(e)) return
+      if (!isMessageGoneError(e)) throw e
       console.warn(
         'telegram directory: pinned message gone, recreating —',
         e instanceof Error ? e.message : String(e),
@@ -149,18 +109,16 @@ export async function refreshDirectoryMessage(deps: DirectoryDeps): Promise<void
     }
   }
 
-  // Either no message id stored or the prior edit said the message is gone:
-  // post a new directory + pin + persist its id.
   const sent = await deps.api.sendMessage(deps.chatId, body, {
     message_thread_id: serviceTopicId,
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   })
-  config.set(DIRECTORY_MESSAGE_KEY, String(sent.message_id))
+  openConfig(deps.db).set(DIRECTORY_MESSAGE_KEY, String(sent.message_id))
   try {
     await deps.api.pinChatMessage(deps.chatId, sent.message_id, { disable_notification: true })
   } catch (e) {
-    // Pin is best-effort — the directory still works without it.
+    // Pinning is best effort; the directory works without it.
     console.warn(
       'telegram directory: pin failed (continuing):',
       e instanceof Error ? e.message : String(e),
@@ -183,82 +141,29 @@ function isNotModifiedError(e: unknown): boolean {
   return e.message.toLowerCase().includes('message is not modified')
 }
 
-// ─── notify ────────────────────────────────────────────────────────────
-//
-// `notifyDirectoryDirty()` is the public coalescing entry point. Multiple
-// CRUD events happening in close succession (e.g. /spawn → ensureAgentTopic
-// → setTelegramTopicId — three consecutive mutations on a single user
-// action) collapse into one refresh on the next tick. The refresh reads
-// the live bot state to find the chatId + api; if the bot isn't running,
-// the notify is a silent no-op.
-
-let _refreshScheduled = false
+let refreshScheduled = false
 
 /**
- * Mark the directory dirty. Schedules a single async refresh on the next
- * tick if one isn't already pending. Safe to call from anywhere — repo
- * mutation sites, route handlers, bot internals. The function never
- * throws; refresh errors are logged but never bubble to callers.
+ * Mark the directory dirty. Agent changes call this from anywhere; one refresh runs on the next
+ * tick against the live bot, and nothing happens while the bot is stopped. Never throws.
  */
 export function notifyDirectoryDirty(): void {
-  if (_refreshScheduled) return
-  _refreshScheduled = true
+  if (refreshScheduled) return
+  refreshScheduled = true
   setImmediate(() => {
-    _refreshScheduled = false
-    void runScheduledRefresh()
+    refreshScheduled = false
+    const live = telegramLive()
+    if (!live) return
+    refreshDirectoryMessage({ ...live, api: live.api as unknown as DirectoryApi }).catch((e) =>
+      console.warn(
+        'telegram directory: scheduled refresh failed —',
+        e instanceof Error ? e.message : String(e),
+      ),
+    )
   })
 }
 
-/**
- * Force an immediate refresh — used by tests and by callers (like
- * activation) that need to await completion before continuing. Most
- * production code should use `notifyDirectoryDirty()` instead.
- */
-export async function refreshDirectoryNow(deps: DirectoryDeps): Promise<void> {
-  await refreshDirectoryMessage(deps)
-}
-
-/**
- * Internal: pulled the bot's runtime state and runs a refresh against it.
- * Catches everything — a logged warning is better than crashing the
- * caller for what's ultimately a UI-state update.
- */
-async function runScheduledRefresh(): Promise<void> {
-  try {
-    const deps = resolveLiveDeps()
-    if (!deps) return
-    await refreshDirectoryMessage(deps)
-  } catch (e) {
-    console.warn(
-      'telegram directory: scheduled refresh failed —',
-      e instanceof Error ? e.message : String(e),
-    )
-  }
-}
-
-// Lazy import to break the cycle: bot.ts imports directory.ts (via
-// activation), and directory.ts wants to peek at bot.ts's live handle.
-// We resolve the deps at call time, not at module load.
-type LiveDepsResolver = () => DirectoryDeps | null
-let _liveDepsResolver: LiveDepsResolver | null = null
-
-/**
- * Wired by bot.ts at start time — gives the directory module access to
- * the live bot's chatId / api / db / paths without a static import cycle.
- */
-export function installLiveDepsResolver(resolver: LiveDepsResolver): void {
-  _liveDepsResolver = resolver
-}
-
-function resolveLiveDeps(): DirectoryDeps | null {
-  if (!_liveDepsResolver) return null
-  const state = getTelegramBotState()
-  if (!state || !state.running) return null
-  return _liveDepsResolver()
-}
-
-/** Test-only — clear the scheduled-refresh flag + the live resolver. */
+/** Test-only. */
 export function _resetDirectoryStateForTest(): void {
-  _refreshScheduled = false
-  _liveDepsResolver = null
+  refreshScheduled = false
 }

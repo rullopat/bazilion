@@ -8,7 +8,7 @@
 import type { AgentIdentityFile } from '@bazilion/api-types'
 
 /** Whether an avatar string is something the browser can render directly. */
-export function isRenderableAvatar(avatar: string | undefined): avatar is string {
+function isRenderableAvatar(avatar: string | undefined): avatar is string {
   if (!avatar) return false
   return /^https?:\/\//i.test(avatar) || /^data:image\//i.test(avatar)
 }

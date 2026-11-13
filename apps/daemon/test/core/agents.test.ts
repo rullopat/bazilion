@@ -9,7 +9,6 @@ import { unarchiveAgent } from '../../src/core/agent/unarchive.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
-import * as teamPolicyRepo from '../../src/core/repos/teamPolicies.ts'
 import { registerTeam } from '../../src/core/team/register.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
@@ -31,10 +30,6 @@ function spawn(input: Partial<Parameters<typeof spawnAgent>[2]> & { profileId?: 
   return spawnAgent(env.db, env.paths, {
     profileId: input.profileId ?? 'base',
     teamId: input.teamId ?? env.teamId,
-    teamExpectedRevision:
-      input.teamExpectedRevision ??
-      teamPolicyRepo.get(env.db, input.teamId ?? env.teamId)?.revision,
-    placement: input.placement ?? 'profile_defaults',
     ...input,
   })
 }
@@ -50,8 +45,8 @@ test('spawnAgent creates dir, copies templates, inserts row, attaches default sk
   expect(existsSync(join(agent.dir, 'SOUL.md'))).toBe(true)
   expect(existsSync(join(agent.dir, 'IDENTITY.md'))).toBe(true)
   expect(existsSync(join(agent.dir, 'BOOTSTRAP.md'))).toBe(true)
-  expect(existsSync(join(agent.dir, 'HEARTBEAT.md'))).toBe(false)
-  expect(existsSync(join(agent.dir, 'agent.json'))).toBe(true)
+  // Settings live in the DB only; no write-only agent.json mirror.
+  expect(existsSync(join(agent.dir, 'agent.json'))).toBe(false)
   // Memory now lives at the team level (`teams/<slug>/memory/`), shared
   // by all member agents. The agent's private home only carries identity
   // files + sessions/.
@@ -59,16 +54,6 @@ test('spawnAgent creates dir, copies templates, inserts row, attaches default sk
   expect(existsSync(join(agent.dir, 'memory'))).toBe(false)
 
   expect(agentRepo.listAttachedSkills(env.db, agent.id)).toEqual(['skill-a'])
-})
-
-test('spawnAgent does not copy a legacy profile HEARTBEAT.md', () => {
-  const profile = seedProfile()
-  writeFileSync(join(profile.dir, 'HEARTBEAT.md'), '# legacy scheduled instructions\n')
-
-  const agent = spawn({ name: 'no-heartbeat' })
-
-  expect(existsSync(join(profile.dir, 'HEARTBEAT.md'))).toBe(true)
-  expect(existsSync(join(agent.dir, 'HEARTBEAT.md'))).toBe(false)
 })
 
 test('a fresh spawn from a default-template profile has the default-on files', () => {
@@ -158,13 +143,13 @@ test('spawnAgent rejects an unknown team', () => {
   expect(() => spawn({ teamId: 'no-such-team' })).toThrow(/team "no-such-team" does not exist/)
 })
 
-test('agentRepo.setGroup moves an agent to a different team', () => {
+test('agentRepo.setTeam moves an agent to a different team', () => {
   seedProfile()
   const g2 = registerTeam(env.db, { id: 'g2' }, env.paths)
   const agent = spawn()
   expect(agent.teamId).toBe(env.teamId)
 
-  agentRepo.setGroup(env.db, agent.id, g2.id)
+  agentRepo.setTeam(env.db, agent.id, g2.id)
   expect(agentRepo.get(env.db, agent.id)?.teamId).toBe('g2')
 })
 
@@ -226,7 +211,7 @@ test('deleteAgent removes the DB row and the on-disk directory', () => {
   const agent = spawn()
   expect(existsSync(agent.dir)).toBe(true)
 
-  deleteAgent(env.db, agent.id, teamPolicyRepo.get(env.db, env.teamId)?.revision ?? 0)
+  deleteAgent(env.db, agent.id)
   expect(agentRepo.get(env.db, agent.id)).toBeNull()
   expect(existsSync(agent.dir)).toBe(false)
 })
@@ -248,7 +233,7 @@ test('deleteAgent cascades to attachments, messages, runs', () => {
   expect(agentRepo.listAttachedSkills(env.db, a.id).length).toBeGreaterThan(0)
   expect(messageRepo.listInbox(env.db, a.id).length).toBe(1)
 
-  deleteAgent(env.db, a.id, teamPolicyRepo.get(env.db, env.teamId)?.revision ?? 0)
+  deleteAgent(env.db, a.id)
 
   expect(agentRepo.get(env.db, a.id)).toBeNull()
   expect(agentRepo.listAttachedSkills(env.db, a.id)).toEqual([])
@@ -260,7 +245,7 @@ test('deleteAgent cascades to attachments, messages, runs', () => {
 
 test('deleteAgent throws on an unknown id', () => {
   seedProfile()
-  expect(() => deleteAgent(env.db, 'ghost-id', 1)).toThrow()
+  expect(() => deleteAgent(env.db, 'ghost-id')).toThrow()
 })
 
 test('agentRepo.get resolves an unambiguous UUID prefix (≥4 chars)', () => {
@@ -307,7 +292,6 @@ test('agentRepo.get prefers exact name over prefix collision', () => {
     modelOverride: null,
     reasoningLevel: 'medium',
     status: 'idle',
-    dir: '/tmp/none-hex',
     teamId: env.teamId,
   })
   const b = spawn({ name: 'deadbeef' })
@@ -330,7 +314,6 @@ test('agentRepo.get returns null for ambiguous prefix', () => {
     modelOverride: null,
     reasoningLevel: 'medium',
     status: 'idle',
-    dir: '/tmp/none-a',
     teamId: env.teamId,
   })
   agentRepo.insert(env.db, {
@@ -340,7 +323,6 @@ test('agentRepo.get returns null for ambiguous prefix', () => {
     modelOverride: null,
     reasoningLevel: 'medium',
     status: 'idle',
-    dir: '/tmp/none-b',
     teamId: env.teamId,
   })
   expect(agentRepo.get(env.db, 'abcd')).toBeNull() // ambiguous
@@ -348,11 +330,14 @@ test('agentRepo.get returns null for ambiguous prefix', () => {
   expect(agentRepo.get(env.db, 'abcd2')?.name).toBe('B')
 })
 
-test('resolveAgent accepts a UUID prefix', () => {
+test('resolveAgent accepts a UUID prefix or a name with the same skills', () => {
   seedProfile()
   const agent = spawn()
-  const resolved = resolveAgent(env.db, env.paths, agent.id.slice(0, 8))
-  expect(resolved.agent.id).toBe(agent.id)
+  for (const ref of [agent.id.slice(0, 8), agent.name]) {
+    const resolved = resolveAgent(env.db, env.paths, ref)
+    expect(resolved.agent.id).toBe(agent.id)
+    expect(resolved.skills).toEqual(['skill-a'])
+  }
 })
 
 test('resolveAgent assembles profile, skills, team, and model', () => {

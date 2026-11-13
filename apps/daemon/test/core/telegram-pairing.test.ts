@@ -35,7 +35,7 @@ test('reset atomically removes the owner and active challenge', () => {
   pairing.reset(env.db)
   pairing.create(env.db)
   pairing.reset(env.db)
-  expect(acl.count(env.db)).toBe(0)
+  expect(acl.list(env.db)).toHaveLength(0)
   expect(pairing.status(env.db)).toEqual({
     paired: false,
     challengeActive: false,

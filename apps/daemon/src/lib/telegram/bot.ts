@@ -1,56 +1,31 @@
-// grammY bot singleton + long-polling loop + first-activation orchestrator.
+// grammY bot singleton, long-polling loop and first-activation orchestrator.
 //
-// Module-scoped state holds at most one live bot at a time. start/stop/restart
-// are serialized through a Promise mutex so callers can't race two starts.
-//
-// Polling uses our own loop over `bot.api.getUpdates` rather than grammY's
-// `bot.start()` so we can:
-//   • Persist the offset to TELEGRAM_LAST_UPDATE_ID after every fully-dispatched
-//     update — a daemon restart mid-turn resumes exactly where it left off,
-//     since Telegram retains updates server-side for 24h.
-//   • Surface the watermark + last-successful-poll timestamp on the health
-//     endpoint without reaching into grammY internals.
-//
-// Inbound updates in Step 2 are logged-and-advanced. Step 3 will replace
-// dispatchUpdate with the real routing layer.
+// At most one bot runs at a time; start/stop/restart are serialized through a promise mutex.
+// Polling is our own loop over `bot.api.getUpdates` rather than grammY's `bot.start()`, so the
+// offset is persisted to TELEGRAM_LAST_UPDATE_ID after every dispatched update (a restart resumes
+// where it left off; Telegram keeps updates for 24 h) and the health endpoint can show the
+// watermark and the last successful poll.
 
 import type { TelegramPollingState } from '@bazilion/api-types'
 import { Bot, GrammyError } from 'grammy'
 import type { Update } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { openConfig, openSecrets, type Paths, resolvePaths } from '../../core/index.ts'
+import { openConfig, type Paths, resolvePaths } from '../../core/index.ts'
 import { type ActivationApi, runActivation } from './activation.ts'
-import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
-import { installMirrorDepsResolver, type MirrorApi } from './mirror.ts'
-import {
-  installNotificationTransport,
-  notificationDestinationAllowed,
-} from './notification-transport.ts'
-import { installStickerApiResolver, type StickerApi } from './profile-emojis.ts'
-import { installQuestionTransport } from './question-transport.ts'
-import { installQueueNoticeTransport } from './queue-notice.ts'
-import { installReactionsDepsResolver, type ReactionsApi } from './reactions.ts'
+import { LAST_UPDATE_KEY, readConfigNumber, readCreds, redactToken } from './config.ts'
+import { setTelegramLive } from './live.ts'
 import { type ReplyApi, routeUpdate } from './routing.ts'
 
 const POLL_TIMEOUT_S = 25
-const STALL_MS_DEFAULT = 120_000
 const GETUPDATES_RETRY_MS = 5_000
-
-const BOT_TOKEN_KEY = 'TELEGRAM_BOT_TOKEN'
-const CHAT_ID_KEY = 'TELEGRAM_CHAT_ID'
-const LAST_UPDATE_KEY = 'TELEGRAM_LAST_UPDATE_ID'
 
 interface BotHandle {
   bot: Bot
   chatId: number
-  /** Cached resolvePaths() so each routed update doesn't re-walk env vars. */
   paths: Paths
-  /** Same auth token the rest of the daemon uses — needed for secrets store access from inside commands. */
-  authToken: string
   state: TelegramPollingState
   stopRequested: boolean
   pollPromise: Promise<void> | null
-  stallTimer: NodeJS.Timeout | null
 }
 
 let _handle: BotHandle | null = null
@@ -71,18 +46,6 @@ export function isTelegramBotRunning(): boolean {
 }
 
 /**
- * Live bot api + chat id for the consumers that need to make outbound
- * Bot API calls outside the standard `runAgentTurn` / mirror path (HTTP
- * endpoints for explicit bind/unbind, future admin tooling, etc).
- * Returns `null` when the bot isn't running — callers should 503 in
- * that case rather than queueing.
- */
-export function getTelegramBotApi(): { api: Bot['api']; chatId: number } | null {
-  if (!_handle) return null
-  return { api: _handle.bot.api, chatId: _handle.chatId }
-}
-
-/**
  * Boot the bot if credentials are present. No-op if a bot is already running
  * or credentials are missing. Safe to call from daemon startup before the
  * user has configured Telegram.
@@ -92,21 +55,20 @@ export function maybeStartTelegramBot(db: BazilionDb, authToken: string): Promis
     if (_handle) return
     const creds = readCreds(db, authToken)
     if (!creds) return
-    await startInternal(db, authToken, creds.botToken, creds.chatId)
+    await startInternal(db, creds.botToken, creds.chatId)
   })
 }
 
 /**
  * Restart the bot — tears down any running instance and brings a fresh one
- * up from the current creds. No-op tear-down if no bot is running.
- * No start if creds are absent.
+ * up from the current creds. No start if creds are absent.
  */
 export function restartTelegramBot(db: BazilionDb, authToken: string): Promise<void> {
   return enqueue(async () => {
     await stopInternal()
     const creds = readCreds(db, authToken)
     if (!creds) return
-    await startInternal(db, authToken, creds.botToken, creds.chatId)
+    await startInternal(db, creds.botToken, creds.chatId)
   })
 }
 
@@ -117,24 +79,7 @@ export function stopTelegramBot(): Promise<void> {
 
 // ─── internals ───────────────────────────────────────────────────────────
 
-function readCreds(db: BazilionDb, authToken: string): { botToken: string; chatId: number } | null {
-  const botToken = openSecrets(db, authToken).get(BOT_TOKEN_KEY) ?? ''
-  const chatIdRaw = openConfig(db).get(CHAT_ID_KEY) ?? ''
-  if (!botToken || !chatIdRaw) return null
-  const chatId = Number(chatIdRaw)
-  if (!Number.isFinite(chatId)) {
-    console.error(`telegram: stored chat id is not numeric: ${chatIdRaw}`)
-    return null
-  }
-  return { botToken, chatId }
-}
-
-async function startInternal(
-  db: BazilionDb,
-  authToken: string,
-  botToken: string,
-  chatId: number,
-): Promise<void> {
+async function startInternal(db: BazilionDb, botToken: string, chatId: number): Promise<void> {
   const bot = new Bot(botToken)
   const state: TelegramPollingState = {
     running: false,
@@ -148,166 +93,30 @@ async function startInternal(
     bot,
     chatId,
     paths: resolvePaths(),
-    authToken,
     state,
     stopRequested: false,
     pollPromise: null,
-    stallTimer: null,
   }
 
-  // Webhook conflict recovery. If a webhook is set on this token (because
-  // the user once configured one, or a different process did), getUpdates
-  // returns 409. Clear it up-front; failures here are non-fatal because the
-  // bot might never have had a webhook.
+  // getUpdates returns 409 while a webhook is set on this token. Clear it up
+  // front; failure is fine because there may never have been one.
   try {
     await bot.api.deleteWebhook({ drop_pending_updates: false })
   } catch (e) {
     console.warn('telegram: deleteWebhook failed (continuing):', errMsg(e))
   }
 
-  // Read persisted watermark. offset = lastUpdateId + 1 (so we resume past
-  // the last fully-dispatched update); 0 means "from oldest available".
+  // Resume past the last fully-dispatched update; 0 means "from oldest available".
   const persistedLastUpdate = readConfigNumber(db, LAST_UPDATE_KEY)
   state.lastUpdateId = persistedLastUpdate
   const initialOffset = persistedLastUpdate !== null ? persistedLastUpdate + 1 : 0
 
   _handle = handle
   state.running = true
+  setTelegramLive({ api: bot.api, chatId, db, paths: handle.paths })
 
-  // Stall watchdog. Compares now() − lastSuccessfulPollAt to the configured
-  // threshold; triggers a self-restart if exceeded. Tick at half the stall
-  // threshold so we detect within ~stallMs/2 after a hang.
-  const stallMs = Number(process.env.BAZILION_TELEGRAM_POLLING_STALL_MS ?? STALL_MS_DEFAULT)
-  if (Number.isFinite(stallMs) && stallMs > 0) {
-    handle.stallTimer = setInterval(
-      () => {
-        if (handle.stopRequested) return
-        // Use startedAt as the baseline until the first successful poll lands.
-        const reference = handle.state.lastSuccessfulPollAt ?? handle.state.startedAt ?? Date.now()
-        if (Date.now() - reference > stallMs) {
-          console.warn(
-            `telegram: poll stall detected (no successful getUpdates in >${Math.round(stallMs / 1000)}s) — restarting bot`,
-          )
-          // Fire-and-forget restart on a microtask so we don't block the timer.
-          void restartTelegramBot(db, _cachedAuthToken!).catch((e) =>
-            console.error('telegram: stall-triggered restart failed:', errMsg(e)),
-          )
-        }
-      },
-      Math.max(stallMs / 2, 5_000),
-    )
-  }
-
-  // Wire the live-deps resolver so notifyDirectoryDirty() (called from
-  // command handlers and the daemon's agent CRUD routes) can find this
-  // bot's chatId / api / db / paths without a static import cycle.
-  installLiveDepsResolver(() => ({
-    db,
-    paths: handle.paths,
-    api: handle.bot.api as unknown as DirectoryApi,
-    chatId: handle.chatId,
-  }))
-
-  // Mirror lives in a separate module to avoid pulling agent-turn deps into
-  // the activation path. Same lazy-resolution pattern.
-  installMirrorDepsResolver(() => ({
-    db,
-    api: handle.bot.api as unknown as MirrorApi,
-    chatId: handle.chatId,
-  }))
-  installQuestionTransport(() =>
-    handle.stopRequested || _handle !== handle
-      ? null
-      : {
-          db,
-          authToken,
-          botToken,
-          edit: (chatId, messageId, text, signal) =>
-            handle.bot.api.editMessageText(
-              chatId,
-              messageId,
-              text,
-              { reply_markup: { inline_keyboard: [] } },
-              signal as unknown as Parameters<typeof handle.bot.api.editMessageText>[4],
-            ),
-          send: (chatId, topicId, text, keyboard, signal) =>
-            handle.bot.api.sendMessage(
-              chatId,
-              text,
-              { message_thread_id: topicId, reply_markup: keyboard },
-              signal as unknown as Parameters<typeof handle.bot.api.sendMessage>[3],
-            ),
-        },
-  )
-  installNotificationTransport(() =>
-    handle.stopRequested || _handle !== handle
-      ? null
-      : {
-          db,
-          authToken,
-          botToken,
-          async verify(chatId, ownerId, signal) {
-            const [chat, owner, botMember] = await Promise.all([
-              handle.bot.api.getChat(
-                chatId,
-                signal as unknown as Parameters<typeof handle.bot.api.getChat>[1],
-              ),
-              handle.bot.api.getChatMember(
-                chatId,
-                ownerId,
-                signal as unknown as Parameters<typeof handle.bot.api.getChatMember>[2],
-              ),
-              handle.bot.api.getChatMember(
-                chatId,
-                Number(botToken.split(':')[0]),
-                signal as unknown as Parameters<typeof handle.bot.api.getChatMember>[2],
-              ),
-            ])
-            return notificationDestinationAllowed(chat, owner, botMember)
-          },
-          send: (chatId, topicId, text, signal) =>
-            handle.bot.api.sendMessage(
-              chatId,
-              text,
-              {
-                message_thread_id: topicId,
-                parse_mode: 'HTML',
-                link_preview_options: { is_disabled: true },
-              },
-              signal as unknown as Parameters<typeof handle.bot.api.sendMessage>[3],
-            ),
-        },
-  )
-  installQueueNoticeTransport(() =>
-    handle.stopRequested || _handle !== handle
-      ? null
-      : {
-          db,
-          authToken,
-          botToken,
-          send: (targetChatId, topicId, text, signal) =>
-            handle.bot.api.sendMessage(
-              targetChatId,
-              text,
-              { message_thread_id: topicId },
-              signal as unknown as Parameters<typeof handle.bot.api.sendMessage>[3],
-            ),
-        },
-  )
-
-  // Reactions: 👀 "bot saw it" indicator on inbound user messages.
-  installReactionsDepsResolver(() => ({
-    api: handle.bot.api as unknown as ReactionsApi,
-    chatId: handle.chatId,
-  }))
-
-  // Profile-derived topic emojis: give the resolver the live api so it can
-  // fetch + cache Telegram's forum-icon sticker set on first use.
-  installStickerApiResolver(() => handle.bot.api as unknown as StickerApi)
-
-  // Activation runs in the background — polling does NOT block on it.
-  // If activation fails (e.g. forum mode off after creds saved, transient
-  // network), we still want incoming messages to be observed.
+  // Activation runs in the background: if it fails (forum mode turned off,
+  // a network blip) incoming messages are still observed.
   void runActivation({ db, paths: handle.paths, api: bot.api as unknown as ActivationApi, chatId })
     .then((result) => {
       handle.state.activated = true
@@ -320,8 +129,6 @@ async function startInternal(
       console.error('telegram: activation failed:', errMsg(e))
     })
 
-  // Start the poll loop. Don't await — startInternal returns once setup is
-  // complete; pollPromise keeps running.
   handle.pollPromise = pollLoop(handle, db, initialOffset).catch((e) => {
     console.error('telegram: poll loop crashed:', errMsg(e))
     handle.state.error = errMsg(e)
@@ -335,12 +142,9 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
   let offset = initialOffset
   while (!handle.stopRequested) {
     let updates: Update[] = []
-    // Per-request abort just above the long-poll window. A silently-dropped
-    // connection (flaky wifi/VPN, no TCP reset) leaves the fetch hanging well
-    // past POLL_TIMEOUT_S — grammY's default client timeout is ~500s — so
-    // without this the only recovery is the 120s stall watchdog tearing the
-    // whole bot down and re-activating. Aborting at +5s turns a dead poll into
-    // an ordinary retry on the next loop iteration.
+    // A silently dropped connection leaves the fetch hanging far past the long-poll window
+    // (grammY's default client timeout is ~500 s). Aborting at +5 s turns it into an ordinary
+    // retry on the next iteration.
     const ac = new AbortController()
     const abortTimer = setTimeout(() => ac.abort(), (POLL_TIMEOUT_S + 5) * 1000)
     try {
@@ -361,15 +165,12 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
       const msg = errMsg(e)
       handle.state.error = msg
       if (ac.signal.aborted) {
-        // Our own abort timer fired — the long-poll hung past POLL_TIMEOUT_S+5.
-        // Expected recovery from a silently-dropped connection; retry promptly.
         console.warn(
           `telegram: getUpdates exceeded ${POLL_TIMEOUT_S + 5}s (connection likely dropped) — retrying`,
         )
         continue
       }
-      // 409 conflicts are usually a stale webhook or another instance — log
-      // loud and back off.
+      // 409 conflicts are usually a stale webhook or another instance.
       if (e instanceof GrammyError && e.error_code === 409) {
         console.error('telegram: getUpdates 409 conflict (webhook or duplicate poller):', msg)
       } else {
@@ -389,13 +190,11 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
       }
       offset = u.update_id + 1
       handle.state.lastUpdateId = u.update_id
-      // Persist the watermark synchronously so a crash here doesn't
-      // re-deliver updates we've already logged.
+      // Persist the watermark synchronously so a crash here doesn't redeliver it.
       try {
         openConfig(db).set(LAST_UPDATE_KEY, String(u.update_id))
       } catch (e) {
-        // Persistence failure shouldn't kill the loop; we'll lose the
-        // watermark on next restart but Telegram will redeliver.
+        // Telegram redelivers on the next restart; the queue makes that harmless.
         console.warn('telegram: failed to persist last update id:', errMsg(e))
       }
     }
@@ -403,65 +202,25 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
   handle.state.running = false
 }
 
-/**
- * Step-3 dispatch. Delegates to the routing helper which classifies the
- * update + sends an appropriate Telegram reply where warranted. We still
- * log every update so the daemon log stays useful for debugging.
- */
+/** Route messages and button taps; member changes, polls and the like pass by. */
 async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Promise<void> {
-  const kind = u.message
-    ? 'message'
-    : u.edited_message
-      ? 'edited_message'
-      : u.callback_query
-        ? 'callback_query'
-        : 'non_actionable'
-  console.log(`telegram: update received id=${u.update_id} kind=${kind}`)
-
-  // Route chat messages + callback_query taps. Member/poll/etc. flow past
-  // the router untouched.
   if (!u.message && !u.edited_message && !u.callback_query) return
   const outcome = await routeUpdate(
     {
       db,
       paths: handle.paths,
-      authToken: handle.authToken,
       api: handle.bot.api as unknown as ReplyApi,
       chatId: handle.chatId,
       botToken: handle.bot.token,
     },
     u,
   )
-  if (outcome.kind === 'service_command' || outcome.kind === 'service_unknown_command') {
-    console.log(`telegram: dispatched /${outcome.name} (kind=${outcome.kind})`)
-  } else if (outcome.kind === 'agent_topic') {
-    console.log(
-      `telegram: agent-topic inbound for agent=${outcome.agentId} (chat-back ships in step 6)`,
-    )
-  } else if (outcome.kind === 'callback_spawn_profile') {
-    console.log(`telegram: callback spawn:profile:${outcome.profileId}`)
-  } else if (outcome.kind === 'callback_spawn_team') {
-    console.log(`telegram: callback spawn:team:${outcome.templateId}`)
-  } else if (outcome.kind === 'spawn_name_input') {
-    console.log(
-      `telegram: spawn-name input completed for profile=${outcome.profileId} spawned=${outcome.spawned}`,
-    )
-  } else if (outcome.kind === 'rate_limited') {
-    console.warn(
-      `telegram: inbound rate budget tripped for agent=${outcome.agentId} — dropping message`,
-    )
-  } else if (outcome.kind === 'ignored_bot') {
-    console.log('telegram: ignored inbound from a bot account')
-  } else if (outcome.kind === 'chat_migrated') {
+  if (outcome.kind === 'chat_migrated') {
     console.warn(
       `telegram: supergroup migrated to chat id ${outcome.toChatId} — reconnect via /api/config/telegram/reconnect`,
     )
-  } else if (outcome.kind === 'unauthorized' || outcome.kind === 'foreign_chat') {
-    console.log('telegram: ingress denied reason=identity')
-  } else if (outcome.kind === 'pairing_required') {
-    console.log('telegram: ingress denied reason=pairing_required')
-  } else if (outcome.kind === 'paired_owner') {
-    console.log('telegram: owner pairing completed')
+  } else {
+    console.log(`telegram: update ${u.update_id} → ${outcome.kind}`)
   }
 }
 
@@ -470,12 +229,9 @@ async function stopInternal(): Promise<void> {
   const h = _handle
   _handle = null
   h.stopRequested = true
-  if (h.stallTimer) {
-    clearInterval(h.stallTimer)
-    h.stallTimer = null
-  }
-  // Wait for the in-flight getUpdates to finish. The 25s long-poll caps the
-  // wait. We swallow exceptions because we're tearing down anyway.
+  // Nothing reaches Telegram once the bot is stopped.
+  setTelegramLive(null)
+  // Wait for the in-flight getUpdates to finish (the 25 s long-poll caps the wait).
   try {
     await h.pollPromise
   } catch {
@@ -490,46 +246,10 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   return next
 }
 
-function readConfigNumber(db: BazilionDb, key: string): number | null {
-  const raw = openConfig(db).get(key) ?? ''
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : null
-}
-
 function errMsg(e: unknown): string {
-  return (e instanceof Error ? e.message : String(e)).replace(
-    /bot\d+:[A-Za-z0-9_-]+/g,
-    'bot[redacted]',
-  )
+  return redactToken(e instanceof Error ? e.message : String(e))
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
-}
-
-// ─── auth token cache for stall-triggered restarts ───────────────────────
-// The stall watchdog runs in setInterval scope and doesn't have access to
-// the ctx singleton's authToken without re-bootstrapping. We cache it on
-// first start; rotation tears down and re-caches on the next start.
-
-let _cachedAuthToken: string | null = null
-
-/** Caller passes the daemon's auth token so the watchdog can re-bootstrap on stall. */
-export function setTelegramAuthToken(token: string): void {
-  _cachedAuthToken = token
-}
-
-/**
- * Helper for tests — reset the singleton state so test files can build a
- * fresh bot lifecycle. Production code never needs this.
- */
-export function _resetTelegramBotForTest(): void {
-  if (_handle) {
-    _handle.stopRequested = true
-    if (_handle.stallTimer) clearInterval(_handle.stallTimer)
-  }
-  _handle = null
-  _mutex = Promise.resolve()
-  _cachedAuthToken = null
 }

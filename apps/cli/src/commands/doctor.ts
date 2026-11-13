@@ -5,18 +5,11 @@ import { createClient } from '../client.ts'
 export const doctorCommand = defineCommand({
   meta: { name: 'doctor', description: 'Diagnose your bazilion install' },
   async run() {
-    const client = createClient()
-    const r = await client.get<HealthReport>('/api/health/details')
-
-    function check(label: string, condition: boolean, hint?: string): void {
-      const mark = condition ? '✓' : '✗'
-      const tail = !condition && hint ? ` — ${hint}` : ''
-      console.log(`  ${mark} ${label}${tail}`)
-    }
+    const r = await createClient().get<HealthReport>('/api/health/details')
+    const check = (label: string, condition: boolean, hint?: string) =>
+      console.log(checkLine(label, condition, hint))
 
     console.log(`bazilion home: ${r.home}`)
-    console.log()
-    for (const line of platformCapabilityDoctorLines(r.platformCapabilities)) console.log(line)
     console.log()
     console.log('paths')
     check('home dir exists', r.paths.home)
@@ -73,7 +66,7 @@ export const doctorCommand = defineCommand({
     )
 
     console.log()
-    console.log('web search (managed backends or eligible ordinary native route)')
+    console.log('web search')
     if (r.webSearch.braveConfigured) {
       console.log('  ✓ Brave Search configured')
     } else {
@@ -85,12 +78,8 @@ export const doctorCommand = defineCommand({
       console.log('  - SearXNG (set SEARXNG_URL if you self-host one)')
     }
     if (!r.webSearch.braveConfigured && !r.webSearch.searxngConfigured) {
-      console.log(
-        '  - no managed backend; eligible OpenAI/ChatGPT Agents may use experimental native discovery',
-      )
-      console.log(
-        '    inspect: bazilion agent search status <id>; route/disablement: bazilion config list',
-      )
+      console.log('  - no Brave/SearXNG: Agents on OpenAI/ChatGPT models use hosted search')
+      console.log('    backend (BAZILION_WEB_SEARCH_ROUTE) and status: bazilion config list')
     }
 
     console.log()
@@ -111,7 +100,7 @@ export const doctorCommand = defineCommand({
     )
 
     console.log()
-    for (const line of executionSecurityDoctorLines(r)) console.log(line)
+    for (const line of runtimeDoctorLines(r)) console.log(line)
 
     console.log()
     console.log('operational counts')
@@ -123,15 +112,14 @@ export const doctorCommand = defineCommand({
     const hasAgents = (r.database?.ok ? r.database.totalAgents : 0) > 0
 
     console.log()
-    for (const line of doctorSummaryLines(
-      r,
-      r.executionSecurity.protectedUnattendedTurns.codingSurface,
-    ))
-      console.log(line)
-    if (doctorHasIssues(r)) process.exit(1)
-    // Counts are setup guidance, never proof that a chat/provider will work.
+    if (!r.ok) {
+      console.log('installation issues found ✗')
+      process.exitCode = 1
+      return
+    }
+    console.log('install is healthy ✓')
     if (!hasProfiles || !hasAgents) {
-      console.log('setup guidance (not an execution test)')
+      console.log('next steps')
       const todo: string[] = []
       if (!anyCloudProvider) {
         todo.push('  - set a cloud api key (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY)')
@@ -147,141 +135,41 @@ export const doctorCommand = defineCommand({
   },
 })
 
-export function executionSecurityDoctorLines(
-  report: Pick<HealthReport, 'executionSecurity' | 'shellSecurity'>,
-): string[] {
-  const configured = report.executionSecurity.configuredOperatorHttp
-  const protectedTurns = report.executionSecurity.protectedUnattendedTurns
-  const lines = [
-    configured.codingSurface === 'native'
-      ? 'configured operator HTTP (native coding · ordinary capabilities)'
-      : configured.codingSurface === 'host'
-        ? 'configured operator HTTP (trusted host · unisolated)'
-        : 'configured operator HTTP (ordinary capabilities)',
-  ]
-
-  if (!report.shellSecurity.ok) {
-    lines.push(checkLine('valid shell-security configuration', false, report.shellSecurity.error))
+/** Sandbox and approval apply the same way to every turn: chat, Telegram, schedules and inbox. */
+export function runtimeDoctorLines(report: Pick<HealthReport, 'shellSecurity'>): string[] {
+  const shell = report.shellSecurity
+  const lines = ['agent runtime (every turn: chat, Telegram, schedules, inbox)']
+  if (!shell.ok) {
+    lines.push(checkLine('valid shell-security configuration', false, shell.error))
+    return lines
+  }
+  if (shell.sandboxMode === 'docker') {
+    lines.push(
+      `  - sandbox: docker (${shell.sandboxImage}) — bash runs in a network-disabled container; host file tools hidden`,
+    )
+    if (shell.docker) {
+      lines.push(
+        checkLine(
+          `Docker ready (${shell.docker.image})`,
+          shell.docker.ready,
+          shell.docker.reason ?? undefined,
+        ),
+      )
+      if (shell.docker.remediation) lines.push(`    remediation: ${shell.docker.remediation}`)
+    }
   } else {
-    if (report.shellSecurity.approvalMode === 'dangerous') {
-      lines.push(
-        '  - dangerous-command approval enabled',
-        '    web and TTY CLI turns can allow once; non-interactive operator requests auto-deny',
-      )
-    } else {
-      lines.push(
-        '  - dangerous-command approval off',
-        '    set BAZILION_BASH_APPROVAL=dangerous to opt in',
-      )
-    }
-
-    if (report.shellSecurity.sandboxMode === 'native') {
-      lines.push(
-        '  - coding surface: native OS sandbox',
-        '    host coding tools hidden · IP networking denied · private job Unix IPC allowed',
-        '    no Docker or host fallback; actual protection and ownership are admitted separately for each turn',
-      )
-    } else if (report.shellSecurity.sandboxMode === 'docker') {
-      lines.push(
-        `  - coding surface: Docker only (${report.shellSecurity.sandboxImage})`,
-        '    workspace-only writable mount · bounded inputs/skills/memory read-only · network disabled',
-        '    host coding tools hidden',
-        '    policy syntax is valid; Docker and image availability are checked on execution',
-        '    commands fail closed if either is unavailable',
-      )
-    } else {
-      lines.push(
-        '  - coding surface: trusted host tools (unisolated)',
-        '    shell commands use host filesystem and network permissions; approval is not containment',
-        protectedTurns.codingSurface === 'unavailable'
-          ? '    no qualified local protected backend is available; native macOS isolation is deferred'
-          : '    BAZILION_BASH_SANDBOX=native selects Linux OS isolation, subject to per-turn admission',
-      )
-    }
+    lines.push(
+      '  - sandbox: off — bash and file tools run on the host, unisolated',
+      '    set BAZILION_BASH_SANDBOX=docker to sandbox bash',
+    )
   }
-  lines.push(`  - browser: ${configured.browser}`, `  - MCP: ${configured.mcp}`, '')
-
   lines.push(
-    'protected unattended turns baseline (Telegram, schedules, inbox, approvals)',
-    protectedTurns.codingSurface === 'native'
-      ? '  - protected base runtime: Not checked'
-      : checkLine('protected base runtime ready', protectedTurns.baseRuntimeReady),
-    ...(protectedTurns.codingSurface === 'native'
-      ? [
-          '  - coding surface: native OS sandbox',
-          `  - native backend: ${protectedTurns.native.backend ?? 'unsupported platform'}`,
-          '  - native readiness: Not checked (requires per-turn workspace admission)',
-        ]
-      : protectedTurns.codingSurface === 'unavailable'
-        ? [
-            '  - coding surface: unavailable — no qualified isolation backend',
-            '    protected work refuses; no trusted-host fallback',
-          ]
-        : [
-            '  - coding surface: Docker only',
-            checkLine(
-              `Docker ready (${protectedTurns.docker.image})`,
-              protectedTurns.docker.ready,
-              protectedTurns.docker.reason ?? undefined,
-            ),
-          ]),
-    checkLine('OpenAI Codex enabled', protectedTurns.openaiCodex.enabled),
-    checkLine('ChatGPT connected', protectedTurns.openaiCodex.connected),
-    `  - OpenAI access: ${openAIAccessStatus(protectedTurns.openaiCodex)}`,
-    checkLine('OpenAI Codex baseline eligible', protectedTurns.openaiCodex.baselineEligible),
-    `  ✓ browser: ${protectedTurns.browser}`,
-    `  ✓ MCP: ${protectedTurns.mcp}`,
-    '  - every turn separately validates its selected normal/review model, bound OAuth refresh, and mounts/paths',
+    shell.approvalMode === 'dangerous'
+      ? '  - dangerous-command approval: on — chat can allow once; unattended turns auto-deny'
+      : '  - dangerous-command approval: off — set BAZILION_BASH_APPROVAL=dangerous to opt in',
   )
-  if (protectedTurns.remediation) {
-    lines.push(`  remediation: ${protectedTurns.remediation}`)
-  }
   return lines
 }
-
-export function platformCapabilityDoctorLines(
-  report: HealthReport['platformCapabilities'],
-): string[] {
-  return [
-    `platform support: ${report.platform}`,
-    `  ${report.note}`,
-    ...report.capabilities.flatMap((capability) => [
-      `  - ${capability.label}: ${capability.support} on this platform`,
-      `    ${capability.detail}`,
-    ]),
-  ]
-}
-
-export function doctorSummaryLines(
-  report: Pick<HealthReport, 'ok' | 'protectedWorkBaselineReady'>,
-  codingSurface: HealthReport['executionSecurity']['protectedUnattendedTurns']['codingSurface'],
-): string[] {
-  return [
-    report.ok ? 'install is healthy ✓' : 'installation issues found ✗',
-    'ordinary chat execution: not checked — select/test a provider and try an Agent chat',
-    codingSurface === 'native'
-      ? 'protected unattended baseline: not checked — per-turn admission required'
-      : report.protectedWorkBaselineReady
-        ? 'protected unattended baseline: ready — per-turn checks still apply'
-        : 'protected unattended baseline: unavailable — see reasons and remediation above',
-    'doctor exit status covers installation health only; it does not authorize execution.',
-  ]
-}
-
-export function doctorHasIssues(report: Pick<HealthReport, 'ok'>): boolean {
-  return !report.ok
-}
-
-function openAIAccessStatus(
-  status: ExecutionSecurityReportOpenAIStatus,
-): 'current' | 'refresh on next turn' | 'unavailable' {
-  if (status.accessCurrent) return 'current'
-  if (status.refreshOnNextTurn) return 'refresh on next turn'
-  return 'unavailable'
-}
-
-type ExecutionSecurityReportOpenAIStatus =
-  HealthReport['executionSecurity']['protectedUnattendedTurns']['openaiCodex']
 
 function checkLine(label: string, condition: boolean, hint?: string): string {
   const mark = condition ? '✓' : '✗'

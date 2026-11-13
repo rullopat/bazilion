@@ -79,16 +79,12 @@ test('saveInputFiles skips oversized files with a note instead of storing', () =
 test('deliverFileTool reads a workspace file and emits it via the sink', async () => {
   writeFileSync(join(dir, 'out.csv'), 'a,b,c\n1,2,3')
   const sent: Array<{ name: string; mimeType: string; data: string }> = []
-  const tool = deliverFileTool(
-    dir,
-    async (f) => {
-      sent.push(f)
-      return { resultId: 'fixture-result' }
-    },
-    'session',
-  )
+  const tool = deliverFileTool(dir, async (f) => {
+    sent.push(f)
+    return { resultId: 'fixture-result' }
+  })
   const res = await tool.invoke({ path: 'out.csv' }, { toolCallId: 'call' })
-  expect(res).toMatchObject({ result: { resultId: 'fixture-result' } })
+  expect(res).toMatchObject({ details: { results: [{ resultId: 'fixture-result' }] } })
   expect(sent).toHaveLength(1)
   expect(sent[0]?.name).toBe('out.csv')
   expect(sent[0]?.mimeType).toBe('text/csv')
@@ -106,14 +102,10 @@ test('deliverFileTool rejects an absolute path even when it names a workspace fi
   const path = join(dir, 'inside.txt')
   writeFileSync(path, 'inside')
   const sent: unknown[] = []
-  const tool = deliverFileTool(
-    dir,
-    async (file) => {
-      sent.push(file)
-      return { resultId: 'fixture-result' }
-    },
-    'session',
-  )
+  const tool = deliverFileTool(dir, async (file) => {
+    sent.push(file)
+    return { resultId: 'fixture-result' }
+  })
 
   await expect(tool.invoke({ path }, { toolCallId: 'call' })).rejects.toThrow(
     /must stay within the workspace/,
@@ -124,14 +116,10 @@ test('deliverFileTool rejects an absolute path even when it names a workspace fi
 test('deliverFileTool rejects lexical traversal outside the workspace', async () => {
   writeFileSync(join(outsideDir, 'secret.txt'), 'outside')
   const sent: unknown[] = []
-  const tool = deliverFileTool(
-    dir,
-    async (file) => {
-      sent.push(file)
-      return { resultId: 'fixture-result' }
-    },
-    'session',
-  )
+  const tool = deliverFileTool(dir, async (file) => {
+    sent.push(file)
+    return { resultId: 'fixture-result' }
+  })
 
   await expect(
     tool.invoke({ path: '../outside/secret.txt' }, { toolCallId: 'call' }),
@@ -144,14 +132,10 @@ test('deliverFileTool rejects a file symlink that escapes the workspace', async 
   writeFileSync(outside, 'outside')
   symlinkSync(outside, join(dir, 'secret-link.txt'))
   const sent: unknown[] = []
-  const tool = deliverFileTool(
-    dir,
-    async (file) => {
-      sent.push(file)
-      return { resultId: 'fixture-result' }
-    },
-    'session',
-  )
+  const tool = deliverFileTool(dir, async (file) => {
+    sent.push(file)
+    return { resultId: 'fixture-result' }
+  })
 
   await expect(tool.invoke({ path: 'secret-link.txt' }, { toolCallId: 'call' })).rejects.toThrow(
     /must stay within the workspace/,
@@ -163,14 +147,10 @@ test('deliverFileTool rejects an intermediate directory symlink that escapes', a
   writeFileSync(join(outsideDir, 'secret.txt'), 'outside')
   symlinkSync(outsideDir, join(dir, 'escape'), 'dir')
   const sent: unknown[] = []
-  const tool = deliverFileTool(
-    dir,
-    async (file) => {
-      sent.push(file)
-      return { resultId: 'fixture-result' }
-    },
-    'session',
-  )
+  const tool = deliverFileTool(dir, async (file) => {
+    sent.push(file)
+    return { resultId: 'fixture-result' }
+  })
 
   await expect(tool.invoke({ path: 'escape/secret.txt' }, { toolCallId: 'call' })).rejects.toThrow(
     /must stay within the workspace/,
@@ -182,17 +162,13 @@ test('deliverFileTool allows an internal symlink to a regular workspace file', a
   writeFileSync(join(dir, 'report.md'), '# Safe report')
   symlinkSync('report.md', join(dir, 'latest.md'))
   const sent: Array<{ name: string; mimeType: string; data: string }> = []
-  const tool = deliverFileTool(
-    dir,
-    async (file) => {
-      sent.push(file)
-      return { resultId: 'fixture-result' }
-    },
-    'session',
-  )
+  const tool = deliverFileTool(dir, async (file) => {
+    sent.push(file)
+    return { resultId: 'fixture-result' }
+  })
 
   await expect(tool.invoke({ path: 'latest.md' }, { toolCallId: 'call' })).resolves.toMatchObject({
-    result: { resultId: 'fixture-result' },
+    details: { results: [{ resultId: 'fixture-result' }] },
   })
   expect(Buffer.from(sent[0]?.data ?? '', 'base64').toString('utf8')).toBe('# Safe report')
 })
@@ -202,17 +178,13 @@ test('deliverFileTool supports a workspace root that is itself a registered syml
   symlinkSync(dir, linkedWorkspace, 'dir')
   writeFileSync(join(dir, 'report.txt'), 'linked team')
   const sent: Array<{ name: string; mimeType: string; data: string }> = []
-  const tool = deliverFileTool(
-    linkedWorkspace,
-    async (file) => {
-      sent.push(file)
-      return { resultId: 'fixture-result' }
-    },
-    'session',
-  )
+  const tool = deliverFileTool(linkedWorkspace, async (file) => {
+    sent.push(file)
+    return { resultId: 'fixture-result' }
+  })
 
   await expect(tool.invoke({ path: 'report.txt' }, { toolCallId: 'call' })).resolves.toMatchObject({
-    result: { resultId: 'fixture-result' },
+    details: { results: [{ resultId: 'fixture-result' }] },
   })
   expect(Buffer.from(sent[0]?.data ?? '', 'base64').toString('utf8')).toBe('linked team')
 })
@@ -220,14 +192,10 @@ test('deliverFileTool supports a workspace root that is itself a registered syml
 test('deliverFileTool rejects directories because only regular files may be delivered', async () => {
   mkdirSync(join(dir, 'folder'))
   const sent: unknown[] = []
-  const tool = deliverFileTool(
-    dir,
-    async (file) => {
-      sent.push(file)
-      return { resultId: 'fixture-result' }
-    },
-    'session',
-  )
+  const tool = deliverFileTool(dir, async (file) => {
+    sent.push(file)
+    return { resultId: 'fixture-result' }
+  })
 
   await expect(tool.invoke({ path: 'folder' }, { toolCallId: 'call' })).rejects.toThrow(
     /not a regular file/,

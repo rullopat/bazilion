@@ -1,328 +1,191 @@
-import { createHash } from 'node:crypto'
-import type { ImageGenerationInput, ImageGenerationOutput } from '@bazilion/api-types'
-import { createModels, type Models } from '@earendil-works/pi-ai'
+import { createModels } from '@earendil-works/pi-ai'
 import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter'
 import type { BazilionDb } from '../core/db/client.ts'
-import { imageGenerationConfig } from '../core/image-generation-config.ts'
-import * as operations from '../core/repos/image-generations.ts'
-import { listEnabled } from '../core/repos/providerState.ts'
+import { type ImageRoute, imageRoute } from '../core/image-generation-config.ts'
 import * as results from '../core/repos/results.ts'
-import type { ImageGenerationHost } from '../runtime/worker/ipc-protocol.ts'
-
+import type { ImageGenerationHost, ImageGenerationInput } from '../runtime/worker/ipc-protocol.ts'
 import {
-  boundedImageFetch,
-  type GeneratedImages,
-  generateOpenAIImages,
-  ImageProtocolFailure,
-  imageAbortable,
-} from './image-transport.ts'
+  assertOk,
+  CODEX_RESPONSES_URL,
+  codexHeaders,
+  readCapped,
+  responsesStream,
+} from './openai-responses.ts'
 
-export { boundedImageFetch, IMAGE_RESPONSE_BYTES } from './image-transport.ts'
-export const IMAGE_DEADLINE_MS = 180_000
-const busyHomes = new WeakSet<BazilionDb>()
-class ImageGenerationError extends Error {}
+// image_generate: the daemon calls the selected image model and saves each image as a result.
 
-export function imageCatalogue(): Models {
-  const models = createModels({
-    authContext: { env: async () => undefined, fileExists: async () => false },
-  })
-  models.setProvider(openrouterProvider())
-  return models
-}
+const MAX_CALLS_PER_TURN = 4
+const DEADLINE_MS = 180_000
+const MAX_RESPONSE_BYTES = 40 * 1024 * 1024
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,119}$/
 
-function validateInput(input: ImageGenerationInput): void {
-  if (
-    !input ||
-    Object.keys(input).some(
-      (key) => !['sessionId', 'toolCallId', 'prompt', 'name'].includes(key),
-    ) ||
-    typeof input.sessionId !== 'string' ||
-    typeof input.toolCallId !== 'string' ||
-    typeof input.prompt !== 'string' ||
-    !input.prompt.trim() ||
-    Buffer.byteLength(input.prompt) > 8192
-  ) {
-    throw new Error('image_generate requires a text prompt of at most 8 KiB and a valid source')
-  }
-  if (
-    input.name !== undefined &&
-    (typeof input.name !== 'string' ||
-      !/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,119}$/.test(input.name) ||
-      /[ .]$/.test(input.name) ||
-      /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:[ .]|$)/i.test(input.name))
-  ) {
-    throw new Error('Image name must be a safe display filename (maximum 120 characters)')
-  }
-}
-
-function decodeImages(response: GeneratedImages, name: string) {
-  const images = response.output.filter((part) => part.type === 'image')
-  if (images.length === 0 || images.length > 4) {
-    throw new ImageGenerationError(
-      'Image provider returned no images or exceeded the four-image limit',
+/** Pi reads OpenRouter's response itself: fail the read once it passes 40 MiB. */
+function cappedFetch(fetchImpl: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const response = await fetchImpl(input, init)
+    if (!response.body) return response
+    let size = 0
+    const body = response.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          size += chunk.byteLength
+          if (size > MAX_RESPONSE_BYTES)
+            controller.error(new Error('The image response is larger than 40 MiB'))
+          else controller.enqueue(chunk)
+        },
+      }),
     )
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    })
   }
-  return images.map((image, index) => {
-    if (
-      image.data.length > Math.ceil(results.MAX_RESULT_BYTES / 3) * 4 ||
-      image.data.length % 4 !== 0
-    ) {
-      throw new Error('Invalid or oversized image bytes')
-    }
-    const bytes = Buffer.from(image.data, 'base64')
-    if (
-      !bytes.length ||
-      bytes.length > results.MAX_RESULT_BYTES ||
-      bytes.toString('base64') !== image.data
-    ) {
-      throw new Error('Invalid or oversized image bytes')
-    }
-    const extension =
-      image.mimeType === 'image/png' &&
-      bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-        ? 'png'
-        : image.mimeType === 'image/jpeg' &&
-            bytes[0] === 255 &&
-            bytes[1] === 216 &&
-            bytes[2] === 255
-          ? 'jpg'
-          : image.mimeType === 'image/webp' &&
-              bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
-              bytes.subarray(8, 12).toString('ascii') === 'WEBP'
-            ? 'webp'
-            : null
-    if (!extension)
-      throw new ImageGenerationError(
-        'Image content does not match a supported PNG, JPEG or WebP type',
-      )
-    const stem = name.replace(/\.(png|jpe?g|webp)$/i, '')
-    return {
-      bytes,
-      mimeType: image.mimeType,
-      name: `${stem}${images.length > 1 ? `-${index + 1}` : ''}.${extension}`,
-    }
-  })
-}
-
-/** Store only numeric usage. Pi's calculated prices are estimates, not an invoice or spend cap. */
-function safeUsage(usage: GeneratedImages['usage']): string | null {
-  if (!usage) return null
-  const counts = Object.fromEntries(
-    ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens'].map((key) => {
-      const value = usage[key as keyof typeof usage]
-      return [key, typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null]
-    }),
-  )
-  const estimate = usage.cost?.total
-  return JSON.stringify({
-    ...counts,
-    estimatedCost:
-      typeof estimate === 'number' && Number.isFinite(estimate) && estimate >= 0 ? estimate : null,
-  })
 }
 
 export interface ImageHostOptions {
   db: BazilionDb
   agentId: string
   teamId: string
-  turnId: string
-  chatModel?: string
+  /** The turn's conversation; saved images are delivered in it. */
+  conversationId: string
   signal: AbortSignal
   env: () => NodeJS.ProcessEnv
-  /** Daemon-owned credential storage/refresh; never accepted from a worker. */
-  codex?: { connected: () => boolean; accessToken: () => Promise<string> }
-  assertActive: () => void
-  source: (sessionId: string, toolCallId: string) => Record<string, unknown>
-  /** Internal test injection; never accepted over IPC/config. */
-  models?: Models
+  codex: { connected: () => boolean; accessToken: () => Promise<string> }
+  /** Tests replace the network. */
   fetch?: typeof fetch
-  deadlineMs?: number
 }
 
-export function createImageGenerationHost(opts: ImageHostOptions): ImageGenerationHost {
-  const { db } = opts
-  const models = opts.models ?? imageCatalogue()
-  const resolveConfig = () =>
-    imageGenerationConfig(opts.env(), opts.codex?.connected(), {
-      enabledProviders: listEnabled(db),
-      chatModel: opts.chatModel,
-    })
-  const assertActive = () => {
-    opts.signal.throwIfAborted()
-    opts.assertActive()
-    const owner = db.raw
-      .query<{ team_id: string; status: string }, [string]>(
-        'SELECT team_id, status FROM agents WHERE id = ?',
-      )
-      .get(opts.agentId)
-    if (owner?.team_id !== opts.teamId || owner.status === 'archived') {
-      throw new Error('Image generation Agent is no longer active in this Team')
-    }
+type Ready = Extract<ImageRoute, { ready: true }>
+
+/** The base64 images the provider returned. */
+async function requestImages(
+  route: Ready,
+  prompt: string,
+  signal: AbortSignal,
+  opts: ImageHostOptions,
+): Promise<string[]> {
+  const fetchImpl = opts.fetch ?? fetch
+  if (route.provider === 'openai-codex') {
+    // The ChatGPT backend generates images as a tool of a chat model.
+    const output = await responsesStream(
+      CODEX_RESPONSES_URL,
+      codexHeaders(await opts.codex.accessToken()),
+      {
+        model: 'gpt-6-astra',
+        instructions: 'Generate the requested image using the image generation tool.',
+        input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
+        tools: [
+          {
+            type: 'image_generation',
+            model: route.modelId,
+            size: '1024x1024',
+            output_format: 'png',
+          },
+        ],
+        tool_choice: { type: 'image_generation' },
+      },
+      signal,
+      fetchImpl,
+    )
+    return output.flatMap((item) =>
+      item.type === 'image_generation_call' && typeof item.result === 'string' ? [item.result] : [],
+    )
   }
-  const capturedOutput = (op: operations.ImageOperation): ImageGenerationOutput => {
-    const ids = operations.resultIds(db, op)
-    if (!ids.length)
-      throw new Error(
-        'Generated results are unavailable; they will not be regenerated automatically',
-      )
-    return {
-      model: op.model,
-      files: ids.map((id) => {
-        const receipt = results.getReceipt(db, id)
-        if (!receipt || receipt.deletedAt !== null)
-          throw new Error('Generated result was deleted; it will not be regenerated')
-        return {
-          name: receipt.name,
-          mimeType: receipt.mimeType,
-          data: results.readCaptured(db, id).toString('base64'),
-          result: { resultId: id },
-        }
+  if (route.provider === 'openai') {
+    const response = await fetchImpl('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${route.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: route.modelId,
+        prompt,
+        n: 1,
+        size: '1024x1024',
+        output_format: 'png',
       }),
-    }
+      signal,
+      redirect: 'error',
+    })
+    await assertOk(response)
+    const body = JSON.parse(await readCapped(response)) as { data?: Array<{ b64_json?: unknown }> }
+    return (body.data ?? []).flatMap((entry) =>
+      typeof entry.b64_json === 'string' ? [entry.b64_json] : [],
+    )
   }
+  const models = createModels({
+    authContext: { env: async () => undefined, fileExists: async () => false },
+  })
+  models.setProvider(openrouterProvider())
+  const model = models.getModelOfType('image', 'openrouter', route.modelId)
+  if (!model) throw new Error(`OpenRouter image model ${route.modelId} is not available`)
+  const response = await models.generateImages(
+    model,
+    { input: [{ type: 'text', text: prompt }] },
+    { apiKey: route.apiKey, signal, maxRetries: 0, fetch: cappedFetch(fetchImpl) },
+  )
+  if (response.stopReason !== 'stop')
+    throw new Error(response.errorMessage || `OpenRouter stopped: ${response.stopReason}`)
+  return response.output.flatMap((part) => (part.type === 'image' ? [part.data] : []))
+}
+
+function imageType(bytes: Buffer): { mimeType: string; extension: string } | null {
+  if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
+    return { mimeType: 'image/png', extension: 'png' }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
+    return { mimeType: 'image/jpeg', extension: 'jpg' }
+  if (
+    bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+  )
+    return { mimeType: 'image/webp', extension: 'webp' }
+  return null
+}
+
+/** One host per turn: it counts the turn's calls and saves images into the turn's conversation. */
+export function createImageGenerationHost(opts: ImageHostOptions): ImageGenerationHost {
+  let calls = 0
   return {
-    async generate(input) {
-      validateInput(input)
-      assertActive()
-      const source = opts.source(input.sessionId, input.toolCallId)
-      if (
-        source.prompt !== input.prompt ||
-        source.name !== input.name ||
-        Object.keys(source).some((key) => !['prompt', 'name'].includes(key))
-      ) {
-        throw new Error('Image request does not match the canonical tool call')
-      }
-      const config = resolveConfig()
-      if (!config.ready) throw new Error(config.status)
-      const model =
-        config.provider === 'openrouter'
-          ? models.getModelOfType('image', 'openrouter', config.model)
-          : undefined
-      if (
-        config.provider === 'openrouter' &&
-        (model?.provider !== 'openrouter' ||
-          model.api !== 'openrouter-images' ||
-          model.baseUrl !== 'https://openrouter.ai/api/v1' ||
-          !model.output.includes('image'))
-      ) {
-        throw new Error('Selected Pi image model is unavailable; no fallback was attempted')
-      }
-      if (busyHomes.has(db))
-        throw new Error('Image generation is busy; only one request per home may be in flight')
-      const op: operations.ImageOperation = {
-        agentId: opts.agentId,
-        teamId: opts.teamId,
-        turnId: opts.turnId,
-        sessionId: input.sessionId,
-        toolCallId: input.toolCallId,
-        model: config.model,
-        requestSha256: createHash('sha256')
-          .update(JSON.stringify([input.prompt, input.name ?? null]))
-          .digest('hex'),
-      }
-      if (operations.admit(db, op) === 'completed') return capturedOutput(op)
-      busyHomes.add(db)
-      const deadline = new AbortController()
-      const timer = setTimeout(() => deadline.abort(), opts.deadlineMs ?? IMAGE_DEADLINE_MS)
-      const signal = AbortSignal.any([opts.signal, deadline.signal])
-      try {
-        let apiKey = config.apiKey
-        if (config.provider === 'openai-codex') {
-          try {
-            if (!opts.codex) throw new Error('Missing login')
-            apiKey = await imageAbortable(opts.codex.accessToken(), signal)
-          } catch {
-            throw new ImageGenerationError(
-              'ChatGPT credentials unavailable. Reconnect ChatGPT on /config or run bazilion auth openai login. No API-key fallback or automatic retry.',
-            )
-          }
-        }
-        signal.throwIfAborted()
-        assertActive()
-        const current = resolveConfig()
-        if (!current.ready || current.model !== config.model) {
-          throw new ImageGenerationError(
-            'Image configuration changed before dispatch. No image request was sent; inspect settings before starting a new turn. No billing-route fallback.',
-          )
-        }
-        if (!apiKey) throw new Error('Missing image credential')
-        let pending: Promise<GeneratedImages>
-        if (config.provider === 'openrouter') {
-          if (!model) throw new Error('Selected Pi image model unavailable')
-          pending = models.generateImages(
-            model,
-            { input: [{ type: 'text', text: input.prompt }] },
-            {
-              apiKey,
-              signal,
-              timeoutMs: opts.deadlineMs ?? IMAGE_DEADLINE_MS,
-              maxRetries: 0,
-              fetch: boundedImageFetch(opts.fetch),
-            },
-          )
-        } else {
-          pending = generateOpenAIImages({
-            provider: config.provider,
-            apiKey,
-            prompt: input.prompt,
-            signal,
-            fetch: opts.fetch,
-          })
-        }
-        const response = await imageAbortable(pending, signal)
-        signal.throwIfAborted()
-        assertActive()
-        if (response.stopReason !== 'stop') {
-          // Never surface provider-controlled errors, echoed prompts or credentials in tool output.
-          throw new ImageGenerationError(
-            'Image provider failed or refused the request. Check OpenRouter access/quota; billing may have occurred. No automatic retry.',
-          )
-        }
-        const images = decodeImages(response, input.name ?? 'generated-image')
-        const responseId =
-          typeof response.responseId === 'string' &&
-          /^[A-Za-z0-9._:-]{1,256}$/.test(response.responseId) &&
-          !response.responseId.includes(apiKey)
-            ? response.responseId
-            : null
-        db.raw.transaction(() => {
-          images.forEach((image, sourceIndex) => {
-            results.publish(db, {
-              teamId: opts.teamId,
-              agentId: opts.agentId,
-              sessionId: input.sessionId,
-              toolCallId: input.toolCallId,
-              sourceIndex,
-              imageModel: config.model,
-              ...image,
-            })
-          })
-          operations.settle(db, op, 'completed', responseId, safeUsage(response.usage))
-        })()
-        return {
-          ...capturedOutput(op),
-          ...(config.provider === 'openai-codex' &&
-          (response.outputSource === 'terminal' || response.outputSource === 'completed_stream')
-            ? { outputSource: response.outputSource }
-            : {}),
-        }
-      } catch (error) {
-        // Admission stays uncertain on transport, cancellation or storage failure. Never replay it.
-        if (signal.aborted)
-          throw new Error(
-            'Image generation cancelled or timed out; billing or account usage may have occurred. No automatic retry.',
-          )
-        // Only our own bounded messages escape; unexpected SDK exceptions may carry secrets.
-        if (error instanceof ImageGenerationError || error instanceof ImageProtocolFailure) {
-          throw error
-        }
+    async generate(input: ImageGenerationInput) {
+      const prompt = typeof input?.prompt === 'string' ? input.prompt.trim() : ''
+      if (!prompt || Buffer.byteLength(prompt) > 8192)
+        throw new Error('image_generate needs a prompt of at most 8 KiB')
+      if (input.name !== undefined && !SAFE_NAME.test(input.name))
         throw new Error(
-          'Image generation failed; billing or account usage may have occurred. No automatic retry or credential fallback. Check account access/quota (reconnect ChatGPT if selected), configuration and saved Results.',
+          'The image name must be a plain file name (letters, digits, space, _ . -; at most 120 characters)',
         )
-      } finally {
-        clearTimeout(timer)
-        busyHomes.delete(db)
-      }
+      if (++calls > MAX_CALLS_PER_TURN)
+        throw new Error('Image limit reached: at most four image_generate calls per turn')
+      const route = imageRoute(opts.env(), opts.codex.connected())
+      if (!route.ready) throw new Error(route.reason)
+      const signal = AbortSignal.any([opts.signal, AbortSignal.timeout(DEADLINE_MS)])
+      const images = (await requestImages(route, prompt, signal, opts)).slice(0, 4)
+      if (!images.length) throw new Error(`${route.model} returned no image`)
+      const decoded = images.map((data) => {
+        const bytes = Buffer.from(data, 'base64')
+        const type = imageType(bytes)
+        if (!type)
+          throw new Error(`${route.model} returned data that is not a PNG, JPEG or WebP image`)
+        return { bytes, ...type }
+      })
+      const stem = (input.name ?? 'generated-image').replace(/\.(png|jpe?g|webp)$/i, '')
+      // All images of the call are saved, or none (e.g. when the result store is full).
+      const files = opts.db.raw.transaction(() =>
+        decoded.map((image, index) => {
+          const saved = results.publish(opts.db, {
+            teamId: opts.teamId,
+            agentId: opts.agentId,
+            sessionId: opts.conversationId,
+            toolCallId: input.toolCallId,
+            sourceIndex: index,
+            imageModel: route.model,
+            name: `${stem}${decoded.length > 1 ? `-${index + 1}` : ''}.${image.extension}`,
+            mimeType: image.mimeType,
+            bytes: image.bytes,
+          })
+          return { name: saved.name, mimeType: saved.mimeType, result: { resultId: saved.id } }
+        }),
+      )()
+      return { model: route.model, files }
     },
   }
 }

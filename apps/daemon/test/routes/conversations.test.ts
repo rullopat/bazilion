@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { unlinkSync } from 'node:fs'
+import { readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import type { ChatContextResponse, Conversation } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createApp } from '../../src/app.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
@@ -29,140 +30,106 @@ afterEach(() => {
   unregisterAgent(agentId)
   env.cleanup()
 })
-function request(path = '', method = 'GET', body?: unknown) {
-  return createApp().request(`/api/agents/${agentId}/conversations${path}`, {
+function request(path = '', method = 'GET', body?: unknown, base = 'conversations') {
+  return createApp().request(`/api/agents/${agentId}/${base}${path}`, {
     method,
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
 }
-function input() {
-  return { requestId: randomUUID(), expectedSelection: { conversationId: null, revision: 0 } }
+async function start(title?: string): Promise<Conversation> {
+  const response = await request('', 'POST', title ? { title } : {})
+  expect(response.status).toBe(200)
+  return (await response.json()) as Conversation
 }
 
-test('authenticated library exposes empty history and explicit selection without changing it on read', async () => {
+test('the library lists, starts, reads and renames conversations; reading selects nothing', async () => {
   expect((await createApp().request(`/api/agents/${agentId}/conversations`)).status).toBe(401)
-  expect(await (await request()).json()).toMatchObject({
-    total: 0,
-    selection: { conversationId: null, revision: 0 },
-  })
-  const create = input()
-  const response = await request('', 'POST', create)
-  expect(response.status).toBe(200)
-  expect(response.headers.get('cache-control')).toBe('no-store')
-  expect(await (await request(`/${create.requestId}`)).json()).toMatchObject({
+  expect(await (await request()).json()).toMatchObject({ total: 0, selectedId: null })
+  const first = await start('First')
+  expect(first.title).toBe('First')
+  const second = await start()
+  expect(await (await request(`/${first.id}`)).json()).toMatchObject({
     messages: [],
-    conversation: { id: create.requestId },
+    conversation: { id: first.id },
   })
-  expect(await (await request()).json()).toMatchObject({
-    total: 1,
-    selection: { conversationId: create.requestId, revision: 1 },
-  })
+  expect(await (await request()).json()).toMatchObject({ total: 2, selectedId: second.id })
+  const renamed = await request(`/${first.id}`, 'PATCH', { title: 'Earlier task' })
+  expect(await renamed.json()).toMatchObject({ conversation: { title: 'Earlier task' } })
+  expect((await request(`/${first.id}`, 'PATCH', { title: '' })).status).toBe(400)
   expect((await request(`/${randomUUID()}`)).status).toBe(404)
 })
 
-test('stale selection and active Agent return recoverable conflicts', async () => {
-  expect((await request('', 'POST', input())).status).toBe(200)
-  expect((await request('', 'POST', input())).status).toBe(409)
-  registerAgent(agentId, new AbortController())
-  expect((await request('', 'POST', input())).status).toBe(409)
-  expect(await (await request()).json()).toMatchObject({ total: 1 })
-})
-
-test('missing history is unavailable and is never recreated by a read', async () => {
-  const create = input()
-  await request('', 'POST', create)
-  unlinkSync(join(env.paths.agentDir(agentId), 'sessions', `${create.requestId}.jsonl`))
-  expect((await request(`/${create.requestId}`)).status).toBe(409)
-  expect(await (await request()).json()).toMatchObject({
-    total: 1,
-    selection: { conversationId: create.requestId },
-  })
-})
-
-test('chat rejects absent or stale selection before starting a turn', async () => {
-  const send = (body: unknown) =>
-    createApp().request(`/api/agents/${agentId}/chat`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-  const absent = await send({ message: 'must not start' })
-  expect(absent.status).toBe(409)
-  expect(await absent.json()).toMatchObject({ code: 'conversation_selection_required' })
-  const created = input()
-  await request('', 'POST', created)
-  const stale = await send({
-    message: 'must not start',
-    expectedSelection: { conversationId: null, revision: 0 },
-  })
-  expect(stale.status).toBe(409)
-  expect(await stale.json()).toMatchObject({
-    code: 'conversation_conflict',
-    selection: { conversationId: created.requestId, revision: 1 },
-  })
-  expect(await (await request(`/${created.requestId}`)).json()).toMatchObject({ messages: [] })
-})
-
-test('compact and edit reject busy or stale selection before opening a session', async () => {
-  const created = input()
-  await request('', 'POST', created)
-  const control = (action: string, expectedSelection: unknown) =>
-    createApp().request(`/api/agents/${agentId}/chat/${action}`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ keepCount: 0, expectedSelection }),
-    })
-  for (const action of ['compact', 'truncate']) {
-    expect((await control(action, { conversationId: null, revision: 0 })).status).toBe(409)
-    registerAgent(agentId, new AbortController())
-    expect((await control(action, { conversationId: created.requestId, revision: 1 })).status).toBe(
-      409,
-    )
-    unregisterAgent(agentId)
+test('a refused title starts nothing; the Agent may be named by an id prefix', async () => {
+  const sessions = join(env.paths.agentDir(agentId), 'sessions')
+  const before = readdirSync(sessions)
+  for (const title of ['x'.repeat(201), 'line\nbreak']) {
+    const refused = await request('', 'POST', { title })
+    expect(refused.status).toBe(400)
+    expect(await refused.json()).toMatchObject({ error: expect.stringContaining('title') })
   }
-  expect(await (await request(`/${created.requestId}`)).json()).toMatchObject({ messages: [] })
-  expect((await control('reset', { conversationId: created.requestId, revision: 1 })).status).toBe(
-    404,
-  )
+  expect(readdirSync(sessions)).toEqual(before)
+  const created = await start('Prefixed')
+  const listed = await createApp().request(`/api/agents/${agentId.slice(0, 8)}/conversations`, {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  expect(await listed.json()).toMatchObject({ total: 1, selectedId: created.id })
 })
 
-test('unavailable current history remains recoverable through New conversation', async () => {
-  const created = input()
-  await request('', 'POST', created)
-  unlinkSync(join(env.paths.agentDir(agentId), 'sessions', `${created.requestId}.jsonl`))
-  for (const path of ['head', 'messages']) {
-    const response = await createApp().request(`/api/agents/${agentId}/sessions/${path}`, {
-      headers: { authorization: `Bearer ${token}` },
-    })
+test('a new conversation waits for the running turn', async () => {
+  registerAgent(agentId, new AbortController())
+  const busy = await request('', 'POST', {})
+  expect(busy.status).toBe(409)
+  expect(await busy.json()).toEqual({
+    error: 'The Agent is busy with another turn.',
+    code: 'agent_turn_active',
+  })
+  unregisterAgent(agentId)
+  await start()
+})
+
+test('missing history is unavailable, never recreated, and a new conversation recovers', async () => {
+  const created = await start()
+  unlinkSync(join(env.paths.agentDir(agentId), 'sessions', `${created.id}.jsonl`))
+  expect((await request(`/${created.id}`)).status).toBe(409)
+  for (const path of ['/head', '/messages']) {
+    const response = await request(path, 'GET', undefined, 'sessions')
     expect(response.status).toBe(200)
     const body = (await response.json()) as { head?: unknown }
-    expect(path === 'head' ? body : body.head).toMatchObject({
+    expect(path === '/head' ? body : body.head).toMatchObject({
       unavailable: true,
-      selection: { conversationId: created.requestId },
+      conversationId: created.id,
     })
   }
-  expect(
-    (
-      await request('', 'POST', {
-        requestId: randomUUID(),
-        expectedSelection: { conversationId: created.requestId, revision: 1 },
-      })
-    ).status,
-  ).toBe(200)
-  expect(await (await request()).json()).toMatchObject({ total: 2 })
-  expect((await request(`/${created.requestId}`)).status).toBe(409)
+  const next = await start()
+  expect(await (await request()).json()).toMatchObject({ total: 2, selectedId: next.id })
+  expect((await request(`/${created.id}`)).status).toBe(409)
 })
 
-test('lost creation response can be reconciled while a later turn is active', async () => {
-  const original = input()
-  expect((await request('', 'POST', original)).status).toBe(200)
-  registerAgent(agentId, new AbortController())
-  const retried = await request('', 'POST', original)
-  expect(retried.status).toBe(200)
-  expect(await retried.json()).toMatchObject({
-    conversation: { id: original.requestId },
-    selection: { conversationId: original.requestId, revision: 1 },
+test('a truncate aimed at a conversation the Agent switched away from is refused', async () => {
+  const first = await start()
+  await start()
+  const truncate = await request(
+    '/truncate',
+    'POST',
+    { keepCount: 0, conversationId: first.id },
+    'chat',
+  )
+  expect(truncate.status).toBe(409)
+  expect(await truncate.json()).toEqual({
+    error: 'The Agent switched to another conversation. Reload before trying again.',
   })
-  expect((await request('', 'POST', { ...original, title: 'different intent' })).status).toBe(409)
+  registerAgent(agentId, new AbortController())
+  expect((await request('/compact', 'POST', {}, 'chat')).status).toBe(409)
+  expect((await request('/truncate', 'POST', { keepCount: 0 }, 'chat')).status).toBe(409)
+})
+
+test('the context breakdown reports the size of the conversation file on disk', async () => {
+  const created = await start()
+  const response = await request('/context', 'GET', undefined, 'chat')
+  expect(response.status).toBe(200)
+  const { history } = (await response.json()) as ChatContextResponse
+  const file = join(env.paths.agentDir(agentId), 'sessions', `${created.id}.jsonl`)
+  expect(history.bytes).toBeGreaterThan(0)
+  expect(history.bytes).toBe(statSync(file).size)
 })

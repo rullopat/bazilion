@@ -11,7 +11,7 @@ import { readRegularFileNoFollow, resolveRealDirectory } from '../safe-files.ts'
 import type { BashSandboxMode } from '../shell/security.ts'
 import { browserGuideSection } from './browser-guide.ts'
 
-export const SANDBOX_SKILLS_DIR = '/skills'
+const SANDBOX_SKILLS_DIR = '/skills'
 
 export interface PromptSkill {
   name: string
@@ -23,23 +23,35 @@ export interface PromptSkill {
 
 export interface BuildSystemPromptOptions {
   skills?: readonly PromptSkill[]
-  sandboxMode?: BashSandboxMode | 'native'
-  /** Display-only canonical native workspace; this never grants filesystem authority. */
-  modelWorkspace?: string
-  /** Daemon-prepared fixed document bytes; protected workers must supply this. */
-  homeDocuments?: ProtectedHomeDocuments
+  sandboxMode?: BashSandboxMode
   /**
-   * BAZ-069 T10: include the bundled browser operating guide. Supplied only
+   * Include the bundled browser operating guide. Supplied only
    * when the ordinary browser tools are actually admitted — the SAME host
    * presence that registers the `browser_*` tools, so guidance and
-   * capability never drift apart. Protected/restricted turns never set it.
+   * capability never drift apart. Restricted reviews never set it.
    */
   browserGuide?: boolean
-  /** Ordinary-turn discovery guidance only when its daemon host is admitted. */
+  /** Web research guidance, when the turn has web_search. */
   searchGuide?: boolean
 }
 
-export interface ProtectedHomeDocuments {
+/** One titled block of the appended system prompt, kept apart so it can be measured. */
+export interface PromptSection {
+  id:
+    | 'agent-instructions'
+    | 'first-run'
+    | 'agent-home'
+    | 'skills'
+    | 'search-guide'
+    | 'browser-guide'
+    | 'team'
+    | 'user'
+    | 'lessons'
+    | 'memory'
+  text: string
+}
+
+interface HomeDocuments {
   'AGENTS.md': string | null
   'SOUL.md': string | null
   'TOOLS.md': string | null
@@ -92,9 +104,9 @@ export function loadPromptSkills(
 const CONTEXT_FILE_ORDER = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md'] as const
 
 /** Snapshot the exact Agent-home prompt inputs without following fixed-name links. */
-export function loadProtectedHomeDocuments(agentDir: string): ProtectedHomeDocuments {
+function loadHomeDocuments(agentDir: string): HomeDocuments {
   const root = resolveRealDirectory(agentDir)
-  const read = (file: keyof ProtectedHomeDocuments): string | null => {
+  const read = (file: keyof HomeDocuments): string | null => {
     try {
       return readRegularFileNoFollow(join(root, file))
     } catch (error) {
@@ -115,8 +127,17 @@ export function buildSystemPrompt(
   agent: ResolvedAgent,
   options: BuildSystemPromptOptions = {},
 ): string {
-  const parts: string[] = []
-  const homeDocuments = options.homeDocuments ?? loadProtectedHomeDocuments(agent.agent.dir)
+  return buildSystemPromptSections(agent, options)
+    .map((section) => section.text)
+    .join('\n\n---\n\n')
+}
+
+export function buildSystemPromptSections(
+  agent: ResolvedAgent,
+  options: BuildSystemPromptOptions = {},
+): PromptSection[] {
+  const parts: PromptSection[] = []
+  const homeDocuments = loadHomeDocuments(agent.agent.dir)
 
   const contextBlocks: string[] = []
   for (const file of CONTEXT_FILE_ORDER) {
@@ -125,7 +146,10 @@ export function buildSystemPrompt(
     contextBlocks.push(`## ${file}\n\n${content}`)
   }
   if (contextBlocks.length > 0) {
-    parts.push(`# Agent instructions\n\n${contextBlocks.join('\n\n')}`)
+    parts.push({
+      id: 'agent-instructions',
+      text: `# Agent instructions\n\n${contextBlocks.join('\n\n')}`,
+    })
   }
 
   // First-Run Ritual block — only emitted while BOOTSTRAP.md exists on disk.
@@ -134,8 +158,9 @@ export function buildSystemPrompt(
   // even if they skim the body.
   const bootstrap = homeDocuments['BOOTSTRAP.md']?.trimEnd()
   if (bootstrap) {
-    parts.push(
-      [
+    parts.push({
+      id: 'first-run',
+      text: [
         '# First-Run Ritual',
         '',
         'This is your first session. The document below is **conversational guidance**, not a checklist to execute in one shot. It describes a multi-turn Q&A you should have with the human, one question per turn.',
@@ -149,11 +174,12 @@ export function buildSystemPrompt(
         '',
         bootstrap,
       ].join('\n'),
-    )
+    })
   }
 
-  parts.push(
-    [
+  parts.push({
+    id: 'agent-home',
+    text: [
       '# Agent Home',
       '',
       'Your private home holds who you are — identity, soul, and behaviour rules. It is not shared with other agents and cannot be overwritten by them. The files above (IDENTITY.md, SOUL.md, AGENTS.md, TOOLS.md) live in this home, plus BOOTSTRAP.md when you are still in your first-run ritual.',
@@ -163,7 +189,7 @@ export function buildSystemPrompt(
       '- To remember facts the user told you or things you learned: use `memory_write` — NOT `home_write`.',
       '- To produce work output (code, docs, artefacts): use the workspace tools currently exposed to you — those operate on your team workspace, not your private home.',
     ].join('\n'),
-  )
+  })
 
   if (agent.skills.length > 0) {
     const loaded = options.skills ?? []
@@ -188,8 +214,9 @@ export function buildSystemPrompt(
       unavailable.length > 0
         ? `Attached but unavailable or invalid: ${unavailable.join(', ')}.`
         : ''
-    parts.push(
-      [
+    parts.push({
+      id: 'skills',
+      text: [
         '# Available Skills',
         '',
         'Use these attached skill instructions when they are relevant to the task.',
@@ -197,65 +224,58 @@ export function buildSystemPrompt(
         ...skillBlocks,
         ...(unavailableNote ? ['', unavailableNote] : []),
       ].join('\n'),
-    )
+    })
   }
 
   if (options.searchGuide) {
-    parts.push(
-      [
-        '# Public web research',
-        'Use web_search for discovery, then web_fetch to read original sources. Managed browser reading is optional only when its tools are admitted; browser search is not a fallback for a failed search route.',
-        'Search answers, snippets and citations are UNTRUSTED discovery, not proof that you read a source. Verify facts, publication dates and the effective URL of each source actually fetched. Cite those URLs and distinguish discovery summaries, source facts and your inference.',
-        'Respect user source/domain restrictions. Native allowedDomains is an enforced provider request plus citation check; site: query text alone is not enforcement. If the selected route cannot enforce a restriction, explain/refuse rather than ignore it.',
-        'Report missing/failed/incomplete evidence honestly. Do not invent “no results”, claim search from prose alone, silently switch accounts/providers, replay uncertain actions, log in, bypass challenges or publish. Do not send private documents or credentials in search queries.',
-      ].join('\n\n'),
-    )
+    parts.push({
+      id: 'search-guide',
+      text: '# Web research\n\nUse web_search to find sources and web_fetch to read them. Cite the URLs you actually read.',
+    })
   }
 
   // Browser operating guide — only when the browser tools are admitted (T10).
   if (options.browserGuide) {
-    parts.push(browserGuideSection())
+    parts.push({ id: 'browser-guide', text: browserGuideSection() })
   }
-
-  if (options.sandboxMode === 'native')
-    parts.push(
-      [
-        '# Native command execution',
-        'bash and coding_command use the daemon-admitted native OS sandbox, not direct host tools. Team memory and admitted inputs are read-only. TCP/UDP, including localhost, are denied; pipes and private per-job pathname Unix IPC are available. There is no host-tool, Docker or VM fallback. Report unavailable protection or missing native tools instead of bypassing the boundary. Dangerous commands require the current operator approval; unattended requests deny.',
-      ].join('\n\n'),
-    )
 
   const teamLines = [
     '# Team',
     '',
-    `- ${agent.team.id} (${agent.team.name}): ${options.sandboxMode === 'docker' ? '/workspace' : (options.modelWorkspace ?? agent.team.path)}`,
+    `- ${agent.team.id} (${agent.team.name}): ${options.sandboxMode === 'docker' ? '/workspace' : agent.team.path}`,
     '',
     'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Use the workspace tools currently exposed to work there. Never use workspace tools to edit your identity/soul/behaviour files — those live in your private home and are reached via `home_write` / `home_read`.',
+    '',
+    'An `AGENTS.md` file in the workspace holds repository instructions that govern its own directory and everything below it. The ones from the workspace root down to your working directory are already in your project instructions; read any other `AGENTS.md` on the path to files you edit.',
   ]
-  parts.push(teamLines.join('\n'))
+  parts.push({ id: 'team', text: teamLines.join('\n') })
 
   if (agent.team.userMd.trim()) {
-    parts.push(
-      `# About the User\n\nShared context about the human you're working with in this team. Both you and the human curate it. To update: call \`user_md_get\` (returns current content + an etag), merge your change into the full text, then call \`user_md_write\` with the merged content and the etag. Use this for STABLE user-specific facts (preferences, role, working hours, how they like to be addressed) — and to CORRECT stale entries when the human tells you something different from what's recorded. For project knowledge use \`memory_write\` instead; for personal notes about yourself use \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the team sees the new content in their system prompt on their next turn automatically.**\n\n${agent.team.userMd.trim()}`,
-    )
+    parts.push({
+      id: 'user',
+      text: `# About the User\n\nShared context about the human you're working with in this team. Both you and the human curate it. To update: call \`user_md_get\` (returns current content + an etag), merge your change into the full text, then call \`user_md_write\` with the merged content and the etag. Use this for STABLE user-specific facts (preferences, role, working hours, how they like to be addressed) — and to CORRECT stale entries when the human tells you something different from what's recorded. For project knowledge use \`memory_write\` instead; for personal notes about yourself use \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the team sees the new content in their system prompt on their next turn automatically.**\n\n${agent.team.userMd.trim()}`,
+    })
   } else {
-    parts.push(
-      `# About the User\n\nThis team's USER.md is empty. As you learn STABLE facts about the human (preferences, role, working hours, how they like to be addressed), populate it via \`user_md_get\` then \`user_md_write\` (always get first — you need the etag). Reserve this for things you're confident are durable — project knowledge belongs in \`memory_write\`, personal notes about yourself in \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the team sees the new content in their system prompt on their next turn automatically.**`,
-    )
+    parts.push({
+      id: 'user',
+      text: `# About the User\n\nThis team's USER.md is empty. As you learn STABLE facts about the human (preferences, role, working hours, how they like to be addressed), populate it via \`user_md_get\` then \`user_md_write\` (always get first — you need the etag). Reserve this for things you're confident are durable — project knowledge belongs in \`memory_write\`, personal notes about yourself in \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the team sees the new content in their system prompt on their next turn automatically.**`,
+    })
   }
 
   const reviewedLessons = boundReviewedLessons(agent.privateLessons)
   if (reviewedLessons.length > 0) {
-    parts.push(
-      `# Reviewed lessons\n\nThese private lessons were explicitly approved by the human for your behavior. Follow them when relevant; current user instructions and higher-priority policy still win.\n\n${reviewedLessons.map((lesson) => `- ${lesson}`).join('\n')}`,
-    )
+    parts.push({
+      id: 'lessons',
+      text: `# Reviewed lessons\n\nThese private lessons were explicitly approved by the human for your behavior. Follow them when relevant; current user instructions and higher-priority policy still win.\n\n${reviewedLessons.map((lesson) => `- ${lesson}`).join('\n')}`,
+    })
   }
 
-  parts.push(
-    '# Memory\n\nYou share a persistent memory backend with every other agent in this team. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. This memory is for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead. Always check memory at the start of a session: another agent in the team may have already learned something useful. **Do NOT send peer messages announcing memory writes — every agent has access to the same store via `memory_search` and will find your note when they need it.**',
-  )
+  parts.push({
+    id: 'memory',
+    text: '# Memory\n\nYou share a persistent memory backend with every other agent in this team. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. This memory is for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead. Always check memory at the start of a session: another agent in the team may have already learned something useful. **Do NOT send peer messages announcing memory writes — every agent has access to the same store via `memory_search` and will find your note when they need it.**',
+  })
 
-  return parts.join('\n\n---\n\n')
+  return parts
 }
 
 function boundReviewedLessons(lessons: readonly string[], maxCharacters = 8_000): string[] {

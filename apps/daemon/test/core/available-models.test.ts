@@ -2,18 +2,18 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import {
   type BazilionDb,
   groupAvailableModels,
+  initSchema,
   listAvailableModels,
   openInMemoryDb,
   providerModelRepo,
   providerStateRepo,
-  runMigrations,
 } from '../../src/core/index.ts'
 
 let db: BazilionDb
 
 beforeEach(() => {
-  db = openInMemoryDb()
-  runMigrations(db)
+  db = openInMemoryDb('')
+  initSchema(db)
 })
 afterEach(() => {
   db.close()

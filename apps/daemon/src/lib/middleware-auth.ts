@@ -1,21 +1,17 @@
 // Hono auth + first-run gate middleware.
 //
-// Mirrors what apps/web/src/middleware.ts used to do for `/api/*` paths,
-// but framework-typed for Hono. Web SSR auth (login redirect, welcome
-// redirect) stays in the Astro app's own middleware — the daemon only
-// returns JSON status codes; the web app translates those to redirects.
+// The daemon only answers with JSON status codes; the web app's root route
+// turns 401/409 into its login and welcome redirects.
 
+import { publicOriginConfig } from '@bazilion/api-types'
 import type { Context, Next } from 'hono'
 import { getCookie } from 'hono/cookie'
 import { isSetupComplete, webSessionRepo, webTokenRepo } from '../core/index.ts'
-import { parseScopes } from '../core/repos/webTokens.ts'
 import { authenticateToken, extractBearer } from './auth.ts'
 import { getCtx } from './ctx.ts'
-import { resolvePublicOrigin } from './public-origin.ts'
-import { scopeAllows } from './scopes.ts'
 
-/** Reachable without a token. The login route mints them; health is a probe. */
-const PUBLIC_PATHS = new Set(['/api/login', '/api/health', '/api/pair/exchange'])
+/** Reachable without a token. The login route mints sessions; health is a probe. */
+const PUBLIC_PATHS = new Set(['/api/login', '/api/health'])
 
 /**
  * Once authenticated, these paths still pass through the first-run gate so
@@ -26,11 +22,14 @@ const SETUP_OPEN_PREFIXES = [
   '/api/config',
   '/api/auth',
   '/api/health',
-  // Credential management must remain usable during setup: the first-run
-  // browser exchange is bounded, and the local CLI can mint a named device
-  // credential before provider setup has unlocked the rest of the API.
+  // Credential and session management stay usable during setup.
   '/api/tokens',
   '/api/sessions',
+  '/api/logout',
+  // The rest of the Setup pages (/config/*) and its backup download.
+  '/api/mcp-servers',
+  '/api/notifications',
+  '/api/backup',
   // A fresh installation must be able to prove provider connectivity before
   // the provider gate opens the rest of the product.
   '/api/providers/test',
@@ -52,7 +51,7 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
   }
 
   const bearer = extractBearer(c.req.header('authorization'))
-  const origin = resolvePublicOrigin()
+  const origin = publicOriginConfig(process.env.BAZILION_PUBLIC_ORIGIN)
   const sessionCookie = getCookie(c, origin.sessionCookie)
   const bearerPrincipal = bearer ? authenticateToken(bearer) : null
   const session =
@@ -62,9 +61,8 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     (session
       ? {
           kind: 'session' as const,
-          tokenId: session.deviceTokenId,
-          label: session.deviceLabel,
-          scopes: parseScopes(session.deviceScopes),
+          tokenId: session.tokenId,
+          label: session.tokenLabel,
           sessionId: session.id,
         }
       : null)
@@ -72,7 +70,7 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
   if (!principal) {
     if (bearer) {
       const reason = webTokenRepo.rejectionReason(getCtx().db, bearer)
-      return c.json({ error: `credential ${reason}`, code: `credential_${reason}` }, 401)
+      return c.json({ error: `credential ${reason}` }, 401)
     }
     return c.json({ error: 'unauthorized' }, 401)
   }
@@ -90,23 +88,6 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
   }
   c.set('authPrincipal', principal)
   if (session) c.set('authSession', session)
-
-  // BAZ-055: per-device authorization. The bootstrap token carries every scope
-  // implicitly (single operator); device tokens are checked against the
-  // scope→route table. Session principals inherit their device token's scopes.
-  if (principal.kind !== 'bootstrap') {
-    const check = scopeAllows(principal.scopes, c.req.method, path)
-    if (!check.allowed) {
-      return c.json(
-        {
-          error: `credential is missing the '${check.required}' scope`,
-          code: 'insufficient_scope',
-          requiredScope: check.required,
-        },
-        403,
-      )
-    }
-  }
 
   if (!isSetupOpen(path) && !isSetupComplete(getCtx().db)) {
     return c.json({ error: 'setup incomplete' }, 409)

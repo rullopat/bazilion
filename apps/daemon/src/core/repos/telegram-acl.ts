@@ -1,4 +1,4 @@
-// Telegram per-user allowlist repo (migration 0007). Flat-scope allowlist:
+// Telegram per-user allowlist repo. Flat-scope allowlist:
 // presence => allowed. `owner` role gates allowlist management + can't be
 // removed.
 
@@ -39,13 +39,6 @@ export function get(db: BazilionDb, userId: number): TelegramAllowedUser | null 
 
 export function isAllowed(db: BazilionDb, userId: number): boolean {
   return get(db, userId) !== null
-}
-
-export function count(db: BazilionDb): number {
-  return (
-    db.raw.query<{ c: number }, []>('SELECT COUNT(*) as c FROM telegram_allowed_users').get()?.c ??
-    0
-  )
 }
 
 export function ownerCount(db: BazilionDb): number {

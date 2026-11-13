@@ -1,360 +1,227 @@
-# Bazilion Agent Engine — Internals
+# Agent engine
 
-Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
+How one Agent turn runs, from the request to the streamed reply. Pi
+([`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent))
+owns the agent loop, provider calls and retries, compaction and the session JSONL. Bazilion owns
+Agents and Teams, credentials, the tool list, the worker processes and the long-lived resources.
 
-> **Core engine credit**: Bazilion is based on
-> [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).
-> Pi owns the per-turn session loop, transcript storage, replay, compaction,
-> tool execution, provider retries, and the coding tools. Bazilion provides
-> profiles, teams, skills, messaging, memory, the scheduler, the HTTP API
-> (`apps/daemon`), the web UI (`apps/web`), and a thin bridge
-> (`apps/daemon/src/runtime/pi/*`) that glues them together. The on-disk JSONL
-> session file under `~/.bazilion/agents/<id>/sessions/` is the canonical
-> transcript and the only persistent record — there is no separate `runs` /
-> `events` audit table.
+## 1. From request to worker
 
-Ordinary macOS operator coding uses explicitly trusted **unisolated host execution** (`off`).
-Generic native Mac isolation is deferred/unqualified; native and Docker selections refuse without
-fallback. Isolation-required protected coding, scheduled/inbox/Telegram delivery and specialist
-command checks cannot become host execution to restore availability. Existing closed reviewer-only
-workers have no shell/coding surface and keep their separate provider/capability restrictions.
-MCP, browser and guarded Git retain their own admission and ownership. Linux keeps its native and
-separately selected Docker backends. See [coding environments](coding-environments.md).
+A turn starts from web or CLI chat (`POST /api/agents/:id/chat`), a queued follow-up, a Telegram
+message, a scheduled trigger or an inbox wake. Each origin builds a `TurnRequest` and calls the
+same two functions:
 
-## 1. Request → subprocess boundary
+1. `prepareAgentTurn` (`apps/daemon/src/lib/turn-preparation.ts`) admits the turn before
+   anything streams, so the chat route can still answer 4xx. It refuses a busy Agent (one with
+   a running turn, or a change such as compaction or archiving in progress), resolves the Agent
+   and its conversation, refuses a
+   disabled provider or a disconnected ChatGPT account, registers the turn's `AbortController`
+   under the Agent id, prepares the Docker settings when `BAZILION_BASH_SANDBOX=docker`, reads the
+   workspace `AGENTS.md` files and saves non-image attachments to `uploads/`. Trigger and inbox
+   turns arrive already registered by the scheduler.
+2. `runAgentTurn` (`apps/daemon/src/lib/agent-turn.ts`) builds the daemon hosts behind the
+   worker's tools, starts the worker with `spawnWorkerTurn`, relays its frames (mirroring them to
+   Telegram) and ends the registration in `finally`.
 
-A chat turn starts at `POST /api/agents/:id/chat` (the daemon at `apps/daemon`). The route hands off to `apps/daemon/src/lib/agent-turn.ts:runAgentTurn`. Admission resolves policy,
-conversation selection, invocation posture, provider/tool capabilities, repository context and
-workspace ownership before execution. The main orchestration stages include:
+Every origin gets the same tools and the same environment: the daemon's process environment over
+stored secrets over stored config, minus Bazilion's own credentials (ChatGPT sign-in, MCP tokens,
+the Telegram bot token, the bootstrap token). The origins differ in two ways only: `ask_user` is
+offered when someone is there to answer (a foreground web or terminal chat, or a Telegram
+message), and dangerous-command approval auto-denies when nobody can answer. Teammates' turns run
+concurrently.
 
-1. Resolves the agent (`resolveAgent(db, paths, id)`) — joins agent + profile + team + skills.
-2. Reads the enabled-provider set (`providerStateRepo.listEnabled(db)`).
-3. Computes the merged env (`mergeSecretsIntoEnv(db, authToken)` — `process.env > secrets table > config table`).
-4. Resolves the API key via `apps/daemon/src/lib/api-key.ts:resolveAgentApiKey(db, authToken, agent, {withRefresher:true})` — a no-op for env-key providers; for `openai-codex` it pulls the initial OAuth access token out of the secrets table and creates a daemon-owned refresher. Throws a friendly "not connected" error here if the user hasn't done the OAuth flow.
-5. Builds a `MessagingHost` backed by repos (`apps/daemon/src/lib/messaging-host.ts:createDbMessagingHost(db)`).
-6. Registers an `AbortController` keyed by `agentId` (`apps/daemon/src/lib/agent-cancel.ts:registerAgent`).
-7. Calls `spawnWorkerTurn({agent, message, enabledProviders, apiKey}, {signal, env, messagingHost, apiKeyRefreshHost})`.
+`apps/daemon/src/runtime/worker/spawn.ts` starts `entry.ts` with Node's type stripping (a packed
+install runs `dist/worker.js`), detached into its own process group, with stdio
+`['pipe', 'pipe', 'pipe', 'ipc']`:
 
-The main chat loop runs in its own Node child. Auxiliary provider tests, native search and image
-hosts can make explicit daemon-owned requests; credential/admission authority remains in the daemon.
-Worker input and environment depend on the admitted kind: protected/restricted workers receive
-minimal credential/tool projections, not the daemon's entire merged environment.
+- **stdin**: one `WorkerInput` JSON document (`runtime/worker/runtime.ts`), either an
+  `agent_turn` or a `restricted_review`, listing the daemon hosts that serve it. The worker
+  offers a tool only when its host is listed.
+- **stdout**: NDJSON `ChatFrame`s (`packages/api-types/src/events.ts`): `{kind:'event', event}`
+  per `SessionEvent`, then exactly one `{kind:'done', messages}` or `{kind:'fatal', error}`. A
+  learning review ends with `{kind:'review_result', proposals}` instead.
+- **stderr**: read into a bounded, redacted diagnostic.
+- **IPC**: the worker calls `{type:'rpc', id, method, args}` and the daemon answers
+  `{type:'rpc-reply', id, ok, result|error}`. `RpcMethods` in `ipc-protocol.ts` is the whole
+  protocol; `RPC_HANDLERS` in `spawn.ts` answers each method from its host.
 
-`apps/daemon/src/runtime/worker/spawn.ts` spawns the child:
+Frames, replies and stderr are redacted for the turn's access tokens, refreshed ones included.
+While it serves an `askUser` or `bashApproval` call, the daemon adds its own `agent_question` or
+`command_approval` event to the stream it relays.
 
-```
-node --experimental-strip-types --no-warnings apps/daemon/src/runtime/worker/entry.ts
-```
+## 2. The worker
 
-Admitted runtimes use native type stripping for the source entry; packed installs run the sibling
-`dist/worker.js` with plain Node. The source-only fallback resolves the tsx loader once through
-`createRequire(import.meta.url).resolve('tsx')` and `pathToFileURL`, so it does not depend on cwd
-or widen runtime admission.
+`worker/entry.ts` installs its SIGTERM, SIGINT and IPC-disconnect handlers first, reads the input,
+creates an IPC client and opens the session with `createBazilionSession`
+(`apps/daemon/src/runtime/pi/session.ts`). The worker has no handle on Bazilion's database: every
+daemon-backed tool (messages, USER.md, results, questions, web search, image generation, browser,
+MCP, shell approval, ChatGPT token refresh) is a proxy over IPC. Only Team memory is opened
+directly, as the qmd index inside `<team>/memory/`.
 
-Stdio is `['pipe','pipe','pipe','ipc']`:
-- **stdin** — one resolved `WorkerInput` JSON line, including explicit conversation/turn identity
-  and admitted hosts/capabilities; the parent closes the stream after delivery.
-- **stdout** — line-buffered NDJSON stream of `ChatFrame`s (`session/frame.ts`):
-  - `{kind:'event', event}` — one per `SessionEvent`
-  - `{kind:'done', messages}` — exactly once on clean exit
-  - `{kind:'fatal', error}` — exceptional exits
-- **stderr** — drained by the daemon into a bounded, credential-redacted diagnostic capture.
-- **fd 3 (IPC)** — bidirectional JSON RPC. Worker → daemon: `{type:'rpc', id, method, args}` for daemon-owned tools, shell approval, and OAuth access-token refresh. Daemon → worker: `{type:'rpc-reply', id, ok, result|error}`. Refreshed tokens travel only in this private reply channel, never in stdout chat frames.
+`createBazilionSession` opens the conversation file the daemon chose (a missing or unreadable one
+is an error, never a silent fresh start) and builds a Pi `AgentSession` with:
 
-Cancellation is keyed by **agentId** (not runId — there are no runIds anymore, since the runs table is gone). The agent-cancel registry is pinned to `globalThis[Symbol.for('bazilion.agent-cancel.registry')]` so module reloads don't replace it. `POST /api/agents/:id/cancel` looks up the controller and aborts it; the parent's abort handler calls `child.kill('SIGTERM')`, arms a 3s timer, and SIGKILLs if the child doesn't exit.
+- the model from `createPiModel` (credentials in memory, see section 7);
+- Pi settings held in memory: cache warming off, compaction only on request, two provider retries;
+- a resource loader with every discovery switched off (no extensions, skills, prompt templates,
+  themes or context files), so a repository's `.pi/` cannot run code;
+- the system prompt from section 3, appended to Pi's own;
+- the repository `AGENTS.md` files as Pi project instructions;
+- the tool list from section 5.
 
-### Worker ownership (0.24 baseline; 0.25 candidate)
+On a ChatGPT (`openai-codex`) model, Pi asks for an API key before each provider request and the
+worker sends `refreshApiKey`. The daemon serves only the turn's own provider while the turn runs
+and refreshes from the secrets table; only the access token comes back.
 
-Linux retains its recorded `/proc` process identity/retirement path. The 0.24 macOS ordinary-chat
-port used a live ChildProcess observer requiring a normal code-zero exit, natural EOF and original
-group absence. The 0.25 candidate adds daemon-only public libproc birth/uid/session/group inspection:
-readiness is checked before spawn and the actual child is recorded before executable input.
-Original-group descendants become signalling anchors only while that parent is live, before
-termination. Later group escalation revalidates an original anchor; unknown descendants are not
-adopted after the leader exits. Stored/restored receipts cannot reconstruct that live authority.
+## 3. The system prompt
 
-Cleanup requires natural stdout/stderr EOF, observed child closure and an absent original group.
-A coded nonzero exit may establish cleanup, never successful execution. A forced host-command
-exit still cannot prove independently detached host work stopped. Locally destroyed pipes, missing
-live owners and unknown inspection retain the writer; private scratch is not erased under
-unconfirmed resources. Management does not guess PID ownership or force-clear records.
+`runtime/session/prompt.ts:buildSystemPrompt` joins these sections, in order, when they apply:
 
-Daemon shutdown fences scheduler admissions and new turn registrations, aborts active controllers
-including inbox readiness before registration, and drains tracked scheduler/lifecycle waiters and
-registered turns before closing browser/MCP resources and the DB, within the existing shutdown cap. An interrupted/uncertain cleanup remains a durable recovery blocker after restart.
-See [workspace recovery](workspace-recovery.md), the active BAZ-072 story and the historical
-[BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) qualification limits.
-
-## 2. Child bootstrap (`worker/entry.ts`)
-
-The worker has **no DB handle**. Resolved values arrive on stdin; live DB-backed operations use
-bound IPC. This simplified normal-worker sketch is not the exact input schema for every posture:
-
-```
-process.on('SIGTERM' / 'SIGINT', onSignal)            // installed FIRST so a signal during boot
-                                                      // emits a synthetic 'cancelled' event + exits 0
-const {agent, message, enabledProviders, apiKey, apiKeyRefreshEnabled, turnId,
-       bashApprovalMode} = await readInput()
-paths = resolvePaths()                                // BAZILION_HOME from env, no DB access
-memory = qmdBackend(join(agent.team.path, 'memory')) // Team-shared store, not per-agent
-                                                      // BM25 index via @tobilu/qmd
-messagingHost = createIpcMessagingHost()              // process.send/on('message') wrapper
-refreshApiKey = createIpcApiKeyRefresher()             // turn-bound OAuth refresh RPC
-bashApprovalHost = createIpcBashApprovalHost()        // risky bash → daemon decision RPC
-session = createBazilionSession({
-  agent, paths,
-  env: process.env,                                   // already merged by daemon, passed via spawn env
-  memory,
-  enabledProviders: new Set(enabledProviders),
-  messagingHost,
-  bashApprovalHost,
-  apiKey,                                             // pre-fetched OAuth token if openai-codex
-  refreshApiKey,                                      // daemon-owned refresh over private IPC
-})
-abortSession = () => void session.abort()
-```
-
-`createBazilionSession` (in `apps/daemon/src/runtime/pi/session.ts`) is the integration seam where Bazilion hands control to Pi's agent engine. It instantiates pi-coding-agent's `AgentSession` with:
-- A `SessionManager` rooted at `~/.bazilion/agents/<id>/sessions/` — pi owns the JSONL transcript, compaction, and replay. The daemon resolves an explicit Agent-owned conversation before admission and passes its canonical ID/filename to the worker. Normal and protected workers validate and open that exact file; missing or corrupt history never falls back to directory activity.
-- A shell-policy-selected coding surface. With both controls off, Pi's original `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` surface remains unchanged. `BAZILION_BASH_APPROVAL=dangerous` replaces only `bash` with a same-name local wrapper that classifies before execution and asks the daemon for a one-shot decision. With `BAZILION_BASH_SANDBOX=docker`, none of the host-backed coding tools are enabled; Bazilion registers only a same-name custom `bash` backed by an ephemeral Docker container, optionally with the same approval wrapper.
-- Bazilion's custom tool list via `createBazilionCustomTools` (memory_*, home_*, web_*, bootstrap_done, optional messaging via the `messagingHost`) — see `apps/daemon/src/runtime/pi/tools.ts`.
-- The provider/model pair from the registry, with `apiKey` (caller-supplied for OAuth providers, env-derived for API-key ones), plus the agent's `reasoning_level`.
-
-The unreleased 0.25 path also accepts explicit `BAZILION_BASH_SANDBOX=native`. Canonical turn
-preparation admits native inputs under the owned workspace before model work; inbox preparation
-precedes message claims. Configured, scheduled and inbox callers route Bash/coding commands through
-that same bound executor, never host tools or Docker fallback. The selector is rechecked before input;
-changing it refuses the prepared turn. Native risk gating is mandatory, including unattended
-auto-denial. Shutdown fences and drains acknowledged, still-unregistered inbox readiness before
-workspace/DB release. Actual Linux/Mac trials cover both exact Node baselines with synthetic provider
-transport. This is not installed-client or live-provider qualification. See
-[native execution](native-execution-design.md) for denial, ownership and API limits.
-
-Docker mode remains an opt-in confinement boundary pending approved conditional retirement, not just a different process launcher. The Team
-workspace is mounted read/write at `/workspace`, but its `memory/` subtree is over-mounted
-read-only to `bash` (the scoped `memory_*` tools still own memory writes). Non-image attachments
-saved under the Agent's private `uploads/` directory are exposed read-only at `/inputs`, and the
-message's generated file note uses those container paths. Each attached skill directory is exposed
-read-only at the runtime path printed beside that skill in the prompt. Recursive bind propagation
-is disabled, so nested host mounts do not expand those capabilities. The container otherwise has
-a read-only root, a temporary `/tmp`, no network, no capabilities, and only Bazilion's scrubbed
-allowlist environment; image-defined environment values are discarded before the requested
-command. It runs an immutable id resolved from the configured local image with `--pull never`.
-Only a local Unix-socket Docker context is accepted. Images declaring Docker `VOLUME`s are rejected
-because those would create implicit writable filesystems. Missing Docker, a missing/incompatible
-local image, or a mount failure returns a tool error and never falls back to host execution.
-
-Dangerous-command approval is independent of Docker isolation. The wrapper intercepts Pi's bash
-tool definition (where the stable tool-call id exists), classifies the complete command, and sends
-an IPC request before either local or Docker operations run. Interactive browser and TTY CLI turns
-receive `command_approval` stream events and answer through `/api/shell-approvals`; every other
-caller is marked `auto_deny`. Pending entries live only in daemon memory, expire after two minutes,
-and are removed on turn cancellation or worker disconnect. Allow invokes the selected backend once;
-all other outcomes become a model-visible bash tool error without invoking it.
-
-Provider gate: `enabledProviders.size > 0 && !enabledProviders.has(providerName)` → throws "provider is disabled — enable it on /config". The set is pre-computed by the daemon so the worker doesn't have to read `provider_state`.
-
-For `openai-codex` agents, pi's mid-turn refresh callback sends the logical provider name plus the Agent and turn IDs over IPC. The parent verifies all three against the child it spawned, rejects requests after turn cancellation, and invokes the daemon-owned refresher against the secrets table. The worker remains DB-free and never receives the stored refresh credential; only the refreshed access token returns over IPC.
-
-After the turn finishes (or aborts), the worker calls `process.disconnect()` in its `finally` so the IPC channel doesn't pin the event loop alive after the turn settles.
-
-## 3. The prompt
-
-`session/prompt.ts:buildSystemPrompt` concatenates, in order, whichever of these files exist under the agent's dir:
-`AGENTS.md → SOUL.md → TOOLS.md → IDENTITY.md → BOOTSTRAP.md`.
-
-Those were copied out of the profile at spawn time (`core/agent/spawn.ts`) so an agent can diverge from its profile. If `BOOTSTRAP.md` exists a nudge is appended telling the model to call `bootstrap_done` (which deletes the file) once it's done onboarding.
-
-Then three team-related blocks are appended (when applicable):
-
-- **`# Agent Home`** — describes the agent's private home (`agents/<id>/`) and points the model at `home_read` / `home_write` / `home_list` for self-edits and at `memory_write` for things-to-remember-later. Frames the distinction between "who I am" (home) and "what I produce" (team dir).
-- **`# Team`** — `- <id> (<name>): <path>`. Reminds the model that the currently exposed workspace tools operate on team work product, that the team may be shared with other agents, and that it must use `home_*` (not workspace tools) to edit its own identity files. In Docker mode the only coding tool is the containerized `bash`, so the prompt does not claim that host file tools remain available.
-- **`# About the User`** — only when `teams.user_md` is non-empty. Team-owned DB context;
-  raw filesystem writes do not edit it. Admitted `user_md_*` operations use revision checks.
-
-Repository guidance and passive Git/command context are supplied separately by the daemon's bounded
-repository-context resolver; private Agent documents remain separately labelled instructions.
-Restricted review workers do not gain repository capability from this context path.
-
-Finally appends: the list of attached skills (each skill's SKILL.md body is injected into the prompt), and a memory blurb explaining the **team-shared** scope: "You share a persistent memory backend with every other agent in this team. Use `memory_write` for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead." Each injected skill also names its runtime directory so relative helper scripts/assets resolve correctly: the installed host directory when sandboxing is off, or that skill's matching read-only `/skills/...` mount when Docker mode is on.
+1. **Agent instructions**: the Agent's `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `IDENTITY.md`,
+   copied from its Profile at spawn.
+2. **First-Run Ritual**: while `BOOTSTRAP.md` exists, with the rule to call `bootstrap_done` when
+   onboarding is complete.
+3. **Agent Home**: what the private home is for, and `home_*` versus `memory_write`.
+4. **Available Skills**: each attached skill's `SKILL.md` body and its runtime directory (the host
+   directory, or its read-only `/skills/...` mount in Docker mode).
+5. **Web research** and the **browser guide**, when those tools are present.
+6. **Team**: the workspace path (`/workspace` in Docker mode) and the rule that an `AGENTS.md`
+   governs its directory and everything below it.
+7. **About the User**: the Team's USER.md, and how to update it with `user_md_get` /
+   `user_md_write`.
+8. **Reviewed lessons**: private lessons you approved, up to 8,000 characters.
+9. **Memory**: the Team-shared memory and when to use it.
 
 ## 4. The turn loop
 
-The turn itself is run by pi-coding-agent's `AgentSession`. The worker invokes:
+The worker calls `session.prompt(text, {images})` and `session.agent.waitForIdle()`. The user
+message is in the session JSONL as soon as `prompt()` runs, so a killed worker does not lose it;
+the next turn continues from the file.
 
-```ts
-await session.prompt(message)
-await session.agent.waitForIdle()
+A `session.subscribe` listener passes each Pi event through `runtime/pi/events.ts:translatePiEvent`,
+which redacts known credential values and yields `SessionEvent`s:
+
+- `user_message`, `assistant_delta` (streamed text), `assistant_message` (the full text);
+- `tool_call`, then `tool_progress` (a cumulative tail of a running tool's output, at most every
+  250 ms and 8 KiB), then `tool_result` (with optional images) or `tool_error`;
+- `error` (`'cancelled'` after a cancel).
+
+The worker also emits `file` when a tool saves a result, and the daemon adds `agent_question` and
+`command_approval` (section 1).
+
+On a clean end the worker emits `done` with the conversation as `ProviderMessage[]`, so a client
+can reconcile its view. The JSONL file is the only record of the conversation.
+
+## 5. Tools
+
+`runtime/pi/tools.ts:createBazilionCustomTools` builds Bazilion's tools and adapts each to Pi:
+
+- `memory_write|read|search|list`: the Team's shared qmd (BM25) store in `<team>/memory/`; keys
+  are Markdown paths such as `notes/topic.md`.
+- `home_read|write|list`: the Agent's own documents, by name only; `BOOTSTRAP.md` is read-only.
+- `bootstrap_done`: removes `BOOTSTRAP.md`.
+- `web_fetch`: a guarded page fetch (no private addresses, also after redirects) turned into
+  Markdown. `web_search`, when a search backend is ready, runs in the daemon.
+- `send_message`, `read_inbox`, `wait_for_reply`: the mailbox. Every message carries a causal chain
+  and hop count; the daemon refuses a send past `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) and
+  records the stop.
+- `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and
+  `mcp__<server>__<tool>`: each present when its host is.
+
+The coding tools depend on `BAZILION_BASH_SANDBOX` and `BAZILION_BASH_APPROVAL`
+(`runtime/shell/tooling.ts`):
+
+- **off**: Pi's own `read`, `bash`, `edit`, `write`, `grep`, `find` and `ls` run on the host, in
+  the Team directory.
+- **docker**: the host tools are removed; a custom `bash` runs each command in a fresh container
+  (`runtime/shell/docker.ts`) with the Team directory at `/workspace`, `memory/`, `/inputs` and
+  attached skills read-only, no network and no host environment. A Docker failure is the
+  command's error, never a host fallback.
+- **approval**: with `BAZILION_BASH_APPROVAL=dangerous`, `bash` (host or Docker) first classifies
+  the command (`runtime/shell/security.ts`). A flagged command asks the daemon, which streams a
+  `command_approval` event and waits up to two minutes for `POST /api/shell-approvals/:id`, or
+  denies at once when nobody can answer.
+
+## 6. Conversation commands
+
+These run in the daemon, not in a worker.
+
+- **Compact** (`POST /api/agents/:id/chat/compact`, `bazilion agent chat-compact <id>
+  [--instructions "..."]`, `/compact` in the web chat) opens the session and calls Pi's
+  `compact()`: older messages become one summary and the recent part stays verbatim. This is a
+  model call; the Agent counts as busy until it ends.
+- **Context** (`GET /api/agents/:id/chat/context[?detail=1]`, `bazilion agent chat-context <id>`,
+  `/context`): the prompt sections, tool schemas, skills, USER.md and history size the next turn
+  would carry, computed by `describeTurn` without starting a model.
+- **Truncate** (`POST /api/agents/:id/chat/truncate`, `bazilion agent chat-trim <id> --keep N`, the
+  web chat's edit of the last message) keeps the first N messages for the next turn by moving the
+  conversation's leaf back and appending a `bazilion.truncate` marker; the file stays
+  append-only.
+- **New conversation** (`POST /api/agents/:id/conversations`, `bazilion conversation new <agent>`,
+  `/new`) starts an empty history and keeps the old ones. See [conversations](conversations.md).
+
+## 7. Providers and Pi
+
+The daemon and the packed CLI pin `@earendil-works/pi-ai`, `pi-agent-core`, `pi-coding-agent` and
+`pi-mcp` to the same version (1.4.0). An operator's own Pi install is not touched.
+
+- **Provider table.** `apps/daemon/src/core/providers.ts` has one `PROVIDERS` entry per provider:
+  its `/config` card, key and credential variables, Pi's id where it differs, an endpoint the
+  operator may set, local servers (LM Studio, Ollama, llama.cpp) and live `/models` listings.
+  Pi's bundled catalog supplies the model ids. Model strings are `provider:model`.
+- **Model runtime.** `runtime/providers/pi-runtime.ts:createPiModel` builds a Pi `ModelRuntime`
+  whose credentials live in memory only; Pi reads no auth or model files and fetches no catalog.
+  An id that is not in the catalog goes only to an endpoint the provider declares, otherwise it
+  fails as "Unknown model", so a typo never sends a key to another vendor's default URL.
+- **Enabled providers.** A provider is usable once it is enabled on `/config` or with
+  `bazilion provider enable <id>`; turns, compaction and the provider test refuse a disabled one.
+- **Provider test.** `POST /api/providers/test` (`bazilion provider test <provider:model>`) sends
+  one short request through the same runtime and reports the reply or the provider's error.
+- **MCP** runs in the daemon with `pi-mcp`; workers only proxy calls. See [MCP](mcp.md).
+- **Web search and image generation** are daemon hosts, not Pi extensions. See
+  [web research](web-research.md) and [image generation](image-generation.md).
+- **Upgrading Pi.** Bump the four packages together in `apps/daemon` and `apps/cli`, keep the
+  settings above, and run the gates. A catalog change can add or drop model ids; saved Agent model
+  choices are not rewritten. Upstream:
+  [SDK](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/sdk.md),
+  [models](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/models.md),
+  [MCP client](https://github.com/earendil-works/pi/blob/v1.4.0/packages/mcp/README.md).
+
+## 8. Cancellation and shutdown
+
+```text
+POST /api/agents/:id/cancel  (bazilion agent cancel <id>, Stop in the web chat, /stop in Telegram)
+→ lib/agent-cancel.ts: cancelAgent(id) aborts the turn's controller
+→ spawn.ts: SIGTERM to the worker's process group, SIGKILL after 3 s
+→ the worker's handler calls session.abort(); Pi aborts the provider request
+→ the worker emits {type:'error', error:'cancelled'}, disconnects IPC and exits
+→ runAgentTurn removes the turn's Docker containers and unregisters the Agent
 ```
 
-A `session.subscribe(...)` listener is installed beforehand to capture pi's session events. Each event passes through `apps/daemon/src/runtime/pi/events.ts:translatePiEvent` to one (or zero) Bazilion `SessionEvent`s, which the worker emits as `{kind:'event', event}` NDJSON frames on stdout.
+When a worker exits, whatever is left in its process group is killed and its pipes are read for
+one more second at most. A command that detached into another process group is not tracked. Docker
+containers carry a per-home, per-turn name prefix; they are removed when the turn ends and, by the
+home prefix, when the daemon starts. On SIGINT or SIGTERM the daemon stops accepting turns, aborts
+the running ones and waits for them before closing browsers, MCP connections and the database.
 
-### Pi owns durability and replay
+## 9. Scheduler
 
-The user's message lands in pi's session JSONL the moment `prompt()` is called, so a SIGKILL mid-turn doesn't lose it. On the next worker, `SessionManager.open` replays the JSONL and pi's own orphan-strip drops trailing user/tool entries with no matching assistant reply. There is no `agents.chat_messages` blob anymore; the JSONL file at `~/.bazilion/agents/<id>/sessions/<sessionId>.jsonl` is the canonical transcript and the **only** persistent record of the conversation.
+`apps/daemon/src/lib/scheduler.ts` ticks every 5 s (`BAZILION_SCHEDULER_TICK_MS`;
+`BAZILION_SCHEDULER=off` disables it) and does three jobs:
 
-### Event flow
+- **Triggers.** An interval trigger is due when `last_fired_at + every` has passed (the creation
+  time counts as the first `last_fired_at`); a cron trigger is due when the current minute matches
+  its 5-field expression (`lib/cron.ts`, daemon local time). The due occurrence is recorded in
+  `trigger_dispatches` and runs at most once: a busy Agent leaves it pending, then it ends
+  succeeded, failed or cancelled, and nothing is retried. While one is open, later interval
+  occurrences coalesce, and a minute missed while the daemon was down is not caught up. A run cut
+  short by a daemon stop is marked failed at the next start. Failures show in Attention and in
+  `bazilion trigger history <id>`.
+- **Inbox wakes.** An idle Agent with unread mail gets one turn whose prompt contains the
+  messages, marked read in the same transaction. If that turn cannot start, the messages go back to
+  unread and the Agent's wakes back off from 10 s, doubling up to 5 minutes.
+- **Learning reviews.** Agents with reviewed learning on and enough new turns get a review in a
+  restricted worker with a minimal environment, whose only tool is `propose_lesson`.
 
-Per pi iteration:
-
-1. Abort check — if the worker's signal handler has fired, `session.abort()` was called and pi unwinds the in-flight provider fetch via the `AbortSignal`.
-2. Pi calls the provider via Bazilion's `pi-adapter.ts`. Streaming text arrives via internal events; the translator yields `{type:'assistant_delta', delta}`.
-3. When the provider resolves, the translator yields `{type:'assistant_message', text}` (full text). Tool calls produce `{type:'tool_call', ...}` → tool dispatch → `{type:'tool_result', ...}` (or `tool_error`). Messaging tools dispatch through the IPC host (see §6).
-4. Loop continues until pi decides the turn is complete.
-
-On clean exit, the worker emits `{kind:'done', messages}` carrying the full final `ProviderMessage[]` view (built from pi's session) so the consumer can reconcile its render with authoritative state.
-
-## 4b. `/compact`, `/context`, `/new` — conversation commands
-
-These run **inside the daemon** (not in a worker subprocess) — they're short read/edit operations on pi's session, no LLM streaming.
-
-**`/compact`** delegates to pi's `session.compact()`: summarize the head, preserve a verbatim tail (default 10 messages), record a compaction marker pointing at the first kept entry. The HTTP endpoint at `apps/daemon/src/routes/agents.ts` (POST `/api/agents/:id/chat/compact`) opens the agent's session via `createBazilionSession` (with `apiKey` + `refreshApiKey` from `resolveAgentApiKey` — this *is* an LLM call to summarize, so OAuth refresh matters), calls `compact({keepTail, customInstructions})`, and returns `{before, after, summarized, keptTail, tokensBefore, tokensAfter, summary}`.
-
-On replay, pi turns the compaction marker into a synthetic `assistant` message prefixed with `[conversation summary]\n\n…`; entries before the marker are skipped; entries from `firstKeptEntryId` onward pass through verbatim. The web UI renders a divider (`chat-msg-compaction`) instead of an agent bubble.
-
-CLI: `bazilion agent chat-compact <id> [--keep-tail N] [--instructions "..."]`.
-
-**`/context`** (GET `/api/agents/:id/chat/context`) returns a `ChatContextResponse`: per-file system-prompt contribution, tool count + total schema JSON chars + per-tool schema/description/param-count, skill list + per-skill block size, the agent's team block + USER.md size, history breakdown (message entries / compaction entries / chars / bytes / token estimate), and a `totals` line summing system prompt + tool schemas + history.
-
-Implementation: calls `buildSystemPrompt(resolved)` for the total, re-renders the skills/team subsections inline for subsection sizes, opens `createBazilionSession` to enumerate tools and read pi's session stats. `?detail=1` (or `--json` on the CLI) emits the full `entries` arrays; default truncates to top 30.
-
-**New conversation** retains previous history and saved files, creates a durable empty canonical session, and selects it under the Agent lifecycle lease. Endpoint: `POST /api/agents/:id/conversations` with `{requestId, expectedSelection, title?}`; CLI: `bazilion conversation new <agent>`; web: Conversations → New conversation (`/new` opens that library). Destructive ordinary chat reset is removed. See [conversation operations](conversations.md) for stale-client recovery and exact retries.
-
-**`/truncate`** keeps the first N entries (`POST /api/agents/:id/chat/truncate {keepCount, expectedSelection}`; CLI `bazilion agent chat-trim <id> --keep N`; web "edit last message" UI).
-
-## 5. Provider layer (`providers/pi-adapter.ts` + `registry.ts`)
-
-The chat-provider adapter uses pi-ai (`@earendil-works/pi-ai`); auxiliary search/image transports
-have their own bounded daemon hosts and no-replay contracts. `piProvider(cfg)` adapts pi's `streamSimple(model, {systemPrompt, messages, tools}, {signal, apiKey, reasoning, …})` to Bazilion's `Provider.chat(ProviderRequest): Promise<ProviderResponse>`.
-
-Model resolution first checks the selected provider's catalog. An uncatalogued model without an
-explicit endpoint throws `UnknownModelError`; it must not inherit a provider-default destination
-and receive that provider's credential. Custom/local models require the configured endpoint and
-route-specific validation. Protected provider admission applies its additional endpoint/credential
-restrictions before spawn.
-
-Message conversion: `system` is passed separately (pi keeps it out of the message array), `assistant` messages with tool calls are rebuilt as `{type:'text'|'toolCall'}` content blocks, `tool` messages become pi `toolResult` messages. The synthesized `usage`/`stopReason`/`api` fields on replayed assistant messages are load-bearing only for pi's type checker, not the LLM.
-
-`apiKey` can be a function — providers like `openai-codex` use this for lazy OAuth refresh. The registry passes `() => loadOpenAICodexAccessToken(db, authToken)` so refresh happens at each `chat()` without rebuilding the cached Provider.
-
-`loadProviderConfigFromEnv(env, oauth?)` takes an optional `{db, authToken}` to enable OAuth-backed providers; daemon-side callers always pass it, env-only callers (currently none in production code) can omit it.
-
-The standalone `Provider.chat` wrapper uses `withRetry`; this is not a generic retry policy for
-image/search/publication effects or every Pi SDK operation. Retryable: 5xx, 429, connection resets, `overloaded_error`, etc. Non-retryable: 4xx auth/invalid_request/context_length. **Hard rule**: if `onDelta` already fired on this attempt (`streamed=true`), we throw instead of retrying — a retry would duplicate streamed text in the UI. Exponential backoff with `AbortSignal`-aware sleep, default 3 total attempts.
-
-## 6. Tool registry (`tools/registry.ts` + `pi/tools.ts`)
-
-`createToolRegistry(handlers[])` gives a dumb Map keyed on `def.name` with `list()/has()/invoke(name, jsonArgs)`. On `invoke`:
-- `JSON.parse(jsonArgs)` — wrap errors with the tool name for better debugging
-- Guard non-object args
-- Call `handler.invoke(args)` — returns text or multimodal `ToolResultPart[]`; the Pi bridge
-  projects text/images without inventing disclosure permission.
-
-`createBazilionCustomTools` (`apps/daemon/src/runtime/pi/tools.ts`) composes the Bazilion-specific tool list and adapts each `ToolHandler` to pi's `ToolDefinition`:
-
-- `memory_{write,read,search,list}` — qmd BM25 over markdown files in `<team.path>/memory/`. The store is **shared by every agent in the team** — descriptions explicitly say so and direct personal notes to `home_write IDENTITY.md` instead.
-- `home_{read,write,list}` — scope = `<agentDir>/`, hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — `bootstrap_done` owns its lifecycle.
-- `web_search` — daemon-owned, explicitly admitted managed/native discovery; no account/provider
-  fallback. Provider-hosted networking is not confined by the local browser SSRF proxy.
-- `web_fetch` — guarded source retrieval, Readability + Markdown, bounded redirects/time/cache.
-  Discovery citations are not proof that original sources were read; see [web research](web-research.md).
-- `bootstrap_done` — deletes `BOOTSTRAP.md` after onboarding.
-- `send_message` / `read_inbox` / `wait_for_reply` — registered only when a `messagingHost` is supplied (always true in production). The **MessagingHost interface** is the seam between the worker (which uses an IPC-backed implementation) and the daemon (which uses a DB-backed implementation):
-
-  ```ts
-  // apps/daemon/src/runtime/worker/ipc-protocol.ts
-  export interface MessagingHost {
-    agentExists(agentId: string): boolean | Promise<boolean>
-    sendMessage(input: {...}): {messageId} | Promise<{messageId}>
-    listInbox(agentId, opts: {unreadOnly}): Message[] | Promise<Message[]>
-    markRead(messageId: string): void | Promise<void>
-    findReplies(agentId, replyTo): Message[] | Promise<Message[]>
-  }
-  ```
-
-  Worker-side IPC hosts in `worker/entry.ts` serialize args, send `process.send({type:'rpc', id, method, args})`, and await the matching `rpc-reply` (correlation by `id`). Daemon-side messaging passes through `createDbMessagingHost`; shell approval is owned by the daemon's ephemeral command-approval registry. `spawnWorkerTurn` wires both dispatch paths and injects approval state into the streamed turn frames.
-
-The coding-tool surface is mode-dependent:
-
-- **Off (default):** `read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls` come from
-  pi-coding-agent's `createCodingTools(cwd, …)`, with the Team directory as `cwd`. This preserves
-  existing host behavior.
-- **Docker:** every host-backed Pi coding tool is removed. A custom tool still named `bash` runs
-  each command in a fresh container with `/workspace` read/write, `/workspace/memory` read-only,
-  optional `/inputs` and attached `/skills/...` mounts read-only, recursive bind propagation
-  disabled, a scrubbed environment, a read-only root plus tmpfs `/tmp`, and network disabled.
-  The image must already exist locally (`--pull never`), provide `/bin/bash` and `/usr/bin/env`,
-  and declare no Docker `VOLUME`s; non-local Docker contexts and Docker/image/mount errors fail
-  closed.
-
-BAZ-006 added both controls in v0.11.0. `BAZILION_BASH_SANDBOX=docker` selects the hard
-container boundary. Independently, `BAZILION_BASH_APPROVAL=dangerous` wraps either host or Docker
-`bash`: safe commands continue immediately, while classified commands emit one turn-scoped
-approval event. Web and TTY CLI turns can allow once or deny; scheduled, Telegram, background, and
-non-TTY turns auto-deny without waiting. Timeout, cancellation, and disconnect all clear pending
-state before the command can execute.
-
-## 7. Cancellation end-to-end
-
-```
-POST /api/agents/:id/cancel
-→ apps/daemon/src/lib/agent-cancel.ts: cancelAgent(id) → controller.abort()
-→ parent's spawnWorkerTurn abort handler: child.kill('SIGTERM'), arm 3s → SIGKILL
-→ child's SIGTERM handler: aborts its internal controller (calls session.abort())
-→ pi unwinds the in-flight provider fetch via AbortSignal
-→ translator emits {type:'error', error:'cancelled'} on the next event
-→ worker emits the corresponding ChatFrame {kind:'event', event:{type:'error',…}}
-→ then on `done` (or fatal), the worker disconnects IPC and exits 0
-→ parent's runAgentTurn unregisters the agent in `finally`
-```
-
-There is no per-run row to update — pi's session JSONL records the partial assistant message + the error event as the last entries on the branch. The next chat turn picks up from there (or `bazilion conversation new <agent>` starts retained, separate history).
-
-## 8. Scheduler (`apps/daemon/src/lib/scheduler.ts`)
-
-Not strictly the engine, but it's the other caller of `runAgentTurn`. A `setInterval` (5s default, unrefed, pinned on `Symbol.for('bazilion.scheduler')` to survive module reloads) reads enabled triggers from `agent_triggers` each tick:
-- `interval`: due when `now - (lastFiredAt ?? createdAt) ≥ intervalSec*1000`.
-- `cron`: a 5-field parser (`apps/daemon/src/lib/cron.ts`) matched at minute resolution, with OR semantics on DOM/DOW. Guard: don't refire within the same minute-floor as `lastFiredAt`.
-
-For a due trigger, the scheduler idempotently materializes a row in `trigger_dispatches` keyed
-by `(trigger_id, scheduled_at)`, then advances `last_fired_at` to that scheduled occurrence.
-That field is a scheduling watermark, not an execution-success flag. If the trigger already
-has pending, running, or retrying work, later interval occurrences coalesce instead of creating
-an unbounded queue.
-
-Claimable dispatches are pending/retrying rows whose retry time has arrived plus running rows
-whose lease expired after an interrupted daemon. A transactional claim creates a running
-lease. A busy Agent causes the dispatch to be deferred without consuming an attempt; otherwise
-the scheduler revalidates authorization and drains `runAgentTurn`. An approval-required result
-keeps the dispatch pending; operator approval records a durable grant, and a later scheduler tick
-still owns the turn, lease, retries, and final status. Worker `fatal` frames and Pi provider
-`event:error` frames are both dispatch failures. Success is recorded as `succeeded`; failures use
-bounded exponential retry and eventually become terminal `failed`.
-The in-memory `firing` guard only prevents duplicate work inside one process—the dispatch row,
-unique occurrence key, and lease are the durable recovery mechanism. Recent status is visible
-through the trigger-history HTTP, CLI, and web surfaces.
-
-  The scheduler also runs an **inbox auto-deliver loop** each tick: `messageRepo.listRecipientsWithUnread(db)` returns idle agents with unread mail; for each, the scheduler drains the inbox into the agent's wake-up prompt and fires `runAgentTurn`. The agent-cancel registry's `isActiveAgent(agentId)` check prevents double-firing while a turn is in flight.
-
-  Every Agent message also carries a durable `causal_chain_id` and `causal_hop`. Explicit replies inherit from `reply_to`; an inbox wake passes its highest-hop claimed message into the turn-scoped `MessagingHost`, so a tool send inherits the chain even if the model omits `reply_to`. Before inserting a message, the daemon rejects hops beyond `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) and records a payload-free `agent_loop_break_events` row. This is the hard cost-loop boundary; the prompt's reply etiquette is only a usability layer.
-
-The turn's transcript lands in pi's session JSONL identically to HTTP chats;
-`trigger_dispatches` stores delivery metadata only and does not duplicate conversation content.
-
-## The shape that matters
-
-Three layers, one contract:
-- **`Provider.chat`** — pi-adapter + retry. Everything below it.
-- **`session.prompt(message)`** — pi-coding-agent's own loop. Bazilion subscribes to its events via `session.subscribe(...)` and translates them into wire events.
-- **NDJSON stdout** — what the worker writes is what the HTTP client reads, byte-for-byte. No translation between worker→daemon and daemon→client.
-
-Plumbing around those three is invisible to callers: both the HTTP route and the scheduler see the same `AsyncGenerator<ChatFrame>` shape from `runAgentTurn`. The subprocess + IPC boundaries are an implementation detail.
-
-## Durable file delivery
-
-`deliver_file` reads a confined workspace file and awaits the turn-bound daemon `publishResult`
-IPC host. The daemon validates the active canonical session/tool call and commits immutable bytes
-and provenance together in SQLite. Pi tool-result details, live file events, and hydrated messages
-carry the same opaque result reference. Publication starts private; the shared Agent-to-user
-authorizer and canonical approval dispatcher own release. See [saved results](results.md) for
-API, client surfaces, retention, cleanup, and backup guarantees.
+Scheduled turns are ordinary turns: their transcript is the same JSONL, and
+`trigger_dispatches` keeps only delivery state.

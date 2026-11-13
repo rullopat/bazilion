@@ -1,16 +1,17 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import type { McpServer } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mcpHttpFixture } from '../fixtures/mcp-http.ts'
 
 let home: string
-let oldHome: string | undefined
-let oldScheduler: string | undefined
+const saved: Record<string, string | undefined> = {}
 const fixtures: Awaited<ReturnType<typeof mcpHttpFixture>>[] = []
 beforeEach(() => {
-  oldHome = process.env.BAZILION_HOME
-  oldScheduler = process.env.BAZILION_SCHEDULER
+  for (const key of ['BAZILION_HOME', 'BAZILION_SCHEDULER', 'BAZILION_TOKEN', 'COPIED_BOOTSTRAP'])
+    saved[key] = process.env[key]
   home = mkdtempSync(join(tmpdir(), 'baz-mcp-route-'))
   process.env.BAZILION_HOME = home
   process.env.BAZILION_SCHEDULER = 'off'
@@ -22,10 +23,10 @@ afterEach(async () => {
   for (const f of fixtures.splice(0)) await f.close()
   const { getCtx } = await import('../../src/lib/ctx.ts')
   getCtx().db.close()
-  if (oldHome === undefined) delete process.env.BAZILION_HOME
-  else process.env.BAZILION_HOME = oldHome
-  if (oldScheduler === undefined) delete process.env.BAZILION_SCHEDULER
-  else process.env.BAZILION_SCHEDULER = oldScheduler
+  for (const [key, value] of Object.entries(saved)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
   rmSync(home, { recursive: true, force: true })
   vi.resetModules()
 })
@@ -39,146 +40,156 @@ async function post(body: unknown) {
     body: JSON.stringify(body),
   })
 }
-async function httpServer() {
+async function patch(id: string, body: unknown) {
+  return (await router()).request(`/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+async function httpServer(name = 'fixture') {
   const f = await mcpHttpFixture()
   fixtures.push(f)
-  const res = await post({
-    name: 'fixture',
-    transport: 'http',
-    url: f.url,
-    authToken: 'PRIVATE_SYNTHETIC_MCP_TOKEN',
-  })
+  const res = await post({ name, transport: 'http', url: f.url, authToken: 'PRIVATE_MCP_TOKEN' })
   expect(res.status).toBe(201)
-  return {
-    f,
-    server: ((await res.json()) as { server: import('@bazilion/api-types').McpServer }).server,
-  }
+  return { f, server: ((await res.json()) as { server: McpServer }).server }
 }
-test('legacy SSE POST/PATCH is refused and the canonical schema excludes it', async () => {
-  expect(
-    (await post({ name: 'legacy', transport: 'sse', url: 'https://example.invalid/sse' })).status,
-  ).toBe(400)
-  const { server } = await httpServer()
-  const patched = await (await router()).request(`/${server.id}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ transport: 'sse' }),
-  })
-  expect(patched.status).toBe(400)
-  expect(await patched.text()).toContain('legacy SSE is unsupported')
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  expect(() =>
-    getCtx().db.raw.run('UPDATE mcp_servers SET transport = ? WHERE id = ?', ['sse', server.id]),
-  ).toThrow(/CHECK constraint/)
-})
-test('old SSE-capable schema requires clean rebootstrap, even without SSE rows', async () => {
-  const { openInMemoryDb } = await import('../../src/core/db/client.ts')
-  const { listMigrations, schemaMigrationsSql, assertMigrationCompatibility } = await import(
-    '../../src/core/db/migrate.ts'
-  )
-  const old = openInMemoryDb()
-  try {
-    old.raw.exec(schemaMigrationsSql)
-    for (const m of listMigrations()) {
-      old.raw.exec(
-        m.sql.replace("transport IN ('stdio','http')", "transport IN ('stdio','http','sse')"),
-      )
-      old.raw.run('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', [
-        m.version,
-        Date.now(),
-      ])
-    }
-    expect(() => assertMigrationCompatibility(old)).toThrow(/incompatible database schema/)
-  } finally {
-    old.close()
-  }
-})
-
-test('ambiguous cross-server tool namespaces are denied, not silently substituted', async () => {
-  const { f } = await httpServer()
-  await f.changeTools([{ name: 'bar__foo', inputSchema: { type: 'object', properties: {} } }])
-  const first = (await (await (await router()).request('/')).json()) as {
-    servers: import('@bazilion/api-types').McpServer[]
-  }
-  await (await router()).request(`/${first.servers[0]!.id}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: '{"name":"a"}',
-  })
-  const other = await mcpHttpFixture()
-  fixtures.push(other)
-  await post({ name: 'a__bar', transport: 'http', url: other.url })
+async function turn() {
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const { resolveMcpForTurn } = await import('../../src/lib/mcp/resolve.ts')
   const ctx = getCtx()
-  const admitted = await resolveMcpForTurn(ctx.db, {}, ctx.authToken)
-  expect(admitted?.tools).toEqual([])
-  await expect(admitted!.host.invoke(first.servers[0]!.id, 'bar__foo', {})).rejects.toThrow(
-    /unknown MCP server/,
-  )
-  expect(f.requests.filter((q) => q.method === 'tools/call')).toEqual([])
-  expect(other.requests.filter((q) => q.method === 'tools/call')).toEqual([])
-})
+  return resolveMcpForTurn(ctx.db, ctx.authToken)
+}
 
-test('management retains encrypted write-only tokens and explicit fresh Pi discovery', async () => {
+test('the bearer token is write-only, and /test connects afresh with it', async () => {
   const { f, server } = await httpServer()
   expect(server.hasAuthToken).toBe(true)
-  expect(JSON.stringify(server)).not.toContain('PRIVATE_SYNTHETIC_MCP_TOKEN')
+  expect(JSON.stringify(server)).not.toContain('PRIVATE_MCP_TOKEN')
   const r = await router()
-  expect(await (await r.request('/')).text()).not.toContain('PRIVATE_SYNTHETIC_MCP_TOKEN')
-  expect(f.requests).toEqual([]) // CRUD/readiness is never a passive connection probe.
+  expect(await (await r.request('/')).text()).not.toContain('PRIVATE_MCP_TOKEN')
+  expect(f.requests).toEqual([]) // Saving a server never connects to it.
   const tested = await r.request(`/${server.id}/test`, { method: 'POST' })
   expect(tested.status).toBe(200)
   expect(await tested.json()).toMatchObject({ ok: true, tools: [{ name: 'foo' }] })
-  expect(f.requests[0]?.authorization).toBe('Bearer PRIVATE_SYNTHETIC_MCP_TOKEN')
+  expect(f.requests[0]?.authorization).toBe('Bearer PRIVATE_MCP_TOKEN')
 })
-test('disabled and deleted server capabilities cannot dispatch from an admitted turn', async () => {
+
+test('/test reports why a server cannot start', async () => {
+  const created = await post({ name: 'missing', transport: 'stdio', command: '/nonexistent/mcp' })
+  const { server } = (await created.json()) as { server: McpServer }
+  const tested = await (await router()).request(`/${server.id}/test`, { method: 'POST' })
+  expect(tested.status).toBe(502)
+  expect(((await tested.json()) as { error: string }).error).toMatch(/failed to start: .*ENOENT/)
+})
+
+test('disabling or deleting a server stops a running turn from calling it', async () => {
   const { f, server } = await httpServer()
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { resolveMcpForTurn } = await import('../../src/lib/mcp/resolve.ts')
-  const ctx = getCtx()
-  const admitted = await resolveMcpForTurn(ctx.db, {}, ctx.authToken)
+  const admitted = await turn()
   expect(admitted?.tools).toHaveLength(1)
-  const r = await router()
-  expect(
-    (
-      await r.request(`/${server.id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: '{"enabled":false}',
-      })
-    ).status,
-  ).toBe(200)
-  await expect(admitted!.host.invoke(server.id, 'foo', {})).rejects.toThrow(/configuration changed/)
-  expect(await resolveMcpForTurn(ctx.db, {}, ctx.authToken)).toBeNull()
-  expect((await r.request(`/${server.id}`, { method: 'DELETE' })).status).toBe(204)
-  await expect(admitted!.host.invoke(server.id, 'foo', {})).rejects.toThrow(/configuration changed/)
+  expect((await patch(server.id, { enabled: false })).status).toBe(200)
+  await expect(admitted?.host.invoke(server.id, 'foo', {})).rejects.toThrow(/disabled or removed/)
+  expect(await turn()).toBeNull()
+  expect((await (await router()).request(`/${server.id}`, { method: 'DELETE' })).status).toBe(204)
+  await expect(admitted?.host.invoke(server.id, 'foo', {})).rejects.toThrow(/disabled or removed/)
   expect(f.requests.filter((q) => q.method === 'tools/call')).toEqual([])
 })
-test('token rotation refuses the captured turn and reconnects only with new admission', async () => {
+
+test('a rotated token reaches the server on the next connection', async () => {
   const { f, server } = await httpServer()
-  const { getCtx } = await import('../../src/lib/ctx.ts')
-  const { resolveMcpForTurn } = await import('../../src/lib/mcp/resolve.ts')
-  const ctx = getCtx()
-  const admitted = await resolveMcpForTurn(ctx.db, {}, ctx.authToken)
-  const r = await router()
-  await r.request(`/${server.id}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: '{"authToken":"NEW_SYNTHETIC_TOKEN"}',
-  })
-  await expect(admitted!.host.invoke(server.id, 'foo', {})).rejects.toThrow(/configuration changed/)
-  const fresh = await resolveMcpForTurn(ctx.db, {}, ctx.authToken)
-  await fresh!.host.invoke(server.id, 'foo', {})
-  expect(f.requests.filter((q) => q.method === 'tools/call')).toHaveLength(1)
-  expect(f.requests.find((q) => q.method === 'tools/call')?.authorization).toBe(
-    'Bearer NEW_SYNTHETIC_TOKEN',
-  )
+  await (await turn())?.host.invoke(server.id, 'foo', {})
+  await patch(server.id, { authToken: 'NEW_MCP_TOKEN' })
+  await (await turn())?.host.invoke(server.id, 'foo', {})
+  expect(f.requests.filter((q) => q.method === 'tools/call').map((q) => q.authorization)).toEqual([
+    'Bearer PRIVATE_MCP_TOKEN',
+    'Bearer NEW_MCP_TOKEN',
+  ])
 })
+
+test('a repeated tool name keeps the first server’s tool, not neither', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const first = await httpServer('a')
+  await first.f.changeTools([{ name: 'bar__foo', inputSchema: { type: 'object' } }])
+  const second = await httpServer('a__bar')
+  const admitted = await turn()
+  expect(admitted?.tools.map((tool) => [tool.toolName, tool.serverId])).toEqual([
+    ['mcp__a__bar__foo', first.server.id],
+  ])
+  await expect(admitted?.host.invoke(second.server.id, 'foo', {})).rejects.toThrow(
+    /not available in this turn/,
+  )
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('repeats a name'))
+})
+
+test('a server that never answers delays a turn by the discovery deadline only', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    await post({
+      name: 'silent',
+      transport: 'stdio',
+      command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+    })
+    const { f, server } = await httpServer()
+    const { resources } = await import('../../src/lib/resources.ts')
+    const pending = turn()
+    // The answering server's tool list is in before the deadline passes.
+    await vi.waitFor(() => {
+      expect(f.requests.some((q) => q.method === 'tools/list')).toBe(true)
+      expect(resources().mcp.get(server.id)?.tools).toHaveLength(1)
+    })
+    await vi.advanceTimersByTimeAsync(10_000)
+    const admitted = await pending
+    expect(admitted?.tools.map((tool) => tool.serverId)).toEqual([server.id])
+    expect(warn).toHaveBeenCalledWith('mcp: server silent is unavailable: no answer within 10 s')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a stdio server gets provider keys but never Bazilion’s own credentials', async () => {
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const { openSecrets } = await import('../../src/core/index.ts')
+  const ctx = getCtx()
+  const secrets = openSecrets(ctx.db, ctx.authToken)
+  secrets.set('ANTHROPIC_API_KEY', 'provider-key')
+  secrets.set('OPENAI_CODEX_OAUTH', '{"refresh":"r","access":"a","expires":1}')
+  secrets.set('TELEGRAM_BOT_TOKEN', '123:bot')
+  await httpServer() // stores an MCP_TOKEN_<id> secret
+  process.env.BAZILION_TOKEN = 'cli-bearer'
+  process.env.COPIED_BOOTSTRAP = ctx.authToken
+  const created = await post({
+    name: 'local',
+    transport: 'stdio',
+    command: process.execPath,
+    args: [fileURLToPath(new URL('../fixtures/mcp-stdio.mjs', import.meta.url))],
+  })
+  const { server } = (await created.json()) as { server: McpServer }
+  const parts = await (await turn())?.host.invoke(server.id, 'foo', {})
+  const { keys } = JSON.parse(parts?.[0]?.type === 'text' ? parts[0].text : '{}') as {
+    keys: string[]
+  }
+  expect(keys).toContain('ANTHROPIC_API_KEY')
+  for (const internal of [
+    'OPENAI_CODEX_OAUTH',
+    'TELEGRAM_BOT_TOKEN',
+    'BAZILION_TOKEN',
+    'COPIED_BOOTSTRAP',
+  ])
+    expect(keys).not.toContain(internal)
+  expect(keys.filter((key) => key.startsWith('MCP_TOKEN_'))).toEqual([])
+})
+
 test.each([
   'file:///tmp/mcp',
   'https://user:password@example.invalid/mcp',
   'https://example.invalid/mcp#fragment',
 ])('refuses unsafe endpoint %s without connecting', async (url) => {
   expect((await post({ name: 'bad', transport: 'http', url })).status).toBe(400)
+})
+
+test('only stdio and http transports can be saved', async () => {
+  const res = await post({ name: 'legacy', transport: 'sse', url: 'https://example.invalid/sse' })
+  expect(res.status).toBe(400)
+  expect(await res.text()).toContain('transport must be stdio or http')
 })

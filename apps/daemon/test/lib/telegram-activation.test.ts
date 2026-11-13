@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { openConfig } from '../../src/core/repos/config.ts'
 import {
   type ActivationApi,
-  DIRECTORY_WELCOME_MESSAGE,
   ICON_COLOR_RED,
   runActivation,
 } from '../../src/lib/telegram/activation.ts'

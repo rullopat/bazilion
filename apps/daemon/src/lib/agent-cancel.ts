@@ -1,3 +1,5 @@
+import { DomainError } from '../core/errors.ts'
+
 // In-memory registry of agents currently running a turn and their
 // AbortControllers. The chat / scheduler / inbox-wake paths register before
 // they spawn a worker; the cancel route looks the agent up and calls
@@ -18,12 +20,12 @@ interface Registry {
   stopped?: Promise<void>
 }
 
-export class AgentTurnActiveError extends Error {
-  readonly code = 'agent_turn_active'
+export class AgentTurnActiveError extends DomainError {
+  readonly agentId: string
 
-  constructor(readonly agentId: string) {
-    super(`agent_turn_active: ${agentId}`)
-    this.name = 'AgentTurnActiveError'
+  constructor(agentId: string) {
+    super(409, 'The Agent is busy with another turn.', 'agent_turn_active')
+    this.agentId = agentId
   }
 }
 
@@ -33,16 +35,14 @@ function registry(): Registry {
   if (!r) {
     r = { active: new Map(), idleWaiters: new Map() }
     g[REGISTRY_KEY] = r
-  } else if (!r.idleWaiters) {
-    // Keep the global singleton compatible with a module reloaded in-place by
-    // the dev server or test runner.
-    r.idleWaiters = new Map()
   }
   return r
 }
 
+const SHUTTING_DOWN = 'daemon_shutting_down'
+
 export function registerAgent(agentId: string, controller: AbortController): void {
-  if (registry().stopping) throw new Error('daemon_shutting_down')
+  if (registry().stopping) throw new Error(SHUTTING_DOWN)
   if (registry().active.has(agentId)) {
     throw new AgentTurnActiveError(agentId)
   }
@@ -72,7 +72,7 @@ export function isActiveAgent(agentId: string): boolean {
   return registry().active.has(agentId)
 }
 
-/** A live question belongs to this registration, not a later turn using the same Agent. */
+/** True while this controller is the Agent's active turn, not a later turn of the same Agent. */
 export function ownsActiveAgent(agentId: string, controller: AbortController): boolean {
   return registry().active.get(agentId) === controller
 }
@@ -90,7 +90,7 @@ export function stopAgentTurns(): Promise<void> {
 }
 
 /** Resolve when an existing cross-source turn releases this Agent. */
-export function waitForAgentIdle(agentId: string): Promise<void> {
+function waitForAgentIdle(agentId: string): Promise<void> {
   const state = registry()
   if (!state.active.has(agentId)) return Promise.resolve()
   return new Promise((resolve) => {
@@ -100,6 +100,28 @@ export function waitForAgentIdle(agentId: string): Promise<void> {
   })
 }
 
+/**
+ * Run a change to an Agent (archive, compaction, browser reset, a new conversation, …) as its
+ * active work: it is refused while a turn runs, and a turn that starts meanwhile is refused as
+ * busy, so the scheduler and the follow-up queue skip the Agent until it ends.
+ */
+export async function runAgentLifecycleMutation<T>(
+  agentId: string,
+  mutation: () => T | Promise<T>,
+): Promise<T> {
+  registerAgent(agentId, new AbortController())
+  try {
+    return await mutation()
+  } finally {
+    unregisterAgent(agentId)
+  }
+}
+
 export function isAgentTurnActiveError(error: unknown, agentId: string): boolean {
   return error instanceof AgentTurnActiveError && error.agentId === agentId
+}
+
+/** registerAgent's refusal once the daemon has begun to shut down. */
+export function isShuttingDownError(error: unknown): boolean {
+  return error instanceof Error && error.message === SHUTTING_DOWN
 }

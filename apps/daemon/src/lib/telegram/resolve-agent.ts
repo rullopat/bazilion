@@ -1,24 +1,11 @@
-// Parse the agent reference users pass to `/talk` (and future `/rebind`,
-// `/adopt`, ...). Three forms:
-//
-//   bare         "/talk researcher"               — agent name only
-//   qualified    "/talk home-reno/researcher"     — team/agent qualifier
-//   quoted       "/talk \"Patrizio's Coder\""      — agent name with spaces
-//
-// Resolution outcomes:
-//
-//   ok           — exactly one matching agent
-//   ambiguous    — multiple agents share the bare name across teams
-//   not-found    — no matching agent
-//   bad-input    — empty / malformed reference (e.g. "/" with no parts)
-//
-// The caller renders an appropriate Telegram reply for each. Step 3 ships
-// the bare + qualified parsers; quoted-with-spaces is a doc-listed nicety
-// we defer until anyone actually needs it.
+// Resolve the agent reference `/talk` and `/rebind` take: a bare name ("researcher") or a
+// team-qualified one ("home-reno/researcher").
 
 import type { Agent } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
+import type { CommandResult } from './commands/types.ts'
+import { htmlEscape } from './html.ts'
 
 export type AgentResolution =
   | { kind: 'ok'; agent: Agent }
@@ -65,13 +52,14 @@ export function parseAgentRef(raw: string): ParsedRef | null {
  */
 export function resolveAgentRef(db: BazilionDb, ref: ParsedRef): AgentResolution {
   if (ref.teamId !== null) {
-    const found = agentRepo.findByNameInGroup(db, ref.teamId, ref.name)
+    const found = agentRepo.findByNameInTeam(db, ref.teamId, ref.name)
     return found ? { kind: 'ok', agent: found } : { kind: 'not-found' }
   }
   // Bare name — may match multiple agents across teams.
   const matches = agentRepo.findByName(db, ref.name)
-  if (matches.length === 0) return { kind: 'not-found' }
-  if (matches.length === 1) return { kind: 'ok', agent: matches[0]! }
+  const [only] = matches
+  if (!only) return { kind: 'not-found' }
+  if (matches.length === 1) return { kind: 'ok', agent: only }
   return { kind: 'ambiguous', matches }
 }
 
@@ -88,4 +76,41 @@ export function parseAndResolveAgent(db: BazilionDb, raw: string): AgentResoluti
     }
   }
   return resolveAgentRef(db, parsed)
+}
+
+/** The agent a command argument names, or the reply explaining why it names none. */
+export function resolveAgentArg(
+  db: BazilionDb,
+  raw: string,
+  command: string,
+): { agent: Agent } | { reply: CommandResult } {
+  const resolution = parseAndResolveAgent(db, raw)
+  const ref = htmlEscape(raw.trim())
+  switch (resolution.kind) {
+    case 'ok':
+      return { agent: resolution.agent }
+    case 'bad-input':
+      return { reply: { text: htmlEscape(resolution.message), parseMode: 'HTML' } }
+    case 'not-found':
+      return {
+        reply: {
+          text: `No agent matches <code>${ref}</code>. Try /list to see available agents, or /spawn to create one.`,
+          parseMode: 'HTML',
+        },
+      }
+    case 'ambiguous':
+      return {
+        reply: {
+          text: [
+            `Multiple agents match <code>${ref}</code>:`,
+            ...resolution.matches.map(
+              (a) => `  • <code>${htmlEscape(a.teamId)}/${htmlEscape(a.name)}</code>`,
+            ),
+            '',
+            `Use <code>/${command} &lt;team&gt;/&lt;agent&gt;</code> to disambiguate.`,
+          ].join('\n'),
+          parseMode: 'HTML',
+        },
+      }
+  }
 }

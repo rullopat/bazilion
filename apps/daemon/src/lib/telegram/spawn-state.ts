@@ -49,24 +49,7 @@ export function takePendingSpawn(chatId: number, userId: number): { profileId: s
   return { profileId: entry.profileId }
 }
 
-/**
- * Peek without consuming — used by the help / debugging surfaces. Returns
- * null on expiry, mirroring takePendingSpawn semantics.
- */
-export function peekPendingSpawn(chatId: number, userId: number): { profileId: string } | null {
-  const entry = _pending.get(key(chatId, userId))
-  if (!entry) return null
-  if (entry.expiresAt < Date.now()) {
-    _pending.delete(key(chatId, userId))
-    return null
-  }
-  return { profileId: entry.profileId }
-}
-
 /** Test-only — wipe the pending map between tests. */
 export function _resetSpawnStateForTest(): void {
   _pending.clear()
 }
-
-/** Test-only — expose the configured TTL so tests can assert it. */
-export const SPAWN_STATE_TTL_MS = STATE_TTL_MS

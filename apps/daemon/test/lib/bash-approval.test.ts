@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { CommandApprovalRegistry } from '../../src/lib/bash-approval.ts'
 import type { BashApprovalArgs } from '../../src/runtime/worker/ipc-protocol.ts'
 
@@ -13,9 +13,7 @@ function approvalArgs(overrides: Partial<BashApprovalArgs> = {}): BashApprovalAr
     risks: [
       {
         code: 'sensitive-path-read',
-        severity: 'danger',
         message: 'Accesses a path that commonly contains credentials.',
-        matchedText: '~/.ssh/id_rsa',
         span: { start: 4, end: 17 },
       },
     ],
@@ -24,179 +22,78 @@ function approvalArgs(overrides: Partial<BashApprovalArgs> = {}): BashApprovalAr
   }
 }
 
+let logged: unknown[]
+beforeEach(() => {
+  logged = []
+  vi.spyOn(console, 'info').mockImplementation((...args) => {
+    logged.push(args)
+  })
+})
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 describe('CommandApprovalRegistry', () => {
-  test('auto-denies non-interactive commands without creating a pending request', async () => {
-    const audits: unknown[] = []
-    const registry = new CommandApprovalRegistry({ audit: (entry) => audits.push(entry) })
-
+  test('auto-denies a turn without a human, without a pending request', async () => {
+    const registry = new CommandApprovalRegistry()
     const handle = registry.begin(approvalArgs({ mode: 'auto_deny' }))
 
     expect(handle.approval.status).toBe('auto_denied')
-    await expect(handle.decision).resolves.toEqual({ decision: 'deny', reason: 'auto_deny' })
+    await expect(handle.settled).resolves.toMatchObject({ status: 'auto_denied' })
     expect(registry.list()).toEqual([])
-    expect(audits).toEqual([
-      {
-        approvalId: 'approval-1',
-        turnId: 'turn-1',
-        toolCallId: 'tool-1',
-        agentId: 'agent-1',
-        teamId: 'team-1',
-        riskCodes: ['sensitive-path-read'],
-        status: 'auto_denied',
-      },
-    ])
-    expect(JSON.stringify(audits)).not.toContain('id_rsa')
-    registry.cancelAll()
-  })
-
-  test('allows exactly one interactive response and makes same-decision retries idempotent', async () => {
-    const registry = new CommandApprovalRegistry({ audit: () => {} })
-    const controller = new AbortController()
-    const handle = registry.begin(approvalArgs(), controller.signal)
-
-    expect(registry.list('agent-1')).toEqual([handle.approval])
-    expect(registry.respond('approval-1', 'allow')).toMatchObject({
-      kind: 'accepted',
-      approval: { status: 'allowed' },
-    })
-    await expect(handle.decision).resolves.toEqual({ decision: 'allow', reason: 'user' })
-    expect(registry.respond('approval-1', 'allow')).toMatchObject({ kind: 'already_applied' })
-    expect(registry.respond('approval-1', 'deny')).toMatchObject({ kind: 'conflict' })
-    expect(() =>
-      registry.begin(approvalArgs({ id: 'approval-replay' }), controller.signal),
-    ).toThrow(/already decided/)
-    registry.cancelAll()
+    // The decision is logged, never the command.
+    expect(JSON.stringify(logged)).toContain('auto_denied')
+    expect(JSON.stringify(logged)).not.toContain('id_rsa')
   })
 
   test.each([
-    'allow',
-    'deny',
-  ] as const)('keeps a %s tuple claimed after its response tombstone expires', async (decision) => {
-    vi.useFakeTimers()
-    const controller = new AbortController()
-    const registry = new CommandApprovalRegistry({
-      tombstoneTtlMs: 25,
-      audit: () => {},
-    })
-    const handle = registry.begin(approvalArgs(), controller.signal)
+    ['allow', 'allowed'],
+    ['deny', 'denied'],
+  ] as const)('answers a pending request once (%s)', async (decision, status) => {
+    const registry = new CommandApprovalRegistry()
+    const handle = registry.begin(approvalArgs())
 
-    expect(registry.respond('approval-1', decision)).toMatchObject({ kind: 'accepted' })
-    await expect(handle.decision).resolves.toEqual({ decision, reason: 'user' })
-    await vi.advanceTimersByTimeAsync(25)
-    expect(registry.respond('approval-1', decision)).toEqual({ kind: 'not_found' })
-    expect(() =>
-      registry.begin(approvalArgs({ id: 'approval-replay' }), controller.signal),
-    ).toThrow(/already decided/)
-
-    controller.abort()
-    const nextLifetime = new AbortController()
-    const next = registry.begin(approvalArgs({ id: 'approval-next-lifetime' }), nextLifetime.signal)
-    expect(next.approval.status).toBe('pending')
-    nextLifetime.abort()
-    registry.cancelAll()
+    expect(registry.list('agent-1')).toEqual([handle.approval])
+    expect(registry.list('agent-2')).toEqual([])
+    expect(registry.respond('approval-1', decision)).toMatchObject({ status })
+    await expect(handle.settled).resolves.toMatchObject({ status })
+    expect(registry.list()).toEqual([])
+    // A second answer finds nothing pending.
+    expect(registry.respond('approval-1', 'allow')).toBeUndefined()
   })
 
-  test('keeps timed-out and auto-denied tuples claimed for the worker lifetime', async () => {
+  test('expires an unanswered request', async () => {
     vi.useFakeTimers()
-    const timedOutLifetime = new AbortController()
-    const timedOutRegistry = new CommandApprovalRegistry({
-      timeoutMs: 10,
-      tombstoneTtlMs: 10,
-      audit: () => {},
-    })
-    const timedOut = timedOutRegistry.begin(approvalArgs(), timedOutLifetime.signal)
-
-    await vi.advanceTimersByTimeAsync(20)
-    await expect(timedOut.decision).resolves.toEqual({ decision: 'deny', reason: 'timeout' })
-    expect(() =>
-      timedOutRegistry.begin(
-        approvalArgs({ id: 'approval-timeout-replay' }),
-        timedOutLifetime.signal,
-      ),
-    ).toThrow(/already decided/)
-
-    const autoDenyLifetime = new AbortController()
-    const autoDenyRegistry = new CommandApprovalRegistry({
-      tombstoneTtlMs: 10,
-      audit: () => {},
-    })
-    const autoDenied = autoDenyRegistry.begin(
-      approvalArgs({ id: 'approval-auto', mode: 'auto_deny' }),
-      autoDenyLifetime.signal,
-    )
-    await expect(autoDenied.decision).resolves.toEqual({
-      decision: 'deny',
-      reason: 'auto_deny',
-    })
-    await vi.advanceTimersByTimeAsync(10)
-    expect(() =>
-      autoDenyRegistry.begin(
-        approvalArgs({ id: 'approval-auto-replay', mode: 'auto_deny' }),
-        autoDenyLifetime.signal,
-      ),
-    ).toThrow(/already decided/)
-
-    timedOutLifetime.abort()
-    autoDenyLifetime.abort()
-    timedOutRegistry.cancelAll()
-    autoDenyRegistry.cancelAll()
-  })
-
-  test('expires a pending request and removes it from the recovery list', async () => {
-    vi.useFakeTimers()
-    const registry = new CommandApprovalRegistry({ timeoutMs: 50, audit: () => {} })
+    const registry = new CommandApprovalRegistry(50)
     const handle = registry.begin(approvalArgs())
 
     await vi.advanceTimersByTimeAsync(50)
 
-    await expect(handle.decision).resolves.toEqual({ decision: 'deny', reason: 'timeout' })
+    await expect(handle.settled).resolves.toMatchObject({ status: 'expired' })
     expect(registry.list()).toEqual([])
-    expect(registry.respond('approval-1', 'allow')).toMatchObject({
-      kind: 'conflict',
-      approval: { status: 'expired' },
-    })
-    registry.cancelAll()
+    expect(registry.respond('approval-1', 'allow')).toBeUndefined()
   })
 
-  test('cancellation releases a waiter and its worker-lifetime tuple claim', async () => {
-    const registry = new CommandApprovalRegistry({ audit: () => {} })
+  test('the end of the turn cancels its pending request', async () => {
+    const registry = new CommandApprovalRegistry()
     const controller = new AbortController()
     const handle = registry.begin(approvalArgs(), controller.signal)
-
-    expect(() =>
-      registry.begin(
-        approvalArgs({
-          id: 'approval-2',
-        }),
-      ),
-    ).toThrow(/already pending/)
 
     controller.abort()
-    await expect(handle.decision).resolves.toEqual({ decision: 'deny', reason: 'cancelled' })
+    await expect(handle.settled).resolves.toMatchObject({ status: 'cancelled' })
     expect(registry.list()).toEqual([])
 
-    const nextLifetime = new AbortController()
-    const next = registry.begin(approvalArgs({ id: 'approval-2' }), nextLifetime.signal)
-    expect(next.approval.status).toBe('pending')
-    nextLifetime.abort()
-    registry.cancelAll()
+    const ended = new AbortController()
+    ended.abort()
+    expect(registry.begin(approvalArgs({ id: 'approval-2' }), ended.signal).approval.status).toBe(
+      'cancelled',
+    )
   })
 
-  test('cancelAll clears a settled tuple claim', async () => {
-    const registry = new CommandApprovalRegistry({ audit: () => {} })
-    const controller = new AbortController()
-    const handle = registry.begin(approvalArgs(), controller.signal)
-    registry.respond('approval-1', 'allow')
-    await expect(handle.decision).resolves.toEqual({ decision: 'allow', reason: 'user' })
-
-    registry.cancelAll()
-
-    const next = registry.begin(approvalArgs({ id: 'approval-2' }))
-    expect(next.approval.status).toBe('pending')
-    registry.cancelAll()
+  test('refuses a second pending request with the same id', () => {
+    const registry = new CommandApprovalRegistry()
+    registry.begin(approvalArgs())
+    expect(() => registry.begin(approvalArgs())).toThrow(/duplicate shell approval id/)
   })
 })

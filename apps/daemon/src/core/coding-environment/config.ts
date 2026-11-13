@@ -1,84 +1,38 @@
-import type { CodingEnvironmentConfig } from '@bazilion/api-types'
+import type { TeamCodingEnvironment } from '@bazilion/api-types'
+import { DomainError } from '../errors.ts'
 
-export class CodingEnvironmentValidationError extends Error {
-  readonly status = 400
+export class CodingEnvironmentValidationError extends DomainError {
+  constructor(message: string) {
+    super(400, message)
+  }
 }
 
-function invalid(field: string): never {
-  // Never echo configuration values: rejected values could contain credentials.
-  throw new CodingEnvironmentValidationError(`Invalid coding environment ${field}`)
-}
+const IMAGE = /^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/
 
-function object(value: unknown, keys: string[], field: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(field)
-  const record = value as Record<string, unknown>
-  if (Object.keys(record).some((key) => !keys.includes(key))) invalid(field)
-  return record
-}
-
-function text(value: unknown, max: number, field: string): string {
+/** A Team-relative directory: '.', or plain path segments with no `..`, `.git` or backslash. */
+function codingRelativePath(value: unknown): string {
+  if (typeof value !== 'string' || value === '' || Buffer.byteLength(value) > 4096)
+    throw new CodingEnvironmentValidationError('Invalid coding environment cwd')
+  if (value === '.') return value
+  const parts = value.split('/')
   if (
-    typeof value !== 'string' ||
-    !value.trim() ||
-    Buffer.byteLength(value) > max ||
-    Array.from(value).some((char) => {
-      const code = char.charCodeAt(0)
-      return code === 127 || (code < 32 && code !== 9 && code !== 10)
-    })
+    parts.length > 16 ||
+    value.includes('\\') ||
+    Array.from(value).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ||
+    parts.some((part) => !part || part === '.' || part === '..' || part === '.git')
   )
-    invalid(field)
+    throw new CodingEnvironmentValidationError('Invalid coding environment cwd')
   return value
 }
 
-/** Lexical validation only; admission separately pins existing non-symlinked directories. */
-export function codingRelativePath(value: unknown, field = 'cwd'): string {
-  const path = text(value, 4096, field)
-  if (path === '.') return path
-  const parts = path.split('/')
-  if (
-    parts.length > 16 ||
-    path.includes('\\') ||
-    Array.from(path).some((char) => char.charCodeAt(0) < 32) ||
-    parts.some((part) => !part || part === '.' || part === '..' || part === '.git')
-  )
-    invalid(field)
-  return path
-}
-
-export function validateCodingEnvironmentConfig(input: unknown): CodingEnvironmentConfig {
-  const config = object(input, ['backend', 'image', 'cwd', 'env'], 'configuration')
-  if (config.backend !== 'native' && config.backend !== 'docker') invalid('backend')
-  if (config.backend === 'native' && Object.hasOwn(config, 'image')) invalid('native image')
-  const cwd = codingRelativePath(config.cwd)
-  const env = object(config.env, ['CI', 'NO_COLOR', 'TZ'], 'environment values')
-  for (const [key, value] of Object.entries(env)) {
-    const allowed = key === 'CI' ? ['true', 'false'] : key === 'NO_COLOR' ? ['0', '1'] : ['UTC']
-    if (typeof value !== 'string' || !allowed.includes(value)) invalid('environment values')
-  }
-  if (config.backend === 'native') return { backend: 'native', cwd, env } as CodingEnvironmentConfig
-  const image = text(config.image, 512, 'image')
-  if (!/^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/.test(image)) invalid('image')
-  return { backend: 'docker', image, cwd, env } as CodingEnvironmentConfig
-}
-export function validateCodingCommand(
-  input: unknown,
-): import('@bazilion/api-types').CodingCommandInput {
-  const value = object(input, ['command', 'cwd', 'purpose', 'timeoutSeconds'], 'command')
-  const command = text(value.command, 4096, 'command')
-  if (command.includes('\0')) invalid('command')
-  const cwd = codingRelativePath(value.cwd)
-  if (!['runtime', 'dependency', 'prepare', 'build', 'test'].includes(String(value.purpose)))
-    invalid('purpose')
-  if (
-    !Number.isInteger(value.timeoutSeconds) ||
-    Number(value.timeoutSeconds) < 1 ||
-    Number(value.timeoutSeconds) > 300
-  )
-    invalid('timeout')
-  return {
-    command,
-    cwd,
-    purpose: value.purpose,
-    timeoutSeconds: value.timeoutSeconds,
-  } as import('@bazilion/api-types').CodingCommandInput
+/** A Team's Docker defaults: a local image reference (null for the installation's) and a cwd. */
+export function validateCodingEnvironment(input: unknown): TeamCodingEnvironment {
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw new CodingEnvironmentValidationError('Invalid coding environment')
+  const { image, cwd, ...extra } = input as Record<string, unknown>
+  if (Object.keys(extra).length > 0)
+    throw new CodingEnvironmentValidationError('Coding environment accepts only image and cwd')
+  if (image !== null && (typeof image !== 'string' || image.length > 512 || !IMAGE.test(image)))
+    throw new CodingEnvironmentValidationError('Invalid coding environment image')
+  return { image, cwd: codingRelativePath(cwd) }
 }

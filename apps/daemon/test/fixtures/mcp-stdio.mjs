@@ -1,3 +1,5 @@
+// Local stdio MCP fixture. The optional first argument names a file that receives the pid of a
+// descendant which ignores SIGTERM, so closing the connection must kill the whole process group.
 import { spawn } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
@@ -15,21 +17,11 @@ if (process.argv[2]) {
   writeFileSync(process.argv[2], String(child.pid))
 }
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
-const mode = process.argv[3]
-let calls = 0
 const rl = createInterface({ input: process.stdin })
 rl.on('line', (line) => {
   const message = JSON.parse(line)
   if (message.id === undefined) return
   let result = {}
-  if (message.method === 'initialize' && mode) {
-    writeFileSync(`${process.argv[2]}.initialize`, 'received')
-    if (mode === 'hold-initialize') return
-    if (mode === 'fail-initialize') {
-      send({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: 'synthetic' } })
-      return
-    }
-  }
   if (message.method === 'initialize')
     result = {
       protocolVersion: message.params.protocolVersion,
@@ -38,9 +30,7 @@ rl.on('line', (line) => {
     }
   if (message.method === 'tools/list')
     result = { tools: [{ name: 'foo', inputSchema: { type: 'object', properties: {} } }] }
-  if (message.method === 'tools/call') {
-    if (process.argv[2]) writeFileSync(`${process.argv[2]}.calls`, String(++calls))
-    if (mode === 'hold-call') return
+  if (message.method === 'tools/call')
     result = {
       content: [
         {
@@ -49,11 +39,15 @@ rl.on('line', (line) => {
             pid: process.pid,
             provided: process.env.MCP_FIXTURE_SECRET,
             ambient: process.env.MCP_FIXTURE_AMBIENT ?? null,
+            keys: Object.keys(process.env),
           }),
         },
       ],
     }
-  }
   send({ jsonrpc: '2.0', id: message.id, result })
 })
-rl.on('close', () => process.exit(0))
+rl.on('close', () => {
+  // A graceful close ends stdin first; record that it happened before the server exits.
+  if (process.argv[2]) writeFileSync(`${process.argv[2]}.stdin-closed`, 'yes')
+  process.exit(0)
+})

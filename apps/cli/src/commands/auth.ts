@@ -6,141 +6,62 @@ import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-code
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 
-export interface OAuthPromptInput {
+type OpenAICodexLoginMethod = 'browser' | 'device_code'
+
+const CLI_OPENAI_LOGIN_TIMEOUT_MS = 10 * 60_000
+
+interface PromptInput {
   once(event: 'data', listener: (chunk: string | Buffer) => void): unknown
-  once(event: 'end', listener: () => void): unknown
   once(event: 'error', listener: (error: Error) => void): unknown
-  removeListener(event: 'data', listener: (chunk: string | Buffer) => void): unknown
-  removeListener(event: 'end', listener: () => void): unknown
-  removeListener(event: 'error', listener: (error: Error) => void): unknown
+  off(event: 'data', listener: (chunk: string | Buffer) => void): unknown
+  off(event: 'error', listener: (error: Error) => void): unknown
   pause(): unknown
 }
 
-export interface OAuthPromptOutput {
-  write(message: string): unknown
-}
-
-export type OpenAICodexLoginMethod = 'browser' | 'device_code'
-
-export const CLI_OPENAI_LOGIN_TIMEOUT_MS = 10 * 60_000
-
-export interface CliOpenAILoginLifetime {
-  signal: AbortSignal
-  dispose(): void
-}
-
-/** Keep CLI OAuth bounded even when stdin closes before a browser callback arrives. */
-export function createCliOpenAILoginLifetime(
-  timeoutMs = CLI_OPENAI_LOGIN_TIMEOUT_MS,
-): CliOpenAILoginLifetime {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => {
-    controller.abort(
-      new DOMException(
-        'OpenAI login timed out after 10 minutes. Try again with `bazilion auth openai login --device-code`.',
-        'TimeoutError',
-      ),
-    )
-  }, timeoutMs)
-
-  return {
-    signal: controller.signal,
-    dispose() {
-      clearTimeout(timeout)
-    },
-  }
-}
-
-function promptAbortError(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('OAuth prompt cancelled', 'AbortError')
-}
-
 /**
- * Answer Pi's OpenAI OAuth prompts while allowing its localhost callback to
- * cancel a pending manual-code read. Removing the data and abort listeners is
- * essential: a successful browser callback must not leave stdin flowing and
- * keep the CLI process alive.
+ * Answer Pi's OpenAI login prompts in a terminal: pick the login method, or read one line (a
+ * pasted redirect URL). The paste prompt ends when Pi withdraws it (the browser callback arrived
+ * first) or when `login` ends; stdin is then released so it cannot keep the CLI running. The login
+ * signal matters when port 1455 is taken: Pi then has no callback server and waits on this prompt
+ * alone. A stdin error only stops the reading, since the browser callback may still arrive.
  */
 export function answerCliOpenAIPrompt(
   prompt: AuthPrompt,
-  input: OAuthPromptInput = process.stdin,
-  output: OAuthPromptOutput = process.stdout,
-  loginMethod: OpenAICodexLoginMethod = 'browser',
-  loginSignal?: AbortSignal,
+  loginMethod: OpenAICodexLoginMethod,
+  login: AbortSignal,
+  input: PromptInput = process.stdin,
+  output: { write(text: string): unknown } = process.stdout,
 ): Promise<string> {
   if (prompt.type === 'select') {
-    const option = prompt.options.find((candidate) => candidate.id === loginMethod)
-    return option
-      ? Promise.resolve(option.id)
+    return prompt.options.some((option) => option.id === loginMethod)
+      ? Promise.resolve(loginMethod)
       : Promise.reject(
           new Error(
             `Pi openai-codex provider does not support ${loginMethod === 'browser' ? 'browser' : 'device-code'} login`,
           ),
         )
   }
-
   output.write(`${prompt.message}: `)
+  const ended = prompt.signal ? AbortSignal.any([prompt.signal, login]) : login
   return new Promise<string>((resolve, reject) => {
-    let settled = false
-    const signal = prompt.signal
-    let readingInput = true
-    const cleanupInput = () => {
-      if (!readingInput) return
-      readingInput = false
-      input.removeListener('data', onData)
-      input.removeListener('end', onInputUnavailable)
-      input.removeListener('error', onInputUnavailable)
+    const stopReading = () => {
+      input.off('data', onData)
+      input.off('error', stopReading)
       input.pause()
     }
-    const cleanup = () => {
-      cleanupInput()
-      signal?.removeEventListener('abort', onAbort)
-      loginSignal?.removeEventListener('abort', onLoginAbort)
-    }
     const onData = (data: string | Buffer) => {
-      if (settled) return
-      settled = true
-      cleanup()
+      stopReading()
+      ended.removeEventListener('abort', onEnded)
       resolve(String(data).trim())
     }
-    const onAbort = () => {
-      if (settled || !signal) return
-      settled = true
-      cleanup()
-      reject(promptAbortError(signal))
+    const onEnded = () => {
+      stopReading()
+      reject(new Error('OAuth prompt withdrawn'))
     }
-
-    const onLoginAbort = () => {
-      if (settled || !loginSignal) return
-      settled = true
-      cleanup()
-      reject(promptAbortError(loginSignal))
-    }
-
-    // Pi races this prompt against its localhost callback. EOF must stop stdin
-    // listeners without rejecting the prompt, because rejecting would cancel a
-    // browser callback that may still succeed. The bounded login signal remains
-    // responsible for settling a callback that never arrives.
-    const onInputUnavailable = () => {
-      if (settled) return
-      cleanupInput()
-    }
-
-    if (signal?.aborted) {
-      onAbort()
-      return
-    }
-    if (loginSignal?.aborted) {
-      onLoginAbort()
-      return
-    }
+    if (ended.aborted) return onEnded()
     input.once('data', onData)
-    input.once('end', onInputUnavailable)
-    input.once('error', onInputUnavailable)
-    signal?.addEventListener('abort', onAbort, { once: true })
-    loginSignal?.addEventListener('abort', onLoginAbort, { once: true })
+    input.once('error', stopReading)
+    ended.addEventListener('abort', onEnded, { once: true })
   })
 }
 
@@ -176,35 +97,34 @@ const openaiLoginCmd = defineCommand({
     }
     const oauth = openaiCodexProvider().auth.oauth
     if (!oauth) throw new Error('Pi openai-codex provider does not expose OAuth')
-    const lifetime = createCliOpenAILoginLifetime()
-    const creds = await (async () => {
-      try {
-        return await oauth.login({
-          signal: lifetime.signal,
-          notify: (event) => {
-            if (event.type === 'auth_url') {
-              console.log('')
-              console.log(`  → ${event.url}`)
-              console.log('')
-            } else if (event.type === 'progress' || event.type === 'info') {
-              console.log(`  ${event.message}`)
-            } else if (event.type === 'device_code') {
-              console.log(`  open ${event.verificationUri} and enter ${event.userCode}`)
-            }
-          },
-          prompt: (prompt) =>
-            answerCliOpenAIPrompt(
-              prompt,
-              process.stdin,
-              process.stdout,
-              loginMethod,
-              lifetime.signal,
-            ),
-        })
-      } finally {
-        lifetime.dispose()
-      }
-    })()
+    // A ref'd timer (unlike AbortSignal.timeout) keeps the CLI alive for the whole login window,
+    // so a login nothing can finish ends with the timeout error instead of a silent exit.
+    const login = new AbortController()
+    const timer = setTimeout(() => login.abort(), CLI_OPENAI_LOGIN_TIMEOUT_MS)
+    const creds = await oauth
+      .login({
+        signal: login.signal,
+        notify: (event) => {
+          if (event.type === 'auth_url') {
+            console.log('')
+            console.log(`  → ${event.url}`)
+            console.log('')
+          } else if (event.type === 'progress' || event.type === 'info') {
+            console.log(`  ${event.message}`)
+          } else if (event.type === 'device_code') {
+            console.log(`  open ${event.verificationUri} and enter ${event.userCode}`)
+          }
+        },
+        prompt: (prompt) => answerCliOpenAIPrompt(prompt, loginMethod, login.signal),
+      })
+      .catch((error: unknown) => {
+        throw login.signal.aborted
+          ? new Error(
+              'OpenAI login timed out after 10 minutes. Try again, or use `bazilion auth openai login --device-code`.',
+            )
+          : error
+      })
+      .finally(() => clearTimeout(timer))
     const status = await client.put<OpenAICodexStatus>('/api/auth/openai', {
       refresh: creds.refresh,
       access: creds.access,
@@ -216,10 +136,10 @@ const openaiLoginCmd = defineCommand({
     console.log(`access token expires: ${formatExpiry(status.expiresAt)}`)
     console.log('')
     console.log(`enable the 'openai-codex' provider on /config and save at least one model`)
-    console.log('(e.g. gpt-5.3-codex-spark, gpt-5.4, gpt-5.5) to start using it.')
-    console.log('CLI equivalent:')
+    console.log('to start using it. CLI equivalent:')
     console.log('  bazilion provider enable openai-codex')
-    console.log('  bazilion provider models-set openai-codex gpt-5.3-codex-spark')
+    console.log('  bazilion provider models openai-codex      # lists the catalog')
+    console.log('  bazilion provider models-set openai-codex <model>')
   },
 })
 

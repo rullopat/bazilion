@@ -1,51 +1,29 @@
+// HTTP client for the daemon (or the web gateway in front of it), used by the CLI and by the web's
+// server-side loaders.
+
 import type {
-  AgentQuestion,
+  AgentQuestionAnswer,
   AgentQuestionListResponse,
-  AgentQuestionResponse,
-  AgentQuestionResponseInput,
   ApiError,
-  Attachment,
-  AttentionKind,
   BrowserStatus,
-  EditQueuedInput,
+  CodingEnvironmentStatus,
   EnqueueUserInput,
-  NotificationPreview,
-  NotificationReceipt,
-  NotificationReceiptList,
-  NotificationRetryInput,
   NotificationSettings,
-  NotificationSettingsInput,
   NotificationSettingsResponse,
-  RepositoryContextReport,
-  RepositoryContextRequest,
-  UserQueueControl,
+  RepositoryReviewResponse,
+  ReviewFeedbackRequest,
+  ReviewFeedbackResponse,
+  TeamCodingEnvironment,
   UserQueueItem,
   UserQueueListResponse,
-  WorkspaceRecoveryReport,
-  WorkspaceRecoveryResponse,
 } from '@bazilion/api-types'
-
-export {
-  WORKSPACE_RECOVERY_OUTCOME_TEXT,
-  workspaceRecoveryExplanation,
-} from './workspace-recovery.ts'
-
-export type TokenSource = string | (() => string | Promise<string>)
 
 export interface ClientConfig {
   serverUrl: string
-  /**
-   * Bearer token (or supplier for lazy / rotating credentials). The package
-   * sends it as `Authorization: Bearer <token>` and also stamps `Origin:
-   * <serverUrl>` to pass Astro's `security.checkOrigin` gate on non-GET
-   * requests. Pass a function to support token rotation (OAuth refresh,
-   * mobile keychain reads) — it is invoked on every request.
-   */
-  token: TokenSource | null
-  /** Additional request headers for trusted adapters such as the web SSR session bridge. */
-  headers?:
-    | Record<string, string>
-    | (() => Record<string, string> | Promise<Record<string, string>>)
+  /** Sent as `Authorization: Bearer <token>`; null sends none. */
+  token: string | null
+  /** Extra request headers, e.g. the session cookie the web's loaders forward. */
+  headers?: Record<string, string>
 }
 
 export class ApiClientError extends Error {
@@ -58,71 +36,49 @@ export class ApiClientError extends Error {
   }
 }
 
-async function resolveToken(src: TokenSource): Promise<string> {
-  return typeof src === 'function' ? await src() : src
+/** A non-2xx response, carrying its status and error body. */
+async function failure(res: Response): Promise<ApiClientError> {
+  const body = (await res.json().catch(() => ({ error: res.statusText }))) as ApiError
+  return new ApiClientError(res.status, body)
 }
 
 export function createClient(cfg: ClientConfig) {
-  async function authHeaders(): Promise<Record<string, string>> {
-    const token = cfg.token === null ? null : await resolveToken(cfg.token)
-    const extra = typeof cfg.headers === 'function' ? await cfg.headers() : (cfg.headers ?? {})
-    return {
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      // Astro 6 enabled `security.checkOrigin` by default for server mode:
-      // any state-changing request without an `Origin` matching the server
-      // host is rejected with 403. Browsers set this automatically; `fetch`
-      // in Node / React Native does not. Stamping the server's own URL is
-      // always valid for a legitimate client.
-      origin: cfg.serverUrl,
-      ...extra,
-    }
+  const authHeaders: Record<string, string> = {
+    ...(cfg.token ? { authorization: `Bearer ${cfg.token}` } : {}),
+    ...cfg.headers,
+  }
+
+  /** A JSON request; the body, when given, is sent as JSON. */
+  function send(method: string, path: string, body?: unknown): Promise<Response> {
+    return fetch(`${cfg.serverUrl}${path}`, {
+      method,
+      headers:
+        body === undefined ? authHeaders : { ...authHeaders, 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  }
+
+  async function json<T>(res: Response): Promise<T> {
+    if (!res.ok) throw await failure(res)
+    if (res.status === 204) return undefined as T
+    return (await res.json()) as T
   }
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const headers: Record<string, string> = { ...(await authHeaders()) }
-    if (body !== undefined) headers['content-type'] = 'application/json'
-    const res = await fetch(`${cfg.serverUrl}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    })
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as ApiError
-      throw new ApiClientError(res.status, err)
-    }
-    if (res.status === 204) return undefined as T
-    return (await res.json()) as T
+    return json<T>(await send(method, path, body))
   }
 
-  // Multipart POST — lets the runtime set its own `content-type: multipart/form-data;
-  // boundary=…` header. Reusing `request()` would stomp that with JSON, so
-  // we keep a separate path.
+  /** Multipart POST: fetch sets the multipart content-type with its boundary itself. */
   async function postMultipart<T>(path: string, form: FormData): Promise<T> {
-    const res = await fetch(`${cfg.serverUrl}${path}`, {
-      method: 'POST',
-      headers: { ...(await authHeaders()) },
-      body: form,
-    })
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as ApiError
-      throw new ApiClientError(res.status, err)
-    }
-    if (res.status === 204) return undefined as T
-    return (await res.json()) as T
+    return json<T>(
+      await fetch(`${cfg.serverUrl}${path}`, { method: 'POST', headers: authHeaders, body: form }),
+    )
   }
 
+  /** An NDJSON response, one value per line. */
   async function* stream<T>(method: string, path: string, body?: unknown): AsyncGenerator<T> {
-    const headers: Record<string, string> = { ...(await authHeaders()) }
-    if (body !== undefined) headers['content-type'] = 'application/json'
-    const res = await fetch(`${cfg.serverUrl}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    })
-    if (!res.ok || !res.body) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as ApiError
-      throw new ApiClientError(res.status, err)
-    }
+    const res = await send(method, path, body)
+    if (!res.ok || !res.body) throw await failure(res)
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -140,319 +96,80 @@ export function createClient(cfg: ClientConfig) {
   }
 
   async function binary(path: string): Promise<Uint8Array> {
-    const res = await fetch(`${cfg.serverUrl}${path}`, {
-      headers: await authHeaders(),
-      redirect: 'error',
-    })
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as ApiError
-      throw new ApiClientError(res.status, err)
-    }
+    const res = await fetch(`${cfg.serverUrl}${path}`, { headers: authHeaders, redirect: 'error' })
+    if (!res.ok) throw await failure(res)
     return new Uint8Array(await res.arrayBuffer())
   }
 
   return {
     codingEnvironment: {
       show: (teamId: string) =>
-        request<import('@bazilion/api-types').CodingEnvironmentStatus>(
+        request<CodingEnvironmentStatus>(
           'GET',
           `/api/teams/${encodeURIComponent(teamId)}/coding-environment`,
         ),
-      configure: (
-        teamId: string,
-        input: import('@bazilion/api-types').ConfigureCodingEnvironmentRequest,
-      ) =>
-        request<import('@bazilion/api-types').TeamCodingEnvironment>(
+      set: (teamId: string, input: TeamCodingEnvironment) =>
+        request<CodingEnvironmentStatus>(
           'PUT',
           `/api/teams/${encodeURIComponent(teamId)}/coding-environment`,
           input,
         ),
     },
-    /**
-     * Specialist verification of a captured code change (BAZ-044).
-     *
-     * Creating a request does not execute anything: the verification state machine claims and runs
-     * it, and a blocked capture comes back as a typed blocker rather than an error.
-     */
-    verifications: (teamId: string) => {
-      const base = `/api/teams/${encodeURIComponent(teamId)}/verifications`
-      return {
-        list: (): Promise<import('@bazilion/api-types').VerificationListResponse> =>
-          request('GET', base),
-        show: (requestId: string): Promise<import('@bazilion/api-types').VerificationResponse> =>
-          request('GET', `${base}/${encodeURIComponent(requestId)}`),
-        create: (
-          input: import('@bazilion/api-types').CreateVerificationRequest,
-        ): Promise<
-          | import('@bazilion/api-types').VerificationResponse
-          | import('@bazilion/api-types').VerificationBlockedResponse
-        > => request('POST', base, input),
-        cancel: (requestId: string): Promise<import('@bazilion/api-types').VerificationResponse> =>
-          request('POST', `${base}/${encodeURIComponent(requestId)}/cancel`),
-      }
-    },
-    /**
-     * Publications to a code host (BAZ-046).
-     *
-     * One operator decision about a reviewed revision. Nothing here can merge, deploy, force a push or
-     * name a remote: the request has a packet, an optional branch and an optional commit message, and the
-     * rest is configuration the operator owns.
-     */
-    publications: (teamId: string) => {
-      const base = `/api/teams/${encodeURIComponent(teamId)}/publications`
-      return {
-        list: (): Promise<import('@bazilion/api-types').PublicationListResponse> =>
-          request('GET', base),
-        show: (publicationId: string): Promise<import('@bazilion/api-types').PublicationResponse> =>
-          request('GET', `${base}/${encodeURIComponent(publicationId)}`),
-        create: (
-          input: import('@bazilion/api-types').CreatePublicationRequest,
-        ): Promise<
-          | import('@bazilion/api-types').PublicationResponse
-          | import('@bazilion/api-types').PublicationBlockedResponse
-        > => request('POST', base, input),
-      }
-    },
-    /**
-     * Revision-bound review packets (BAZ-043).
-     *
-     * A packet binds one captured revision. Findings are append-only, and resolving one requires an
-     * explicit decision or a named later revision — a moved line proves nothing.
-     */
-    reviewPackets: (teamId: string) => {
-      const base = `/api/teams/${encodeURIComponent(teamId)}/reviews`
-      const item = (packetId: string) => `${base}/${encodeURIComponent(packetId)}`
-      return {
-        list: (): Promise<import('@bazilion/api-types').ReviewPacketListResponse> =>
-          request('GET', base),
-        show: (packetId: string): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
-          request('GET', item(packetId)),
-        create: (
-          input: import('@bazilion/api-types').CreateReviewPacketRequest,
-        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
-          request('POST', base, input),
-        addFinding: (
-          packetId: string,
-          input: import('@bazilion/api-types').AddReviewFindingRequest,
-        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
-          request('POST', `${item(packetId)}/findings`, input),
-        resolveFinding: (
-          packetId: string,
-          findingId: string,
-          input: import('@bazilion/api-types').ResolveReviewFindingRequest,
-        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
-          request(
-            'POST',
-            `${item(packetId)}/findings/${encodeURIComponent(findingId)}/resolve`,
-            input,
-          ),
-        recordConclusion: (
-          packetId: string,
-          input: import('@bazilion/api-types').RecordReviewConclusionRequest,
-        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
-          request('POST', `${item(packetId)}/conclusion`, input),
-        export: (
-          packetId: string,
-        ): Promise<{ export: import('@bazilion/api-types').ReviewExport }> =>
-          request('GET', `${item(packetId)}/export`),
-        /**
-         * Publish the export as a durable artifact through BAZ-034's contract. `held` and `denied` are
-         * outcomes, not errors: the bytes exist and stay unreadable, and an approval names them.
-         */
-        deliverExport: (
-          packetId: string,
-        ): Promise<{
-          delivery:
-            | {
-                kind: 'delivered'
-                resultId: string
-                resultName: string
-                revision: string
-                noticeHeld?: boolean
-              }
-            | { kind: 'held'; resultId: string; revision: string; detail: string }
-            | { kind: 'denied'; revision: string; detail: string }
-            | { kind: 'refused'; detail: string }
-        }> => request('POST', `${item(packetId)}/export/deliver`),
-        reportState: (
-          packetId: string,
-          input: {
-            state: import('@bazilion/api-types').ReviewReportedState
-            reference?: string | null
-          },
-        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
-          request('POST', `${item(packetId)}/reported`, input),
-        /**
-         * Resolve what a file link would do. Read-only: no editor runs unless `openLink` is called, and
-         * the link itself says which host it names and whether it is the reviewed revision or the live file.
-         */
-        link: (
-          packetId: string,
-          options: { path: string; line?: number },
-        ): Promise<{ link: import('@bazilion/api-types').ReviewFileLink }> => {
-          const params = new URLSearchParams({ path: options.path })
-          if (options.line !== undefined) params.set('line', String(options.line))
-          return request('GET', `${item(packetId)}/link?${params}`)
-        },
-        openLink: (
-          packetId: string,
-          options: { path: string; line?: number },
-        ): Promise<{
-          link: import('@bazilion/api-types').ReviewFileLink
-          result: { opened: boolean; detail: string }
-        }> => request('POST', `${item(packetId)}/link/open`, options),
-      }
-    },
-    /** Read-only Git change review and bounded source snapshots (BAZ-042). */
+    /** Git change review: changes since a base, diffs, and file feedback. */
     repositoryReview: (teamId: string) => {
       const base = `/api/teams/${encodeURIComponent(teamId)}/review`
       return {
         changes: (
-          options: { base?: string; patches?: boolean } = {},
-        ): Promise<import('@bazilion/api-types').RepositoryReviewResponse> => {
+          options: { base?: string; patches?: boolean; path?: string } = {},
+        ): Promise<RepositoryReviewResponse> => {
           const params = new URLSearchParams()
           if (options.base !== undefined) params.set('base', options.base)
           if (options.patches) params.set('patches', '1')
+          if (options.path !== undefined) params.set('path', options.path)
           const suffix = params.size ? `?${params}` : ''
           return request('GET', `${base}${suffix}`)
         },
-        snapshots: (): Promise<import('@bazilion/api-types').SourceSnapshotListResponse> =>
-          request('GET', `${base}/snapshots`),
-        snapshot: (
-          snapshotId: string,
-        ): Promise<{ snapshot: import('@bazilion/api-types').SourceSnapshot }> =>
-          request('GET', `${base}/snapshots/${encodeURIComponent(snapshotId)}`),
-        capture: (
-          input: import('@bazilion/api-types').CaptureSourceSnapshotRequest,
-        ): Promise<import('@bazilion/api-types').SourceSnapshotResponse> =>
-          request('POST', `${base}/snapshots`, input),
+        feedback: (input: ReviewFeedbackRequest): Promise<ReviewFeedbackResponse> =>
+          request('POST', `${base}/feedback`, input),
       }
     },
-    /** Operator retained-diagnostic access for BAZ-041 receipts. */
-    codingLogs: (teamId: string) => {
-      const base = `/api/teams/${encodeURIComponent(teamId)}/coding-commands`
-      const item = (commandId: string) => `${base}/${encodeURIComponent(commandId)}/log`
-      return {
-        page: (
-          commandId: string,
-          options: { offset?: number; limit?: number } = {},
-        ): Promise<import('@bazilion/api-types').CodingCommandLogResponse> => {
-          const params = new URLSearchParams()
-          if (options.offset !== undefined) params.set('offset', String(options.offset))
-          if (options.limit !== undefined) params.set('limit', String(options.limit))
-          const suffix = params.size ? `?${params}` : ''
-          return request<import('@bazilion/api-types').CodingCommandLogResponse>(
-            'GET',
-            `${item(commandId)}${suffix}`,
-          )
-        },
-        search: (
-          commandId: string,
-          query: string,
-        ): Promise<import('@bazilion/api-types').CodingCommandLogSearchResponse> =>
-          request<import('@bazilion/api-types').CodingCommandLogSearchResponse>(
-            'GET',
-            `${item(commandId)}/search?q=${encodeURIComponent(query)}`,
-          ),
-      }
-    },
-    repositoryContext: (teamId: string, options: RepositoryContextRequest = {}) =>
-      request<RepositoryContextReport>(
-        'GET',
-        `/api/teams/${encodeURIComponent(teamId)}/repository-context${options.target !== undefined ? `?target=${encodeURIComponent(options.target)}` : ''}`,
-      ),
     notifications: {
       settings: () => request<NotificationSettingsResponse>('GET', '/api/notifications'),
-      configure: (input: NotificationSettingsInput) =>
-        request<NotificationSettings>('PUT', '/api/notifications', input),
-      preview: (kinds: AttentionKind[]) =>
-        request<NotificationPreview>('POST', '/api/notifications/preview', { kinds }),
-      list: (options: { cursor?: string; limit?: number } = {}) => {
-        const params = new URLSearchParams()
-        if (options.cursor) params.set('cursor', options.cursor)
-        if (options.limit !== undefined) params.set('limit', String(options.limit))
-        return request<NotificationReceiptList>('GET', `/api/notifications/receipts?${params}`)
-      },
-      get: (id: string) =>
-        request<NotificationReceipt>(
-          'GET',
-          `/api/notifications/receipts/${encodeURIComponent(id)}`,
-        ),
-      retry: (id: string, input: NotificationRetryInput) =>
-        request<NotificationReceipt>(
-          'POST',
-          `/api/notifications/receipts/${encodeURIComponent(id)}/retry`,
-          input,
-        ),
+      configure: (input: NotificationSettings) =>
+        request<NotificationSettingsResponse>('PUT', '/api/notifications', input),
     },
     questions: (agentId: string) => {
       const base = `/api/agents/${encodeURIComponent(agentId)}/questions`
       return {
-        list: (conversationId?: string) =>
-          request<AgentQuestionListResponse>(
-            'GET',
-            conversationId ? `${base}?conversationId=${encodeURIComponent(conversationId)}` : base,
-          ),
-        get: (id: string) => request<AgentQuestion>('GET', `${base}/${encodeURIComponent(id)}`),
-        answer: (id: string, input: AgentQuestionResponseInput) =>
-          request<AgentQuestionResponse>('POST', `${base}/${encodeURIComponent(id)}/answer`, input),
+        list: () => request<AgentQuestionListResponse>('GET', base),
+        answer: (id: string, answer: AgentQuestionAnswer) =>
+          request<{ ok: true }>('POST', `${base}/${encodeURIComponent(id)}/answer`, { answer }),
       }
     },
     queue: (agentId: string) => {
       const base = `/api/agents/${encodeURIComponent(agentId)}/queue`
       const item = (id: string) => `${base}/${encodeURIComponent(id)}`
       return {
-        list: (all = false, offset = 0) =>
-          request<UserQueueListResponse>('GET', `${base}?all=${all ? 1 : 0}&offset=${offset}`),
-        get: (id: string) => request<UserQueueItem>('GET', item(id)),
-        input: (id: string) =>
-          request<{ message: string; attachments: Attachment[] }>('GET', `${item(id)}/input`),
+        list: () => request<UserQueueListResponse>('GET', base),
         enqueue: (input: EnqueueUserInput) => request<UserQueueItem>('POST', base, input),
-        edit: (id: string, input: EditQueuedInput) =>
-          request<UserQueueItem>('PATCH', item(id), input),
-        remove: (id: string, expectedRevision: number) =>
-          request<UserQueueItem>('DELETE', item(id), { expectedRevision }),
-        pause: (paused: boolean, expectedRevision: number) =>
-          request<UserQueueControl>('POST', `${base}/control`, { paused, expectedRevision }),
-        stop: (expectedRevision: number) =>
-          request<{ control: UserQueueControl; cancelled: boolean }>('POST', `${base}/stop`, {
-            expectedRevision,
-          }),
-        reconcile: (id: string, expectedRevision: number) =>
-          request<UserQueueItem>('POST', `${item(id)}/reconcile`, {
-            expectedRevision,
-            acknowledged: true,
-          }),
+        edit: (id: string, message: string) =>
+          request<UserQueueItem>('PATCH', item(id), { message }),
+        remove: (id: string) => request<UserQueueItem>('DELETE', item(id)),
+        pause: (paused: boolean) =>
+          request<{ paused: boolean }>('POST', `${base}/control`, { paused }),
       }
     },
     /**
-     * Managed browser session controls (BAZ-069). Status never launches;
-     * stop preserves the persistent profile; reset is the operator's
-     * explicitly confirmed destructive action (cookies/logins are gone).
+     * Managed browser controls. Status never launches; stop keeps the
+     * profile; reset deletes it (cookies, logins), so callers confirm first.
      */
-    getAgentSearchStatus: (agentId: string) =>
-      request<import('@bazilion/api-types').OrdinarySearchStatus>(
-        'GET',
-        `/api/agents/${encodeURIComponent(agentId)}/search-status`,
-      ),
     getAgentBrowser: (agentId: string) =>
       request<BrowserStatus>('GET', `/api/agents/${encodeURIComponent(agentId)}/browser`),
     stopAgentBrowser: (agentId: string) =>
       request<void>('POST', `/api/agents/${encodeURIComponent(agentId)}/browser/stop`),
     resetAgentBrowser: (agentId: string) =>
-      request<void>(
-        'DELETE',
-        `/api/agents/${encodeURIComponent(agentId)}/browser/profile?confirm=reset-browser-profile`,
-      ),
+      request<void>('DELETE', `/api/agents/${encodeURIComponent(agentId)}/browser/profile`),
     binary,
-    workspaceRecovery: (teamId: string) => {
-      const base = `/api/teams/${encodeURIComponent(teamId)}/workspace/recovery`
-      return {
-        list: () => request<WorkspaceRecoveryReport>('GET', base),
-        attempt: (writerId: string) =>
-          request<WorkspaceRecoveryResponse>('POST', `${base}/${encodeURIComponent(writerId)}`),
-      }
-    },
     get: <T>(p: string) => request<T>('GET', p),
     post: <T>(p: string, b?: unknown) => request<T>('POST', p, b),
     postMultipart,

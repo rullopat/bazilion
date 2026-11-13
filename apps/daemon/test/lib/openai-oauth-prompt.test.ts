@@ -1,128 +1,104 @@
-import { EventEmitter } from 'node:events'
 import { createServer } from 'node:net'
-import type { AuthPrompt } from '@earendil-works/pi-ai'
 import { expect, test, vi } from 'vitest'
 import {
-  acquireWebOpenAILogin,
   answerWebOpenAIPrompt,
-  createWebOpenAILoginLifetime,
-  launchOpenAICodexBrowser,
-  type OAuthBrowserProcess,
   preflightOpenAICodexCallback,
+  webOpenAILoginError,
 } from '../../src/lib/openai-oauth-prompt.ts'
+import { loginOpenAICodex } from '../../src/runtime/auth/openai-codex.ts'
 
-class FakeBrowserProcess extends EventEmitter {
-  unref = vi.fn()
+/** Whether `promise` is still pending after the current I/O turn. */
+async function isPending(promise: Promise<unknown>): Promise<boolean> {
+  let pending = true
+  promise.then(
+    () => {
+      pending = false
+    },
+    () => {
+      pending = false
+    },
+  )
+  await new Promise((resolve) => setImmediate(resolve))
+  return pending
 }
 
-test('web OAuth keeps the manual-code prompt pending until the callback aborts it', async () => {
-  const controller = new AbortController()
-  const remove = vi.spyOn(controller.signal, 'removeEventListener')
-  const prompt: AuthPrompt = {
-    type: 'manual_code',
-    message: 'Paste the callback URL',
-    signal: controller.signal,
-  }
-  let outcome = 'pending'
-  const pending = answerWebOpenAIPrompt(prompt)
-  void pending.then(
-    () => {
-      outcome = 'resolved'
-    },
-    () => {
-      outcome = 'rejected'
-    },
-  )
-
-  await Promise.resolve()
-  expect(outcome).toBe('pending')
-
-  const aborted = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
-  controller.abort()
-  await aborted
-  expect(outcome).toBe('rejected')
-  expect(remove).toHaveBeenCalledWith('abort', expect.any(Function))
-})
-
-test('web OAuth settles an already-aborted manual-code prompt', async () => {
-  const controller = new AbortController()
-  controller.abort()
-
-  await expect(
-    answerWebOpenAIPrompt({
-      type: 'manual_code',
-      message: 'Paste the callback URL',
-      signal: controller.signal,
-    }),
-  ).rejects.toMatchObject({ name: 'AbortError' })
-})
-
-test('web OAuth preserves automatic browser login as the default selection', async () => {
-  await expect(
-    answerWebOpenAIPrompt({
-      type: 'select',
-      message: 'Select login method',
-      options: [
-        { id: 'device', label: 'Device code login' },
-        { id: 'browser', label: 'Browser login (default)' },
-      ],
-    }),
-  ).resolves.toBe('browser')
-})
-
-test('web OAuth opens Windows URLs without cmd metacharacter parsing', () => {
-  const child = new FakeBrowserProcess()
-  const spawnBrowser = vi.fn(() => child as unknown as OAuthBrowserProcess)
-  const url = 'https://example.com/oauth?state=one&redirect=two'
-
-  launchOpenAICodexBrowser(url, vi.fn(), {
-    platform: 'win32',
-    spawnBrowser,
-  })
-
-  expect(spawnBrowser).toHaveBeenCalledWith('rundll32.exe', ['url.dll,FileProtocolHandler', url])
-  expect(child.unref).toHaveBeenCalledOnce()
-})
-
-test('web OAuth manual prompt also follows the route-level request signal', async () => {
-  const piPromptController = new AbortController()
-  const requestController = new AbortController()
-  const lifetime = createWebOpenAILoginLifetime(requestController.signal, 1_000)
+test('web OAuth keeps the paste prompt pending until Pi withdraws it', async () => {
+  const withdraw = new AbortController()
   const pending = answerWebOpenAIPrompt(
-    {
-      type: 'manual_code',
-      message: 'Paste the callback URL',
-      signal: piPromptController.signal,
-    },
-    lifetime.signal,
+    { type: 'manual_code', message: 'Paste the callback URL', signal: withdraw.signal },
+    new AbortController().signal,
   )
+  // Rejecting early would cancel Pi's wait for the browser callback.
+  expect(await isPending(pending)).toBe(true)
 
-  try {
-    const aborted = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
-    requestController.abort()
-    await aborted
-    expect(piPromptController.signal.aborted).toBe(false)
-  } finally {
-    lifetime.dispose()
-  }
+  withdraw.abort()
+  await expect(pending).rejects.toThrow(/ended/)
 })
 
-test('web OAuth manual prompt settles when the bounded login window expires', async () => {
-  const lifetime = createWebOpenAILoginLifetime(undefined, 5)
+test('web OAuth paste prompt ends with the login even when Pi never withdraws it', async () => {
+  // Without a callback server Pi waits on this prompt alone and aborts its signal only after the
+  // prompt settles, so the login signal (timeout, request gone, opener failure) must end it.
+  const login = new AbortController()
   const pending = answerWebOpenAIPrompt(
     {
       type: 'manual_code',
       message: 'Paste the callback URL',
       signal: new AbortController().signal,
     },
-    lifetime.signal,
+    login.signal,
   )
+  expect(await isPending(pending)).toBe(true)
 
+  login.abort(new DOMException('timeout', 'TimeoutError'))
+  await expect(pending).rejects.toThrow(/ended/)
+
+  // A login that already ended rejects the prompt at once.
+  await expect(
+    answerWebOpenAIPrompt({ type: 'manual_code', message: 'Paste' }, login.signal),
+  ).rejects.toThrow(/ended/)
+})
+
+test("Pi's web login ends on its signal when Pi has no callback server", async () => {
+  // An address this host cannot bind fails Pi's callback server the way a port 1455 taken after
+  // the preflight does; Pi then swallows the bind error and waits on the paste prompt alone.
+  vi.stubEnv('PI_OAUTH_CALLBACK_HOST', '192.0.2.1')
   try {
-    await expect(pending).rejects.toMatchObject({ name: 'TimeoutError' })
+    const login = new AbortController()
+    let opened!: () => void
+    const authUrl = new Promise<void>((resolve) => {
+      opened = resolve
+    })
+    const result = loginOpenAICodex({
+      signal: login.signal,
+      notify: (event) => {
+        if (event.type === 'auth_url') opened()
+      },
+      prompt: (prompt) => answerWebOpenAIPrompt(prompt, login.signal),
+    })
+    await authUrl
+    expect(await isPending(result)).toBe(true)
+
+    login.abort(new DOMException('timeout', 'TimeoutError'))
+    await expect(result).rejects.toThrow(/OpenAI browser login ended/)
   } finally {
-    lifetime.dispose()
+    vi.unstubAllEnvs()
   }
+})
+
+test('web OAuth selects browser login', async () => {
+  await expect(
+    answerWebOpenAIPrompt(
+      {
+        type: 'select',
+        message: 'Select login method',
+        options: [
+          { id: 'device_code', label: 'Device code login' },
+          { id: 'browser', label: 'Browser login (default)' },
+        ],
+      },
+      new AbortController().signal,
+    ),
+  ).resolves.toBe('browser')
 })
 
 test('web OAuth preflight reports an occupied callback port with device-code guidance', async () => {
@@ -133,70 +109,31 @@ test('web OAuth preflight reports an occupied callback port with device-code gui
   })
   const address = occupied.address()
   if (!address || typeof address === 'string') throw new Error('expected an IP callback address')
-
   try {
-    await expect(
-      preflightOpenAICodexCallback({ host: '127.0.0.1', port: address.port }),
-    ).rejects.toThrow(/already in use.*bazilion auth openai login --device-code/s)
+    await expect(preflightOpenAICodexCallback('127.0.0.1', address.port)).rejects.toThrow(
+      /already in use.*bazilion auth openai login --device-code/s,
+    )
   } finally {
     await new Promise<void>((resolve) => occupied.close(() => resolve()))
   }
+  // A free address is claimed and released again.
+  await expect(preflightOpenAICodexCallback('127.0.0.1', address.port)).resolves.toBeUndefined()
 })
 
-test('web OAuth serializes login attempts until the active attempt releases its slot', async () => {
-  const releaseFirst = await acquireWebOpenAILogin()
-  let secondAcquired = false
-  let releaseSecond: (() => void) | undefined
-  const second = acquireWebOpenAILogin().then((release) => {
-    secondAcquired = true
-    releaseSecond = release
-  })
+test('a timed-out or failed web login names its cause', () => {
+  const timedOut = new AbortController()
+  timedOut.abort(new DOMException('timeout', 'TimeoutError'))
+  expect(webOpenAILoginError(new Error('Login cancelled'), timedOut.signal)).toMatch(
+    /timed out after 10 minutes.*--device-code/,
+  )
 
-  try {
-    await Promise.resolve()
-    expect(secondAcquired).toBe(false)
-    releaseFirst()
-    await second
-    expect(secondAcquired).toBe(true)
-  } finally {
-    releaseFirst()
-    releaseSecond?.()
-  }
-})
+  const launchFailed = new AbortController()
+  launchFailed.abort(new Error('Could not open the OpenAI sign-in page with xdg-open: exited 3.'))
+  expect(webOpenAILoginError(new Error('Login cancelled'), launchFailed.signal)).toMatch(
+    /xdg-open: exited 3/,
+  )
 
-test('web OAuth aborts its login lifetime when the browser opener reports an async error', () => {
-  const lifetime = createWebOpenAILoginLifetime(undefined, 1_000)
-  const child = new FakeBrowserProcess()
-  launchOpenAICodexBrowser('https://example.com/oauth', (error) => lifetime.abort(error), {
-    platform: 'linux',
-    spawnBrowser: () => child as unknown as OAuthBrowserProcess,
-  })
-
-  try {
-    child.emit('error', new Error('spawn ENOENT'))
-    expect(lifetime.signal.aborted).toBe(true)
-    expect((lifetime.signal.reason as Error).message).toMatch(
-      /xdg-open.*spawn ENOENT.*bazilion auth openai login --device-code/s,
-    )
-    expect(child.unref).toHaveBeenCalledOnce()
-  } finally {
-    lifetime.dispose()
-  }
-})
-
-test('web OAuth reports an early non-zero browser opener exit once', () => {
-  const child = new FakeBrowserProcess()
-  const onFailure = vi.fn()
-  launchOpenAICodexBrowser('https://example.com/oauth', onFailure, {
-    platform: 'linux',
-    spawnBrowser: () => child as unknown as OAuthBrowserProcess,
-  })
-
-  child.emit('exit', 3, null)
-  child.emit('error', new Error('late error'))
-
-  expect(onFailure).toHaveBeenCalledOnce()
-  expect(onFailure.mock.calls[0]?.[0]).toMatchObject({
-    message: expect.stringMatching(/xdg-open.*exited 3.*--device-code/s),
-  })
+  expect(
+    webOpenAILoginError(new Error('token exchange failed'), new AbortController().signal),
+  ).toBe('token exchange failed')
 })

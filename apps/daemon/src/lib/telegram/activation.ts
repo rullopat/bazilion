@@ -6,21 +6,20 @@
 //   3. Post + pin the directory welcome message inside the service topic.
 //   4. hideGeneralForumTopic.
 //
+//   5. Register the service-topic slash menu (setMyCommands).
+//
 // Each step is independently resumable — intermediate ids land in the config
 // table as soon as they exist, so a crash between step 2 and 3 won't recreate
 // the topic; the next activation reads the persisted topic id and picks up at
 // step 3.
-//
-// Commands (`setMyCommands`) are intentionally NOT registered in Step 2. The
-// menu fills in when Step 3 ships handlers — otherwise the user would see a
-// slash menu of broken commands.
 
 import type { BotCommand, Sticker } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { openConfig } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { SERVICE_COMMANDS } from './commands/index.ts'
-import { buildDirectoryBody, refreshDirectoryNow } from './directory.ts'
+import { DIRECTORY_MESSAGE_KEY, readConfigNumber, SERVICE_TOPIC_KEY } from './config.ts'
+import { buildDirectoryBody, refreshDirectoryMessage } from './directory.ts'
 
 /** Telegram's 6-color icon enum. Red is reserved for the service chat. */
 export const ICON_COLOR_RED = 16478047
@@ -28,7 +27,7 @@ export const ICON_COLOR_RED = 16478047
 /**
  * Minimal Bot API surface the activation flow calls into. Keeps the activation
  * logic testable without spinning up a real grammY Bot. Activation also
- * delegates to `refreshDirectoryNow` for post-activation directory sync, so
+ * delegates to `refreshDirectoryMessage` for post-activation directory sync, so
  * this surface includes `editMessageText` (used by the directory's
  * recreate-on-delete path).
  */
@@ -79,28 +78,14 @@ export interface ActivationResult {
 }
 
 /**
- * @deprecated Kept for backward-compat with tests; live activation now uses
- * `buildDirectoryBody` from directory.ts which produces a dynamic agent
- * listing (with deep-links) rather than a static welcome banner.
- */
-export const DIRECTORY_WELCOME_MESSAGE = [
-  '👋 bazilion is online',
-  '',
-  'This service chat is where commands will live (next release).',
-  'Agent topics will appear in this supergroup as agents become active.',
-  '',
-  'For now, manage agents from the bazilion web UI.',
-].join('\n')
-
-/**
  * Run the activation flow. Idempotent: re-running picks up where a previous
  * run left off based on which ids are already persisted in the config table.
  */
 export async function runActivation(args: ActivationArgs): Promise<ActivationResult> {
   const cfg = openConfig(args.db)
 
-  let serviceTopicId = readConfigNumber(args.db, 'TELEGRAM_SERVICE_TOPIC_ID')
-  let directoryMessageId = readConfigNumber(args.db, 'TELEGRAM_DIRECTORY_MESSAGE_ID')
+  let serviceTopicId = readConfigNumber(args.db, SERVICE_TOPIC_KEY)
+  let directoryMessageId = readConfigNumber(args.db, DIRECTORY_MESSAGE_KEY)
   // Track whether the directory message already existed at activation entry.
   // First-time creation already writes the dynamic body — re-running refresh
   // after that would be a redundant editMessageText call.
@@ -117,7 +102,7 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
       ...(gearStickerEmojiId ? { icon_custom_emoji_id: gearStickerEmojiId } : {}),
     })
     serviceTopicId = topic.message_thread_id
-    cfg.set('TELEGRAM_SERVICE_TOPIC_ID', String(serviceTopicId))
+    cfg.set(SERVICE_TOPIC_KEY, String(serviceTopicId))
   }
 
   if (directoryMessageId === null) {
@@ -129,7 +114,7 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
       parse_mode: 'HTML',
     })
     directoryMessageId = msg.message_id
-    cfg.set('TELEGRAM_DIRECTORY_MESSAGE_ID', String(directoryMessageId))
+    cfg.set(DIRECTORY_MESSAGE_KEY, String(directoryMessageId))
     // Pin is best-effort — if it fails the directory message still works, it
     // just won't be at the top. We don't want pin failure to re-trigger
     // message creation on the next activation.
@@ -145,7 +130,7 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
   // Hide General ONLY on first activation. Telegram's hideGeneralForumTopic
   // auto-closes the General topic if it's open, which posts a "closed the
   // topic" service message. Running it on every activation (bot start, stall
-  // restart, etc.) spams that message on each restart — so we hide once, at
+  // restart) spams that message on each restart — so we hide once, at
   // initial setup, and leave it alone afterward. A human who deliberately
   // unhides General keeps it (we no longer fight them on every restart).
   let generalHidden = false
@@ -177,13 +162,11 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
   // "message is not modified".
   if (directoryAlreadyExisted) {
     try {
-      await refreshDirectoryNow({
+      await refreshDirectoryMessage({
         db: args.db,
         paths: args.paths,
-        // ActivationApi has the superset of editMessageText + pinChatMessage
-        // we need for DirectoryApi — cast is safe because grammY's Bot.api
-        // implements both interfaces.
-        api: args.api as unknown as Parameters<typeof refreshDirectoryNow>[0]['api'],
+        // ActivationApi covers the editMessageText + pinChatMessage calls DirectoryApi needs.
+        api: args.api as unknown as Parameters<typeof refreshDirectoryMessage>[0]['api'],
         chatId: args.chatId,
       })
     } catch (e) {
@@ -224,13 +207,6 @@ async function pickGearSticker(api: ActivationApi): Promise<string | null> {
     if (found?.custom_emoji_id) return found.custom_emoji_id
   }
   return null
-}
-
-function readConfigNumber(db: BazilionDb, key: string): number | null {
-  const raw = openConfig(db).get(key) ?? ''
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : null
 }
 
 function errMsg(e: unknown): string {

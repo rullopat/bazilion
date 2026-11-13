@@ -1,9 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Profile, ProfileCommunicationDefaults, SkillsMode } from '@bazilion/api-types'
+import type { Profile, SkillsMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { DomainError } from '../errors.ts'
 import type { Paths } from '../paths.ts'
-import * as profileCommunicationDefaultsRepo from '../repos/profileCommunicationDefaults.ts'
 import * as profileRepo from '../repos/profiles.ts'
 import {
   DEFAULT_AGENTS,
@@ -20,7 +20,6 @@ export interface CreateProfileInput {
   defaultModel: string
   skillsMode?: SkillsMode
   defaultSkills?: string[]
-  communicationDefaults?: ProfileCommunicationDefaults
   templates?: {
     soul?: string
     identity?: string
@@ -30,12 +29,14 @@ export interface CreateProfileInput {
     agents?: string | null
     /** undefined = default template, null = skip, string = override */
     tools?: string | null
-    /** opt-in (off by default): null/undefined = skip, string = seed */
   }
 }
 
 export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfileInput): Profile {
   validateSlug(input.id)
+  // Checked before any file is written: the templates below would overwrite its files.
+  if (profileRepo.get(db, input.id))
+    throw new DomainError(400, `profile already exists: ${input.id}`)
 
   const dir = paths.profileDir(input.id)
   mkdirSync(dir, { recursive: true })
@@ -63,18 +64,9 @@ export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfile
   }
 
   const skillsMode: SkillsMode = input.skillsMode ?? 'selected'
-  const profileJson = {
-    name: input.name ?? input.id,
-    defaultModel: input.defaultModel,
-    skillsMode,
-    defaultSkills: input.defaultSkills ?? [],
-  }
-  writeFileSync(join(dir, 'profile.json'), `${JSON.stringify(profileJson, null, 2)}\n`)
-
   const profile = profileRepo.insert(db, {
     id: input.id,
-    name: profileJson.name,
-    dir,
+    name: input.name ?? input.id,
     defaultModel: input.defaultModel,
     skillsMode,
   })
@@ -82,11 +74,6 @@ export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfile
   if (skillsMode === 'selected' && input.defaultSkills && input.defaultSkills.length > 0) {
     profileRepo.setDefaultSkills(db, input.id, input.defaultSkills)
   }
-  if (input.communicationDefaults) {
-    profileCommunicationDefaultsRepo.set(db, input.id, input.communicationDefaults)
-  }
 
-  return input.communicationDefaults
-    ? { ...profile, communicationDefaults: input.communicationDefaults }
-    : profile
+  return profile
 }

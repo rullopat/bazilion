@@ -1,110 +1,42 @@
-import type { Team, TeamTemplateWithCount, ResolvedTeamPolicy } from '@bazilion/api-types'
+import type { Team, TeamTemplate } from '@bazilion/api-types'
 import { useState } from 'react'
+import { api, errorMessage } from '../lib/api'
 import { Button } from './Button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog'
+import { Dialog, DialogActions } from './Dialog'
 
-interface Props {
-  profileGroup: TeamTemplateWithCount
+/** Spawn a Team template's Agents and allow edges into a new or existing Team. */
+export function SpawnTeamModal({
+  template,
+  teams,
+  initialTeamId = '',
+  onClose,
+  onSpawned,
+}: {
+  template: TeamTemplate
   teams: Team[]
+  /** Pre-fills the target slug, as the Team page does for itself. */
+  initialTeamId?: string
   onClose: () => void
   onSpawned: (teamSlug: string) => void
-}
-
-interface SpawnPreview {
-  mode: 'initialize' | 'append'
-  currentRevision: number | null
-  resultingRevision: number
-  newMembers: Array<{ slotId: string; agentName: string; profileId: string }>
-  edges: Array<{ sourceKind: string; sourceId: string | null; targetKind: string; targetId: string | null }>
-}
-
-export function SpawnTeamModal({ profileGroup: team, teams, onClose, onSpawned }: Props) {
-  const [teamId, setTeamId] = useState('')
+}) {
+  const [teamId, setTeamId] = useState(initialTeamId)
   const [userMd, setUserMd] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [preview, setPreview] = useState<SpawnPreview | null>(null)
+  const target = teamId.trim()
+  const existing = teams.some((team) => team.id === target)
 
-  async function requestBody() {
-    const target = teamId.trim()
-    if (!target) throw new Error('Target Team slug is required')
-    const existing = teams.find((team) => team.id === target)
-    let teamExpectedRevision: number | undefined
-    if (existing) {
-      const policyResponse = await fetch(`/api/teams/${encodeURIComponent(target)}/policy`)
-      if (!policyResponse.ok) throw new Error('The target Team policy is unavailable.')
-      teamExpectedRevision = ((await policyResponse.json()) as ResolvedTeamPolicy).teamPolicy.revision
-    }
-    return {
-      target,
-      body: {
-        templateExpectedRevision: team.currentRevision,
-        teamId: target,
-        ...(teamExpectedRevision ? { teamExpectedRevision } : {}),
-        mode: existing ? ('append' as const) : ('initialize' as const),
-        ...(userMd ? { userMd } : {}),
-      },
-    }
-  }
-
-  async function review() {
-    setBusy(true)
-    setError(null)
-    setPreview(null)
-    try {
-      const { body } = await requestBody()
-      const response = await fetch(
-        `/api/team-templates/${encodeURIComponent(team.id)}/spawn/preview`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-      )
-      if (!response.ok) {
-        throw new Error(
-          ((await response.json().catch(() => null)) as { error?: string } | null)?.error ??
-            response.statusText,
-        )
-      }
-      setPreview(await response.json())
-    } catch (cause) {
-      setError((cause as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function spawn() {
-    const target = teamId.trim()
-    if (!target) {
-      setError('Target Team slug is required')
-      return
-    }
+  async function spawn(event: React.FormEvent) {
+    event.preventDefault()
     setBusy(true)
     setError(null)
     try {
-      const { body } = await requestBody()
-      const response = await fetch(`/api/team-templates/${encodeURIComponent(team.id)}/spawn`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+      await api(`/api/team-templates/${encodeURIComponent(template.id)}/spawn`, {
+        body: { teamId: target, ...(userMd && !existing ? { userMd } : {}) },
       })
-      if (!response.ok) {
-        throw new Error(
-          ((await response.json().catch(() => null)) as { error?: string } | null)?.error ??
-            response.statusText,
-        )
-      }
       onSpawned(target)
     } catch (cause) {
-      setError((cause as Error).message)
+      setError(errorMessage(cause))
     } finally {
       setBusy(false)
     }
@@ -112,48 +44,27 @@ export function SpawnTeamModal({ profileGroup: team, teams, onClose, onSpawned }
 
   return (
     <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose()
-      }}
+      title={`Spawn team: ${template.name}`}
+      description={
+        <>
+          Creates {template.slots.length} Agent{template.slots.length === 1 ? '' : 's'} and{' '}
+          {template.edges.length} allow edge{template.edges.length === 1 ? '' : 's'}. An unknown
+          slug creates a new {template.policyMode} Team; an existing Team keeps its mode.
+        </>
+      }
+      busy={busy}
+      onClose={onClose}
     >
-      <DialogContent
-        showCloseButton={!busy}
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-frost bg-card p-6 shadow-baziu-lg sm:p-7"
-        onEscapeKeyDown={(event) => {
-          if (busy) event.preventDefault()
-        }}
-        onPointerDownOutside={(event) => {
-          if (busy) event.preventDefault()
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle className="font-serif text-xl text-foreground">
-            Spawn team — {team.name}
-          </DialogTitle>
-          <DialogDescription>
-            Uses immutable Team revision {team.currentRevision}. Existing Teams append at their
-            current reviewed revision; a new Team initializes at revision 1. Conflicts never
-            overwrite newer state.
-          </DialogDescription>
-        </DialogHeader>
-        {error && (
-          <div role="alert" className="err">
-            {error}
-          </div>
-        )}
+      <form onSubmit={(event) => void spawn(event)}>
         <label>
           Target Team slug
           <input
             value={teamId}
-            onChange={(event) => {
-              setTeamId(event.target.value)
-              setPreview(null)
-            }}
-            list="canonical-teams"
+            onChange={(event) => setTeamId(event.target.value)}
+            list="spawn-team-targets"
             required
           />
-          <datalist id="canonical-teams">
+          <datalist id="spawn-team-targets">
             {teams.map((team) => (
               <option key={team.id} value={team.id}>
                 {team.name}
@@ -161,68 +72,37 @@ export function SpawnTeamModal({ profileGroup: team, teams, onClose, onSpawned }
             ))}
           </datalist>
         </label>
-        <label>
-          Starter USER.md (new Team only)
-          <textarea
-            rows={3}
-            value={userMd}
-            onChange={(event) => {
-              setUserMd(event.target.value)
-              setPreview(null)
-            }}
-            className="font-mono text-[0.88em] leading-[1.55]"
-          />
-        </label>
-        {preview && (
-          <div
-            role="status"
-            className="mt-4 rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"
-          >
-            <p>
-              <strong>{preview.mode === 'initialize' ? 'Initialize' : 'Append'}</strong> produces
-              Team revision {preview.resultingRevision}, adds {preview.newMembers.length} Agents,
-              and results in {preview.edges.length} directed allow edges.
-            </p>
-            <ul className="mt-2 max-h-40 overflow-auto">
-              {preview.newMembers.map((member) => (
-                <li key={member.slotId}>
-                  {member.agentName} · stable source slot <code>{member.slotId}</code>
-                </li>
-              ))}
-            </ul>
-            <details className="mt-2">
-              <summary className="cursor-pointer">Review exact edge topology</summary>
-              <ul className="mt-2 max-h-40 overflow-auto">
-                {preview.edges.map((edge, index) => (
-                  <li
-                    key={`${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}:${index}`}
-                  >
-                    <code>
-                      {edge.sourceKind}
-                      {edge.sourceId ? `:${edge.sourceId}` : ''} → {edge.targetKind}
-                      {edge.targetId ? `:${edge.targetId}` : ''}
-                    </code>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          </div>
+        {!existing && (
+          <label>
+            Starter USER.md (new Team only; defaults to the template's)
+            <textarea
+              rows={3}
+              value={userMd}
+              onChange={(event) => setUserMd(event.target.value)}
+              className="font-mono text-[0.88em] leading-[1.55]"
+            />
+          </label>
         )}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" disabled={busy} onClick={onClose}>
-            Cancel
-          </Button>
-          {preview ? (
-            <Button variant="primary" onClick={spawn} disabled={busy}>
-              {busy ? 'Spawning…' : `Commit ${preview.mode}`}
+        {error && (
+          <p role="alert" className="err mt-2">
+            {error}
+          </p>
+        )}
+        <div className="mt-4">
+          <DialogActions>
+            <Button variant="ghost" disabled={busy} onClick={onClose}>
+              Cancel
             </Button>
-          ) : (
-            <Button variant="primary" onClick={review} disabled={busy || team.slotCount === 0}>
-              {busy ? 'Reviewing…' : 'Review exact result'}
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={busy || !target || template.slots.length === 0}
+            >
+              {busy ? 'Spawning…' : 'Spawn team'}
             </Button>
-          )}
+          </DialogActions>
         </div>
-      </DialogContent>
+      </form>
     </Dialog>
   )
 }

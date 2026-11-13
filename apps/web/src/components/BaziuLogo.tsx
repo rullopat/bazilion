@@ -9,13 +9,5 @@ interface BaziuLogoProps {
 }
 
 export function BaziuLogo({ className }: BaziuLogoProps) {
-  return (
-    <img
-      src="/baziu.svg"
-      alt=""
-      aria-hidden="true"
-      draggable={false}
-      className={className}
-    />
-  )
+  return <img src="/baziu.svg" alt="" aria-hidden="true" draggable={false} className={className} />
 }

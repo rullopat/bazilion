@@ -1,4 +1,4 @@
-// agentRepo.toAgent shape after migrations 0003 + 0004.
+// agentRepo.toAgent Telegram fields.
 // telegramTopicId surfaces on Agent so the web UI can show the binding
 // without an extra round-trip; telegramMirrorMode falls back to 'minimal'
 // when missing (DEFAULT applies).

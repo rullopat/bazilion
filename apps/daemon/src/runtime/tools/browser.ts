@@ -1,182 +1,106 @@
-// Browser automation tools (worker-side definitions).
-//
-// These are thin proxies: each tool's `invoke` forwards to the daemon-side
-// Playwright pool over IPC via the injected `BrowserHost`. The browser session
-// (stateful, persistent across turns) lives entirely in the daemon — see
-// `lib/browser/pool.ts`. Results are multimodal: snapshots/console/network come
-// back as text, `browser_take_screenshot` as a base64 image.
-//
-// Perception is accessibility-tree-first. `browser_snapshot` returns an aria
-// tree with [ref=eN] element refs and an observationId. Every ref action must
-// supply both values from the same current snapshot. No vision model is needed
-// for routine automation — screenshots are the exception, not the rule.
+// Worker-side `browser_*` tools. Each one forwards its arguments over IPC to the
+// agent's persistent browser in the daemon (`lib/browser/pool.ts`), which answers
+// with text (snapshots, tab lists, logs) or, for screenshots, an image.
 
-import { BROWSER_SNAPSHOT_SCOPES } from '@bazilion/api-types'
 import type { BrowserHost } from '../worker/ipc-protocol.ts'
 import type { ToolHandler } from './types.ts'
 
-const REF_DESC = 'Element ref from the latest browser_snapshot, e.g. "e5".'
-const OBSERVATION_ID_DESC = 'observationId from the same current browser_snapshot.'
+const REF = { type: 'string', description: 'Element ref from the latest snapshot, e.g. "e5".' }
 
-/**
- * Build the `browser_*` tool suite bound to one agent's session. Each tool
- * forwards to `host.invoke(agentId, <action>, args)`.
- */
 export function browserTools(host: BrowserHost, agentId: string): ToolHandler[] {
-  const proxy = (
-    name: string,
+  const tool = (
     action: string,
     description: string,
-    properties: Record<string, unknown>,
+    properties: Record<string, unknown> = {},
     required: string[] = [],
   ): ToolHandler => ({
     def: {
-      name,
+      name: `browser_${action}`,
       description,
       parameters: { type: 'object', properties, required, additionalProperties: false },
     },
     invoke: (args) => host.invoke(agentId, action, args),
   })
 
-  const observedRef = {
-    ref: { type: 'string', description: REF_DESC },
-    observationId: { type: 'string', description: OBSERVATION_ID_DESC },
-  }
-
   return [
-    proxy(
-      'browser_navigate',
+    tool(
       'navigate',
-      'Open a URL in the browser and return an accessibility snapshot of the loaded page. Starts a persistent browser session that survives across turns (cookies/logins carry over).',
-      { url: { type: 'string', description: 'Absolute URL to navigate to.' } },
+      'Open a URL and return a snapshot of the page. The browser and its cookies/logins persist across turns.',
+      { url: { type: 'string', description: 'Absolute URL to open.' } },
       ['url'],
     ),
-    proxy(
-      'browser_snapshot',
+    tool(
       'snapshot',
-      'Capture the current page as an accessibility tree (YAML) with [ref=eN] element references and an observationId. Use refs with that observationId for browser_click/type/etc. Choose only one: cursor for frozen paging, ref plus observationId, or scope (dialog/main/search) to read one accessible semantic region without an old ref. Semantic scopes are partial page views, never consent or action authorization.',
+      'Accessibility snapshot of the current page with [ref=eN] element refs. A long snapshot comes in pages: pass page to read the next one. Pass ref to snapshot a single element.',
       {
-        observationId: { type: 'string', description: OBSERVATION_ID_DESC },
-        ref: { type: 'string', description: REF_DESC },
-        cursor: {
-          type: 'string',
-          description: 'Single-use continuation cursor from the current snapshot.',
-        },
-        scope: {
-          type: 'string',
-          enum: BROWSER_SNAPSHOT_SCOPES,
-          description:
-            'Read exactly one accessible dialog, main or search region. Missing, ambiguous or oversized regions refuse; never an arbitrary selector.',
+        ref: REF,
+        page: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Page of the latest snapshot to read (the first page is 1).',
         },
       },
     ),
-    proxy(
-      'browser_click',
-      'click',
-      'Click an element identified by its snapshot ref and matching observationId. Returns a fresh snapshot.',
-      observedRef,
-      ['ref', 'observationId'],
-    ),
-    proxy(
-      'browser_type',
+    tool('click', 'Click an element. Returns a fresh snapshot.', { ref: REF }, ['ref']),
+    tool(
       'type',
-      'Type text into an input/textarea identified by its ref and matching observationId. Set submit=true to press Enter afterwards. Returns a fresh snapshot.',
+      'Type text into an input or textarea; submit=true presses Enter afterwards. Returns a fresh snapshot.',
       {
-        ...observedRef,
+        ref: REF,
         text: { type: 'string', description: 'Text to type into the field.' },
         submit: { type: 'boolean', description: 'Press Enter after typing.' },
       },
-      ['ref', 'text', 'observationId'],
+      ['ref', 'text'],
     ),
-    proxy(
-      'browser_hover',
-      'hover',
-      'Hover the pointer over an element identified by its ref and matching observationId.',
-      observedRef,
-      ['ref', 'observationId'],
-    ),
-    proxy(
-      'browser_select',
+    tool('hover', 'Hover the pointer over an element.', { ref: REF }, ['ref']),
+    tool(
       'select',
-      'Select option(s) in a <select> element identified by its ref and matching observationId.',
+      'Select option(s) in a <select> element.',
       {
-        ...observedRef,
-        values: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Option values to select.',
-        },
+        ref: REF,
+        values: { type: 'array', items: { type: 'string' }, description: 'Option values.' },
       },
-      ['ref', 'values', 'observationId'],
+      ['ref', 'values'],
     ),
-    proxy(
-      'browser_fill_form',
+    tool(
       'fill_form',
-      'Fill multiple form fields from one current snapshot. Pass its observationId and fields as { ref, value } entries.',
+      'Fill several form fields at once.',
       {
-        observationId: { type: 'string', description: OBSERVATION_ID_DESC },
         fields: {
           type: 'array',
           description: 'Fields to fill.',
           items: {
             type: 'object',
-            properties: {
-              ref: { type: 'string', description: REF_DESC },
-              value: { type: 'string' },
-            },
+            properties: { ref: REF, value: { type: 'string' } },
             required: ['ref', 'value'],
           },
         },
       },
-      ['fields', 'observationId'],
+      ['fields'],
     ),
-    proxy(
-      'browser_press_key',
+    tool(
       'press_key',
       'Press a keyboard key (e.g. "Enter", "Escape", "ArrowDown", "Control+A").',
       { key: { type: 'string', description: 'Key or chord to press.' } },
       ['key'],
     ),
-    proxy(
-      'browser_go_back',
-      'go_back',
-      'Navigate back to the previous page in history. Returns a fresh snapshot.',
-      {},
-    ),
-    proxy(
-      'browser_tabs',
+    tool('go_back', 'Go back to the previous page. Returns a fresh snapshot.'),
+    tool(
       'tabs',
-      'Manage tabs. op="list" lists open tabs with stable tab ids; "new" opens a tab (optional url); "select" focuses a tab by tabId; "close" closes a tab by tabId (from op="list").',
+      'Manage tabs: op "list" shows open tabs with their ids; "new" opens a tab (optional url); "select" switches to a tab; "close" closes one.',
       {
         op: { type: 'string', enum: ['list', 'new', 'select', 'close'] },
-        tabId: { type: 'string', description: 'Stable tab id from browser_tabs op=list.' },
-        url: { type: 'string', description: 'URL to open for op=new.' },
+        tabId: { type: 'string', description: 'Tab id from op "list", for select and close.' },
+        url: { type: 'string', description: 'URL to open, for op "new".' },
       },
       ['op'],
     ),
-    proxy(
-      'browser_take_screenshot',
+    tool(
       'take_screenshot',
-      'Take a PNG screenshot of the current page (returned as an image). Use only for visual verification or canvas/pixel content the accessibility snapshot cannot represent — prefer browser_snapshot for interaction.',
-      { full_page: { type: 'boolean', description: 'Capture the full scrollable page.' } },
+      'PNG screenshot of the current page, returned as an image. Use it only when the visual layout matters; browser_snapshot is how you read and act on a page.',
+      { full_page: { type: 'boolean', description: 'Capture the whole scrollable page.' } },
     ),
-    proxy(
-      'browser_console',
-      'console',
-      'Return recent browser console messages (logs, warnings, errors).',
-      {},
-    ),
-    proxy(
-      'browser_network',
-      'network',
-      'Return recent network requests issued by the page (method, status, URL).',
-      {},
-    ),
-    proxy(
-      'browser_status',
-      'status',
-      "Read-only status of this agent's managed browser: whether the browser service is enabled, whether a usable browser is available (configured), the session lifecycle state, whether a persistent profile exists, and the selected browser (name, source, mode). Never starts a browser.",
-      {},
-    ),
+    tool('console', 'Recent browser console messages (logs, warnings, errors).'),
+    tool('network', 'Recent network requests made by the page (method, status, URL).'),
   ]
 }

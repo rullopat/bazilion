@@ -15,6 +15,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { MemoryEntry, MemoryHit } from '@bazilion/api-types'
 import { createStore, extractSnippet, type QMDStore } from '@tobilu/qmd'
+import { DomainError } from '../../core/errors.ts'
 import { withNativeModuleErrorBoundary } from '../../lib/native-module-error.ts'
 import type { MemoryBackend } from './types.ts'
 
@@ -126,6 +127,8 @@ function safeKey(root: string, key: string): string {
     throw new Error(`unsafe memory key: ${key}`)
   }
 
+  // Only markdown files are indexed, so any other key would be stored but never listed or found.
+  if (!key.endsWith('.md')) throw new Error(`memory keys end in .md: ${key}`)
   const candidate = resolve(root, key)
   if (candidate === root) throw new Error(`unsafe memory key: ${key}`)
   assertContained(root, candidate)
@@ -183,7 +186,7 @@ function ensureSafeParentDirectories(root: string, path: string): void {
 
 function readSafeFile(root: string, path: string): { content: string; stats: Stats } {
   const info = inspectSafePath(root, path)
-  if (!info) throw new Error(`memory entry not found: ${relative(root, path)}`)
+  if (!info) throw new DomainError(404, `memory entry not found: ${relative(root, path)}`)
   if (!info.isFile()) throw unsafeMemoryPath(path, 'memory entry is not a regular file')
 
   let fd: number | undefined

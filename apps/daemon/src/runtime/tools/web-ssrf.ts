@@ -189,11 +189,6 @@ type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>
 export interface GuardedFetchOptions {
   url: string
   fetchImpl?: FetchLike
-  /** Trusted host admission after URL/DNS validation, before each wire (including redirects).
-   * Keeps the native pinned dispatcher intact; perform is one-shot, never a retry hook. */
-  admitFetch?: (url: string, perform: () => Promise<Response>) => Promise<Response>
-  /** Strict full-wire buffer bound when admission is enabled; over-cap refuses, never truncates. */
-  admissionMaxBodyBytes?: number
   init?: RequestInit
   maxRedirects?: number
   timeoutMs?: number
@@ -239,15 +234,6 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
   // package. Keep fetch and Agent coupled rather than relying on compatible
   // dispatcher or diagnostics-channel handler signatures across versions.
   const fetcher: FetchLike = opts.fetchImpl ?? (undiciFetch as unknown as FetchLike)
-  const admissionLimit = opts.admissionMaxBodyBytes ?? 3 * 1024 * 1024
-  if (
-    opts.admitFetch &&
-    (!opts.signal ||
-      !Number.isSafeInteger(admissionLimit) ||
-      admissionLimit < 1 ||
-      admissionLimit > 64 * 1024 * 1024)
-  )
-    throw new Error('Source admission requires cancellation signal and bounded body')
   const maxRedirects = opts.maxRedirects ?? 3
   const abortController = new AbortController()
   const timeoutId = opts.timeoutMs
@@ -316,36 +302,7 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
 
     let res: Response
     try {
-      let performed = false
-      const perform = async () => {
-        if (performed) throw new Error('Source transport replay refused')
-        performed = true
-        const response = await fetcher(parsed.toString(), init)
-        if (!opts.admitFetch || !response.body) return response
-        // Admission cannot finish at headers: perform owns the bounded complete body.
-        const reader = response.body.getReader()
-        const bytes = new Uint8Array(admissionLimit)
-        let size = 0
-        try {
-          for (;;) {
-            const chunk = await reader.read()
-            if (chunk.done) break
-            if (size + chunk.value.byteLength > admissionLimit)
-              throw new Error('Source admission body limit exceeded')
-            bytes.set(chunk.value, size)
-            size += chunk.value.byteLength
-          }
-        } finally {
-          await reader.cancel().catch(() => {})
-          reader.releaseLock()
-        }
-        return new Response(bytes.subarray(0, size), {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers,
-        })
-      }
-      res = opts.admitFetch ? await opts.admitFetch(parsed.toString(), perform) : await perform()
+      res = await fetcher(parsed.toString(), init)
       activeResponse = res
     } catch (err) {
       await release()

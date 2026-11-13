@@ -1,51 +1,27 @@
-import type {
-  Conversation,
-  ConversationListResponse,
-  ConversationSelection,
-  NewConversationInput,
-} from '@bazilion/api-types'
+import type { Conversation, ConversationListResponse } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { DomainError } from '../errors.ts'
 
-const columns =
-  'id, agent_id AS agentId, title, title_revision AS titleRevision, created_at AS createdAt, updated_at AS updatedAt'
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Conversation metadata. The transcript itself is Pi's session file `<id>.jsonl`.
 
-export class ConversationRequestConflictError extends Error {
-  readonly code = 'conversation_request_conflict'
+const columns = 'id, agent_id AS agentId, title, created_at AS createdAt, updated_at AS updatedAt'
+
+/** A truncate aimed at one conversation while the Agent has since switched to another. */
+export class ConversationChangedError extends DomainError {
   constructor() {
-    super('Conversation request identity was reused with different input')
+    super(409, 'The Agent switched to another conversation. Reload before trying again.')
   }
 }
 
-export class ConversationConflictError extends Error {
-  readonly code = 'conversation_conflict'
-  constructor(readonly selection: ConversationSelection) {
-    super('Conversation changed. Refresh and review your draft before sending again.')
-  }
-}
-
-export function selection(db: BazilionDb, agentId: string): ConversationSelection {
+/** The Agent's selected conversation, the one new turns write to; null before its first turn. */
+export function selectedId(db: BazilionDb, agentId: string): string | null {
   return (
     db.raw
-      .query<ConversationSelection, [string]>(
-        'SELECT conversation_id AS conversationId, revision FROM agent_conversation_selection WHERE agent_id = ?',
+      .query<{ id: string }, [string]>(
+        'SELECT conversation_id AS id FROM agent_conversation_selection WHERE agent_id = ?',
       )
-      .get(agentId) ?? { conversationId: null, revision: 0 }
+      .get(agentId)?.id ?? null
   )
-}
-
-export function assertSelection(
-  db: BazilionDb,
-  agentId: string,
-  expected: ConversationSelection,
-): void {
-  const actual = selection(db, agentId)
-  if (
-    !expected ||
-    expected.conversationId !== actual.conversationId ||
-    expected.revision !== actual.revision
-  )
-    throw new ConversationConflictError(actual)
 }
 
 export function get(db: BazilionDb, agentId: string, id: string): Conversation | null {
@@ -54,16 +30,6 @@ export function get(db: BazilionDb, agentId: string, id: string): Conversation |
       `SELECT ${columns} FROM agent_conversations WHERE agent_id = ? AND id = ?`,
     )
     .get(agentId, id)
-}
-
-export function filename(db: BazilionDb, agentId: string, id: string): string {
-  const row = db.raw
-    .query<{ filename: string }, [string, string]>(
-      'SELECT filename FROM agent_conversations WHERE agent_id = ? AND id = ?',
-    )
-    .get(agentId, id)
-  if (!row) throw new Error('Conversation not found')
-  return row.filename
 }
 
 export function list(
@@ -79,7 +45,7 @@ export function list(
     !Number.isSafeInteger(offset) ||
     offset < 0
   )
-    throw new Error('Invalid conversation pagination')
+    throw new DomainError(400, 'Invalid conversation pagination')
   const conversations = db.raw
     .query<Conversation, [string, number, number]>(
       `SELECT ${columns} FROM agent_conversations WHERE agent_id = ? ORDER BY created_at DESC, id LIMIT ? OFFSET ?`,
@@ -91,116 +57,51 @@ export function list(
         'SELECT COUNT(*) AS n FROM agent_conversations WHERE agent_id = ?',
       )
       .get(agentId)?.n ?? 0
-  return { conversations, selection: selection(db, agentId), total, offset, limit }
+  return { conversations, selectedId: selectedId(db, agentId), total, offset, limit }
 }
 
-function title(value: string): string {
+/** A conversation title, trimmed: 1–200 characters without control characters. */
+export function validTitle(value: string): string {
   if (
     typeof value !== 'string' ||
     !value.trim() ||
     value.length > 200 ||
     Array.from(value).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
   )
-    throw new Error('Conversation title must be 1–200 characters without control characters')
+    throw new DomainError(
+      400,
+      'Conversation title must be 1–200 characters without control characters',
+    )
   return value.trim()
 }
 
-/** Creation holds the Agent lifecycle lease; an existing request only reconciles its receipt. */
-export function create(
-  db: BazilionDb,
-  agentId: string,
-  input: NewConversationInput,
-  persistFile: (id: string) => string,
-): { conversation: Conversation; selection: ConversationSelection } {
-  if (!uuid.test(input.requestId)) throw new Error('Conversation requestId must be a UUID')
-  if (
-    !input.expectedSelection ||
-    !Number.isSafeInteger(input.expectedSelection.revision) ||
-    input.expectedSelection.revision < 0 ||
-    (input.expectedSelection.conversationId !== null &&
-      (typeof input.expectedSelection.conversationId !== 'string' ||
-        !uuid.test(input.expectedSelection.conversationId)))
-  )
-    throw new Error('Invalid expected conversation selection')
-  const initialTitle = input.title === undefined ? null : title(input.title)
+/** Record a new conversation whose session file already exists, and select it. */
+export function create(db: BazilionDb, agentId: string, id: string, title?: string): Conversation {
+  const displayTitle = title === undefined ? undefined : validTitle(title)
   return db.raw.transaction(() => {
-    const existing = db.raw
-      .query<
-        {
-          agentId: string
-          initialTitle: string | null
-          revision: number
-          conversationId: string | null
-        },
-        [string]
-      >(
-        'SELECT agent_id AS agentId, initial_title AS initialTitle, creation_revision AS revision, creation_conversation_id AS conversationId FROM agent_conversations WHERE id = ?',
-      )
-      .get(input.requestId)
-    if (existing) {
-      if (
-        existing.agentId !== agentId ||
-        existing.initialTitle !== initialTitle ||
-        existing.revision !== input.expectedSelection.revision ||
-        existing.conversationId !== input.expectedSelection.conversationId
-      )
-        throw new ConversationRequestConflictError()
-      const conversation = get(db, agentId, input.requestId)
-      if (!conversation) throw new Error('Conversation not found')
-      // A retry after a later New conversation must never reselect the old one.
-      return { conversation, selection: selection(db, agentId) }
-    }
-    assertSelection(db, agentId, input.expectedSelection)
-    if (!db.raw.query<{ id: string }, [string]>('SELECT id FROM agents WHERE id = ?').get(agentId))
-      throw new Error('Agent not found')
     const now = Date.now()
-    const displayTitle = initialTitle ?? `Conversation ${list(db, agentId, 1).total + 1}`
-    const file = persistFile(input.requestId)
-    if (file !== `${input.requestId}.jsonl`)
-      throw new Error('Invalid canonical conversation filename')
     db.raw.run(
-      `INSERT INTO agent_conversations
-      (id, agent_id, filename, title, initial_title, creation_revision, creation_conversation_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        input.requestId,
-        agentId,
-        file,
-        displayTitle,
-        initialTitle,
-        input.expectedSelection.revision,
-        input.expectedSelection.conversationId,
-        now,
-        now,
-      ],
+      `INSERT INTO agent_conversations (id, agent_id, title, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)`,
+      [id, agentId, displayTitle ?? `Conversation ${list(db, agentId, 1).total + 1}`, now, now],
     )
     db.raw.run(
-      `INSERT INTO agent_conversation_selection (agent_id, conversation_id, revision)
-      VALUES (?, ?, ?) ON CONFLICT(agent_id) DO UPDATE SET conversation_id = excluded.conversation_id, revision = excluded.revision`,
-      [agentId, input.requestId, input.expectedSelection.revision + 1],
+      `INSERT INTO agent_conversation_selection (agent_id, conversation_id) VALUES (?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET conversation_id = excluded.conversation_id`,
+      [agentId, id],
     )
-    const conversation = get(db, agentId, input.requestId)
-    if (!conversation) throw new Error('Conversation publication failed')
-    return { conversation, selection: selection(db, agentId) }
+    const conversation = get(db, agentId, id)
+    if (!conversation) throw new Error('Conversation not found')
+    return conversation
   })()
 }
 
-export function rename(
-  db: BazilionDb,
-  agentId: string,
-  id: string,
-  value: string,
-  expectedRevision: number,
-): Conversation {
-  const displayTitle = title(value)
-  const changed = db.raw.run(
-    `UPDATE agent_conversations SET title = ?, title_revision = title_revision + 1, updated_at = ?
-    WHERE agent_id = ? AND id = ? AND title_revision = ?`,
-    [displayTitle, Date.now(), agentId, id, expectedRevision],
+export function rename(db: BazilionDb, agentId: string, id: string, title: string): Conversation {
+  db.raw.run(
+    'UPDATE agent_conversations SET title = ?, updated_at = ? WHERE agent_id = ? AND id = ?',
+    [validTitle(title), Date.now(), agentId, id],
   )
-  if (!changed.changes)
-    throw new Error('Conversation title changed or is unavailable; reload before renaming')
   const conversation = get(db, agentId, id)
-  if (!conversation) throw new Error('Conversation not found')
+  if (!conversation) throw new DomainError(404, 'Conversation not found')
   return conversation
 }

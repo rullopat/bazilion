@@ -30,6 +30,34 @@ export interface CannedResponse {
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
 }
 
+/** A canned final assistant answer. */
+export function reply(content: string): CannedResponse {
+  return { choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }] }
+}
+
+let toolCallCount = 0
+/** A canned assistant turn that calls one tool. */
+export function toolCall(name: string, args: unknown): CannedResponse {
+  return {
+    choices: [
+      {
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: `call-${name}-${++toolCallCount}`,
+              type: 'function',
+              function: { name, arguments: JSON.stringify(args) },
+            },
+          ],
+        },
+        finish_reason: 'tool_calls',
+      },
+    ],
+  }
+}
+
 /**
  * Translate a canned non-streaming OpenAI-shaped response into OpenAI SSE
  * chunks and write them to `res`. Pi-ai's openai-completions client always

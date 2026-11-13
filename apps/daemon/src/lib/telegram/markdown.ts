@@ -26,6 +26,11 @@ import { htmlEscape } from './html.ts'
 // so staying under this is conservatively safe. 3900 leaves headroom.
 export const TELEGRAM_SAFE_BUDGET = 3900
 
+/** Shorten plain text to at most `limit` characters, marking the cut with `…`. */
+export function clip(text: string, limit: number): string {
+  return text.length <= limit ? text : `${text.slice(0, limit - 1)}…`
+}
+
 // Heading glyphs by depth — h1/h2 get a bold bar, h3+ a triangle. Purely a
 // visual hint since Telegram renders them all at the same size.
 function headingPrefix(depth: number): string {
