@@ -6,6 +6,23 @@ through the `browser_*` tools: they read pages as accessibility snapshots, click
 switch tabs and take screenshots. Every Agent turn gets these tools while `BROWSER_ENABLED` is on
 (the default); learning reviews do not.
 
+Agents can work in the browser you already have open instead, with your logins: see
+[Your running browser](#your-running-browser).
+
+## Which browser
+
+Without `BROWSER_EXECUTABLE_PATH`, Bazilion uses the first browser it finds in the usual install
+places: Chrome, then Brave, Edge and Chromium. On Linux those are paths such as
+`/usr/bin/google-chrome`; on macOS the app bundles in `/Applications` and `~/Applications`.
+
+When none is installed, the daemon downloads Chromium once (a few hundred MB on disk) into
+Playwright's browser cache: `~/.cache/ms-playwright` on Linux, `~/Library/Caches/ms-playwright` on
+macOS, or `PLAYWRIGHT_BROWSERS_PATH`. The download starts when the daemon starts; a browser action
+that comes first waits for it. The Agent page shows the download or why it failed.
+`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` in the daemon's environment turns the download off. On a Linux
+machine without a desktop, the downloaded Chromium can still miss system libraries; its start error
+names them, and `npx playwright install-deps chromium` installs them.
+
 ## How it works
 
 - The browser starts at the Agent's first browser action. The daemon starts the installed binary
@@ -26,19 +43,59 @@ Set them on `/config/services` (**Browser Automation**), or with
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `BROWSER_ENABLED` | `true` | Give Agent turns the browser tools. |
-| `BROWSER_EXECUTABLE_PATH` | discovery | Browser binary to run. Without it: the first Chrome, Brave, Edge or Chromium in the usual install paths, then the Chromium Playwright downloaded at install time. |
-| `BROWSER_HEADLESS` | `true` | `false` opens a visible window on the desktop the daemon runs in. |
+| `BROWSER_EXECUTABLE_PATH` | discovery | Browser binary to run. Without it: see [Which browser](#which-browser). |
+| `BROWSER_ATTACH` | `false` | `true` makes Agents work in [your running browser](#your-running-browser). |
+| `BROWSER_ATTACH_URL` | found | DevTools address of the running browser, such as `http://127.0.0.1:9222`. Without it, Bazilion finds the running Chrome or Chromium. |
+| `BROWSER_HEADLESS` | `true` | `false` opens a visible window on the desktop the daemon runs in. Not used with a running browser. |
 | `BROWSER_ALLOW_PRIVATE_NETWORK` | `false` | Let pages reach loopback and private addresses by turning the SSRF proxy off. Local development only. |
 | `BROWSER_IDLE_MS` | `900000` | Stop a browser after this much inactivity (15 minutes). |
 | `BROWSER_MAX_SESSIONS` | `4` | Browsers running at the same time. |
 
-Changes apply from the Agent's next turn. A new executable, `BROWSER_HEADLESS` or
-`BROWSER_ALLOW_PRIVATE_NETWORK` value restarts a running browser at its next action; the other
-settings need no restart.
+Changes apply from the Agent's next turn. A new executable, `BROWSER_HEADLESS`, `BROWSER_ATTACH`,
+`BROWSER_ATTACH_URL` or `BROWSER_ALLOW_PRIVATE_NETWORK` value restarts a running browser at its next
+action; the other settings need no restart.
+
+To sign an Agent in to a site in its own browser, set `BROWSER_HEADLESS=false`, let the Agent open
+the site, and sign in in the window that appears. The login stays in that Agent's profile.
+
+## Your running browser
+
+With `BROWSER_ATTACH=true`, Agents do not get browsers of their own. They work in the Chrome or
+Chromium you have open, signed in wherever you are.
+
+1. In Chrome 144 or later, open `chrome://inspect/#remote-debugging` and allow remote debugging.
+2. Set `BROWSER_ATTACH` to `true` on `/config/services` or with `bazilion config set`.
+3. At an Agent's first browser action, Chrome asks whether to allow the connection. Allow it within
+   a minute.
+
+Bazilion finds the browser through the `DevToolsActivePort` file in the default profile directory of
+Chrome (stable, beta, canary or dev) or Chromium. For any other Chromium-family browser, or a profile
+elsewhere, start it with `--remote-debugging-port=9222 --user-data-dir=<directory>` and set
+`BROWSER_ATTACH_URL=http://127.0.0.1:9222`. On macOS the system can deny the daemon access to
+Chrome's folder; the error says so, and System Settings > Privacy & Security > Files & Folders is
+where to allow the terminal that runs Bazilion.
+
+What changes in this mode:
+
+- An Agent sees and drives only the tabs it opens and the tabs those open. Your own tabs are never
+  listed, read or closed. The Agent's tabs open in your window.
+- On every site you are signed in to, the Agent acts as you. It is told to post, send, buy, delete
+  or change settings only when you asked for exactly that. Use this mode with Agents and tasks you
+  trust.
+- All Agents share one connection. Chrome shows its "controlled by automated test software" banner
+  while it is open. When the last Agent's session ends (idle timeout, **Stop session**, daemon
+  stop), its tabs close, the connection is dropped and your browser keeps running. The next browser
+  action asks Chrome again.
+- There is no proxy between your browser and the network. Bazilion checks each request of an
+  Agent's tab against the same rules and refuses loopback and private addresses, but a service
+  worker's requests, the first request of a tab that a page opened, and a host name whose address
+  changes after the check are not covered. Downloads are refused in the Agent's tabs only.
+- `BROWSER_HEADLESS` and `BROWSER_EXECUTABLE_PATH` are not used, and an Agent's saved profile is
+  left as it is for when you turn the mode off.
 
 ## Network
 
-All browser traffic goes through a proxy in the daemon. It refuses loopback, private and link-local
+In an Agent's own browser, all traffic goes through a proxy in the daemon. It refuses loopback, private and link-local
 addresses, including host names that resolve to one, and connects only to the address it checked.
 Navigation to `file:` and similar local schemes is refused. Downloads are refused, WebRTC is removed
 from pages and QUIC is off, so no traffic goes around the proxy. Service workers can register and
@@ -86,4 +143,4 @@ Stop and reset are refused while the Agent has a turn running.
 - Screenshots larger than 4 MB are refused; take one of the visible area instead of `full_page`.
 - Results are bounded: page URLs and titles are cut at 500 characters, console messages at 2,000,
   and any other text or error at about 28,000 (long snapshots come in pages instead).
-- Tested on Linux. On other systems the browser may work but is untested.
+- Linux and macOS are supported. Linux is tested in CI; macOS is checked by hand.

@@ -9,3 +9,6 @@ if (!process.env.BAZILION_HOME) {
   const root = process.env.BAZILION_TEST_HOMES ?? tmpdir()
   process.env.BAZILION_HOME = mkdtempSync(join(root, 'home-'))
 }
+
+// A test that boots a daemon on a machine without a browser must not download Chromium.
+process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD ??= '1'

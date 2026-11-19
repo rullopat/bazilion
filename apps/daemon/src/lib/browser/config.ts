@@ -8,6 +8,10 @@ export interface BrowserConfig {
   executablePath?: string
   /** Skip the SSRF proxy so pages can reach loopback/private addresses. */
   allowPrivate: boolean
+  /** Work in a browser that is already running instead of starting one (`attach.ts`). */
+  attach: boolean
+  /** The running browser's DevTools address; unset means the one found on this machine. */
+  attachUrl?: string
   idleMs: number
   maxSessions: number
 }
@@ -31,10 +35,13 @@ export function isBrowserEnabled(env: NodeJS.ProcessEnv): boolean {
 
 export function resolveBrowserConfig(env: NodeJS.ProcessEnv): BrowserConfig {
   const executablePath = env.BROWSER_EXECUTABLE_PATH?.trim()
+  const attachUrl = env.BROWSER_ATTACH_URL?.trim()
   return {
     headless: envBool(env.BROWSER_HEADLESS, true),
     ...(executablePath ? { executablePath } : {}),
     allowPrivate: envBool(env.BROWSER_ALLOW_PRIVATE_NETWORK, false),
+    attach: envBool(env.BROWSER_ATTACH, false),
+    ...(attachUrl ? { attachUrl } : {}),
     idleMs: envInt(env.BROWSER_IDLE_MS, 900_000),
     maxSessions: envInt(env.BROWSER_MAX_SESSIONS, 4),
   }

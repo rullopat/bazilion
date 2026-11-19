@@ -1,4 +1,5 @@
-// One persistent browser per agent, held in the daemon's resource registry so
+// One persistent browser per agent (or, with BROWSER_ATTACH, one set of tabs per agent in a
+// browser that is already running), held in the daemon's resource registry so
 // cookies, logins and open tabs survive across turns. The worker's `browser_*`
 // tools reach it over IPC (`host.ts`); every call runs here, one at a time per
 // agent. A browser quits when idle for BROWSER_IDLE_MS, when the pool needs room
@@ -8,13 +9,20 @@
 
 import { existsSync, rmSync } from 'node:fs'
 import type { BrowserStatus } from '@bazilion/api-types'
-import type { Request as BrowserRequest, Page } from 'playwright'
+import type {
+  Request as BrowserRequest,
+  Response as BrowserResponse,
+  ConsoleMessage,
+  Page,
+} from 'playwright'
 import type { Paths } from '../../core/index.ts'
 import type { ToolResultPart } from '../../runtime/tools/types.ts'
 import { ensureResourceReaper, resources } from '../resources.ts'
+import { attachBrowser } from './attach.ts'
 import type { BrowserConfig } from './config.ts'
 import { findBrowserExecutable } from './executable.ts'
-import { killOrphanBrowser, type LaunchedBrowser, launchBrowser } from './launch.ts'
+import { browserDownloadNote, ensureBrowserExecutable } from './install.ts'
+import { type AgentBrowser, killOrphanBrowser, launchBrowser } from './launch.ts'
 import { getSsrfProxy } from './proxy.ts'
 import { capText, clip, formatSnapshot, type Snapshot, splitPages } from './snapshot.ts'
 import { browserBlockReason } from './ssrf.ts'
@@ -34,7 +42,7 @@ export interface BrowserSession {
   agentId: string
   /** The settings the browser was launched with; a change relaunches it. */
   key: string
-  browser: LaunchedBrowser
+  browser: AgentBrowser
   lastUsedAt: number
   idleMs: number
   /** Actions in flight: the idle reaper and pool eviction leave a busy browser alone. */
@@ -76,7 +84,18 @@ function errorMessage(error: unknown): string {
 }
 
 function configKey(config: BrowserConfig): string {
-  return `${config.headless}|${config.executablePath ?? ''}|${config.allowPrivate}`
+  return config.attach
+    ? `attach|${config.attachUrl ?? ''}|${config.allowPrivate}`
+    : `${config.headless}|${config.executablePath ?? ''}|${config.allowPrivate}`
+}
+
+/** The page a request came from; a service worker's request has none. */
+function requestPage(request: BrowserRequest): Page | null {
+  try {
+    return request.frame().page()
+  } catch {
+    return null
+  }
 }
 
 function tabId(session: BrowserSession, page: Page): string {
@@ -96,10 +115,13 @@ function remember<T>(log: T[], entry: T): void {
 function startSession(
   agentId: string,
   key: string,
-  browser: LaunchedBrowser,
+  browser: AgentBrowser,
   idleMs: number,
 ): BrowserSession {
   const sessions = resources().browsers
+  const { context } = browser
+  // An attached browser outlives the session: its listeners are taken off again.
+  const unlisten: Array<() => void> = []
   let closed: Promise<void> | undefined
   const session: BrowserSession = {
     agentId,
@@ -117,6 +139,7 @@ function startSession(
     close() {
       if (sessions.get(agentId) === session) sessions.delete(agentId)
       if (!closed) {
+        for (const off of unlisten) off()
         const done = browser.close()
         closed = done
         closing.set(agentId, done)
@@ -127,26 +150,38 @@ function startSession(
       return closed
     },
   }
-  const { context } = browser
-  for (const page of context.pages()) tabId(session, page)
-  // Popups and tabs a page opens get tab ids too.
-  context.on('page', (page) => {
-    tabId(session, page)
-  })
-  // Page-controlled text is clipped as it is kept, so the logs stay small.
-  context.on('console', (message) => {
+  for (const page of browser.pages()) tabId(session, page)
+  // Popups and tabs a page opens get tab ids too (in an attached browser, when first listed).
+  const onPage = (page: Page) => {
+    if (browser.owns(page)) tabId(session, page)
+  }
+  // Page-controlled text is clipped as it is kept, so the logs stay small. In an attached
+  // browser only the agent's own tabs are logged.
+  const onConsole = (message: ConsoleMessage) => {
+    if (!browser.owns(message.page())) return
     remember(session.console, clip(`[${message.type()}] ${message.text()}`, CONSOLE_CHARS))
-  })
+  }
   const entries = new WeakMap<BrowserRequest, BrowserSession['network'][number]>()
-  context.on('request', (request) => {
+  const onRequest = (request: BrowserRequest) => {
+    if (!browser.owns(requestPage(request))) return
     const entry = { method: request.method(), url: clip(request.url()) }
     entries.set(request, entry)
     remember(session.network, entry)
-  })
-  context.on('response', (response) => {
+  }
+  const onResponse = (response: BrowserResponse) => {
     const entry = entries.get(response.request())
     if (entry) entry.status = response.status()
-  })
+  }
+  context.on('page', onPage)
+  context.on('console', onConsole)
+  context.on('request', onRequest)
+  context.on('response', onResponse)
+  unlisten.push(
+    () => context.off('page', onPage),
+    () => context.off('console', onConsole),
+    () => context.off('request', onRequest),
+    () => context.off('response', onResponse),
+  )
   sessions.set(agentId, session)
   ensureResourceReaper()
   return session
@@ -182,13 +217,17 @@ async function claimSession(
   }
   launching++
   try {
-    const executable = findBrowserExecutable(config.executablePath)
-    const browser = await launchBrowser({
-      executablePath: executable.path,
-      dir: paths.browserDir(agentId),
-      headless: config.headless,
-      ...(config.allowPrivate ? {} : { proxyUrl: await getSsrfProxy() }),
-    })
+    const browser = config.attach
+      ? await attachBrowser({
+          allowPrivate: config.allowPrivate,
+          ...(config.attachUrl ? { url: config.attachUrl } : {}),
+        })
+      : await launchBrowser({
+          executablePath: (await ensureBrowserExecutable(config.executablePath)).path,
+          dir: paths.browserDir(agentId),
+          headless: config.headless,
+          ...(config.allowPrivate ? {} : { proxyUrl: await getSsrfProxy() }),
+        })
     launchErrors.delete(agentId)
     const session = startSession(agentId, key, browser, config.idleMs)
     session.busy++
@@ -288,13 +327,23 @@ export function browserStatus(
     running: resources().browsers.get(agentId)?.browser.running ?? false,
     profilePresent: existsSync(paths.browserDir(agentId)),
   }
+  const launchError = launchErrors.get(agentId)
+  if (config.attach) {
+    status.browser = {
+      name: config.attachUrl ?? 'The running Chrome or Chromium',
+      mode: 'attached',
+    }
+    if (launchError) status.error = launchError
+    return status
+  }
   try {
     const { name } = findBrowserExecutable(config.executablePath)
     status.browser = { name, mode: config.headless ? 'headless' : 'headed' }
-    const launchError = launchErrors.get(agentId)
     if (launchError) status.error = launchError
   } catch (error) {
-    status.error = errorMessage(error)
+    // No browser on this machine: say whether Chromium is on its way.
+    status.error =
+      (config.executablePath ? null : browserDownloadNote()) ?? launchError ?? errorMessage(error)
   }
   return status
 }
@@ -336,11 +385,11 @@ async function checkUrl(url: string, config: BrowserConfig): Promise<void> {
 
 /** The active tab, else the first open one, else a new one. */
 async function activePage(session: BrowserSession): Promise<Page> {
-  const pages = session.browser.context.pages()
+  const pages = session.browser.pages()
   const page =
     pages.find((p) => tabId(session, p) === session.activeTab) ??
     pages[0] ??
-    (await session.browser.context.newPage())
+    (await session.browser.newPage())
   session.activeTab = tabId(session, page)
   return page
 }
@@ -516,31 +565,31 @@ async function tabs(
   config: BrowserConfig,
 ): Promise<ToolResultPart[]> {
   const op = stringArg(args, 'op')
-  const { context } = session.browser
+  const { browser } = session
   if (op === 'list') {
-    const lines = context
+    const lines = browser
       .pages()
       .map((page) => {
         const id = tabId(session, page)
         return `${id === session.activeTab ? '*' : ' '} ${id}  ${clip(page.url())}`
       })
       .join('\n')
-    return text(lines)
+    return text(lines || 'No tabs are open.')
   }
   if (op === 'new') {
-    if (context.pages().length >= MAX_TABS) {
+    if (browser.pages().length >= MAX_TABS) {
       throw new Error(`${MAX_TABS} tabs are already open; close one first`)
     }
     const url = typeof args.url === 'string' && args.url ? args.url : undefined
     if (url) await checkUrl(url, config)
-    const page = await context.newPage()
+    const page = await browser.newPage()
     session.activeTab = tabId(session, page)
     if (!url) return text(`Opened ${session.activeTab} (about:blank).`)
     await page.goto(url, { waitUntil: 'domcontentloaded' })
     return text(await freshSnapshot(session, page))
   }
   const id = stringArg(args, 'tabId')
-  const page = context.pages().find((p) => tabId(session, p) === id)
+  const page = browser.pages().find((p) => tabId(session, p) === id)
   if (op === 'select') {
     if (!page) throw new Error(`No open tab "${id}"; browser_tabs {"op":"list"} lists them.`)
     // Bring the tab to the front so the browser keeps rendering it.

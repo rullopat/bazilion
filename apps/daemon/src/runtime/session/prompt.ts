@@ -29,8 +29,9 @@ export interface BuildSystemPromptOptions {
    * when the ordinary browser tools are actually admitted — the SAME host
    * presence that registers the `browser_*` tools, so guidance and
    * capability never drift apart. Restricted reviews never set it.
+   * `'attached'` when the tools drive the user's own browser (BROWSER_ATTACH).
    */
-  browserGuide?: boolean
+  browserGuide?: boolean | 'attached'
   /** Web research guidance, when the turn has web_search. */
   searchGuide?: boolean
 }
@@ -236,7 +237,10 @@ export function buildSystemPromptSections(
 
   // Browser operating guide — only when the browser tools are admitted (T10).
   if (options.browserGuide) {
-    parts.push({ id: 'browser-guide', text: browserGuideSection() })
+    parts.push({
+      id: 'browser-guide',
+      text: browserGuideSection(options.browserGuide === 'attached'),
+    })
   }
 
   const teamLines = [

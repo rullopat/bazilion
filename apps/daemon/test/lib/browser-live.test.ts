@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import { resolvePaths } from '../../src/core/paths.ts'
 import type { BrowserConfig } from '../../src/lib/browser/config.ts'
 import { findBrowserExecutable } from '../../src/lib/browser/executable.ts'
-import { type LaunchedBrowser, launchBrowser } from '../../src/lib/browser/launch.ts'
+import { type AgentBrowser, launchBrowser } from '../../src/lib/browser/launch.ts'
 import {
   browserStatus,
   closeBrowserSession,
@@ -38,7 +38,13 @@ const available = (() => {
 })()
 
 // Loopback test pages, so the SSRF proxy is off.
-const CONFIG: BrowserConfig = { headless: true, allowPrivate: true, idleMs: 60_000, maxSessions: 4 }
+const CONFIG: BrowserConfig = {
+  headless: true,
+  allowPrivate: true,
+  attach: false,
+  idleMs: 60_000,
+  maxSessions: 4,
+}
 const home = mkdtempSync(join(tmpdir(), 'baz-browser-live-'))
 const paths = resolvePaths(home)
 let server: Server
@@ -255,9 +261,9 @@ describe.skipIf(!available)('launch controls', () => {
   const executablePath = available ? findBrowserExecutable().path : ''
   let origin: InstrumentedOrigin
   let proxyUrl: string
-  const open: LaunchedBrowser[] = []
+  const open: AgentBrowser[] = []
 
-  async function launch(name: string, withProxy: boolean): Promise<LaunchedBrowser> {
+  async function launch(name: string, withProxy: boolean): Promise<AgentBrowser> {
     const browser = await launchBrowser({
       executablePath,
       dir: join(scratch, name),
@@ -268,7 +274,7 @@ describe.skipIf(!available)('launch controls', () => {
     return browser
   }
 
-  async function closed(browser: LaunchedBrowser, name: string): Promise<void> {
+  async function closed(browser: AgentBrowser, name: string): Promise<void> {
     await browser.close()
     await vi.waitFor(() => expect(browserProcesses(join(scratch, name, 'user-data'))).toEqual([]), {
       timeout: 8_000,
