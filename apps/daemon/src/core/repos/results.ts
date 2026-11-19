@@ -175,7 +175,8 @@ export function listForArchive(
   const { sql, params } = whereClause(filter)
   const all = db.raw
     .query<AgentResult, string[]>(
-      `SELECT ${columns} FROM agent_results ${sql} ORDER BY created_at, id`,
+      // Oldest first; files saved in the same millisecond keep the order they were saved in.
+      `SELECT ${columns} FROM agent_results ${sql} ORDER BY created_at, rowid`,
     )
     .all(...params)
   const results: AgentResult[] = []
