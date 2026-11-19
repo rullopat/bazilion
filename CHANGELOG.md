@@ -5,7 +5,7 @@ Hand-written highlights per release. The full notes for every version are genera
 [`apps/cli/CHANGELOG.md`](apps/cli/CHANGELOG.md) (the `bazilion` package) and published as
 [GitHub releases](https://github.com/rullopat/bazilion/releases).
 
-## 0.26.1 (unreleased)
+## 0.26.1 — 2026-11-19
 
 A 0.26.0 home opens as it is.
 
