@@ -56,6 +56,8 @@ export interface SetProviderModelsRequest {
 
 export interface SetProviderModelsResponse {
   models: string[]
+  /** Agent templates the edit moved off a model it removed, with the model each now uses. */
+  movedTemplates: { id: string; name: string; model: string }[]
 }
 
 export interface SetProviderEnabledResponse {

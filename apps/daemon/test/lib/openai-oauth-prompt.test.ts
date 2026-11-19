@@ -2,6 +2,7 @@ import { createServer } from 'node:net'
 import { expect, test, vi } from 'vitest'
 import {
   answerWebOpenAIPrompt,
+  openAICodexBrowserCommand,
   preflightOpenAICodexCallback,
   webOpenAILoginError,
 } from '../../src/lib/openai-oauth-prompt.ts'
@@ -136,4 +137,10 @@ test('a timed-out or failed web login names its cause', () => {
   expect(
     webOpenAILoginError(new Error('token exchange failed'), new AbortController().signal),
   ).toBe('token exchange failed')
+})
+
+test('the sign-in page opener on macOS does not depend on PATH', () => {
+  // A terminal app can put its own `open` first on PATH and keep the page in a built-in browser.
+  expect(openAICodexBrowserCommand('darwin')).toBe('/usr/bin/open')
+  expect(openAICodexBrowserCommand('linux')).toBe('xdg-open')
 })

@@ -9,6 +9,7 @@ import type {
   ServiceConfigResponse,
   ServiceFieldState,
   SetProviderModelsRequest,
+  SetProviderModelsResponse,
 } from '@bazilion/api-types'
 import { IMAGE_MODEL_CHOICES, imageRoute } from '../core/image-generation-config.ts'
 import {
@@ -21,6 +22,7 @@ import {
   openSecrets,
   providerModelRepo,
   providerStateRepo,
+  replaceCuratedModels,
   type ServiceDef,
   servicesByCategory,
 } from '../core/index.ts'
@@ -137,9 +139,9 @@ configRouter.put('/providers/:name/models', async (c) => {
     )
   }
   const { db, paths } = getCtx()
-  providerModelRepo.replace(db, name, models)
+  const saved = replaceCuratedModels(db, name, models)
   ensureSetupSeeded(db, paths)
-  return c.json({ models: providerModelRepo.list(db, name) })
+  return c.json(saved satisfies SetProviderModelsResponse)
 })
 
 // /api/config/fields/:envVar — write-through for any envVar the registry knows.

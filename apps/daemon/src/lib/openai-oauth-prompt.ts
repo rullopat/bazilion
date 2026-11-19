@@ -36,9 +36,18 @@ export async function preflightOpenAICodexCallback(
   }
 }
 
+/**
+ * The opener for the sign-in page. macOS names the system binary: the daemon inherits the PATH of
+ * the terminal that started it, where a terminal app's own `open` can send the page to its
+ * built-in browser, out of sight of the person who clicked Connect.
+ */
+export function openAICodexBrowserCommand(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'darwin' ? '/usr/bin/open' : 'xdg-open'
+}
+
 /** Open the sign-in page on this machine; `onFailure` hears about an opener that failed. */
 export function launchOpenAICodexBrowser(url: string, onFailure: (error: Error) => void): void {
-  const command = process.platform === 'darwin' ? 'open' : 'xdg-open'
+  const command = openAICodexBrowserCommand()
   const fail = (detail: string) =>
     onFailure(
       new Error(

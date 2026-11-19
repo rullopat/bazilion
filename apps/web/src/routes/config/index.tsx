@@ -3,6 +3,7 @@ import type {
   OpenAICodexStatus,
   ProviderConfigEntry,
   ProviderConfigResponse,
+  SetProviderModelsResponse,
 } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
@@ -310,8 +311,12 @@ function ProviderCard({
         .split(/\r?\n/)
         .map((s) => s.trim())
         .filter(Boolean)
-      await api(`${providerPath}/models`, { method: 'PUT', body: { models: list } })
-      setModelStatus({ kind: 'success', message: 'Models saved.' })
+      const saved = await api<SetProviderModelsResponse>(`${providerPath}/models`, {
+        method: 'PUT',
+        body: { models: list },
+      })
+      const moved = saved.movedTemplates.map((t) => `Template ${t.name} now uses ${t.model}.`)
+      setModelStatus({ kind: 'success', message: ['Models saved.', ...moved].join(' ') })
       setTestModel(list[0] ?? '')
       setTestResult(null)
       await router.invalidate()
