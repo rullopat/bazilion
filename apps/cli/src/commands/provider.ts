@@ -89,6 +89,7 @@ const modelsSetCmd = defineCommand({
     )
     console.log(`saved ${saved.models.length} curated model(s) for ${args.name}`)
     for (const m of saved.models) console.log(`  ${m}`)
+    for (const t of saved.movedTemplates) console.log(`template ${t.id} now uses ${t.model}`)
   },
 })
 

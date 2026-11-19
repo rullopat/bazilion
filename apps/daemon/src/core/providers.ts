@@ -207,7 +207,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     hint: 'Hosted open-weight models · baseten.co',
   }),
   apiKey('moonshotai', 'Moonshot AI', 'MOONSHOT_API_KEY', {
-    hint: 'Kimi K2/K2.5/K2.6/K2.7 · platform.moonshot.ai',
+    hint: 'Kimi K2 and K3 models · platform.moonshot.ai',
   }),
   apiKey('moonshotai-cn', 'Moonshot AI (CN)', 'MOONSHOT_CN_API_KEY', {
     hint: 'Kimi models via the China endpoint · platform.moonshot.cn',
@@ -231,6 +231,12 @@ export const PROVIDERS: readonly ProviderDef[] = [
   apiKey('qwen-token-plan-individual', 'Qwen Token Plan (Individual)', 'QWEN_TOKEN_PLAN_API_KEY', {
     hint: 'Individual subscription models via the international endpoint',
   }),
+  apiKey(
+    'qwen-token-plan-individual-cn',
+    'Qwen Token Plan (Individual, CN)',
+    'QWEN_TOKEN_PLAN_CN_API_KEY',
+    { hint: 'Individual subscription models via the China endpoint' },
+  ),
   apiKey('xiaomi', 'Xiaomi MiMo', 'XIAOMI_API_KEY', {
     hint: 'API billing endpoint · platform.xiaomimimo.com',
   }),

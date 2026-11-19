@@ -5,7 +5,20 @@ Hand-written highlights per release. The full notes for every version are genera
 [`apps/cli/CHANGELOG.md`](apps/cli/CHANGELOG.md) (the `bazilion` package) and published as
 [GitHub releases](https://github.com/rullopat/bazilion/releases).
 
-## Unreleased
+## 0.26.1 (unreleased)
+
+A 0.26.0 home opens as it is.
+
+- **Model list fix:** taking a model out of a provider's list on `/config` moves Agent templates
+  that defaulted to it to the provider's first remaining model. Before, the default template kept
+  the model it was first given, so new Agents went on using a mistyped or removed model.
+- **Embedded Pi 1.5.2:** the AI, agent, coding-agent and MCP packages move together to 1.5.2, with
+  current provider catalogs (GPT-6.1 Terra, Claude Fable 5.2, Kimi K3.1 Pro) and the new Qwen
+  Token Plan (Individual, CN) provider.
+- **ChatGPT sign-in on macOS:** Connect ChatGPT opens the sign-in page in the default browser even
+  when the daemon was started from a terminal that replaces `open` with its own.
+
+## 0.26.0 — 2026-11-13
 
 A cleanup that makes Bazilion smaller and simpler. Homes from 0.25.0 do not open: back up, reset
 and start fresh.

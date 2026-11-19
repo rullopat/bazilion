@@ -163,7 +163,7 @@ These run in the daemon, not in a worker.
 ## 7. Providers and Pi
 
 The daemon and the packed CLI pin `@earendil-works/pi-ai`, `pi-agent-core`, `pi-coding-agent` and
-`pi-mcp` to the same version (1.4.0). An operator's own Pi install is not touched.
+`pi-mcp` to the same version (1.5.2). An operator's own Pi install is not touched.
 
 - **Provider table.** `apps/daemon/src/core/providers.ts` has one `PROVIDERS` entry per provider:
   its `/config` card, key and credential variables, Pi's id where it differs, an endpoint the
@@ -175,6 +175,11 @@ The daemon and the packed CLI pin `@earendil-works/pi-ai`, `pi-agent-core`, `pi-
   fails as "Unknown model", so a typo never sends a key to another vendor's default URL.
 - **Enabled providers.** A provider is usable once it is enabled on `/config` or with
   `bazilion provider enable <id>`; turns, compaction and the provider test refuse a disabled one.
+- **Model list.** Each provider's list on `/config` (`bazilion provider models-set <id> <models>`)
+  feeds the model pickers. Saving it without a model that an Agent template defaults to moves the
+  template to the provider's first remaining model, or to the first available model of another
+  provider when none remains; the save reports each move. A template on a model that was never
+  listed and an Agent's own model override are left as they are.
 - **Provider test.** `POST /api/providers/test` (`bazilion provider test <provider:model>`) sends
   one short request through the same runtime and reports the reply or the provider's error.
 - **MCP** runs in the daemon with `pi-mcp`; workers only proxy calls. See [MCP](mcp.md).
@@ -183,9 +188,9 @@ The daemon and the packed CLI pin `@earendil-works/pi-ai`, `pi-agent-core`, `pi-
 - **Upgrading Pi.** Bump the four packages together in `apps/daemon` and `apps/cli`, keep the
   settings above, and run the gates. A catalog change can add or drop model ids; saved Agent model
   choices are not rewritten. Upstream:
-  [SDK](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/sdk.md),
-  [models](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/models.md),
-  [MCP client](https://github.com/earendil-works/pi/blob/v1.4.0/packages/mcp/README.md).
+  [SDK](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/sdk.md),
+  [models](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/models.md),
+  [MCP client](https://github.com/earendil-works/pi/blob/v1.5.2/packages/mcp/README.md).
 
 ## 8. Cancellation and shutdown
 
