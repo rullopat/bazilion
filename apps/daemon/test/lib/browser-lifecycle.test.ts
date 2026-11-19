@@ -10,10 +10,10 @@ import { join } from 'node:path'
 import { afterAll, afterEach, expect, test, vi } from 'vitest'
 import { resolvePaths } from '../../src/core/paths.ts'
 import type { BrowserConfig } from '../../src/lib/browser/config.ts'
-import type { LaunchedBrowser, LaunchOptions } from '../../src/lib/browser/launch.ts'
+import type { AgentBrowser, LaunchOptions } from '../../src/lib/browser/launch.ts'
 import { MAX_TEXT_CHARS } from '../../src/lib/browser/snapshot.ts'
 
-interface FakeBrowser extends LaunchedBrowser {
+interface FakeBrowser extends AgentBrowser {
   closed: boolean
   alive: boolean
 }
@@ -27,13 +27,14 @@ let pageUrl = 'https://example.test/'
 let navigationError: string | null = null
 const touched: string[] = []
 
-vi.mock('../../src/lib/browser/executable.ts', () => ({
+vi.mock('../../src/lib/browser/executable.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/lib/browser/executable.ts')>()),
   findBrowserExecutable: () => ({ path: '/fake/chromium', name: 'Fake Chromium' }),
 }))
 // The real orphan killer stays: reset must use it.
 vi.mock('../../src/lib/browser/launch.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/lib/browser/launch.ts')>()),
-  launchBrowser: async (opts: LaunchOptions): Promise<LaunchedBrowser> => {
+  launchBrowser: async (opts: LaunchOptions): Promise<AgentBrowser> => {
     if (failLaunch) throw new Error(failLaunch)
     mkdirSync(join(opts.dir, 'user-data'), { recursive: true })
     const page = {
@@ -53,7 +54,10 @@ vi.mock('../../src/lib/browser/launch.ts', async (importOriginal) => ({
     const browser: FakeBrowser = {
       closed: false,
       alive: true,
-      context: { pages: () => [page], on: () => {} } as unknown as LaunchedBrowser['context'],
+      context: { on: () => {}, off: () => {} } as unknown as AgentBrowser['context'],
+      pages: () => [page] as unknown as ReturnType<AgentBrowser['pages']>,
+      newPage: async () => page as unknown as Awaited<ReturnType<AgentBrowser['newPage']>>,
+      owns: () => true,
       get running() {
         return browser.alive
       },
@@ -93,7 +97,14 @@ afterEach(async () => {
 })
 
 function config(overrides: Partial<BrowserConfig> = {}): BrowserConfig {
-  return { headless: true, allowPrivate: true, idleMs: 60_000, maxSessions: 4, ...overrides }
+  return {
+    headless: true,
+    allowPrivate: true,
+    attach: false,
+    idleMs: 60_000,
+    maxSessions: 4,
+    ...overrides,
+  }
 }
 
 const run = (agent: string, cfg = config(), signal?: AbortSignal) =>

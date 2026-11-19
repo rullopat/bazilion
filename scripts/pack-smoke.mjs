@@ -156,6 +156,8 @@ try {
       BAZILION_HOME: home,
       LMSTUDIO_URL: `http://127.0.0.1:${provider.address().port}/v1`,
       BAZILION_SCHEDULER: 'off',
+      // A machine without a browser must not start downloading Chromium during the smoke.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1',
     },
     /bazilion daemon listening at (http:\/\/\S+)\n/,
   )

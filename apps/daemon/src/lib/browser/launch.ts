@@ -2,10 +2,10 @@
 // agent's persistent profile and attach Playwright over CDP, so the browser runs
 // without Playwright's automation launch flags.
 
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Browser, BrowserContext, CDPSession } from 'playwright'
+import type { Browser, BrowserContext, CDPSession, Page } from 'playwright'
 
 const STARTUP_MS = 15_000
 
@@ -18,11 +18,20 @@ export interface LaunchOptions {
   proxyUrl?: string
 }
 
-export interface LaunchedBrowser {
+/** An agent's browser as the pool uses it: started here, or attached to (`attach.ts`). */
+export interface AgentBrowser {
   context: BrowserContext
-  /** False once the browser process has exited (a crash, a closed window). */
+  /** False once the browser is gone (a crash, a closed window, a lost connection). */
   readonly running: boolean
-  /** Quit Chromium, then kill its process group if anything lingers. Never throws. */
+  /** The agent's tabs: every tab of its own browser, or its own tabs in an attached one. */
+  pages(): Page[]
+  newPage(): Promise<Page>
+  /** Whether a console message or request from `page` (null: no page) belongs to the agent. */
+  owns(page: Page | null): boolean
+  /**
+   * Quit a browser started here and kill its process group if anything lingers; in an attached
+   * browser, close the agent's tabs and leave the browser running. Never throws.
+   */
   close(): Promise<void>
 }
 
@@ -97,6 +106,20 @@ function isAlive(pid: number): boolean {
   }
 }
 
+/** Whether `pid` is a browser on this profile, not an unrelated process that got the pid. */
+function runsOnProfile(pid: number, userDataDir: string): boolean {
+  const flag = `--user-data-dir=${userDataDir}`
+  try {
+    return readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').includes(flag)
+  } catch {
+    // No /proc (macOS): ps prints the arguments joined by spaces.
+    const command = execFileSync('ps', ['-ww', '-o', 'command=', '-p', String(pid)], {
+      encoding: 'utf8',
+    }).trim()
+    return command.includes(`${flag} `) || command.endsWith(flag)
+  }
+}
+
 /**
  * Kill a browser that a daemon which died (SIGKILL, OOM) left running on the
  * profile in `dir` (the agent's browser directory, as in LaunchOptions).
@@ -107,8 +130,7 @@ export async function killOrphanBrowser(dir: string): Promise<void> {
   try {
     // Chromium's profile lock is a symlink to "<hostname>-<pid>".
     pid = Number(/-(\d+)$/.exec(readlinkSync(join(userDataDir, 'SingletonLock')))?.[1])
-    const argv = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0')
-    if (!argv.includes(`--user-data-dir=${userDataDir}`)) return
+    if (!runsOnProfile(pid, userDataDir)) return
   } catch {
     return
   }
@@ -153,7 +175,7 @@ function trackGroup(pid: number): void {
   })
 }
 
-export async function launchBrowser(opts: LaunchOptions): Promise<LaunchedBrowser> {
+export async function launchBrowser(opts: LaunchOptions): Promise<AgentBrowser> {
   const userDataDir = join(opts.dir, 'user-data')
   mkdirSync(userDataDir, { recursive: true, mode: 0o700 })
   mkdirSync(join(opts.dir, 'home'), { recursive: true, mode: 0o700 })
@@ -251,6 +273,9 @@ export async function launchBrowser(opts: LaunchOptions): Promise<LaunchedBrowse
     return {
       context,
       close,
+      pages: () => context.pages(),
+      newPage: () => context.newPage(),
+      owns: () => true,
       get running() {
         return running()
       },

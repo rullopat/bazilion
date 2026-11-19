@@ -27,6 +27,7 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import type { Paths } from '../../core/index.ts'
 import { parseModelString, piProviderName } from '../../core/providers.ts'
+import { resolveBrowserConfig } from '../../lib/browser/config.ts'
 import type { MemoryBackend } from '../memory/types.ts'
 import { createPiModel, type PiModelSpec } from '../providers/pi-runtime.ts'
 import {
@@ -224,7 +225,9 @@ function turnSurface(opts: TurnOptions) {
     skills: promptSkills,
     sandboxMode: shellTools.config.sandboxMode,
     // The guides ride along exactly when their tools are admitted.
-    ...(opts.browserHost ? { browserGuide: true } : {}),
+    ...(opts.browserHost
+      ? { browserGuide: resolveBrowserConfig(env).attach ? ('attached' as const) : true }
+      : {}),
     ...(opts.webSearchHost ? { searchGuide: true } : {}),
   }
   return {

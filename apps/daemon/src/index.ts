@@ -8,8 +8,10 @@ import { writeSync } from 'node:fs'
 import { isLoopbackHost, publicOriginConfig } from '@bazilion/api-types'
 import { serve } from '@hono/node-server'
 import { createApp } from './app.ts'
-import { IncompatibleDatabaseError, resolvePaths } from './core/index.ts'
+import { IncompatibleDatabaseError, mergeSecretsIntoEnv, resolvePaths } from './core/index.ts'
 import { stopAgentTurns } from './lib/agent-cancel.ts'
+import { isBrowserEnabled, resolveBrowserConfig } from './lib/browser/config.ts'
+import { prepareBrowser } from './lib/browser/install.ts'
 import { closeCtxForShutdown, getCtx, IncompatibleBootstrapIdentityError } from './lib/ctx.ts'
 import { claimDaemonPidFile } from './lib/daemon-liveness.ts'
 import { startNotifications } from './lib/notifications.ts'
@@ -86,6 +88,10 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   maybeStartTelegramBot(db, authToken).catch((err) => {
     console.error('telegram: background start failed:', err instanceof Error ? err.message : err)
   })
+  // A machine without a browser gets Chromium now, so the first browser action need not wait.
+  const env = mergeSecretsIntoEnv(db, authToken)
+  const browser = resolveBrowserConfig(env)
+  if (isBrowserEnabled(env) && !browser.attach) prepareBrowser(browser.executablePath)
 })
 
 const shutdown = (signal: NodeJS.Signals): void => {

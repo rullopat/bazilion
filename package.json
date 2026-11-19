@@ -10,7 +10,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit && pnpm --filter @bazilion/web typecheck",
-    "test": "vitest run apps/daemon/test/lib/browser-live.test.ts --maxWorkers=1 --no-file-parallelism && vitest run --exclude apps/daemon/test/lib/browser-live.test.ts",
+    "test": "vitest run apps/daemon/test/lib/browser-live.test.ts apps/daemon/test/lib/browser-attach.test.ts --maxWorkers=1 --no-file-parallelism && vitest run --exclude apps/daemon/test/lib/browser-live.test.ts --exclude apps/daemon/test/lib/browser-attach.test.ts",
     "test:docker": "BAZILION_TEST_DOCKER=1 vitest run apps/daemon/test/runtime/shell-docker.integration.test.ts",
     "build": "pnpm --filter bazilion build",
     "changeset": "changeset",

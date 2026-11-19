@@ -188,7 +188,7 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Browser Automation',
     category: 'service',
     team: 'Browser',
-    hint: 'Each Agent gets its own persistent browser profile (cookies, logins), kept across turns and Team moves and excluded from backups. Reset on the Agent page, or deleting the Agent, removes it.',
+    hint: 'Each Agent gets its own persistent browser profile (cookies, logins), kept across turns and Team moves and excluded from backups. Reset on the Agent page, or deleting the Agent, removes it. With "Use my running browser" on, Agents work in your own Chrome or Chromium instead.',
     fields: [
       {
         envVar: 'BROWSER_ENABLED',
@@ -203,7 +203,23 @@ export const SERVICES: ServiceDef[] = [
         label: 'Browser executable (optional)',
         placeholder: '/usr/bin/brave-browser',
         description:
-          'Absolute path to a Chromium-family browser. When unset, Bazilion uses the first installed Chrome, Brave, Edge or Chromium, then the Chromium that Playwright downloaded.',
+          'Absolute path to a Chromium-family browser. When unset, Bazilion uses the first installed Chrome, Brave, Edge or Chromium; when none is installed it downloads Chromium once.',
+      },
+      {
+        envVar: 'BROWSER_ATTACH',
+        kind: 'config',
+        label: 'Use my running browser',
+        placeholder: 'false',
+        description:
+          'true makes Agents work in the Chrome or Chromium you already have open, with your logins, in tabs of their own. Allow it first in Chrome at chrome://inspect/#remote-debugging. Default false: each Agent gets a browser of its own.',
+      },
+      {
+        envVar: 'BROWSER_ATTACH_URL',
+        kind: 'config',
+        label: 'Running browser address (optional)',
+        placeholder: 'http://127.0.0.1:9222',
+        description:
+          'DevTools address of the browser to use when "Use my running browser" is on, for one started with --remote-debugging-port. When unset, Bazilion finds the running Chrome or Chromium itself.',
       },
       {
         envVar: 'BROWSER_HEADLESS',
@@ -211,7 +227,7 @@ export const SERVICES: ServiceDef[] = [
         label: 'Headless',
         placeholder: 'true',
         description:
-          'true (default) runs the browser without a window; false opens a visible browser window on the desktop the daemon runs in.',
+          'true (default) runs the browser without a window; false opens a visible browser window on the desktop the daemon runs in. Not used with a running browser.',
       },
       {
         envVar: 'BROWSER_ALLOW_PRIVATE_NETWORK',

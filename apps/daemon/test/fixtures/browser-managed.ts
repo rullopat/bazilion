@@ -1,7 +1,8 @@
 // Fixtures for the real-browser tests: a loopback HTTP origin that records every
 // request it gets, and a lookup of the processes running on a browser profile.
 
-import { readdirSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
@@ -62,6 +63,13 @@ export async function createInstrumentedOrigin(): Promise<InstrumentedOrigin> {
 
 /** Pids of the processes started on a profile (the browser and its helpers). */
 export function browserProcesses(userDataDir: string): number[] {
+  if (!existsSync('/proc')) {
+    // macOS: ps prints each process as "<pid> <command line>".
+    return execFileSync('ps', ['-axww', '-o', 'pid=,command='], { encoding: 'utf8' })
+      .split('\n')
+      .filter((line) => line.includes(`--user-data-dir=${userDataDir}`))
+      .map((line) => Number.parseInt(line, 10))
+  }
   return readdirSync('/proc')
     .filter((entry) => /^\d+$/.test(entry))
     .filter((pid) => {

@@ -5,6 +5,18 @@ Hand-written highlights per release. The full notes for every version are genera
 [`apps/cli/CHANGELOG.md`](apps/cli/CHANGELOG.md) (the `bazilion` package) and published as
 [GitHub releases](https://github.com/rullopat/bazilion/releases).
 
+## 0.27.0 — 2026-11-19
+
+A 0.26.x home opens as it is.
+
+- **A browser from the first start, on Linux and macOS:** the daemon now finds Chrome, Brave, Edge
+  and Chromium in the macOS app folders as well as the Linux paths, and downloads Chromium itself
+  when the machine has none. Before, the download hung on an npm install script that current npm
+  and pnpm skip, and macOS found no browser at all.
+- **Your running browser:** with `BROWSER_ATTACH=true`, Agents work in the Chrome or Chromium you
+  have open, with your logins, in tabs of their own. Your own tabs stay out of their sight. See
+  [the browser guide](docs/browser-research.md#your-running-browser) for what the mode gives up.
+
 ## 0.26.1 — 2026-11-19
 
 A 0.26.0 home opens as it is.
