@@ -1,17 +1,28 @@
-// The chat with one Agent: header, conversation library, transcript, side panels and composer.
-// The state lives in useChatSession; this file lays it out.
+// The conversation with one Agent: the transcript, what waits for an answer, and the composer.
+// The state lives in useChatSession; this file lays it out. The bar above it comes from the
+// workspace, which knows about Teams, panels and other conversations.
 
 import type { Attachment, ProviderMessage, SessionHeadResponse } from '@bazilion/api-types'
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react'
-import { Button } from '../Button'
+import { useActivityOptional } from '../../lib/activity'
 import { AgentQuestions } from './AgentQuestions'
 import { Composer, encodeFiles, MAX_ATTACHMENTS } from './Composer'
-import { ConversationLibrary } from './ConversationLibrary'
 import { FollowUps } from './FollowUps'
-import { Bubble, useMarkdownReady } from './Transcript'
-import { type Draft, type SystemNote, useChatSession } from './useChatSession'
+import { TranscriptBlocks, useMarkdownReady } from './Transcript'
+import { type Draft, useChatSession } from './useChatSession'
 
 const AUTOSCROLL_THRESHOLD_PX = 40
+
+/** What the bar above the conversation can do to it. */
+export interface ChatControls {
+  /** A turn runs, started here or elsewhere. */
+  agentBusy: boolean
+  /** Load the selected conversation again, e.g. after switching to another one. */
+  reload: () => Promise<void>
+  /** `/new` asks for the list of conversations. */
+  conversationsOpen: boolean
+  setConversationsOpen: (open: boolean) => void
+}
 
 export interface ChatPaneProps {
   agentId: string
@@ -19,9 +30,16 @@ export interface ChatPaneProps {
   initialMessages: ProviderMessage[]
   /** SSR snapshot of the conversation file; the stale banner compares against it. */
   initialSessionHead?: SessionHeadResponse
-  /** Open the conversation library on this conversation (a link from a saved result). */
-  openConversationId?: string
+  /** The bar above the conversation; the Agent's name alone without it. */
+  header?: (chat: ChatControls) => ReactNode
+  /** Open another conversation of this Agent to read (a queued follow-up's). */
+  onViewConversation?: (conversationId: string) => void
+  /** The conversation on screen changed: the first turn made one, or another was loaded. */
+  onConversationChange?: (conversationId: string | null) => void
 }
+
+export const CHAT_FRAME =
+  'relative flex h-full flex-col overflow-hidden rounded-[16px] border border-frost bg-snow shadow-baziu-sm'
 
 /** One pane per Agent: switching Agents starts a fresh one. */
 export function ChatPane(props: ChatPaneProps) {
@@ -33,16 +51,19 @@ function AgentChat({
   agentName,
   initialMessages,
   initialSessionHead,
-  openConversationId,
+  header,
+  onViewConversation,
+  onConversationChange,
 }: ChatPaneProps) {
   const markdownReady = useMarkdownReady()
-  const [libraryOpen, setLibraryOpen] = useState(Boolean(openConversationId))
-  const [libraryConversation, setLibraryConversation] = useState(openConversationId)
+  const activity = useActivityOptional()
+  const [conversationsOpen, setConversationsOpen] = useState(false)
   const chat = useChatSession({
     agentId,
     initialMessages,
     initialSessionHead,
-    onOpenLibrary: () => setLibraryOpen(true),
+    onOpenLibrary: () => setConversationsOpen(true),
+    onConversation: onConversationChange,
   })
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -70,6 +91,7 @@ function AgentChat({
     setInput('')
     setAttachments([])
     const restore = await chat.send(draft)
+    activity?.refresh()
     if (restore) {
       setInput((current) => current || restore.text)
       setAttachments((current) => (current.length > 0 ? current : restore.attachments))
@@ -84,11 +106,15 @@ function AgentChat({
   }
 
   const empty = !chat.historyUnavailable && chat.entries.length === 0 && chat.notes.length === 0
+  // A turn this tab does not stream (a follow-up, Telegram, a schedule) still shows as work.
+  const elsewhere = chat.agentBusy && !chat.turnBusy
+  const state = activity?.stateOf(agentId)
+  const working = state?.kind === 'working' ? state.text.replace(/^Working:?\s*/, '') : ''
 
   return (
     <section
       aria-label={`Chat with ${agentName}`}
-      className="relative flex h-full flex-col overflow-hidden rounded-[16px] border border-frost bg-snow shadow-baziu-sm"
+      className={CHAT_FRAME}
       onDragOver={(event) => {
         if (!Array.from(event.dataTransfer.types).includes('Files')) return
         event.preventDefault()
@@ -110,47 +136,21 @@ function AgentChat({
           drop images or files to attach
         </div>
       )}
-      <div className="flex items-center justify-between gap-3 border-b border-frost px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <a
-            href="/"
-            className="inline-flex h-7 items-center rounded-md border border-frost px-2 text-xs font-semibold text-mocha lg:hidden"
-          >
-            ← agents
-          </a>
-          <h1 className="truncate font-display text-[1.2rem] text-charcoal">{agentName}</h1>
+      {header ? (
+        header({
+          agentBusy: chat.agentBusy,
+          reload: chat.refreshHistory,
+          conversationsOpen,
+          setConversationsOpen,
+        })
+      ) : (
+        <div className="border-b border-frost px-4 py-2.5">
+          <h1 className="m-0 truncate font-display text-[1.2rem] text-charcoal">{agentName}</h1>
         </div>
-        <a
-          href={`/agents/${encodeURIComponent(agentId)}/settings`}
-          className="shrink-0 text-xs text-mocha-light hover:text-sapphire"
-        >
-          Manage agent →
-        </a>
-      </div>
-      <div className="mx-5 mt-2">
-        <Button
-          variant="ghost"
-          aria-expanded={libraryOpen}
-          onClick={() => {
-            setLibraryConversation(undefined)
-            setLibraryOpen((open) => !open)
-          }}
-        >
-          {libraryOpen ? 'Close conversations' : 'Conversations'}
-        </Button>
-      </div>
-      {libraryOpen && (
-        <ConversationLibrary
-          key={libraryConversation ?? ''}
-          agentId={agentId}
-          initialConversationId={libraryConversation}
-          turnBusy={chat.agentBusy}
-          onCreated={chat.refreshHistory}
-        />
       )}
       {chat.historyUnavailable && (
         <p role="alert" className="mx-5 mt-2 text-sm">
-          The selected conversation's history is unavailable. Open Conversations to start a new one;
+          This conversation's history is unavailable. Start a new conversation from the list above;
           earlier conversations and their files stay listed.
         </p>
       )}
@@ -159,26 +159,26 @@ function AgentChat({
           role="status"
           aria-live="polite"
           aria-atomic="true"
-          className="mx-5 mt-2 flex items-center gap-2 rounded-md border border-sapphire bg-frost px-4 py-2 text-[0.86em] text-mocha"
+          className="mx-5 mt-2 flex items-center gap-2 rounded-[10px] border border-sapphire-light bg-sapphire-glow px-3 py-2 text-[0.86em] text-sapphire-deep"
         >
           <span className="h-2 w-2 flex-none rounded-full bg-sapphire" aria-hidden="true" />
           <span className="flex-1">
             {chat.recoveredTurn
-              ? 'the recovered turn has new activity — reload to see it'
-              : 'new activity from another source — reload to see it'}
+              ? 'The recovered turn has new activity.'
+              : 'There is new activity from another source (a follow-up, Telegram or a schedule).'}
           </span>
           <button
             type="button"
             onClick={() => void chat.refreshHistory()}
-            className="rounded-sm bg-sapphire px-3 py-1 text-[0.92em] text-snow hover:opacity-90"
+            className="unstyled rounded-md bg-sapphire px-3 py-1 text-[0.92em] font-semibold text-snow hover:bg-sapphire-deep"
           >
-            reload
+            Show it
           </button>
           <button
             type="button"
             onClick={chat.dismissStale}
-            className="px-1 text-mocha-light hover:text-mocha"
-            aria-label="dismiss"
+            className="unstyled px-1 text-sapphire-deep hover:opacity-70"
+            aria-label="Dismiss"
           >
             ×
           </button>
@@ -197,34 +197,38 @@ function AgentChat({
         aria-live="polite"
         aria-relevant="additions"
         aria-busy={chat.turnBusy}
-        className="min-h-0 flex-1 overflow-y-auto px-5 py-5"
+        className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
       >
-        {empty && (
-          <p className="py-12 text-center italic text-mocha-light">Start a conversation…</p>
-        )}
-        {withNotes(
-          chat.entries.map((entry, index) => (
-            <Bubble
-              // biome-ignore lint/suspicious/noArrayIndexKey: entries only append within a turn.
-              key={index}
-              entry={entry}
-              markdownReady={markdownReady}
-              dropped={chat.replacedFrom >= 0 && index >= chat.replacedFrom}
-              onEdit={index === chat.editableEntry ? edit : undefined}
-              approvals={chat.approvals}
-            />
-          )),
-          chat.notes,
-          markdownReady,
-        )}
-        {chat.thinking && (
-          <div className="flex items-center gap-2 px-1 py-1 text-[0.85em] text-mocha-light">
-            <Dot />
-            <Dot delay="0.15s" />
-            <Dot delay="0.3s" />
-            <span>agent is thinking…</span>
-          </div>
-        )}
+        <div className="mx-auto max-w-[50rem]">
+          {empty && (
+            <p className="py-12 text-center italic text-mocha-light">
+              Say what you need. {agentName} keeps this conversation between turns.
+            </p>
+          )}
+          <TranscriptBlocks
+            entries={chat.entries}
+            notes={chat.notes}
+            markdownReady={markdownReady}
+            editableEntry={chat.editableEntry}
+            replacedFrom={chat.replacedFrom}
+            onEdit={edit}
+            approvals={chat.approvals}
+          />
+          {(chat.thinking || elsewhere) && (
+            <div
+              role="status"
+              className="flex items-center gap-2 px-1 py-1.5 text-[0.85em] text-success"
+            >
+              <span
+                className="size-[7px] animate-pulse rounded-full bg-success"
+                aria-hidden="true"
+              />
+              <span>
+                {agentName} is working{working ? `: ${working}` : ''}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {chat.turnBusy ? `${agentName} is responding.` : 'Conversation ready.'}
@@ -234,12 +238,9 @@ function AgentChat({
         agentId={agentId}
         queue={chat.queue}
         onChanged={() => void chat.refreshQueue()}
-        onViewConversation={(id) => {
-          setLibraryConversation(id)
-          setLibraryOpen(true)
-        }}
+        onViewConversation={(id) => onViewConversation?.(id)}
       />
-      <AgentQuestions agentId={agentId} refreshKey={chat.questionsKey} />
+      <AgentQuestions agentId={agentId} agentName={agentName} refreshKey={chat.questionsKey} />
       <Composer
         agentName={agentName}
         value={input}
@@ -257,42 +258,5 @@ function AgentChat({
         inputRef={inputRef}
       />
     </section>
-  )
-}
-
-/** Each slash-command note goes after the entry that was last when it was produced. */
-function withNotes(bubbles: ReactNode[], notes: SystemNote[], markdownReady: boolean): ReactNode[] {
-  const out: ReactNode[] = []
-  let next = 0
-  const flush = (upTo: number) => {
-    while (next < notes.length && (notes[next]?.afterIndex ?? 0) <= upTo) {
-      const note = notes[next] as SystemNote
-      out.push(
-        <Bubble
-          key={`note-${note.id}`}
-          entry={{ type: 'system', content: note.content }}
-          markdownReady={markdownReady}
-        />,
-      )
-      next++
-    }
-  }
-  flush(0)
-  bubbles.forEach((bubble, index) => {
-    out.push(bubble)
-    flush(index + 1)
-  })
-  // Notes anchored past the end (the tail was replaced by an edit) stay visible at the bottom.
-  flush(Number.POSITIVE_INFINITY)
-  return out
-}
-
-function Dot({ delay = '0s' }: { delay?: string }) {
-  return (
-    <span
-      className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-mocha-light/60"
-      style={{ animationDelay: delay }}
-      aria-hidden="true"
-    />
   )
 }

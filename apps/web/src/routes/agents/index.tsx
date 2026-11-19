@@ -1,5 +1,5 @@
 import type { Agent, Profile, Team } from '@bazilion/api-types'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentAvatar } from '../../components/AgentAvatar'
@@ -64,7 +64,7 @@ function AgentsPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Agents"
-        description="Spawn, inspect, archive and restore the agents that work across your teams. Skills come from the Agent template at spawn; adjust them later on an Agent's settings."
+        description="Every Agent across your teams: spawn, archive, restore and delete. Open one to talk to it; its model, skills and schedules are in its side panel."
         actions={
           <>
             <a className="ghost-btn" href={showAll ? '/agents' : '/agents?all=1'}>
@@ -108,9 +108,9 @@ function AgentsPage() {
                 title={
                   <span className="flex min-w-0 items-center gap-2">
                     <AgentAvatar identity={agent.identity} size={26} />
-                    <a href={`/agents/${agent.id}`} className="truncate">
+                    <Link to="/" search={{ agent: agent.id }} className="truncate">
                       {agent.name}
-                    </a>
+                    </Link>
                     <StatusBadge variant={agent.status === 'archived' ? 'warning' : 'success'}>
                       {agent.status}
                     </StatusBadge>

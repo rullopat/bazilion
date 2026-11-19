@@ -2,6 +2,8 @@ import type { ChatFrame, ProviderMessage } from '@bazilion/api-types'
 import { expect, test } from 'vitest'
 import {
   applyEvent,
+  groupEntries,
+  pairSteps,
   projectMessages,
   type RenderEntry,
   readFrames,
@@ -108,4 +110,46 @@ test('the NDJSON reader yields frames split across chunks and skips broken lines
   const frames: ChatFrame[] = []
   for await (const frame of readFrames(body)) frames.push(frame)
   expect(frames).toEqual([{ kind: 'fatal', error: 'x' }, done])
+})
+
+test('each tool call is paired with what came of it', () => {
+  expect(
+    pairSteps([
+      { kind: 'call', id: 'a', name: 'bash', body: '{"command":"make"}' },
+      { kind: 'progress', id: 'a', name: 'bash', body: 'half' },
+      { kind: 'call', id: 'b', name: 'read', body: '{"path":"x"}' },
+      { kind: 'result', id: 'a', name: 'bash', body: 'done' },
+      { kind: 'error', id: 'b', name: 'read', body: 'no such file' },
+      { kind: 'call', id: 'c', name: 'write', body: '{}' },
+      // A history cut before the call still shows the result.
+      { kind: 'result', id: 'z', name: 'grep', body: 'match' },
+    ]),
+  ).toEqual([
+    { id: 'a', name: 'bash', args: '{"command":"make"}', status: 'done', output: 'done' },
+    { id: 'b', name: 'read', args: '{"path":"x"}', status: 'failed', output: 'no such file' },
+    { id: 'c', name: 'write', args: '{}', status: 'running', output: '' },
+    { id: 'z', name: 'grep', args: '', status: 'done', output: 'match' },
+  ])
+})
+
+test('tool boxes and the files they delivered form one block of work', () => {
+  const blocks = groupEntries([
+    { type: 'user', content: 'cover image please' },
+    { type: 'assistant', content: 'Two variants.' },
+    { type: 'tool', items: [{ kind: 'call', id: 'a', name: 'bash', body: '{}' }] },
+    { type: 'tool', items: [{ kind: 'call', id: 'b', name: 'deliver_file', body: '{}' }] },
+    { type: 'result', resultId: 'r1' },
+    { type: 'result', resultId: 'r2' },
+    { type: 'assistant', content: 'Both attached.' },
+    { type: 'result', resultId: 'r3' },
+  ])
+  expect(blocks.map((block) => block.type)).toEqual(['entry', 'entry', 'work', 'entry', 'work'])
+  expect(blocks[2]).toMatchObject({
+    type: 'work',
+    index: 2,
+    items: [{ id: 'a' }, { id: 'b' }],
+    resultIds: ['r1', 'r2'],
+  })
+  expect(blocks[4]).toMatchObject({ type: 'work', index: 7, items: [], resultIds: ['r3'] })
+  expect(blocks[3]).toMatchObject({ type: 'entry', index: 6 })
 })

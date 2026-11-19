@@ -14,7 +14,7 @@ export function SpawnTeamModal({
 }: {
   template: TeamTemplate
   teams: Team[]
-  /** Pre-fills the target slug, as the Team page does for itself. */
+  /** Pre-fills the target slug, as the Team tab does for its own Team. */
   initialTeamId?: string
   onClose: () => void
   onSpawned: (teamSlug: string) => void

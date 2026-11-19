@@ -1,7 +1,7 @@
 # Image generation
 
 The `image_generate` tool lets an Agent create an image from a text prompt. The image is saved as
-a [Result](results.md): it appears in the chat, in **Team → Results**, in `bazilion result list`
+a [Result](results.md): it appears in the chat, under **Files**, in `bazilion result list`
 and, for a bound Agent, in its Telegram topic. Image generation is off until you pick a model.
 
 ## Configure

@@ -4,9 +4,9 @@ Agents work on code with the `bash` tool and, when the sandbox is off, Pi's file
 the work ("fix this bug and run the relevant test") and the Agent runs what it needs. Output
 streams into the chat while a command runs; the result carries the output and the exit code, and
 a non-zero exit is a result to investigate. To work on an existing project, register a Team on it:
-`bazilion team add my-app --link /path/to/my-app` (or the Teams page); the Team directory is the
-Agent's working directory. Review the changes on the Team **Review** page
-([change review](change-review.md)).
+`bazilion team add my-app --link /path/to/my-app` (or **New → Create a team** in the web
+workspace); the Team directory is the Agent's working directory. Review the changes under
+**Changes** ([change review](change-review.md)).
 
 ## Repository instructions
 
@@ -66,7 +66,8 @@ workspace (for example an offline package store).
 ## Team defaults
 
 A Team can name its own image and a working directory inside the Team; both apply only in Docker
-mode. On the web, open the Team page and expand **Docker sandbox defaults**. From the CLI:
+mode. On the web, open **Settings** in the Team tab and expand **Docker sandbox defaults**. From
+the CLI:
 
 ```sh
 bazilion team environment show <team>

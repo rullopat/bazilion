@@ -12,6 +12,7 @@ const list = defineCommand({
   args: {
     team: { type: 'string', description: 'Only results of this Team' },
     agent: { type: 'string', description: 'Only results of this Agent' },
+    conversation: { type: 'string', description: 'Only results delivered in this conversation' },
     limit: { type: 'string', default: '50', description: 'Page size' },
     offset: { type: 'string', default: '0', description: 'Results to skip' },
     json: jsonFlag,
@@ -20,6 +21,7 @@ const list = defineCommand({
     const query = new URLSearchParams({ limit: args.limit, offset: args.offset })
     if (args.team) query.set('teamId', args.team)
     if (args.agent) query.set('agentId', args.agent)
+    if (args.conversation) query.set('sessionId', args.conversation)
     const body = await createClient().get<ResultListResponse>(`/api/results?${query}`)
     if (args.json) return printJson(body)
     if (!body.results.length) return console.log('(no saved results)')
@@ -62,16 +64,48 @@ const download = defineCommand({
   },
   async run({ args }) {
     const bytes = await createClient().binary(apiPath('results', args.id, 'download'))
-    const fd = openSync(args.output, 'wx', 0o600)
-    try {
-      writeFileSync(fd, bytes)
-      fsyncSync(fd)
-    } catch (error) {
-      closeSync(fd)
-      unlinkSync(args.output)
-      throw error
-    }
+    saveNew(args.output, bytes)
+    console.log(`Saved ${bytes.byteLength} bytes to ${args.output}`)
+  },
+})
+
+/** Write bytes to a new file; an existing file is never overwritten. */
+function saveNew(path: string, bytes: Uint8Array): void {
+  const fd = openSync(path, 'wx', 0o600)
+  try {
+    writeFileSync(fd, bytes)
+    fsyncSync(fd)
+  } catch (error) {
     closeSync(fd)
+    unlinkSync(path)
+    throw error
+  }
+  closeSync(fd)
+}
+
+const archive = defineCommand({
+  meta: {
+    name: 'archive',
+    description: 'Download every saved result of a Team, an Agent or a conversation as one zip',
+  },
+  args: {
+    team: { type: 'string', description: 'Results of this Team' },
+    agent: { type: 'string', description: 'Results of this Agent' },
+    conversation: { type: 'string', description: 'Results delivered in this conversation' },
+    output: {
+      type: 'string',
+      required: true,
+      description: 'Destination .zip path; existing files are never overwritten',
+    },
+  },
+  async run({ args }) {
+    const query = new URLSearchParams()
+    if (args.team) query.set('teamId', args.team)
+    if (args.agent) query.set('agentId', args.agent)
+    if (args.conversation) query.set('sessionId', args.conversation)
+    if (query.size === 0) throw new Error('Pass --team, --agent or --conversation')
+    const bytes = await createClient().binary(`/api/results/archive?${query}`)
+    saveNew(args.output, bytes)
     console.log(`Saved ${bytes.byteLength} bytes to ${args.output}`)
   },
 })
@@ -92,6 +126,7 @@ export const resultCommand = defineCommand({
     list,
     show,
     download,
+    archive,
     rm,
   },
 })

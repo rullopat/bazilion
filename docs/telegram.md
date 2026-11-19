@@ -63,8 +63,8 @@ removed, the bot replies to it.
 - `/close` closes the topic, `/rebind <agent>` points it at another Agent, `/unbind` detaches it.
 
 Replies, errors, images and delivered files are mirrored into the topic. An Agent's mirror mode
-(`bazilion agent edit <id> --mirror minimal|verbose`, or the Agent page) adds short tool-call
-lines in verbose mode; those are limited to 30 a minute per Agent.
+(`bazilion agent edit <id> --mirror minimal|verbose`, or **Telegram** in the Agent's side panel)
+adds short tool-call lines in verbose mode; those are limited to 30 a minute per Agent.
 
 When an Agent asks a question (see [questions](questions.md)), it appears in its topic with one
 button per choice and **Skip**. Tap a button, or reply to the question message with your own

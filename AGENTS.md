@@ -43,6 +43,10 @@ There is no build step for development: `tsx` runs the TypeScript directly.
 - `apps/web`: TanStack Start and React. `src/start.ts` checks Host/Origin and CSRF for every
   request; `src/routes/api/$.ts` forwards `/api/*` to the daemon and caps request bodies (64 KiB
   without a credential, 64 MiB with one); `src/lib/daemon-client.ts` is server-only.
+  `src/routes/index.tsx` is the workspace (list, conversation, side panel, full-width views);
+  what it shows is its query string (`src/lib/workspace.ts`). Agents and Teams have no pages of
+  their own: their parts are panel tabs (`src/components/panel/`) and sheets
+  (`src/components/workspace/Sheets.tsx`).
 - `packages/api-types` (wire types; no dependencies, no `node:` imports) and `packages/client`
   (fetch client used by the CLI and the web server): private workspace packages.
 - `docs/` holds the guides and `docs/backlog/` the user stories.

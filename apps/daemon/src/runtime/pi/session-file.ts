@@ -50,6 +50,15 @@ export function readSessionFile(directory: string, id: string): FileEntry[] {
   return entries
 }
 
+/** Whether anything follows the header: false for a conversation no turn has written to. */
+export function sessionHasEntries(directory: string, id: string): boolean {
+  const { bytes, size } = readStart(directory, id, MAX_HEADER_BYTES)
+  if (size > bytes.length) return true
+  const text = bytes.toString('utf8')
+  const end = text.indexOf('\n')
+  return end >= 0 && text.slice(end + 1).trim().length > 0
+}
+
 /** Check that a conversation's transcript exists, reading only its header line. */
 export function readSessionHeader(directory: string, id: string): void {
   const text = readStart(directory, id, MAX_HEADER_BYTES).bytes.toString('utf8')

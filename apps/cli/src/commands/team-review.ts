@@ -3,8 +3,9 @@ import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { jsonFlag, printJson, printRows, teamArg } from '../command-helpers.ts'
 
-// `bazilion team review`: `show` lists the changes since a base or prints one file's diff;
-// `feedback` queues a message about one changed file for an Agent.
+// `bazilion team review`: `show` lists the changes since a base, with the Agent that wrote each
+// file, or prints one file's diff; `feedback` queues a comment about a changed file or one of its
+// lines for an Agent.
 
 const base = {
   type: 'string',
@@ -35,6 +36,7 @@ const showCmd = defineCommand({
     const review = await client.repositoryReview(args.id).changes({
       ...(args.base ? { base: args.base } : {}),
       ...(args.patch ? { patches: true, path: args.patch } : args.json ? { patches: true } : {}),
+      authors: !args.patch,
     })
     if (args.json) return printJson(review)
     const changes = review.changes
@@ -65,6 +67,7 @@ const showCmd = defineCommand({
             ? ''
             : `${change.addedLines}+ ${change.deletedLines ?? 0}-`,
         change.contentOmitted ?? '',
+        review.authors?.[change.path] ? `by ${review.authors[change.path]?.agentName}` : '',
       ]),
       '(no changes since baseline)',
     )
@@ -82,21 +85,35 @@ const showCmd = defineCommand({
 const feedbackCmd = defineCommand({
   meta: {
     name: 'feedback',
-    description: 'Queue feedback about one changed file for an Agent (file, diff excerpt, note)',
+    description:
+      'Queue a comment about a changed file, or one of its lines, for an Agent (diff excerpt, note)',
   },
   args: {
     id: teamArg,
     path: { type: 'string', required: true, description: 'Changed path the feedback is about' },
     agent: { type: 'string', required: true, description: 'Team member to send it to' },
     note: { type: 'string', description: 'Your comment' },
+    line: {
+      type: 'string',
+      description: 'Line of the file as it is now; the diff around it is sent instead of the top',
+    },
     base,
   },
   async run({ args }) {
     const client = createClient()
+    const line = args.line === undefined ? undefined : Number(args.line)
+    if (line !== undefined && (!Number.isSafeInteger(line) || line < 1)) {
+      throw new Error('--line must be a line number starting at 1')
+    }
     const queued = await client.repositoryReview(args.id).feedback({
-      path: args.path,
       agentId: args.agent,
-      ...(args.note ? { note: args.note } : {}),
+      comments: [
+        {
+          path: args.path,
+          ...(line === undefined ? {} : { line }),
+          ...(args.note ? { note: args.note } : {}),
+        },
+      ],
       ...(args.base ? { base: args.base } : {}),
     })
     console.log(`queued ${queued.item.id} for ${args.agent} (${queued.item.status})`)

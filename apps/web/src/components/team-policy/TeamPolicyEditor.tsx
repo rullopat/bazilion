@@ -1,4 +1,4 @@
-import type { Profile, TeamPolicy, TeamPolicyMode, TeamTemplate } from '@bazilion/api-types'
+import type { Profile, TeamPolicyMode, TeamTemplate } from '@bazilion/api-types'
 import { ListTree, Plus, Save, TableProperties, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
@@ -7,8 +7,6 @@ import {
   edgeKey,
   endpointLabel,
   hasEdge,
-  liveDocument,
-  liveEdges,
   OUTSIDE,
   type PolicyDocument,
   type PolicyMember,
@@ -23,17 +21,20 @@ import { UnsavedChangesGuard } from '../UnsavedChangesGuard'
 import { TeamPolicyFlow } from './TeamPolicyFlow'
 import { TeamPolicyMatrix } from './TeamPolicyMatrix'
 
-type Source = { kind: 'live'; policy: TeamPolicy } | { kind: 'template'; template: TeamTemplate }
-
 const MODE_HELP: Record<TeamPolicyMode, string> = {
   open: 'Members message each other freely; edges only matter for messages to and from other teams.',
   restricted: 'Members message each other only along allow edges.',
 }
 
-export function TeamPolicyEditor({ source, profiles }: { source: Source; profiles: Profile[] }) {
-  const [server, setServer] = useState(() =>
-    source.kind === 'live' ? liveDocument(source.policy) : templateDocument(source.template),
-  )
+/** A Team template's roster and allow edges, as a flow or a matrix. */
+export function TeamPolicyEditor({
+  template,
+  profiles,
+}: {
+  template: TeamTemplate
+  profiles: Profile[]
+}) {
+  const [server, setServer] = useState(() => templateDocument(template))
   const [draft, setDraft] = useState(server)
   const [view, setView] = useState<'flow' | 'matrix'>('flow')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -58,23 +59,12 @@ export function TeamPolicyEditor({ source, profiles }: { source: Source; profile
     setSaving(true)
     setNotice(null)
     try {
-      const saved =
-        source.kind === 'live'
-          ? keepLayout(
-              liveDocument(
-                await api<TeamPolicy>(
-                  `/api/teams/${encodeURIComponent(source.policy.teamId)}/policy`,
-                  { method: 'PATCH', body: { mode: draft.mode, edges: liveEdges(draft) } },
-                ),
-              ),
-              draft,
-            )
-          : templateDocument(
-              await api<TeamTemplate>(
-                `/api/team-templates/${encodeURIComponent(source.template.id)}`,
-                { method: 'PUT', body: templateInput(draft, profiles) },
-              ),
-            )
+      const saved = templateDocument(
+        await api<TeamTemplate>(`/api/team-templates/${encodeURIComponent(template.id)}`, {
+          method: 'PUT',
+          body: templateInput(draft, profiles),
+        }),
+      )
       setServer(saved)
       setDraft(saved)
       setSelectedId(null)
@@ -88,27 +78,23 @@ export function TeamPolicyEditor({ source, profiles }: { source: Source; profile
 
   return (
     <>
-      <UnsavedChangesGuard when={dirty} subject="Team policy draft" />
+      <UnsavedChangesGuard when={dirty} subject="Team template draft" />
       <section
         className="overflow-hidden rounded-lg border border-frost bg-snow"
         aria-label="Team policy editor"
       >
         <header className="flex flex-wrap items-center gap-2 border-b border-frost bg-cream p-3">
           <div className="mr-auto min-w-0">
-            {draft.kind === 'template' ? (
-              <label className="m-0 text-xs">
-                Template name
-                <input
-                  value={draft.name}
-                  onChange={(event) => {
-                    const name = event.target.value
-                    setDraft((current) => ({ ...current, name }))
-                  }}
-                />
-              </label>
-            ) : (
-              <h2 className="m-0 truncate text-lg">{draft.name}</h2>
-            )}
+            <label className="m-0 text-xs">
+              Template name
+              <input
+                value={draft.name}
+                onChange={(event) => {
+                  const name = event.target.value
+                  setDraft((current) => ({ ...current, name }))
+                }}
+              />
+            </label>
             <p className="muted m-0 text-xs">{MODE_HELP[draft.mode]}</p>
           </div>
           <fieldset
@@ -175,11 +161,7 @@ export function TeamPolicyEditor({ source, profiles }: { source: Source; profile
                     ),
                   }))
                 }
-                onOpenMember={(member) =>
-                  draft.kind === 'live'
-                    ? window.location.assign(`/agents/${encodeURIComponent(member.key)}`)
-                    : setSelectedId(member.key)
-                }
+                onOpenMember={(member) => setSelectedId(member.key)}
               />
             ) : (
               <TeamPolicyMatrix
@@ -204,8 +186,8 @@ export function TeamPolicyEditor({ source, profiles }: { source: Source; profile
       </section>
       <ConfirmDialog
         open={confirmDiscard}
-        title="Discard this Team policy draft?"
-        description={<p>This discards every unsaved change. The saved policy stays as it is.</p>}
+        title="Discard this Team template draft?"
+        description={<p>This discards every unsaved change. The saved template stays as it is.</p>}
         confirmLabel="discard draft"
         onConfirm={() => {
           setDraft(server)
@@ -216,18 +198,6 @@ export function TeamPolicyEditor({ source, profiles }: { source: Source; profile
       />
     </>
   )
-}
-
-/** A live Team stores no layout: keep the nodes where the operator dragged them. */
-function keepLayout(saved: PolicyDocument, draft: PolicyDocument): PolicyDocument {
-  const positions = new Map(draft.members.map((member) => [member.key, member.position]))
-  return {
-    ...saved,
-    members: saved.members.map((member) => ({
-      ...member,
-      position: positions.get(member.key) ?? member.position,
-    })),
-  }
 }
 
 function Toggle({
@@ -273,7 +243,6 @@ function Inspector({
   const edge = document.edges.find((item) => edgeKey(item.from, item.to) === selectedId)
   const selected = selectedId && actors.includes(selectedId) ? selectedId : null
   const member = document.members.find((item) => item.key === selected)
-  const editTemplate = document.kind === 'template'
   const updateMember = (change: Partial<PolicyMember>) =>
     onDraft((current) => ({
       ...current,
@@ -308,8 +277,7 @@ function Inspector({
         <div>
           <p className="text-xs font-semibold uppercase text-mocha-light">Summary</p>
           <p className="muted text-xs">
-            {document.members.length} {editTemplate ? 'slots' : 'members'} · {document.edges.length}{' '}
-            allow edges
+            {document.members.length} slots · {document.edges.length} allow edges
           </p>
           <p className="muted mt-2 text-xs">
             Select a node to edit who it may message. Drag from one node's handle to another to add
@@ -317,41 +285,37 @@ function Inspector({
             teams in the recipient's Team.
           </p>
         </div>
-        {editTemplate && (
-          <>
-            <label className="text-xs">
-              USER.md for spawned Teams
-              <textarea
-                rows={6}
-                value={document.userMd ?? ''}
-                onChange={(event) => {
-                  const userMd = event.target.value
-                  onDraft((current) => ({ ...current, userMd: userMd || null }))
-                }}
-                className="font-mono text-[0.85em]"
-              />
-            </label>
-            <Button
-              variant="ghost"
-              onClick={() =>
-                onDraft((current) => ({
-                  ...current,
-                  members: [
-                    ...current.members,
-                    {
-                      key: `draft:${crypto.randomUUID()}`,
-                      profileId: profiles[0]?.id ?? '',
-                      name: `Agent ${current.members.length + 1}`,
-                      position: defaultPosition(current.members.length),
-                    },
-                  ],
-                }))
-              }
-            >
-              <Plus className="h-4 w-4" /> Add slot
-            </Button>
-          </>
-        )}
+        <label className="text-xs">
+          USER.md for spawned Teams
+          <textarea
+            rows={6}
+            value={document.userMd ?? ''}
+            onChange={(event) => {
+              const userMd = event.target.value
+              onDraft((current) => ({ ...current, userMd: userMd || null }))
+            }}
+            className="font-mono text-[0.85em]"
+          />
+        </label>
+        <Button
+          variant="ghost"
+          onClick={() =>
+            onDraft((current) => ({
+              ...current,
+              members: [
+                ...current.members,
+                {
+                  key: `draft:${crypto.randomUUID()}`,
+                  profileId: profiles[0]?.id ?? '',
+                  name: `Agent ${current.members.length + 1}`,
+                  position: defaultPosition(current.members.length),
+                },
+              ],
+            }))
+          }
+        >
+          <Plus className="h-4 w-4" /> Add slot
+        </Button>
       </div>
     )
   }
@@ -360,11 +324,11 @@ function Inspector({
     <div className="space-y-4">
       <div>
         <p className="text-xs font-semibold uppercase text-mocha-light">
-          {member ? 'Member' : 'Boundary'}
+          {member ? 'Slot' : 'Boundary'}
         </p>
         <h3 className="mt-1 text-base">{endpointLabel(document, selected)}</h3>
       </div>
-      {member && editTemplate && (
+      {member && (
         <div className="space-y-2">
           <label className="text-xs">
             Agent name
@@ -411,7 +375,7 @@ function Inspector({
             )
           })}
       </div>
-      {member && editTemplate && (
+      {member && (
         <Button
           variant="danger"
           onClick={() => {

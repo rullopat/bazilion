@@ -34,6 +34,7 @@ import {
   parseSlashCommand,
   SLASH_HELP,
 } from './slash-commands'
+import type { TranscriptNote } from './Transcript'
 
 const SESSION_POLL_MS = 10_000
 const QUEUE_POLL_MS = 5_000
@@ -45,11 +46,7 @@ export interface Draft {
 }
 
 /** Slash-command output, shown after the entry that was last when it was produced. */
-export interface SystemNote {
-  id: number
-  content: string
-  afterIndex: number
-}
+export type SystemNote = TranscriptNote
 
 function openFollowUps(queue: UserQueueListResponse | null): number {
   return (
@@ -63,12 +60,15 @@ export function useChatSession({
   initialMessages,
   initialSessionHead,
   onOpenLibrary,
+  onConversation,
 }: {
   agentId: string
   initialMessages: ProviderMessage[]
   /** The SSR head of the conversation file; the stale poll compares against it. */
   initialSessionHead?: SessionHeadResponse
   onOpenLibrary: () => void
+  /** The conversation on screen changed: the first turn made one, or another was loaded. */
+  onConversation?: (conversationId: string | null) => void
 }) {
   const base = `/api/agents/${encodeURIComponent(agentId)}`
   const [messages, setMessages] = useState(initialMessages)
@@ -106,6 +106,13 @@ export function useChatSession({
       (item) => item.status === 'running' || (item.status === 'pending' && !queue.paused),
     )
 
+  function know(head: SessionHeadResponse) {
+    if (head.conversationId !== knownHeadRef.current.conversationId) {
+      onConversation?.(head.conversationId)
+    }
+    knownHeadRef.current = head
+  }
+
   function pushNote(content: string) {
     const note = { id: noteIdRef.current++, content, afterIndex: entryCountRef.current }
     setNotes((current) => [...current, note])
@@ -119,7 +126,7 @@ export function useChatSession({
       setMessages(body.messages)
       setLive([])
       setEditing(false)
-      knownHeadRef.current = body.head
+      know(body.head)
       setStale(false)
     } catch {
       pushNote('Conversation history is unavailable. Your draft is preserved.')
@@ -135,7 +142,7 @@ export function useChatSession({
         return
       }
       setHistoryUnavailable(head.unavailable ?? false)
-      knownHeadRef.current = head
+      know(head)
     } catch {
       // The next poll tries again.
     }

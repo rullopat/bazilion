@@ -4,7 +4,7 @@ export const SLASH_HELP = [
   'slash commands:',
   '  /context           — context breakdown (system prompt, tools, skills, history)',
   '  /compact [N]       — summarize the head; keep the last N messages verbatim (default 10)',
-  '  /new               — open the conversation library',
+  '  /new               — open the list of conversations to start a new one',
   '  /help              — show this list',
 ].join('\n')
 

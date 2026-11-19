@@ -7,6 +7,7 @@ import * as providerState from '../../src/core/repos/providerState.ts'
 import * as results from '../../src/core/repos/results.ts'
 import * as webTokens from '../../src/core/repos/webTokens.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
+import { readStoredZip } from '../fixtures/zip.ts'
 
 let env: TestEnv
 let token: string
@@ -112,4 +113,38 @@ test('previews allow bounded plain text and verified raster signatures, never ac
   expect((await request(`/${forged}/preview`)).status).toBe(415)
   const big = publishFile('large.txt', 'text/plain', Buffer.alloc(256 * 1024 + 1), 'big')
   expect((await request(`/${big}/preview`)).status).toBe(415)
+})
+
+test('an archive holds the saved files of a Team, an Agent or a conversation as one zip', async () => {
+  publish('first')
+  results.publish(env.db, {
+    teamId: env.teamId,
+    agentId,
+    sessionId: 'other-session',
+    toolCallId: 'second',
+    name: 'report.html',
+    mimeType: 'text/html',
+    bytes: Buffer.from('<p>later</p>'),
+  })
+  const listed = await request('?sessionId=other-session')
+  expect(await listed.json()).toMatchObject({ total: 1 })
+
+  const whole = await request(`/archive?teamId=${env.teamId}`)
+  expect(whole.status).toBe(200)
+  expect(whole.headers.get('content-type')).toBe('application/zip')
+  expect(whole.headers.get('content-disposition')).toBe(
+    `attachment; filename="bazilion-${env.teamId}.zip"`,
+  )
+  const files = readStoredZip(Buffer.from(await whole.arrayBuffer()))
+  // Two files share a name: the second is numbered, both keep their bytes.
+  expect(files.map((file) => [file.name, file.bytes.toString()])).toEqual([
+    ['report.html', '<script>alert(1)</script>'],
+    ['report (2).html', '<p>later</p>'],
+  ])
+
+  const one = await request(`/archive?agentId=${agentId}&sessionId=other-session`)
+  expect(readStoredZip(Buffer.from(await one.arrayBuffer()))).toHaveLength(1)
+  expect((await request('/archive')).status).toBe(400)
+  expect((await request('/archive?teamId=nobody')).status).toBe(404)
+  expect((await createApp().request(`/api/results/archive?teamId=${env.teamId}`)).status).toBe(401)
 })

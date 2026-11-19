@@ -42,4 +42,11 @@ test('CLI starts, renames, reads and lists conversations; reading never changes 
     total: 2,
     selectedId: second.id,
   })
+  // Selecting an earlier conversation continues it.
+  expect(await run(['conversation', 'select', agentId, first.id, '--json'])).toMatchObject({
+    conversation: { id: first.id },
+  })
+  expect(await run(['conversation', 'list', agentId, '--json'])).toMatchObject({
+    selectedId: first.id,
+  })
 })

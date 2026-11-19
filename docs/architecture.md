@@ -55,7 +55,7 @@ helpers (pidfile, schema), and CLI tests reach into the daemon for setup.
 | Agent documents | `agents/<id>/` | Copied from the Profile at spawn; the Agent edits them with `home_write`. `BOOTSTRAP.md` is read-only to it and removed by `bootstrap_done` |
 | Profile documents | `profiles/<id>/` | You; existing Agents keep their own copies |
 | Team USER.md | `teams.user_md` | You; Agents through `user_md_get` / `user_md_write` with an etag |
-| Team memory | `teams/<slug>/memory/` | `memory_*` tools, the Team Memory page, `bazilion memory`; the qmd index beside the notes is rebuilt from them |
+| Team memory | `teams/<slug>/memory/` | `memory_*` tools, the Team's memory sheet in the web workspace, `bazilion memory`; the qmd index beside the notes is rebuilt from them |
 | Conversations | `agents/<id>/sessions/<id>.jsonl` | Pi; the database keeps titles and which one is active |
 | Uploaded files | `agents/<id>/uploads/` | The daemon, for non-image attachments |
 | Saved results | `agent_results` | `deliver_file` and `image_generate` |
@@ -135,7 +135,10 @@ token over IPC.
 - **Results.** Delivered files and generated images are stored in the database and survive the
   turn. See [results](results.md).
 - **Code changes.** Tool output streams live; Git is read through one read-only capture for the
-  Team Review page. See [change review](change-review.md).
+  Changes views. See [change review](change-review.md).
+- **Activity.** `GET /api/activity` says, per Agent, whether a turn runs and its latest tool
+  call, and what waits for you; the [web workspace](workspace.md) polls it. A running turn's
+  step is kept in memory only.
 
 ## Not built
 

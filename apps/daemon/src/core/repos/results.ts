@@ -96,23 +96,36 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
   })()
 }
 
+/** Which results a list or an archive covers; an omitted field does not filter. */
+export interface ResultFilter {
+  teamId?: string
+  agentId?: string
+  /** The conversation the files were delivered in. */
+  sessionId?: string
+}
+
+function whereClause(filter: ResultFilter): { sql: string; params: string[] } {
+  const where: string[] = []
+  const params: string[] = []
+  for (const [column, value] of [
+    ['team_id', filter.teamId],
+    ['agent_id', filter.agentId],
+    ['session_id', filter.sessionId],
+  ] as const) {
+    if (value === undefined) continue
+    where.push(`${column} = ?`)
+    params.push(value)
+  }
+  return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params }
+}
+
 export function list(
   db: BazilionDb,
-  opts: { teamId?: string; agentId?: string; limit?: number; offset?: number } = {},
+  opts: ResultFilter & { limit?: number; offset?: number } = {},
 ): ResultListResponse {
   const limit = Math.max(1, Math.min(100, Math.floor(opts.limit ?? 50)))
   const offset = Math.max(0, Math.floor(opts.offset ?? 0))
-  const where: string[] = []
-  const params: string[] = []
-  if (opts.teamId !== undefined) {
-    where.push('team_id = ?')
-    params.push(opts.teamId)
-  }
-  if (opts.agentId !== undefined) {
-    where.push('agent_id = ?')
-    params.push(opts.agentId)
-  }
-  const filter = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const { sql: filter, params } = whereClause(opts)
   const total =
     db.raw
       .query<{ total: number }, string[]>(`SELECT count(*) AS total FROM agent_results ${filter}`)
@@ -137,6 +150,43 @@ export function read(db: BazilionDb, id: string): Buffer {
   if (createHash('sha256').update(bytes).digest('hex') !== row.sha256)
     throw new Error('Saved file failed its integrity check')
   return bytes
+}
+
+/** How many results each Agent has saved and when the newest was saved. */
+export function summaryByAgent(db: BazilionDb): Map<string, { count: number; lastAt: number }> {
+  const rows = db.raw
+    .query<{ agentId: string; count: number; lastAt: number }, []>(
+      `SELECT agent_id AS agentId, count(*) AS count, max(created_at) AS lastAt
+       FROM agent_results GROUP BY agent_id`,
+    )
+    .all()
+  return new Map(rows.map((row) => [row.agentId, { count: row.count, lastAt: row.lastAt }]))
+}
+
+/**
+ * The results an archive holds, oldest first, cut where their sizes pass `maxBytes`.
+ * `truncated` says files were left out.
+ */
+export function listForArchive(
+  db: BazilionDb,
+  filter: ResultFilter,
+  maxBytes: number,
+): { results: AgentResult[]; truncated: boolean } {
+  const { sql, params } = whereClause(filter)
+  const all = db.raw
+    .query<AgentResult, string[]>(
+      // Oldest first; files saved in the same millisecond keep the order they were saved in.
+      `SELECT ${columns} FROM agent_results ${sql} ORDER BY created_at, rowid`,
+    )
+    .all(...params)
+  const results: AgentResult[] = []
+  let bytes = 0
+  for (const result of all) {
+    if (bytes + result.byteLength > maxBytes) return { results, truncated: true }
+    bytes += result.byteLength
+    results.push(result)
+  }
+  return { results, truncated: false }
 }
 
 export function remove(db: BazilionDb, id: string): boolean {

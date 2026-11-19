@@ -1,9 +1,13 @@
 import * as results from '../core/repos/results.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { zipStream } from '../lib/zip.ts'
 import { newRouter } from './http.ts'
 
-/** Saved results: list, metadata, download, preview, delete. Agents save them during turns. */
+/** Saved results: list, metadata, download, archive, preview, delete. Agents save them during turns. */
 export const resultsRouter = newRouter()
+
+/** The most one archive holds; a larger selection is refused, never cut silently. */
+const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 
 resultsRouter.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff')
@@ -26,9 +30,45 @@ resultsRouter.get('/', (c) => {
     results.list(getCtx().db, {
       teamId: c.req.query('teamId'),
       agentId: c.req.query('agentId'),
+      sessionId: c.req.query('sessionId'),
       limit,
       offset,
     }),
+  )
+})
+
+// Every saved file of a Team, an Agent or a conversation as one zip. Registered before `/:id`.
+resultsRouter.get('/archive', (c) => {
+  const db = getCtx().db
+  const filter = {
+    teamId: c.req.query('teamId'),
+    agentId: c.req.query('agentId'),
+    sessionId: c.req.query('sessionId'),
+  }
+  if (!filter.teamId && !filter.agentId && !filter.sessionId) {
+    return c.json({ error: 'teamId, agentId or sessionId is required' }, 400)
+  }
+  const selected = results.listForArchive(db, filter, MAX_ARCHIVE_BYTES)
+  if (selected.truncated) {
+    return c.json(
+      { error: 'These files are larger than 512 MiB together. Narrow the selection.' },
+      413,
+    )
+  }
+  if (selected.results.length === 0) return c.json({ error: 'No saved files match' }, 404)
+  const name = `bazilion-${filter.teamId ?? 'files'}.zip`.replace(/[^\w.-]/g, '-')
+  c.header('Content-Type', 'application/zip')
+  c.header('Content-Disposition', `attachment; filename="${name}"`)
+  c.header('Content-Security-Policy', "default-src 'none'; sandbox")
+  return c.body(
+    zipStream(
+      selected.results.map((result) => ({
+        name: result.name,
+        modifiedAt: result.createdAt,
+        // Read when the stream reaches the file; a failed integrity check ends the download.
+        read: () => new Uint8Array(results.read(db, result.id)),
+      })),
+    ),
   )
 })
 
@@ -94,6 +134,8 @@ resultsRouter.get('/:id/preview', (c) => {
       return c.json({ error: 'File content does not match its image type. Use Download.' }, 415)
     c.header('Content-Type', text ? 'text/plain; charset=utf-8' : result.mimeType)
     c.header('Content-Security-Policy', "default-src 'none'; sandbox")
+    // A saved file never changes under its id, so a gallery does not fetch it again each visit.
+    c.header('Cache-Control', 'private, max-age=3600')
     return c.body(new Uint8Array(bytes))
   } catch {
     return c.json({ error: 'Saved file failed integrity verification' }, 409)

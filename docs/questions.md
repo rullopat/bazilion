@@ -15,7 +15,8 @@ chats, reviews) do not get the tool.
 
 ## Answering
 
-- **Web:** the question appears under the chat. Choose an option or **Other**, then
+- **Web:** the question appears under the chat, and the Agent's line in the list says
+  `Needs you: 1 question`. Click a choice to answer with it, write your own answer and
   **Send answer**, or **Skip**.
 - **Terminal chat:** `bazilion agent chat` prompts for a number, `o` for your own text or `s` to
   skip. Blank input picks nothing.

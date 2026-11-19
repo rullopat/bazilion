@@ -3,13 +3,13 @@ import { resolveAgent } from '../core/agent/resolve.ts'
 import { mergeSecretsIntoEnv } from '../core/index.ts'
 import * as conversations from '../core/repos/conversations.ts'
 import { runAgentLifecycleMutation } from '../lib/agent-cancel.ts'
-import { startConversation } from '../lib/conversation-target.ts'
+import { selectConversation, startConversation } from '../lib/conversation-target.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { loadInitialMessages, piMessagesToProviderView } from '../runtime/index.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
 import { jsonBody, newRouter, routeAgent } from './http.ts'
 
-// The conversation library: list, start, read and rename an Agent's conversations.
+// The conversation library: list, start, read, rename and switch an Agent's conversations.
 
 export const conversationsRouter = newRouter<{ Variables: { agentId: string } }>()
 
@@ -63,6 +63,18 @@ conversationsRouter.get('/:agentId/conversations/:id', (c) => {
       409,
     )
   }
+})
+
+/** Switch to an earlier conversation: new turns write to it. Refused while a turn runs. */
+conversationsRouter.post('/:agentId/conversations/:id/select', async (c) => {
+  const agentId = c.get('agentId')
+  const id = c.req.param('id')
+  const { db, paths } = getCtx()
+  return c.json({
+    conversation: await runAgentLifecycleMutation(agentId, () =>
+      selectConversation(db, paths, agentId, id),
+    ),
+  })
 })
 
 conversationsRouter.patch('/:agentId/conversations/:id', async (c) => {

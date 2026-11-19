@@ -56,6 +56,28 @@ test('inbox list shows sent messages', async () => {
   expect(r.stdout).toContain('NEW')
 })
 
+test('team messages lists what Agents sent each other; activity shows every Agent', async () => {
+  const empty = await server.cli(['team', 'messages', 'default'])
+  expect(empty.exitCode, empty.stderr).toBe(0)
+  expect(empty.stdout).toContain('(no messages between Agents yet)')
+
+  const { a, b } = await spawnTwoAgents()
+  const sent = firstIdFromSend((await server.cli(['send', a, b, 'draft the post'])).stdout)
+  const thread = await server.cli(['team', 'messages', 'default'])
+  expect(thread.exitCode, thread.stderr).toBe(0)
+  expect(thread.stdout).toMatch(/-> .*NEW\s+draft the post/)
+  const asJson = await server.cli(['team', 'messages', 'default', '--json'])
+  expect(JSON.parse(asJson.stdout).messages).toMatchObject([{ id: sent, fromAgentId: a }])
+  // The thread is read-only: the message is still unread for its recipient.
+  expect((await server.cli(['inbox', 'list', b, '--unread'])).stdout).toContain('NEW')
+
+  const activity = await server.cli(['activity'])
+  expect(activity.exitCode, activity.stderr).toBe(0)
+  expect(activity.stdout.match(/\bidle\b/g)).toHaveLength(2)
+  const filtered = await server.cli(['activity', '--team', 'nobody', '--json'])
+  expect(JSON.parse(filtered.stdout)).toEqual({ agents: [] })
+})
+
 test('inbox list --unread filters out read messages', async () => {
   const { a, b } = await spawnTwoAgents()
   const s1 = await server.cli(['send', a, b, 'one'])

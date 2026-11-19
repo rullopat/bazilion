@@ -96,6 +96,23 @@ export function create(db: BazilionDb, agentId: string, id: string, title?: stri
   })()
 }
 
+/** Make an existing conversation the one new turns write to. */
+export function select(db: BazilionDb, agentId: string, id: string): Conversation {
+  const conversation = get(db, agentId, id)
+  if (!conversation) throw new DomainError(404, 'Conversation not found')
+  db.raw.run(
+    `INSERT INTO agent_conversation_selection (agent_id, conversation_id) VALUES (?, ?)
+    ON CONFLICT(agent_id) DO UPDATE SET conversation_id = excluded.conversation_id`,
+    [agentId, id],
+  )
+  return conversation
+}
+
+/** Whether the title is still the numbered one a new conversation starts with. */
+export function hasDefaultTitle(conversation: Conversation): boolean {
+  return /^Conversation \d+$/.test(conversation.title)
+}
+
 export function rename(db: BazilionDb, agentId: string, id: string, title: string): Conversation {
   db.raw.run(
     'UPDATE agent_conversations SET title = ?, updated_at = ? WHERE agent_id = ? AND id = ?',

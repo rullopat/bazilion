@@ -188,7 +188,7 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Browser Automation',
     category: 'service',
     team: 'Browser',
-    hint: 'Each Agent gets its own persistent browser profile (cookies, logins), kept across turns and Team moves and excluded from backups. Reset on the Agent page, or deleting the Agent, removes it. With "Use my running browser" on, Agents work in your own Chrome or Chromium instead.',
+    hint: 'Each Agent gets its own persistent browser profile (cookies, logins), kept across turns and Team moves and excluded from backups. Reset under Browser in the web workspace, or deleting the Agent, removes it. With "Use my running browser" on, Agents work in your own Chrome or Chromium instead.',
     fields: [
       {
         envVar: 'BROWSER_ENABLED',
