@@ -10,6 +10,7 @@ import { spawnWorkerTurn } from '../runtime/index.ts'
 import { removeDockerContainers } from '../runtime/shell/docker.ts'
 import { toolEnvironment } from '../runtime/shell/security.ts'
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
+import { noteTurnEnd, noteTurnFrame } from './activity.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { commandApprovalRegistry } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
@@ -78,6 +79,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         )
       })
       if (frame.kind === 'done') completed = true
+      noteTurnFrame(agentId, frame)
       yield frame
     }
     // Reviewed learning counts the completed turns the owner started.
@@ -85,6 +87,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       agentReviewRepo.recordSuccessfulUserTurn(db, agentId)
     }
   } finally {
+    noteTurnEnd(agentId)
     mirrorTypingStop(agentId)
     // A killed worker cannot remove the container its last command was running in.
     if (turn.docker) await removeDockerContainers(turn.docker.containerPrefix)

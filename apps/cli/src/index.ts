@@ -1,5 +1,6 @@
 import { defineCommand, runCommand, showUsage } from 'citty'
 import pkg from '../package.json' with { type: 'json' }
+import { activityCommand } from './commands/activity.ts'
 import { agentCommand } from './commands/agent.ts'
 import { attentionCommand } from './commands/attention.ts'
 import { authCommand } from './commands/auth.ts'
@@ -45,6 +46,7 @@ const main = defineCommand({
     team: teamCommand,
     'team-template': teamTemplateCommand,
     agent: agentCommand,
+    activity: activityCommand,
     attention: attentionCommand,
     result: resultCommand,
     conversation: conversationCommand,

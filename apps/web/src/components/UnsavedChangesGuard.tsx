@@ -18,19 +18,27 @@ export function UnsavedChangesGuard({
     withResolver: true,
   })
 
-  const destination = blocker.status === 'blocked' ? blocker.next.pathname : ''
+  // Closing a sheet or switching a tab stays on the page: there is no other page to name.
+  const destination =
+    blocker.status === 'blocked' && blocker.next.pathname !== blocker.current.pathname
+      ? blocker.next.pathname
+      : ''
 
   return (
     <ConfirmDialog
       open={blocker.status === 'blocked'}
       title={`Discard unsaved ${subject}?`}
       description={
-        <p>
-          Leaving this page for <code className="font-mono">{destination}</code> will permanently
-          discard the unsaved {subject} on this page.
-        </p>
+        destination ? (
+          <p>
+            Leaving this page for <code className="font-mono">{destination}</code> will permanently
+            discard the unsaved {subject} on this page.
+          </p>
+        ) : (
+          <p>Going on will permanently discard the unsaved {subject}.</p>
+        )
       }
-      confirmLabel="discard and leave"
+      confirmLabel={destination ? 'Discard and leave' : 'Discard'}
       onConfirm={() => {
         proceeding.current = true
         blocker.proceed?.()

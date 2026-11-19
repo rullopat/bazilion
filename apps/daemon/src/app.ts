@@ -3,6 +3,7 @@
 
 import { Hono } from 'hono'
 import { authMiddleware } from './lib/middleware-auth.ts'
+import { activityRouter } from './routes/activity.ts'
 import { agentBrowserRouter } from './routes/agent-browser.ts'
 import { agentChatRouter } from './routes/agent-chat.ts'
 import { agentLearningRouter } from './routes/agent-learning.ts'
@@ -12,7 +13,7 @@ import { authRouter } from './routes/auth-login.ts'
 import { configRouter } from './routes/config.ts'
 import { conversationsRouter } from './routes/conversations.ts'
 import { mcpRouter } from './routes/mcp.ts'
-import { agentMessagesRouter, messagesRouter } from './routes/messages.ts'
+import { agentMessagesRouter, messagesRouter, teamMessagesRouter } from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
 import { notificationsRouter } from './routes/notifications.ts'
 import { profilesRouter } from './routes/profiles.ts'
@@ -58,11 +59,13 @@ export function createApp(): Hono {
   app.route('/api/teams', teamMemoryRouter)
   app.route('/api/teams', teamPolicyRouter)
   app.route('/api/teams', teamReviewRouter)
+  app.route('/api/teams', teamMessagesRouter)
   app.route('/api/teams', teamCodingEnvironmentRouter)
   app.route('/api/teams', teamTelegramRouter)
   app.route('/api/team-templates', teamTemplatesRouter)
   app.route('/api/results', resultsRouter)
   app.route('/api/attention', attentionRouter)
+  app.route('/api/activity', activityRouter)
   app.route('/api/notifications', notificationsRouter)
   app.route('/api/shell-approvals', shellApprovalsRouter)
   app.route('/api/profiles', profilesRouter)

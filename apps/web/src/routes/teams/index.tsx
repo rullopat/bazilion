@@ -1,5 +1,5 @@
 import type { Agent, Team } from '@bazilion/api-types'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../components/Button'
@@ -43,7 +43,7 @@ function TeamsPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Teams"
-        description="Each Team owns one workspace, its members and who may message whom. Every agent belongs to exactly one Team."
+        description="Each Team owns one workspace, its members and who may message whom. Every Agent belongs to exactly one Team. Register a Team here, or remove an empty one."
       />
 
       <SectionCard title="Register a team">
@@ -52,7 +52,7 @@ function TeamsPage() {
 
       <SectionCard
         title="Registered teams"
-        description="Open a Team to manage its context, members, shared memory and policy."
+        description="Open a Team for its members, USER.md, shared memory and connections."
       >
         {teams.length === 0 ? (
           <EmptyState
@@ -66,16 +66,20 @@ function TeamsPage() {
               return (
                 <ItemRow
                   key={team.id}
-                  title={<a href={`/teams/${encodeURIComponent(team.id)}`}>{team.name}</a>}
+                  title={
+                    <Link to="/" search={{ team: team.id, panel: 'team' }}>
+                      {team.name}
+                    </Link>
+                  }
                   meta={
                     <>
                       <code>{team.id}</code>
                       <StatusBadge variant={count > 0 ? 'success' : 'neutral'}>
                         {count} member{count === 1 ? '' : 's'}
                       </StatusBadge>
-                      <a href={`/teams/${encodeURIComponent(team.id)}/policy`}>
-                        {team.policyMode} policy
-                      </a>
+                      <Link to="/" search={{ team: team.id, view: 'connections' }}>
+                        {team.policyMode === 'open' ? 'Open' : 'Restricted'}: see connections
+                      </Link>
                     </>
                   }
                   actions={

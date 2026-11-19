@@ -91,6 +91,84 @@ export function projectMessages(messages: ProviderMessage[]): RenderEntry[] {
   return entries
 }
 
+/** One tool call with what came of it. */
+export interface Step {
+  id: string
+  name: string
+  /** JSON-serialized arguments. */
+  args: string
+  status: 'running' | 'done' | 'failed'
+  /** The result or the error text; the live tail while it runs. */
+  output: string
+}
+
+/** Pair each call with its result. A result without its call (a cut history) stands alone. */
+export function pairSteps(items: readonly ToolItem[]): Step[] {
+  const steps: Step[] = []
+  const byId = new Map<string, Step>()
+  for (const item of items) {
+    const known = byId.get(item.id)
+    if (item.kind === 'call') {
+      const step: Step = {
+        id: item.id,
+        name: item.name,
+        args: item.body,
+        status: 'running',
+        output: '',
+      }
+      steps.push(step)
+      byId.set(item.id, step)
+    } else if (known) {
+      if (item.kind === 'progress') known.output = item.body
+      else {
+        known.status = item.kind === 'error' ? 'failed' : 'done'
+        known.output = item.body
+      }
+    } else if (item.kind !== 'progress') {
+      steps.push({
+        id: item.id,
+        name: item.name,
+        args: '',
+        status: item.kind === 'error' ? 'failed' : 'done',
+        output: item.body,
+      })
+    }
+  }
+  return steps
+}
+
+/**
+ * The transcript as blocks to draw. A run of tool boxes and saved results becomes one `work`
+ * block: its steps, then the files it delivered, so files of one turn sit together.
+ */
+export type TranscriptBlock =
+  | {
+      type: 'entry'
+      /** Position of the entry in the list the blocks were made from. */
+      index: number
+      entry: Exclude<RenderEntry, { type: 'tool' } | { type: 'result' }>
+    }
+  | { type: 'work'; index: number; items: ToolItem[]; resultIds: string[] }
+
+export function groupEntries(entries: readonly RenderEntry[]): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = []
+  let work: Extract<TranscriptBlock, { type: 'work' }> | null = null
+  entries.forEach((entry, index) => {
+    if (entry.type === 'tool' || entry.type === 'result') {
+      if (!work) {
+        work = { type: 'work', index, items: [], resultIds: [] }
+        blocks.push(work)
+      }
+      if (entry.type === 'tool') work.items.push(...entry.items)
+      else work.resultIds.push(entry.resultId)
+      return
+    }
+    work = null
+    blocks.push({ type: 'entry', index, entry })
+  })
+  return blocks
+}
+
 /** Keep one card per shell approval, in the position it first appeared. */
 export function upsertCommandApprovalEntry(
   entries: RenderEntry[],

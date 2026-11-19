@@ -1,4 +1,4 @@
-// The Baziu portrait — used as the brand logo in prominent slots (TopNav,
+// The Baziu portrait — used as the brand logo in prominent slots (TopBar,
 // login header) and as the favicon. Served as a static asset from
 // /public/baziu.svg. For tiny decorative paw accents (footer credit, inline
 // "dedicated to Baziu") keep using ./PawIcon — the portrait's detail is lost

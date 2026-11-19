@@ -1,4 +1,5 @@
 import type { Attachment } from '@bazilion/api-types'
+import { FileText, Paperclip } from 'lucide-react'
 import { type RefObject, useLayoutEffect, useRef } from 'react'
 import { Button } from '../Button'
 import { isImageMime } from './entries'
@@ -107,7 +108,7 @@ export function Composer({
                 key={index}
                 className="flex items-center gap-1.5 rounded-md border border-frost bg-snow px-2 py-1 text-[0.82em] text-mocha"
               >
-                <span>📄</span>
+                <FileText className="size-3.5 shrink-0" aria-hidden="true" />
                 <span className="max-w-[160px] truncate">{attachment.name ?? 'file'}</span>
                 <button
                   type="button"
@@ -147,7 +148,7 @@ export function Composer({
           aria-label="attach files"
           className="flex h-11 items-center justify-center rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire"
         >
-          📎
+          <Paperclip className="size-[18px]" aria-hidden="true" />
         </button>
         <textarea
           ref={inputRef}
@@ -167,7 +168,7 @@ export function Composer({
               onAddFiles(files)
             }
           }}
-          placeholder="Write a message…"
+          placeholder={`Message ${agentName}`}
           title="Shift+Enter for a new line. Paste or attach files with the paperclip."
           autoComplete="off"
           aria-label={`Message ${agentName}`}
@@ -193,6 +194,9 @@ export function Composer({
             </Button>
           )}
         </div>
+        <p className="col-span-full m-0 hidden text-[0.72rem] text-mocha-light sm:block">
+          Enter sends · Shift+Enter adds a line · /help lists commands
+        </p>
       </form>
     </>
   )

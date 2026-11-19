@@ -56,7 +56,7 @@ test('projects source-owned action items and acknowledgeable terminal signals', 
   ])
   expect(list.items.find((item) => item.kind === 'lesson_proposal')).toMatchObject({
     acknowledgeable: false,
-    href: '/agents/agent/learning',
+    href: '/?agent=agent&section=learning',
   })
   expect(JSON.stringify(list)).not.toContain('sk-supersecret123')
   expect(() => acknowledgeAttention(db, 'lesson_proposal:lesson', true)).toThrow(

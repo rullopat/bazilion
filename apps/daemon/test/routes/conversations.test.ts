@@ -1,15 +1,20 @@
 import { randomUUID } from 'node:crypto'
-import { readdirSync, statSync, unlinkSync } from 'node:fs'
+import { appendFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ChatContextResponse, Conversation } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createApp } from '../../src/app.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
+import * as conversations from '../../src/core/repos/conversations.ts'
 import * as providerModels from '../../src/core/repos/providerModels.ts'
 import * as providerState from '../../src/core/repos/providerState.ts'
 import * as webTokens from '../../src/core/repos/webTokens.ts'
 import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
+import {
+  titleConversationFromMessage,
+  titleFromMessage,
+} from '../../src/lib/conversation-target.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 let env: TestEnv
@@ -74,6 +79,60 @@ test('a refused title starts nothing; the Agent may be named by an id prefix', a
     headers: { authorization: `Bearer ${token}` },
   })
   expect(await listed.json()).toMatchObject({ total: 1, selectedId: created.id })
+})
+
+test('an earlier conversation can be continued: selecting it makes it the active one', async () => {
+  const first = await start('First')
+  const second = await start('Second')
+  const selected = await request(`/${first.id}/select`, 'POST')
+  expect(selected.status).toBe(200)
+  expect(await selected.json()).toMatchObject({ conversation: { id: first.id, title: 'First' } })
+  expect(await (await request()).json()).toMatchObject({ total: 2, selectedId: first.id })
+  expect((await request(`/${randomUUID()}/select`, 'POST')).status).toBe(404)
+
+  // Not while a turn runs, and not when the transcript is gone.
+  registerAgent(agentId, new AbortController())
+  expect((await request(`/${second.id}/select`, 'POST')).status).toBe(409)
+  unregisterAgent(agentId)
+  unlinkSync(join(env.paths.agentDir(agentId), 'sessions', `${second.id}.jsonl`))
+  const unreadable = await request(`/${second.id}/select`, 'POST')
+  expect(unreadable.status).toBe(409)
+  expect(await (await request()).json()).toMatchObject({ selectedId: first.id })
+})
+
+test("the operator's first message names a conversation that still has its numbered title", async () => {
+  const numbered = await start()
+  expect(numbered.title).toBe('Conversation 1')
+  const titled = () => conversations.get(env.db, agentId, numbered.id)?.title
+  const name = (id: string, message: string) =>
+    titleConversationFromMessage(env.db, env.paths, agentId, id, message)
+  name(numbered.id, '   ')
+  expect(titled()).toBe('Conversation 1')
+  name(
+    numbered.id,
+    '\nAdd a dark-mode toggle to the landing page and make sure nothing else breaks.\nThanks',
+  )
+  expect(titled()).toBe('Add a dark-mode toggle to the landing page and make sure…')
+  // Named once: later messages and a title the operator chose are left alone.
+  name(numbered.id, 'Something else')
+  expect(titled()).toBe('Add a dark-mode toggle to the landing page and make sure…')
+  const chosen = await start('Conversation 9')
+  await request(`/${chosen.id}`, 'PATCH', { title: 'Conversation 7' })
+  name(chosen.id, 'Hello')
+  expect(conversations.get(env.db, agentId, chosen.id)?.title).toBe('Conversation 7')
+  // A conversation that already has turns keeps its numbered title: only a first message names.
+  const used = await start()
+  appendFileSync(
+    join(env.paths.agentDir(agentId), 'sessions', `${used.id}.jsonl`),
+    `${JSON.stringify({ type: 'message', id: 'entry-1', parentId: null })}\n`,
+  )
+  name(used.id, 'A later message')
+  expect(conversations.get(env.db, agentId, used.id)?.title).toBe(used.title)
+
+  expect(titleFromMessage('short')).toBe('short')
+  expect(titleFromMessage('a\tb   c')).toBe('a b c')
+  expect(titleFromMessage('x'.repeat(80))).toBe(`${'x'.repeat(60)}…`)
+  expect(titleFromMessage('\n\n')).toBeNull()
 })
 
 test('a new conversation waits for the running turn', async () => {

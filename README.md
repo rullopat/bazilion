@@ -26,7 +26,7 @@ database and a bootstrap token in `auth.json`. Sign in to the web UI with that t
 Until one provider is enabled with a saved model, every page leads to the setup page. Connect
 ChatGPT or paste an API key on `/config`, enable the provider and pick a model; Bazilion then
 creates a `default` Profile and a `default` Team, and you can spawn your first Agent from the
-Agents page.
+home screen.
 
 The same from a second terminal:
 
@@ -65,9 +65,9 @@ is not supported.
   and `deliver_file` for [saved results](docs/results.md).
 - **Around a chat**: [conversations](docs/conversations.md), a
   [follow-up queue](docs/follow-up-queue.md), [questions](docs/questions.md) the Agent asks you,
-  [reviewed learning](docs/backlog/done/BAZ-003-reviewed-learning.md) (lessons you approve, on the
-  Agent's **Learning** tab or with `bazilion agent review-config`), and **Attention** for what
-  needs you.
+  [reviewed learning](docs/backlog/done/BAZ-003-reviewed-learning.md) (lessons you approve, under
+  **Learning** in the Agent's side panel or with `bazilion agent review-config`), and
+  **Attention** for what needs you.
 
 ## CLI
 
@@ -79,7 +79,7 @@ Most commands talk to the daemon over HTTP; `serve` and `dashboard` start it, an
 | --- | --- |
 | Setup | `serve`, `dashboard`, `doctor`, `backup`, `uninstall`, `completion` |
 | Catalog | `profile`, `team`, `team-template`, `skill`, `provider`, `config`, `auth`, `mcp` |
-| Agents | `agent`, `conversation`, `queue`, `question`, `result`, `memory`, `send`, `inbox`, `trigger`, `attention` |
+| Agents | `agent`, `activity`, `conversation`, `queue`, `question`, `result`, `memory`, `send`, `inbox`, `trigger`, `attention` |
 | Integrations | `telegram`, `notification` |
 | Remote | `login`, `token`, `session` |
 
@@ -88,10 +88,16 @@ Most commands talk to the daemon over HTTP; `serve` and `dashboard` start it, an
 
 ## Web UI
 
-**Chat** (`/`), **Agents** (each with Chat, Inbox, Triggers, Learning and Settings tabs),
-**Teams** (Context, Members, Policy, Memory, Review, Results), **Templates** (Agent and Team
-templates), **Skills**, **Setup** (`/config`: providers, services, MCP, Telegram, tokens) and
-**Attention**. The web UI and the CLI offer the same management features.
+The home screen is one [workspace](docs/workspace.md): Teams and their Agents on the left, each
+with what it is doing right now; the open Agent's conversation in the middle; and a side panel
+with the Agent's settings, its Team, who may message whom (**Connections**), what changed in the
+workspace (**Changes**) and what was delivered (**Files**). Connections, Changes and Files also
+open across the whole width, as a map, a side-by-side diff and a gallery. **Jump to** (Ctrl+K)
+opens any Agent, Team or page by name.
+
+**Manage** holds the list pages: Agents, Teams, **Templates** (Agent and Team templates),
+**Skills** and **Setup** (`/config`: providers, services, MCP, Telegram, tokens). **Attention**
+lists what needs you. The web UI and the CLI offer the same management features.
 
 ## Configuration
 

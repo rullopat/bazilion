@@ -78,6 +78,19 @@ export function listInbox(
   return db.raw.query<RawMessage, [string]>(sql).all(agentId).map(toMessage)
 }
 
+/** Messages a member of the Team sent or received, newest first. */
+export function listForTeam(db: BazilionDb, teamId: string, limit: number): Message[] {
+  return db.raw
+    .query<RawMessage, [string, string, number]>(
+      `SELECT m.* FROM messages m
+       WHERE m.from_agent_id IN (SELECT id FROM agents WHERE team_id = ?)
+          OR m.to_agent_id IN (SELECT id FROM agents WHERE team_id = ?)
+       ORDER BY m.created_at DESC, m.id DESC LIMIT ?`,
+    )
+    .all(teamId, teamId, limit)
+    .map(toMessage)
+}
+
 export function markRead(db: BazilionDb, id: string): void {
   db.raw.run('UPDATE messages SET read_at = ? WHERE id = ? AND read_at IS NULL', [Date.now(), id])
 }

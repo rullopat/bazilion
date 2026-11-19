@@ -11,7 +11,7 @@
 
 Conversations, messages and uploads are never pruned: they are the record. Finished follow-ups and
 their attachments are deleted seven days after they end. Saved results are capped at 25 MiB per
-file and 1 GiB per home; they do not expire, and deleting one (Team → Results or
+file and 1 GiB per home; they do not expire, and deleting one (the Files view or
 `bazilion result rm`) frees its share.
 
 Inspect sizes with `du -sh ~/.bazilion/* ~/.bazilion/agents/*`, and the database with

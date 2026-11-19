@@ -5,9 +5,10 @@ import type { Conversation, ConversationTarget } from '@bazilion/api-types'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { resolveAgent } from '../core/agent/resolve.ts'
 import type { BazilionDb } from '../core/db/client.ts'
+import { DomainError } from '../core/errors.ts'
 import type { Paths } from '../core/paths.ts'
 import * as conversations from '../core/repos/conversations.ts'
-import { readSessionHeader } from '../runtime/pi/session-file.ts'
+import { readSessionHeader, sessionHasEntries } from '../runtime/pi/session-file.ts'
 
 function sessionsDir(paths: Paths, agentId: string): string {
   return join(paths.agentDir(agentId), 'sessions')
@@ -47,6 +48,62 @@ export function resolveConversationTarget(
   if (!conversations.get(db, agentId, id)) throw new Error('Conversation not found')
   readSessionHeader(sessionsDir(paths, agentId), id)
   return { id }
+}
+
+/** Switch the Agent to one of its conversations; its transcript must be readable. */
+export function selectConversation(
+  db: BazilionDb,
+  paths: Paths,
+  agentId: string,
+  id: string,
+): Conversation {
+  if (!conversations.get(db, agentId, id)) throw new DomainError(404, 'Conversation not found')
+  try {
+    readSessionHeader(sessionsDir(paths, agentId), id)
+  } catch {
+    throw new DomainError(409, 'That conversation has no readable history, so it cannot continue.')
+  }
+  return conversations.select(db, agentId, id)
+}
+
+const TITLE_CHARS = 60
+
+/** A conversation title from its first message: the first line, cut at a word. */
+export function titleFromMessage(message: string): string | null {
+  const line = message
+    .split('\n')
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .find((part) => part.length > 0)
+  if (!line) return null
+  // Control characters are not allowed in a title.
+  const clean = Array.from(line)
+    .filter((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)
+    .join('')
+    .trim()
+  if (!clean) return null
+  if (clean.length <= TITLE_CHARS) return clean
+  const cut = clean.slice(0, TITLE_CHARS)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > TITLE_CHARS / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
+/**
+ * Name a conversation after the operator's first message in it. Only a conversation that still
+ * has its numbered title, was never renamed and has no turn yet is touched.
+ */
+export function titleConversationFromMessage(
+  db: BazilionDb,
+  paths: Paths,
+  agentId: string,
+  conversationId: string,
+  message: string,
+): void {
+  const conversation = conversations.get(db, agentId, conversationId)
+  if (!conversation || !conversations.hasDefaultTitle(conversation)) return
+  if (conversation.updatedAt !== conversation.createdAt) return
+  if (sessionHasEntries(sessionsDir(paths, agentId), conversationId)) return
+  const title = titleFromMessage(message)
+  if (title) conversations.rename(db, agentId, conversationId, title)
 }
 
 /** The selected conversation without creating one. */

@@ -1,6 +1,7 @@
 // Wire shapes of the daemon's HTTP and worker IPC surface, shared by the daemon, the CLI and the
 // web: types, a few constants and the public-origin rule, with no Node-only imports.
 
+export * from './activity.ts'
 export * from './agents.ts'
 export * from './attention.ts'
 export * from './auth.ts'

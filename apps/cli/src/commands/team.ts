@@ -11,6 +11,7 @@ import { createClient } from '../client.ts'
 import { apiPath, printRows, teamArg } from '../command-helpers.ts'
 import { UsageError } from '../errors.ts'
 import { teamEnvironmentCommand } from './team-environment.ts'
+import { teamMessagesCommand } from './team-messages.ts'
 import { teamPolicyCommand } from './team-policy.ts'
 import { teamReviewCommand } from './team-review.ts'
 
@@ -177,6 +178,7 @@ export const teamCommand = defineCommand({
   subCommands: {
     environment: teamEnvironmentCommand,
     review: teamReviewCommand,
+    messages: teamMessagesCommand,
     add: addCmd,
     list: listCmd,
     rm: rmCmd,

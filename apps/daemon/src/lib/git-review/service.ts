@@ -5,6 +5,7 @@ import type { Paths } from '../../core/paths.ts'
 import * as teamRepo from '../../core/repos/teams.ts'
 import { type CapturedGit, captureRepositoryGit, findRepositoryRoot } from '../git/capture.ts'
 import { ContextDirectory, ContextReadError } from '../git/context-directory.ts'
+import { readChangeAuthors } from './authors.ts'
 import { attachPatches, listChanges } from './changes.ts'
 import { readRepositoryIdentity, resolveComparisonBase } from './identity.ts'
 
@@ -88,7 +89,14 @@ export async function readTeamReview(
   db: BazilionDb,
   paths: Paths,
   teamId: string,
-  input: { base?: string; patches?: boolean; patchPath?: string; limits?: ReviewLimits } = {},
+  input: {
+    base?: string
+    patches?: boolean
+    patchPath?: string
+    limits?: ReviewLimits
+    /** Also say which Agent last wrote each changed file. */
+    authors?: boolean
+  } = {},
 ): Promise<RepositoryReviewResponse> {
   const team = requireTeam(db, paths, teamId)
   const changes: RepositoryChanges = await withRepository(team.path, async (captured) => {
@@ -97,5 +105,11 @@ export async function readTeamReview(
     const listed = await listChanges(captured, base, identity, input.limits)
     return input.patches ? attachPatches(captured, listed, input.limits, input.patchPath) : listed
   })
-  return { teamId: team.id, changes }
+  if (!input.authors) return { teamId: team.id, changes }
+  const changedPaths = changes.changes.map((change) => change.path)
+  return {
+    teamId: team.id,
+    changes,
+    authors: readChangeAuthors(db, paths, team, changedPaths),
+  }
 }

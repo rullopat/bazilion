@@ -15,7 +15,7 @@ const item: AttentionItem = {
   teamName: 'Team',
   title: 'Scheduled trigger failed',
   diagnostic: '/home/operator/PRIVATE_ERROR',
-  href: '/agents/604146ba-133d-4e07-8ea3-d17162b6d90e',
+  href: '/?agent=604146ba-133d-4e07-8ea3-d17162b6d90e',
   acknowledgeable: true,
   acknowledgedAt: null,
 }

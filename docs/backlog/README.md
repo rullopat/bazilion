@@ -39,5 +39,6 @@ are never reused, so the gaps below are deliberate.
 | [BAZ-059](done/BAZ-059-pi-image-generation.md) | Image generation | 0.22.0 | [image generation](../image-generation.md) |
 | [BAZ-069](done/BAZ-069-web-research-and-managed-browser.md) | Web research and the managed browser | 0.23.0 | [web research](../web-research.md), [browser](../browser-research.md) |
 | [BAZ-071](done/BAZ-071-installation-diagnostics.md) | Installation diagnostics | 0.24.0 | |
+| [BAZ-072](done/BAZ-072-web-workspace.md) | One web workspace | 0.50.0 | [workspace](../workspace.md) |
 
 No story is in draft or in progress.

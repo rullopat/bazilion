@@ -1,9 +1,11 @@
 // Agent mailbox: /api/agents/:id/messages lists an inbox and sends to it, /api/agents/:id/loop-breaks
-// shows stopped message chains, /api/messages/:id reads one message and marks it read.
+// shows stopped message chains, /api/messages/:id reads one message and marks it read, and
+// /api/teams/:id/messages is the whole Team's thread.
 
 import type {
   ListAgentLoopBreaksResponse,
   ListInboxResponse,
+  ListTeamMessagesResponse,
   SendMessageRequest,
   UpdateMessageRequest,
 } from '@bazilion/api-types'
@@ -11,9 +13,19 @@ import { agentRepo, messageRepo } from '../core/index.ts'
 import { listAgentLoopBreaks } from '../lib/agent-loop-guard.ts'
 import { sendAgentMessage } from '../lib/communication.ts'
 import { getCtx } from '../lib/ctx.ts'
-import { jsonBody, newRouter, routeAgent } from './http.ts'
+import { jsonBody, newRouter, routeAgent, routeTeam } from './http.ts'
 
 export const messagesRouter = newRouter()
+
+export const teamMessagesRouter = newRouter()
+
+/** What the Team's Agents sent and received, newest first. Reading here marks nothing read. */
+teamMessagesRouter.get('/:id/messages', (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 500)
+  return c.json({
+    messages: messageRepo.listForTeam(getCtx().db, routeTeam(c).id, limit),
+  } satisfies ListTeamMessagesResponse)
+})
 
 messagesRouter.get('/:id', (c) => {
   const msg = messageRepo.get(getCtx().db, c.req.param('id'))

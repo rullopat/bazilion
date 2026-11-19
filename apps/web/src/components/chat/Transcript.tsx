@@ -1,14 +1,16 @@
 import type { CommandApproval, ProviderMessage } from '@bazilion/api-types'
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { FileText } from 'lucide-react'
+import { type ReactNode, useState, useSyncExternalStore } from 'react'
 import { inboxUpdateLabel } from '../../lib/inbox-presentation'
 import { renderMd } from '../../lib/md'
-import { ResultCard } from '../ResultCard'
+import { ResultTile } from '../files/ResultTile'
+import { useWorkspaceOptional } from '../workspace/context'
 import { CommandApprovalCard } from './CommandApprovalCard'
-import { projectMessages, type RenderEntry, type ToolItem } from './entries'
+import { groupEntries, projectMessages, type RenderEntry, type TranscriptBlock } from './entries'
+import { StepsBlock } from './Steps'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
 const COMPACTION_REPLAY_PREFIX = '[conversation summary]'
-const TOOL_GROUP_MAX_HEIGHT_PX = 320
 
 const noSubscription = () => () => {}
 
@@ -37,7 +39,7 @@ export function Bubble({
   dropped = false,
   approvals,
 }: {
-  entry: RenderEntry
+  entry: Exclude<RenderEntry, { type: 'tool' } | { type: 'result' }>
   markdownReady: boolean
   /** Shown on the last user message: edit and resend it. */
   onEdit?: () => void
@@ -87,16 +89,13 @@ export function Bubble({
                   key={index}
                   className="flex items-center gap-1 rounded-md border border-sapphire-light bg-sapphire-glow px-2 py-1 text-[0.8em] text-chocolate"
                 >
-                  📄 <span className="max-w-[180px] truncate">{file.name}</span>
+                  <FileText className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span className="max-w-[180px] truncate">{file.name}</span>
                 </span>
               ))}
             </div>
           )}
-          {entry.content && (
-            <div className="bubble-content max-w-[85%] whitespace-pre-wrap break-words rounded-[14px_14px_4px_14px] border border-sapphire-light bg-sapphire-glow px-3 py-2 text-chocolate">
-              {entry.content}
-            </div>
-          )}
+          {entry.content && <UserText content={entry.content} />}
           {onEdit && (
             <button
               type="button"
@@ -139,8 +138,6 @@ export function Bubble({
           />
         </div>
       )
-    case 'tool':
-      return <ToolGroup items={entry.items} className={dropClass} />
     case 'images':
       return (
         <div className={`my-2 space-y-2 ${dropClass}`}>
@@ -155,8 +152,6 @@ export function Bubble({
           ))}
         </div>
       )
-    case 'result':
-      return <ResultCard resultId={entry.resultId} />
     case 'command_approval':
       return (
         <CommandApprovalCard
@@ -182,141 +177,150 @@ export function Bubble({
   }
 }
 
-function prettyArgs(raw: string): string {
-  if (!raw) return ''
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
-}
+const LONG_LINES = 14
+const LONG_CHARS = 1_400
+const SHOWN_LINES = 8
 
-function ToolGroup({ items, className }: { items: ToolItem[]; className: string }) {
-  // A teammate message renders as its own card once its result exists, so its call line goes.
-  const visible = items.filter(
-    (item) =>
-      !(
-        item.kind === 'call' &&
-        item.name === 'send_message' &&
-        items.some((other) => other.id === item.id && other.kind !== 'call')
-      ),
-  )
-  // Never clip a group while a tool is streaming its output.
-  const live = items.some((item) => item.kind === 'progress')
-  const [expanded, setExpanded] = useState(false)
-  const [overflows, setOverflows] = useState(false)
-  const contentRef = useRef<HTMLDivElement | null>(null)
-  // Re-measure when the content changes; a result replacing a live tail keeps the item count.
-  const contentKey = items.map((item) => `${item.kind}:${item.body.length}`).join()
-  // biome-ignore lint/correctness/useExhaustiveDependencies: contentKey is the change signal.
-  useLayoutEffect(() => {
-    const element = contentRef.current
-    if (element) setOverflows(element.scrollHeight > TOOL_GROUP_MAX_HEIGHT_PX + 4)
-  }, [contentKey])
-
+/** The operator's words. A very long message (a pasted log, a review) starts folded. */
+function UserText({ content }: { content: string }) {
+  const [open, setOpen] = useState(false)
+  const lines = content.split('\n')
+  const long = lines.length > LONG_LINES || content.length > LONG_CHARS
+  const shown =
+    !long || open
+      ? content
+      : lines
+          .slice(0, SHOWN_LINES)
+          .join('\n')
+          .slice(0, LONG_CHARS / 2)
   return (
-    <div
-      className={`my-1.5 rounded-r-sm border-l-[3px] border-fawn bg-ivory px-3 py-2 font-mono text-[0.82em] leading-[1.5] text-mocha-light ${className}`}
-    >
-      <div
-        ref={contentRef}
-        className="relative overflow-hidden"
-        style={{ maxHeight: expanded || live ? 'none' : `${TOOL_GROUP_MAX_HEIGHT_PX}px` }}
-      >
-        {visible.map((item, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a call and its result share an id.
-          <ToolLine key={index} item={item} />
-        ))}
-        {overflows && !expanded && !live && (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-10"
-            style={{ background: 'linear-gradient(to bottom, transparent, var(--color-ivory))' }}
-          />
-        )}
+    <div className="bubble-content max-w-[85%] rounded-[14px_14px_4px_14px] border border-sapphire-light bg-sapphire-glow px-3 py-2 text-chocolate">
+      <div className="whitespace-pre-wrap break-words">
+        {shown}
+        {long && !open ? '…' : ''}
       </div>
-      {overflows && !live && (
+      {long && (
         <button
           type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="mt-2 rounded-sm border border-fawn bg-transparent px-2 py-0.5 text-[0.9em] text-mocha hover:border-sapphire hover:text-sapphire-deep"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="unstyled mt-1.5 text-[0.82em] font-semibold text-sapphire-deep hover:underline"
         >
-          {expanded ? 'show less ↑' : 'show more ↓'}
+          {open ? 'Show less' : `Show the whole message (${lines.length} lines)`}
         </button>
       )}
     </div>
   )
 }
 
-function ToolLine({ item }: { item: ToolItem }) {
-  if (item.name === 'send_message' && item.kind !== 'error') {
-    return (
-      <details className="py-1 font-sans text-sm">
-        <summary className="cursor-pointer">
-          {item.kind === 'call'
-            ? 'Sending teammate message…'
-            : item.body.startsWith('sent message ')
-              ? 'Teammate message sent'
-              : 'Teammate message status'}
-        </summary>
-        <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">
-          {item.body}
-        </pre>
-      </details>
-    )
-  }
-  if (item.kind === 'progress') return <LiveToolOutput output={item.body} />
-  if (item.kind === 'call') {
-    const args = prettyArgs(item.body)
-    return (
-      <div className="whitespace-pre-wrap break-words py-0.5">
-        <span className="mr-1 opacity-45">→</span>
-        <span className="font-medium text-mocha">{item.name}</span>
-        {args.includes('\n') ? (
-          <pre className="ml-4 mt-0.5 rounded-sm bg-[rgba(42,31,22,0.04)] px-2 py-1 font-mono text-[0.95em] leading-[1.4] text-mocha">
-            {args}
-          </pre>
-        ) : args ? (
-          <span> ({args})</span>
-        ) : null}
-      </div>
-    )
-  }
+/** A slash-command note, shown after the entry that was last when it was produced. */
+export interface TranscriptNote {
+  id: number
+  content: string
+  afterIndex: number
+}
+
+/** A run of work: the steps, then the files it delivered side by side. */
+function WorkBlock({
+  block,
+  dropped,
+}: {
+  block: Extract<TranscriptBlock, { type: 'work' }>
+  dropped: boolean
+}) {
+  const workspace = useWorkspaceOptional()
   return (
-    <div
-      className={`whitespace-pre-wrap break-words py-0.5 ${item.kind === 'error' ? 'text-rose-baziu' : ''}`}
-    >
-      <span className="mr-1 opacity-45">←</span>
-      {item.body}
-    </div>
+    <>
+      {block.items.length > 0 && <StepsBlock items={block.items} dimmed={dropped} />}
+      {block.resultIds.length > 0 && (
+        <div
+          className={`my-3 grid grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-3 ${
+            dropped ? 'opacity-40' : ''
+          }`}
+        >
+          {block.resultIds.map((resultId) => (
+            <ResultTile
+              key={resultId}
+              resultId={resultId}
+              {...(workspace?.team
+                ? { open: workspace.to({ view: 'files', result: resultId }) }
+                : {})}
+            />
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
-/** Latest output of a running tool, kept scrolled to its end. */
-function LiveToolOutput({ output }: { output: string }) {
-  const ref = useRef<HTMLPreElement | null>(null)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: follow every new output tail.
-  useLayoutEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight
-  }, [output])
-  return (
-    <pre
-      ref={ref}
-      className="my-0.5 ml-4 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-[rgba(42,31,22,0.04)] px-2 py-1"
-    >
-      {output}
-    </pre>
-  )
+/**
+ * The transcript: entries grouped into blocks, with each slash-command note after the entry that
+ * was last when it was produced.
+ */
+export function TranscriptBlocks({
+  entries,
+  notes = [],
+  markdownReady,
+  editableEntry = -1,
+  replacedFrom = -1,
+  onEdit,
+  approvals,
+}: {
+  entries: readonly RenderEntry[]
+  notes?: readonly TranscriptNote[]
+  markdownReady: boolean
+  /** The entry that offers "edit" (-1: none). */
+  editableEntry?: number
+  /** While editing, entries from here on are about to be replaced (-1: none). */
+  replacedFrom?: number
+  onEdit?: () => void
+  approvals?: ApprovalControls
+}) {
+  const out: ReactNode[] = []
+  let next = 0
+  // A note made when `afterIndex` entries existed goes before the block that starts there.
+  const flush = (upTo: number) => {
+    while (next < notes.length && (notes[next]?.afterIndex ?? 0) <= upTo) {
+      const note = notes[next] as TranscriptNote
+      out.push(
+        <Bubble
+          key={`note-${note.id}`}
+          entry={{ type: 'system', content: note.content }}
+          markdownReady={markdownReady}
+        />,
+      )
+      next++
+    }
+  }
+  for (const block of groupEntries(entries)) {
+    flush(block.index)
+    const dropped = replacedFrom >= 0 && block.index >= replacedFrom
+    out.push(
+      block.type === 'work' ? (
+        <WorkBlock key={block.index} block={block} dropped={dropped} />
+      ) : (
+        <Bubble
+          key={block.index}
+          entry={block.entry}
+          markdownReady={markdownReady}
+          dropped={dropped}
+          onEdit={block.index === editableEntry ? onEdit : undefined}
+          approvals={approvals}
+        />
+      ),
+    )
+  }
+  // Notes anchored past the end (the tail was replaced by an edit) stay visible at the bottom.
+  flush(Number.POSITIVE_INFINITY)
+  return <>{out}</>
 }
 
-/** A conversation's messages, read-only (the conversation library). */
+/** A conversation's messages, read-only (an earlier conversation). */
 export function ReadOnlyTranscript({ messages }: { messages: ProviderMessage[] }) {
   const markdownReady = useMarkdownReady()
   return (
     <section aria-label="Conversation history">
-      {projectMessages(messages).map((entry, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: a closed conversation never reorders.
-        <Bubble key={index} entry={entry} markdownReady={markdownReady} />
-      ))}
+      <TranscriptBlocks entries={projectMessages(messages)} markdownReady={markdownReady} />
     </section>
   )
 }

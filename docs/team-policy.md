@@ -33,15 +33,23 @@ The 8-hop loop guard on message chains is separate from policy: it bounds cost, 
 
 | Task | CLI | Web |
 | --- | --- | --- |
-| Show a Team's policy | `bazilion team policy show <team>` | Team → Policy |
-| Open or restrict a Team | `bazilion team policy mode <team> open\|restricted` | Open/Restricted toggle |
-| Add or remove an edge | `bazilion team policy allow\|deny <team> <from> <to>` | Flow or Matrix editor |
+| Show a Team's policy | `bazilion team policy show <team>` | **Connections** in the side panel |
+| Open or restrict a Team | `bazilion team policy mode <team> open\|restricted` | Open/Restricted switch of the Connections view |
+| Add or remove an edge | `bazilion team policy allow\|deny <team> <from> <to>` | Connections view: the map or the table |
+| See what Agents said to each other | `bazilion team messages <team>` | Connections: recent messages |
 | Manage templates | `bazilion team-template list\|show\|create\|export\|import\|rm` | Templates → Teams |
 | Spawn a template into a Team | `bazilion team-template spawn <template> <team>` | Spawn team dialog |
-| Save a Team as a template | `bazilion team-template save <team> <template>` | Team → Policy → Save as Team template |
+| Save a Team as a template | `bazilion team-template save <team> <template>` | Team tab → Settings → Save as Team template |
 
-HTTP: `GET` and `PATCH /api/teams/:id/policy`, `POST /api/teams/:id/policy/save-as-template`, and
-`/api/team-templates` (`GET`, `POST`, `PUT /:id`, `DELETE /:id`, `POST /:id/spawn`).
+On the map every Agent is a node with what it is doing, and every pair that is connected or that
+talked is one line: an arrowhead for each allowed direction, a dashed line for a pair that only
+talked (an open Team), and the number of recent messages on it. Drag from one Agent to another to
+connect them; select an Agent or a line to switch each direction and to read their messages.
+Changes apply when you press **Save**. Where you drag the nodes is remembered in the browser.
+
+HTTP: `GET` and `PATCH /api/teams/:id/policy`, `POST /api/teams/:id/policy/save-as-template`,
+`GET /api/teams/:id/messages`, and `/api/team-templates` (`GET`, `POST`, `PUT /:id`,
+`DELETE /:id`, `POST /:id/spawn`).
 
 In a template, edges name slots by position (`0` is the first slot) or `outside`. Spawning into a
 new Team copies the template's USER.md and mode; spawning into an existing Team adds the Agents and

@@ -45,23 +45,6 @@ export function SectionTabs({
   )
 }
 
-export const AGENT_TABS = [
-  ['', 'Chat'],
-  ['/inbox', 'Inbox'],
-  ['/triggers', 'Triggers'],
-  ['/learning', 'Learning'],
-  ['/settings', 'Settings'],
-] as const
-
-export const TEAM_TABS = [
-  ['', 'Context'],
-  ['/members', 'Members'],
-  ['/policy', 'Policy'],
-  ['/memory', 'Memory'],
-  ['/review', 'Review'],
-  ['/results', 'Results'],
-] as const
-
 export const TEMPLATE_TABS = [
   ['/agents', 'Agent templates'],
   ['/teams', 'Team templates'],

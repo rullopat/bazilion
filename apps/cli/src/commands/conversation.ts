@@ -85,7 +85,25 @@ const rename = defineCommand({
   },
 })
 
+const select = defineCommand({
+  meta: {
+    name: 'select',
+    description: 'Switch to an earlier conversation: new messages continue it',
+  },
+  args: { agent: agentArg, id: conversationArg, json: jsonFlag },
+  async run({ args }) {
+    const body = await createClient().post<{ conversation: Conversation }>(
+      apiPath('agents', args.agent, 'conversations', args.id, 'select'),
+    )
+    if (args.json) return printJson(body)
+    console.log(`Conversation ${body.conversation.id}: ${body.conversation.title} (active)`)
+  },
+})
+
 export const conversationCommand = defineCommand({
-  meta: { name: 'conversation', description: 'List, read, start and rename Agent conversations' },
-  subCommands: { list, show, new: newConversation, rename },
+  meta: {
+    name: 'conversation',
+    description: 'List, read, start, rename and switch Agent conversations',
+  },
+  subCommands: { list, show, new: newConversation, rename, select },
 })

@@ -15,7 +15,7 @@ import '@fontsource/dm-serif-display/latin-400.css'
 import '@fontsource/jetbrains-mono/latin-400.css'
 import '@fontsource/jetbrains-mono/latin-500.css'
 import { Footer } from '../components/Footer'
-import { TopNav } from '../components/TopNav'
+import { TopBar } from '../components/TopBar'
 import { fetchAuthState, isSetupOpen, PUBLIC_PATHS } from '../lib/auth'
 import appCss from '../styles.css?url'
 
@@ -111,12 +111,12 @@ function RootComponent() {
         ) : isWorkspace ? (
           <div className="flex h-dvh flex-col">
             <div className="px-3 sm:px-5">
-              <TopNav />
+              <TopBar />
             </div>
             <main
               id="main-content"
               tabIndex={-1}
-              className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-hidden px-3 pb-3 sm:px-5 sm:pb-5"
+              className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-clip px-3 pb-3 sm:px-5 sm:pb-5"
             >
               <Outlet />
             </main>
@@ -124,7 +124,7 @@ function RootComponent() {
         ) : (
           <div className="flex min-h-dvh flex-col">
             <div className="px-3 sm:px-5">
-              <TopNav />
+              <TopBar />
             </div>
             <main
               id="main-content"

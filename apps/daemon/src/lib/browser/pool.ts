@@ -312,7 +312,7 @@ export function reapIdleBrowserSessions(now = Date.now()): void {
   }
 }
 
-/** What the operator sees on the Agent page and in `agent browser status`. Never launches. */
+/** What the operator sees under Browser in the web workspace and in `agent browser status`. Never launches. */
 export function browserStatus(
   agentId: string,
   config: BrowserConfig,

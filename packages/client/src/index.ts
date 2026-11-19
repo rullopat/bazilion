@@ -115,17 +115,18 @@ export function createClient(cfg: ClientConfig) {
           input,
         ),
     },
-    /** Git change review: changes since a base, diffs, and file feedback. */
+    /** Git change review: changes since a base, diffs, who wrote them, and review feedback. */
     repositoryReview: (teamId: string) => {
       const base = `/api/teams/${encodeURIComponent(teamId)}/review`
       return {
         changes: (
-          options: { base?: string; patches?: boolean; path?: string } = {},
+          options: { base?: string; patches?: boolean; path?: string; authors?: boolean } = {},
         ): Promise<RepositoryReviewResponse> => {
           const params = new URLSearchParams()
           if (options.base !== undefined) params.set('base', options.base)
           if (options.patches) params.set('patches', '1')
           if (options.path !== undefined) params.set('path', options.path)
+          if (options.authors) params.set('authors', '1')
           const suffix = params.size ? `?${params}` : ''
           return request('GET', `${base}${suffix}`)
         },

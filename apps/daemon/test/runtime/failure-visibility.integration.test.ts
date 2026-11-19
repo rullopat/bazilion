@@ -57,7 +57,7 @@ describe('a daemon crash pauses the queue and the pause is visible', () => {
     expect(item?.title).toMatch(/paused after a daemon restart/i)
     expect(item?.diagnostic).toContain('1 follow-up waits')
     expect(item?.agentId).toBe(agentId)
-    expect(item?.href).toBe(`/agents/${agentId}`)
+    expect(item?.href).toBe(`/?agent=${agentId}`)
     expect(item?.acknowledgeable).toBe(false)
     expect(attentionSummary(env.db).byKind.queue_interrupted).toBe(1)
   })

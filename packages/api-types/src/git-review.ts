@@ -90,15 +90,40 @@ export interface RepositoryChanges {
   issues: ReviewIssue[]
 }
 
+/**
+ * The Agent whose turn last wrote a changed file with a file tool (`write`, `edit`). A change made
+ * by a shell command has no author here.
+ */
+export interface ReviewChangeAuthor {
+  agentId: string
+  agentName: string
+  /** The conversation the write happened in. */
+  conversationId: string
+  /** When the write happened (epoch ms). */
+  at: number
+}
+
 export interface RepositoryReviewResponse {
   teamId: string
   changes: RepositoryChanges
+  /** With `authors=1`: the last Agent to write each changed path, keyed by path. */
+  authors?: Record<string, ReviewChangeAuthor>
 }
 
-/** Queue feedback about one changed file for a Team member. */
-export interface ReviewFeedbackRequest {
+/** One comment of a review: about a changed file, or about one line of it. */
+export interface ReviewFeedbackComment {
+  /** A path changed since the base. */
   path: string
+  /** Line of the file as it is now (1-based). */
+  line?: number
+  note?: string
+}
+
+/** Queue review feedback for a Team member: every comment in one message. */
+export interface ReviewFeedbackRequest {
   agentId: string
+  comments: ReviewFeedbackComment[]
+  /** A note about the review as a whole. */
   note?: string
   /** Comparison base the operator is reviewing (default HEAD). */
   base?: string

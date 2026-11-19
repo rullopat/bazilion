@@ -20,11 +20,14 @@ export function SpawnDialog({
   profiles,
   teams,
   profileId: initialProfileId,
+  teamId: initialTeamId,
   onClose,
 }: {
   profiles: Profile[]
   teams: Team[]
   profileId?: string
+  /** The Team to offer first, e.g. the one in view. */
+  teamId?: string
   onClose: () => void
 }) {
   const navigate = useNavigate()
@@ -38,7 +41,10 @@ export function SpawnDialog({
   const [model, setModel] = useState('')
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([])
   const [teamId, setTeamId] = useState(
-    teams.find((team) => team.id === DEFAULT_TEAM_ID)?.id ?? teams[0]?.id ?? '',
+    teams.find((team) => team.id === initialTeamId)?.id ??
+      teams.find((team) => team.id === DEFAULT_TEAM_ID)?.id ??
+      teams[0]?.id ??
+      '',
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -112,8 +118,8 @@ export function SpawnDialog({
         </label>
         {restricted && (
           <p className="text-xs text-muted-foreground">
-            This Team is restricted: the new Agent starts with no allow edges. Add them on the Team
-            policy page.
+            This Team is restricted: the new Agent starts with no connections. Add them under
+            Connections.
           </p>
         )}
         {error && (

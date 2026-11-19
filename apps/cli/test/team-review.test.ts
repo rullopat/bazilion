@@ -75,6 +75,36 @@ test('team review lists changes, prints diffs on request and queues file feedbac
   expect(queued.exitCode, queued.stderr).toBe(0)
   expect(queued.stdout).toContain('Review feedback on app.txt (modified since HEAD')
   expect(queued.stdout).toContain('+three')
+  // A comment on one line sends the diff around that line.
+  const lined = await server.cli([
+    'team',
+    'review',
+    'feedback',
+    'default',
+    '--path',
+    'app.txt',
+    '--agent',
+    agent,
+    '--line',
+    '3',
+    '--note',
+    'Why three?',
+  ])
+  expect(lined.exitCode, lined.stderr).toBe(0)
+  expect(lined.stdout).toContain('Review feedback on app.txt, line 3 (modified since HEAD')
+  const badLine = await server.cli([
+    'team',
+    'review',
+    'feedback',
+    'default',
+    '--path',
+    'app.txt',
+    '--agent',
+    agent,
+    '--line',
+    'three',
+  ])
+  expect(badLine.exitCode).not.toBe(0)
   // The queue delivers it to the Agent as its next turn.
   await expect
     .poll(() => received.some((body) => body.includes('Keep the list ordered.')), {

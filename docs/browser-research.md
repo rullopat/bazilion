@@ -18,7 +18,8 @@ places: Chrome, then Brave, Edge and Chromium. On Linux those are paths such as
 When none is installed, the daemon downloads Chromium once (a few hundred MB on disk) into
 Playwright's browser cache: `~/.cache/ms-playwright` on Linux, `~/Library/Caches/ms-playwright` on
 macOS, or `PLAYWRIGHT_BROWSERS_PATH`. The download starts when the daemon starts; a browser action
-that comes first waits for it. The Agent page shows the download or why it failed.
+that comes first waits for it. **Browser** in the Agent's side panel shows the download or why it
+failed.
 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` in the daemon's environment turns the download off. On a Linux
 machine without a desktop, the downloaded Chromium can still miss system libraries; its start error
 names them, and `npx playwright install-deps chromium` installs them.
@@ -121,7 +122,7 @@ starts, or when its profile is reset or the Agent is deleted.
 
 ## Status, stop and reset
 
-On the web, the **Managed browser** card on the Agent page shows whether the browser runs, whether a
+On the web, **Browser** in the Agent's side panel shows whether the browser runs, whether a
 profile exists, which browser and mode are used and the last launch error, with **Stop session** and
 **Reset profile** buttons. From the CLI:
 

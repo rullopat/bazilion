@@ -39,7 +39,7 @@ function TeamTemplatePage() {
           Delete template
         </Button>
       </div>
-      <TeamPolicyEditor source={{ kind: 'template', template }} profiles={profiles} />
+      <TeamPolicyEditor template={template} profiles={profiles} />
       <ConfirmDialog
         open={confirmDelete}
         title={`Delete Team template ${template.name}?`}

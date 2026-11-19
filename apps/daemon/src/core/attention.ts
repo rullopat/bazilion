@@ -53,6 +53,13 @@ const bounded = (value: string | null, fallback: string): string =>
     .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[redacted]@')
     .slice(0, 500)
 
+/** The Agent's conversation in the web workspace, with one of its sheets open over it. */
+function agentHref(agentId: string | undefined, section?: 'learning' | 'schedules' | 'mailbox') {
+  const query = new URLSearchParams({ agent: agentId ?? '' })
+  if (section) query.set('section', section)
+  return `/?${query}`
+}
+
 const sources: Source[] = [
   {
     kind: 'lesson_proposal',
@@ -74,7 +81,7 @@ const sources: Source[] = [
             severity: 'action_required',
             title: 'Lesson proposal ready',
             diagnostic: 'A reviewed-learning proposal is waiting for approval or rejection.',
-            href: `/agents/${encodeURIComponent(r.agentId ?? '')}/learning`,
+            href: agentHref(r.agentId, 'learning'),
             acknowledgeable: false,
           }),
         ),
@@ -100,7 +107,7 @@ const sources: Source[] = [
             severity: 'error',
             title: r.status === 'cancelled' ? 'Agent review cancelled' : 'Agent review failed',
             diagnostic: bounded(r.diagnostic, 'The review stopped without completing.'),
-            href: `/agents/${encodeURIComponent(r.agentId ?? '')}/learning`,
+            href: agentHref(r.agentId, 'learning'),
             acknowledgeable: true,
           }),
         ),
@@ -124,7 +131,7 @@ const sources: Source[] = [
             severity: 'error',
             title: 'Scheduled trigger failed',
             diagnostic: bounded(r.diagnostic, 'The scheduled Agent turn failed.'),
-            href: `/agents/${encodeURIComponent(r.agentId ?? '')}/triggers`,
+            href: agentHref(r.agentId, 'schedules'),
             acknowledgeable: true,
           }),
         ),
@@ -149,7 +156,7 @@ const sources: Source[] = [
             severity: 'warning',
             title: 'Agent message loop stopped',
             diagnostic: `Message chain stopped at hop ${r.attempted_hop} (limit ${r.max_hops}).`,
-            href: `/agents/${encodeURIComponent(r.agentId ?? '')}/inbox`,
+            href: agentHref(r.agentId, 'mailbox'),
             acknowledgeable: true,
           }),
         ),
@@ -181,7 +188,7 @@ const sources: Source[] = [
             severity: 'action_required',
             title: 'Agent queue paused after a daemon restart',
             diagnostic: `The daemon restarted during a follow-up, which was not run again (${r.interrupted_count} interrupted). ${r.waiting_count} follow-up${r.waiting_count === 1 ? ' waits' : 's wait'} in the paused queue: check them, then resume the queue.`,
-            href: `/agents/${encodeURIComponent(r.agentId ?? '')}`,
+            href: agentHref(r.agentId),
             acknowledgeable: false,
           }),
         ),

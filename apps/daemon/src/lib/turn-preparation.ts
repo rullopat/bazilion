@@ -23,7 +23,7 @@ import {
 import { assertProviderReady } from './api-key.ts'
 import { saveInputFiles } from './attachments.ts'
 import { dockerTurn } from './coding-environment.ts'
-import { resolveConversationTarget } from './conversation-target.ts'
+import { resolveConversationTarget, titleConversationFromMessage } from './conversation-target.ts'
 import { getCtx } from './ctx.ts'
 import { loadRepositoryInstructions } from './repository-instructions.ts'
 
@@ -93,6 +93,10 @@ export async function prepareAgentTurn(request: TurnRequest): Promise<PreparedAg
     if (!claim) {
       registerAgent(agentId, controller)
       registered = true
+    }
+    // The operator's first message names a conversation that still has its numbered title.
+    if (request.origin === 'http' || request.origin === 'telegram') {
+      titleConversationFromMessage(db, paths, agentId, conversation.id, request.message)
     }
 
     // One rule for every origin: BAZILION_BASH_SANDBOX picks host or Docker bash.

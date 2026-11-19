@@ -1,7 +1,8 @@
 import type { Message } from '@bazilion/api-types'
-import { type ComponentType, createElement } from 'react'
+import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { expect, test, vi } from 'vitest'
+import { expect, test } from 'vitest'
+import { MailboxView } from '../src/components/agent/AgentMailbox.tsx'
 
 const unread: Message = {
   id: 'message-1',
@@ -15,38 +16,41 @@ const unread: Message = {
   readAt: null,
 }
 
-vi.mock('@tanstack/react-router', () => ({
-  createFileRoute: () => (options: Record<string, unknown>) => ({
-    ...options,
-    useLoaderData: () => ({
+test('the mailbox opens the newest unread message, can mark it read and send as another Agent', () => {
+  const html = renderToStaticMarkup(
+    createElement(MailboxView, {
+      agent: { id: 'agent-1', name: 'Ann' },
+      agents: [
+        { id: 'agent-1', name: 'Ann', status: 'idle' },
+        { id: 'agent-2', name: 'Bob', status: 'idle' },
+        { id: 'agent-3', name: 'Cyd', status: 'archived' },
+      ],
       messages: [unread],
-      unreadCount: 1,
-      selected: unread,
-      agentNames: { 'agent-1': 'Ann', 'agent-2': 'Bob' },
-      senders: [{ id: 'agent-2', name: 'Bob' }],
       loopBreaks: [],
+      onChanged: async () => {},
     }),
-    useSearch: () => ({}),
-  }),
-  getRouteApi: () => ({
-    useLoaderData: () => ({ agent: { id: 'agent-1', name: 'Ann' } }),
-  }),
-  useRouter: () => ({ invalidate: vi.fn() }),
-}))
-
-vi.mock('@tanstack/react-start', () => ({
-  createServerFn: () => ({ validator: () => ({ handler: () => vi.fn() }) }),
-}))
-
-vi.mock('../src/lib/daemon-client.ts', () => ({ daemonClient: vi.fn() }))
-
-import { Route } from '../src/routes/agents/$id/inbox.tsx'
-
-test('the inbox page can mark an unread message read and send a message as another Agent', () => {
-  const page = (Route as unknown as { component: ComponentType }).component
-  const html = renderToStaticMarkup(createElement(page))
+  )
 
   expect(html).toContain('Mark read')
+  expect(html).toContain('hello')
   expect(html).toContain('Send a message to this Agent')
   expect(html).toContain('Bob (agent-2)')
+  // An archived Agent cannot send, and the Agent does not write to itself.
+  expect(html).not.toContain('Cyd (agent-3)')
+  expect(html).not.toContain('Ann (agent-1)')
+})
+
+test('a mailbox with nothing unread opens no message', () => {
+  const html = renderToStaticMarkup(
+    createElement(MailboxView, {
+      agent: { id: 'agent-1', name: 'Ann' },
+      agents: [{ id: 'agent-2', name: 'Bob', status: 'idle' }],
+      messages: [{ ...unread, readAt: Date.UTC(2026, 7, 1, 11, 0) }],
+      loopBreaks: [],
+      onChanged: async () => {},
+    }),
+  )
+
+  expect(html).not.toContain('Mark read')
+  expect(html).toContain('0 unread')
 })

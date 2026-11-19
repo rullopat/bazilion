@@ -29,7 +29,6 @@ interface AgentNodeData extends Record<string, unknown> {
   member: PolicyMember
   isolated: boolean
   incomplete: boolean
-  live: boolean
 }
 
 interface OutsideNodeData extends Record<string, unknown> {
@@ -59,7 +58,7 @@ function AgentNode({ data, selected }: NodeProps<FlowNode<AgentNodeData, 'agent'
             {data.member.name}
           </span>
           <span className="mt-0.5 flex items-center gap-1.5 truncate text-[0.68rem] text-mocha-light">
-            {data.live ? (data.member.status ?? 'member') : 'slot'}
+            slot
           </span>
         </span>
         {data.isolated && (
@@ -152,7 +151,7 @@ export function TeamPolicyFlow({
         id: member.key,
         type: 'agent',
         position: member.position,
-        data: { member, isolated, incomplete, live: document.kind === 'live' },
+        data: { member, isolated, incomplete },
         ariaLabel: `${member.name}${isolated ? ', no allow edges' : ''}${incomplete ? ', incomplete' : ''}`,
         selected: selectedId === member.key,
         deletable: false,

@@ -1,4 +1,4 @@
-// Agent lifecycle calls shared by the sidebar, the Agents list and the Agent page.
+// Agent lifecycle calls shared by the workspace's list, its Agent tab and the Agents page.
 
 import { api } from './api'
 

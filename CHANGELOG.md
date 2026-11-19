@@ -5,6 +5,27 @@ Hand-written highlights per release. The full notes for every version are genera
 [`apps/cli/CHANGELOG.md`](apps/cli/CHANGELOG.md) (the `bazilion` package) and published as
 [GitHub releases](https://github.com/rullopat/bazilion/releases).
 
+## 0.50.0 — 2026-11-20
+
+A 0.27.x home opens as it is. The number jumps to mark the rework of the web UI.
+
+- **One workspace:** the home screen holds the Teams and their Agents, the open Agent's
+  conversation, and a side panel with the Agent, its Team, Connections, Changes and Files. The
+  Agent and Team pages are gone; their deeper parts open as sheets. See
+  [the workspace guide](docs/workspace.md).
+- **What each Agent is doing:** the list says `Working: writing theme.js`,
+  `Needs you: 1 question` or `2 new files` for every Agent, instead of a lifecycle status.
+- **A transcript that reads:** steps in words, hand-off cards that show what the teammate is
+  doing now, delivered pictures as pictures, and a link from a turn to the diff of what it wrote.
+- **Connections, Changes and Files across the whole width:** a map of who may message whom with
+  what they said, a side-by-side diff with line comments sent as one review, and a gallery of
+  delivered files with a zip download.
+- **Conversations:** continue an earlier one; a new one is named after your first message.
+- **From the CLI:** `bazilion activity`, `bazilion team messages`, `bazilion conversation select`
+  and `bazilion result archive`.
+- **Changed for scripts:** `/agents/<id>` and `/teams/<id>` web addresses no longer exist, and
+  `POST /api/teams/:id/review/feedback` takes a list of `comments`.
+
 ## 0.27.0 — 2026-11-19
 
 A 0.26.x home opens as it is.
