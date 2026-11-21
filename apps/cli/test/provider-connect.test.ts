@@ -125,6 +125,11 @@ test('a hosted provider connects with its suggested models; the key is never pri
   const bare = await server.cli(['provider', 'enable', 'groq'])
   expect(bare.exitCode).not.toBe(0)
   expect(bare.stderr).toContain('bazilion provider connect groq')
+
+  await server.cli(['provider', 'models-set', 'anthropic', 'claude-haiku-5-5'])
+  expect((await server.cli(['provider', 'list'])).stdout).toMatch(
+    /anthropic\s+not tested\s+1 model\s*$/m,
+  )
 })
 
 test('disconnect removes the key and the models', async () => {
