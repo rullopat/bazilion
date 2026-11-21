@@ -154,11 +154,38 @@ test('a caller that aborts stops waiting for a server still starting; the connec
 test('a session the HTTP server lost fails that call once; the next call reconnects', async () => {
   const { f, server } = await setup()
   await callMcpTool(server, 'foo', {}, { connect: bearer })
+  // The client's stream is open before the server restarts: this call is the first to find out.
+  await vi.waitFor(() => expect(f.streamCount).toBe(1))
   f.restart()
   await expect(callMcpTool(server, 'foo', {}, { connect: bearer })).rejects.toThrow(
     'MCP session expired',
   )
   expect(resources().mcp.has(server.id)).toBe(false)
+  expect(await callMcpTool(server, 'foo', {}, { connect: bearer })).toEqual([
+    { type: 'text', text: 'hello' },
+  ])
+  expect(count(f, 'initialize')).toBe(2)
+  // The failed call was not replayed.
+  expect(count(f, 'tools/call')).toBe(3)
+})
+
+test('a call under way when the stream finds the session lost fails the same way', async () => {
+  const { f, server } = await setup()
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  // The stream request is still on its way when the server restarts, and the next call is held
+  // at the server, so the stream is the first to learn that the session is gone.
+  f.holdStream()
+  await callMcpTool(server, 'foo', {}, { connect: bearer })
+  f.restart()
+  f.delay('tools/call')
+  const rejected = expect(callMcpTool(server, 'foo', {}, { connect: bearer })).rejects.toThrow(
+    'MCP session expired',
+  )
+  await vi.waitFor(() => expect(count(f, 'tools/call')).toBe(2))
+  f.releaseStream()
+  await rejected
+  expect(resources().mcp.has(server.id)).toBe(false)
+  f.release()
   expect(await callMcpTool(server, 'foo', {}, { connect: bearer })).toEqual([
     { type: 'text', text: 'hello' },
   ])
