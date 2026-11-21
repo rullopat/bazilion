@@ -28,7 +28,7 @@ beforeEach(() => {
 })
 afterEach(() => env.cleanup())
 
-test('a chat whose provider is disabled is refused with 409 before any worker starts', async () => {
+test('a chat whose provider is switched off is refused with 409 before any worker starts', async () => {
   // Ollama keeps first-run setup complete, so the refusal comes from the chat route itself.
   providerStateRepo.setEnabled(env.db, 'lmstudio', false)
   const response = await createApp().request(`/api/agents/${agentId}/chat`, {
@@ -38,7 +38,8 @@ test('a chat whose provider is disabled is refused with 409 before any worker st
   })
   expect(response.status).toBe(409)
   expect(await response.json()).toEqual({
-    error: 'lmstudio provider is disabled — enable it on the /config page',
+    error:
+      'lmstudio is switched off: connect it under Setup, Models, or run bazilion provider connect lmstudio',
   })
   expect(spawnWorkerTurn).not.toHaveBeenCalled()
 })

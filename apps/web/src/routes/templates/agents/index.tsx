@@ -325,7 +325,7 @@ function CreateProfileForm({
             />
             {modelGroups.length === 0 && (
               <p className="muted text-[0.85em]">
-                Enable a provider and curate its models under <a href="/config">Setup</a> first.
+                Connect a provider under <a href="/config">Setup</a> first.
               </p>
             )}
           </div>

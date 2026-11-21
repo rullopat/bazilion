@@ -43,6 +43,39 @@ export function ask(question: string): Promise<string> {
   })
 }
 
+/**
+ * Ask for a secret. On a terminal nothing typed or pasted is echoed; piped input is read as one
+ * line, so `bazilion provider connect anthropic < key.txt` works too.
+ */
+export function askSecret(question: string): Promise<string> {
+  const { stdin, stdout } = process
+  if (!stdin.isTTY) return ask(question)
+  stdout.write(question)
+  return new Promise((resolve, reject) => {
+    let value = ''
+    const finish = (error?: Error) => {
+      stdin.off('data', onData)
+      stdin.setRawMode(false)
+      stdin.pause()
+      stdout.write('\n')
+      if (error) reject(error)
+      else resolve(value.trim())
+    }
+    const onData = (chunk: Buffer | string) => {
+      for (const character of String(chunk)) {
+        if (character === '\r' || character === '\n') return finish()
+        // Ctrl-C and Ctrl-D leave without a key.
+        if (character === '\u0003' || character === '\u0004') return finish(new Error('cancelled'))
+        if (character === '\u007f' || character === '\b') value = value.slice(0, -1)
+        else if (character >= ' ') value += character
+      }
+    }
+    stdin.setRawMode(true)
+    stdin.resume()
+    stdin.on('data', onData)
+  })
+}
+
 /** Ask a yes/no question; only y or yes confirms. */
 export async function confirm(question: string): Promise<boolean> {
   return /^y(es)?$/i.test(await ask(`${question} [y/N] `))

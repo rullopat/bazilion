@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
-// End-to-end coverage for the /config page's HTTP surface — provider
-// enable/disable toggle and per-field storage dispatch.
+// End-to-end coverage for Setup's HTTP surface: the provider on/off switch and
+// per-field storage dispatch. Connecting a provider is in provider-connect.test.ts.
 //
 // The server fixture enables `lmstudio` + `ollama` by default (see
 // `initHome` in server-fixture.ts). These tests explicitly toggle them to
@@ -22,7 +22,7 @@ beforeEach(() => server.reset())
 interface ProviderEntry {
   id: string
   enabled: boolean
-  curated: string[]
+  models: string[]
   fields: { envVar: string; kind: 'secret' | 'config'; set: boolean }[]
 }
 
@@ -97,16 +97,20 @@ test('bazilion provider disable + enable round-trip via CLI', async () => {
   expect(after.enabled).toBe(true)
 })
 
-test('provider enable via API accepts {enabled: boolean} and round-trips state', async () => {
-  const res = await fetch(`${server.url}/api/config/providers/anthropic/enabled`, {
-    method: 'PUT',
-    headers: {
-      authorization: `Bearer ${server.token}`,
-      origin: server.url,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ enabled: true }),
-  })
+test('a provider is switched on through the API only once it has credentials', async () => {
+  const put = () =>
+    fetch(`${server.url}/api/config/providers/anthropic/enabled`, {
+      method: 'PUT',
+      headers: {
+        authorization: `Bearer ${server.token}`,
+        origin: server.url,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ enabled: true }),
+    })
+  expect((await put()).status).toBe(409)
+  await server.cli(['config', 'set', 'ANTHROPIC_API_KEY', 'sk-ant-testing-1234567890'])
+  const res = await put()
   expect(res.status).toBe(200)
   const body = (await res.json()) as { name: string; enabled: boolean }
   expect(body).toEqual({ name: 'anthropic', enabled: true })

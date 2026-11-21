@@ -19,6 +19,7 @@ import { Route as ConfigIndexRouteImport } from './routes/config/index'
 import { Route as AttentionIndexRouteImport } from './routes/attention/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
 import { Route as ConfigTokensRouteImport } from './routes/config/tokens'
+import { Route as ConfigSystemRouteImport } from './routes/config/system'
 import { Route as ConfigServicesRouteImport } from './routes/config/services'
 import { Route as ConfigMcpRouteImport } from './routes/config/mcp'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
@@ -78,6 +79,11 @@ const ConfigTokensRoute = ConfigTokensRouteImport.update({
   path: '/config/tokens',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfigSystemRoute = ConfigSystemRouteImport.update({
+  id: '/config/system',
+  path: '/config/system',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConfigServicesRoute = ConfigServicesRouteImport.update({
   id: '/config/services',
   path: '/config/services',
@@ -127,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/api/$': typeof ApiSplatRoute
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
+  '/config/system': typeof ConfigSystemRoute
   '/config/tokens': typeof ConfigTokensRoute
   '/agents/': typeof AgentsIndexRoute
   '/attention/': typeof AttentionIndexRoute
@@ -147,6 +154,7 @@ export interface FileRoutesByTo {
   '/api/$': typeof ApiSplatRoute
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
+  '/config/system': typeof ConfigSystemRoute
   '/config/tokens': typeof ConfigTokensRoute
   '/agents': typeof AgentsIndexRoute
   '/attention': typeof AttentionIndexRoute
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/api/$': typeof ApiSplatRoute
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
+  '/config/system': typeof ConfigSystemRoute
   '/config/tokens': typeof ConfigTokensRoute
   '/agents/': typeof AgentsIndexRoute
   '/attention/': typeof AttentionIndexRoute
@@ -190,6 +199,7 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/config/mcp'
     | '/config/services'
+    | '/config/system'
     | '/config/tokens'
     | '/agents/'
     | '/attention/'
@@ -210,6 +220,7 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/config/mcp'
     | '/config/services'
+    | '/config/system'
     | '/config/tokens'
     | '/agents'
     | '/attention'
@@ -230,6 +241,7 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/config/mcp'
     | '/config/services'
+    | '/config/system'
     | '/config/tokens'
     | '/agents/'
     | '/attention/'
@@ -251,6 +263,7 @@ export interface RootRouteChildren {
   ApiSplatRoute: typeof ApiSplatRoute
   ConfigMcpRoute: typeof ConfigMcpRoute
   ConfigServicesRoute: typeof ConfigServicesRoute
+  ConfigSystemRoute: typeof ConfigSystemRoute
   ConfigTokensRoute: typeof ConfigTokensRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   AttentionIndexRoute: typeof AttentionIndexRoute
@@ -337,6 +350,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfigTokensRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/config/system': {
+      id: '/config/system'
+      path: '/config/system'
+      fullPath: '/config/system'
+      preLoaderRoute: typeof ConfigSystemRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/config/services': {
       id: '/config/services'
       path: '/config/services'
@@ -403,6 +423,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSplatRoute: ApiSplatRoute,
   ConfigMcpRoute: ConfigMcpRoute,
   ConfigServicesRoute: ConfigServicesRoute,
+  ConfigSystemRoute: ConfigSystemRoute,
   ConfigTokensRoute: ConfigTokensRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   AttentionIndexRoute: AttentionIndexRoute,

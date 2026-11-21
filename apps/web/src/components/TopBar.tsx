@@ -50,7 +50,7 @@ const MANAGE_LINKS = [
   {
     href: '/config',
     label: 'Setup',
-    description: 'Providers, integrations, access, and services.',
+    description: 'Models and providers, services, integrations, access.',
     icon: Settings2,
   },
 ] as const

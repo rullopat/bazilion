@@ -135,11 +135,9 @@ const openaiLoginCmd = defineCommand({
     if (status.accountId) console.log(`account: ${status.accountId}`)
     console.log(`access token expires: ${formatExpiry(status.expiresAt)}`)
     console.log('')
-    console.log(`enable the 'openai-codex' provider on /config and save at least one model`)
-    console.log('to start using it. CLI equivalent:')
-    console.log('  bazilion provider enable openai-codex')
-    console.log('  bazilion provider models openai-codex      # lists the catalog')
-    console.log('  bazilion provider models-set openai-codex <model>')
+    console.log('choose its models and switch it on in one step:')
+    console.log('  bazilion provider connect openai-codex')
+    console.log('or under Setup, Models in the web UI.')
   },
 })
 

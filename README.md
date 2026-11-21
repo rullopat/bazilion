@@ -23,22 +23,22 @@ your browser. On first start the daemon creates `~/.bazilion` (or `$BAZILION_HOM
 database and a bootstrap token in `auth.json`. Sign in to the web UI with that token
 (`bazilion token show-local` prints it); the CLI reads it by itself.
 
-Until one provider is enabled with a saved model, every page leads to the setup page. Connect
-ChatGPT or paste an API key on `/config`, enable the provider and pick a model; Bazilion then
-creates a `default` Profile and a `default` Team, and you can spawn your first Agent from the
-home screen.
+Until one provider works, every page leads to the first-run screen: choose a provider, sign in
+with ChatGPT or paste an API key (or pick a model server running on this computer), and press
+**Connect and test**. Bazilion asks the model for a short reply, then creates a `default` Profile
+and a `default` Team, and **Start chatting** opens your first Agent.
 
 The same from a second terminal:
 
 ```sh
-bazilion auth openai login                       # ChatGPT account, or an API key:
-bazilion config set ANTHROPIC_API_KEY sk-ant-…   # stored encrypted (/config keeps it out of history)
-bazilion provider enable anthropic
-bazilion provider models-set anthropic claude-opus-5
+bazilion provider connect anthropic       # asks for the key, tests it, switches it on
+bazilion auth openai login && bazilion provider connect openai-codex    # or a ChatGPT plan
 
 bazilion agent spawn --profile default --name first
 bazilion agent chat <agent-id> --message "say hi"
 ```
+
+See [models and providers](docs/models-and-providers.md).
 
 `bazilion serve` starts only the daemon. Developed and run on Linux; macOS is untested; Windows
 is not supported.
@@ -96,12 +96,15 @@ open across the whole width, as a map, a side-by-side diff and a gallery. **Jump
 opens any Agent, Team or page by name.
 
 **Manage** holds the list pages: Agents, Teams, **Templates** (Agent and Team templates),
-**Skills** and **Setup** (`/config`: providers, services, MCP, Telegram, tokens). **Attention**
-lists what needs you. The web UI and the CLI offer the same management features.
+**Skills** and **Setup** (`/config`). Setup opens on **Models**: the chat models your Agents
+think with, the image model they draw with, and the providers behind them, each with whether it
+answers ([models and providers](docs/models-and-providers.md)). Its other tabs are services,
+MCP, Telegram, tokens and the system's health and backup. **Attention** lists what needs you.
+The web UI and the CLI offer the same management features.
 
 ## Configuration
 
-Settings are environment-variable-shaped keys. Set them on the `/config` pages or with
+Settings are environment-variable-shaped keys. Set them under **Setup** or with
 `bazilion config set <KEY> <value>` (secrets are stored encrypted, other values in plain text), or
 in the daemon's own environment, which wins. The ones you are most likely to change:
 
@@ -119,8 +122,9 @@ Read only from the process environment: `BAZILION_HOME` (the home directory), `H
 `BAZILION_SERVER` and `BAZILION_TOKEN`.
 
 ChatGPT sign-in: `bazilion auth openai login` runs the browser flow on `localhost:1455`
-(`--device-code` works headless or remote), or use **Connect ChatGPT** on `/config`. Then enable
-`openai-codex` and save a model. Credentials are stored encrypted and refreshed by the daemon.
+(`--device-code` works headless or remote), then `bazilion provider connect openai-codex`; in the
+web UI, choose ChatGPT under **Add a provider**. Credentials are stored encrypted and refreshed
+by the daemon.
 
 Telegram, MCP servers and remote access each have a guide: [Telegram](docs/telegram.md),
 [MCP](docs/mcp.md), [private gateway](docs/private-gateway.md).

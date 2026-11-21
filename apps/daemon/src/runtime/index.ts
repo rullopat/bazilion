@@ -18,7 +18,14 @@ export {
   loadSessionMessages,
   openConversation,
 } from './pi/session.ts'
-export { listCatalogModels, listCatalogModelsSync } from './providers/catalog.ts'
+export type { CatalogEntry } from './providers/catalog.ts'
+export {
+  datedCopies,
+  listCatalogEntries,
+  listCatalogModels,
+  listCatalogModelsSync,
+  listLiveModels,
+} from './providers/catalog.ts'
 export { testProviderModel } from './providers/pi-runtime.ts'
 export type { PromptSection } from './session/prompt.ts'
 export type {

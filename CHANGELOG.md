@@ -5,6 +5,27 @@ Hand-written highlights per release. The full notes for every version are genera
 [`apps/cli/CHANGELOG.md`](apps/cli/CHANGELOG.md) (the `bazilion` package) and published as
 [GitHub releases](https://github.com/rullopat/bazilion/releases).
 
+## 0.51.0 — 2026-11-21
+
+A 0.50.x home opens as it is.
+
+- **Setup opens on Models:** the chat models your Agents think with, the image model they draw
+  with, and the providers behind them, on one page. Each model shows its name, how much it can
+  read, whether it sees images, its list price and who uses it. See
+  [models and providers](docs/models-and-providers.md).
+- **A provider is connected in one step:** paste the key (or sign in with ChatGPT, or point at a
+  local server), keep the suggested models, press **Connect and test**. It is on once a model
+  answers, and a key that does not work is never saved. `bazilion provider connect <id>` does
+  the same from a terminal.
+- **A state that was checked:** every provider says what its last test found, in plain words,
+  with the provider's own message one click away. "Enabled" without a key no longer exists.
+- **First run on one screen:** choose a provider, connect it, start chatting. Local model
+  servers are found at their usual addresses.
+- **Changed for scripts:** `bazilion provider list` shows only the providers in use (`--all`
+  lists every one); a provider cannot be enabled without credentials;
+  `GET /api/config/providers` has a new shape and `GET /api/config/providers/:id/models` is
+  gone (use `…/catalog`); image generation is under `functions` in `GET /api/config/services`.
+
 ## 0.50.0 — 2026-11-20
 
 A 0.27.x home opens as it is. The number jumps to mark the rework of the web UI.

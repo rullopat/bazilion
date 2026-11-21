@@ -47,7 +47,8 @@ In Docker mode every command is one `docker run --rm` with:
 Cancelling a turn removes its running container; containers a killed worker or a stopped daemon
 left behind are removed at the end of the turn and when the daemon starts. If Docker or the image
 is missing, the command fails and the Agent sees the error; nothing falls back to the host.
-`bazilion doctor` and `/config` show whether the configured image is available.
+`bazilion doctor` and **Setup → System** (`/config/system`) show whether the configured image is
+available.
 
 ## The image
 

@@ -20,7 +20,7 @@ export interface AgentApiKey {
 
 /**
  * Refuse a `provider:model` its provider cannot serve: a malformed model, an unknown provider, a
- * provider disabled on /config, or `openai-codex` without a connected ChatGPT account.
+ * provider that is switched off in Setup, or `openai-codex` without a ChatGPT sign-in.
  */
 export function assertProviderReady(db: BazilionDb, authToken: string, model: string): void {
   let providerName: string
@@ -34,12 +34,12 @@ export function assertProviderReady(db: BazilionDb, authToken: string, model: st
   }
   if (!providerStateRepo.listEnabled(db).has(providerName)) {
     throw new ExecutionUnavailableError(
-      `${providerName} provider is disabled — enable it on the /config page`,
+      `${providerName} is switched off: connect it under Setup, Models, or run bazilion provider connect ${providerName}`,
     )
   }
   if (providerName === 'openai-codex' && !hasOpenAICodexCredentials(db, authToken)) {
     throw new ExecutionUnavailableError(
-      'openai-codex is not connected — run `bazilion auth openai login` or click Connect on /config',
+      'ChatGPT is not signed in: sign in under Setup, Models, or run bazilion auth openai login',
     )
   }
 }

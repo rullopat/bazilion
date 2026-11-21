@@ -1,13 +1,13 @@
-// Per-service field registry — the shape of the /config page.
+// Per-service field registry — the settings Setup (`/config`) and `bazilion config` know.
 //
 // Each entry describes one "thing" the user might configure: an LLM provider
-// (from the provider table in providers.ts) or an ancillary service (Brave
-// Search, SearXNG, …). Fields know which storage backend they live in:
-// `secret` → the encrypted `secrets` table, `config` → the plaintext `config`
-// table. The registry is the single source of truth for the UI layout and for
-// the generic field-write endpoint's dispatch.
+// (from the provider table in providers.ts), a model function (image generation)
+// or an ancillary service (Brave Search, SearXNG, …). Fields know which storage
+// backend they live in: `secret` → the encrypted `secrets` table, `config` → the
+// plaintext `config` table. The registry is the single source of truth for the
+// Services page and for the generic field-write endpoint's dispatch.
 
-import { IMAGE_MODEL_CHOICES } from './image-generation-config.ts'
+import { IMAGE_MODEL_CHOICES, IMAGE_ROUTES } from './image-generation-config.ts'
 import { PROVIDERS } from './providers.ts'
 
 export type FieldKind = 'secret' | 'config'
@@ -21,9 +21,12 @@ export interface ServiceField {
   description?: string
   options?: readonly string[]
   optionLabels?: Readonly<Record<string, string>>
+  /** A field most installations never set; shown under "More settings". */
+  advanced?: boolean
 }
 
-export type ServiceCategory = 'provider' | 'service' | 'integration'
+/** `function` is a model function with its own place on the Models page (image generation). */
+export type ServiceCategory = 'provider' | 'function' | 'service' | 'integration'
 
 export interface ServiceDef {
   /** For providers, the provider id (e.g. 'anthropic'). */
@@ -74,8 +77,8 @@ export const SERVICES: ServiceDef[] = [
   {
     id: 'image-generation',
     displayName: 'Image generation',
-    category: 'service',
-    team: 'Content tools',
+    // Chosen under Images on the Models page; the field stays here for `bazilion config`.
+    category: 'function',
     hint: 'The image_generate tool: images are saved to Team Results. At most four image_generate calls per turn.',
     fields: [
       {
@@ -85,13 +88,10 @@ export const SERVICES: ServiceDef[] = [
         options: IMAGE_MODEL_CHOICES,
         optionLabels: {
           off: 'Off',
-          'openai-codex:gpt-image-2': 'GPT Image 2 · ChatGPT login',
-          'openai:gpt-image-2': 'GPT Image 2 · OpenAI API key',
-          'openrouter:google/gemini-3.1-flash-image': 'Gemini 3.1 Flash Image · OpenRouter',
-          'openrouter:openai/gpt-image-2': 'GPT Image 2 · OpenRouter',
+          ...Object.fromEntries(IMAGE_ROUTES.map((route) => [route.id, route.label])),
         },
         description:
-          'Off by default. API-key routes are billed per image; the ChatGPT login uses your subscription.',
+          'Off by default. API-key routes are billed per image; the ChatGPT sign-in uses your subscription.',
       },
     ],
   },

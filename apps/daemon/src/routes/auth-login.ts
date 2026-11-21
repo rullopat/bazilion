@@ -27,6 +27,7 @@ import {
   WEB_OPENAI_LOGIN_TIMEOUT_MS,
   webOpenAILoginError,
 } from '../lib/openai-oauth-prompt.ts'
+import { recordProviderTest } from '../lib/provider-setup.ts'
 import {
   clearOpenAICodexCredentials,
   getOpenAICodexStatus,
@@ -137,27 +138,35 @@ authRouter.post('/providers/test', async (c) => {
     return c.json({ error: 'model is required' }, 400)
   }
   const message = typeof body.message === 'string' && body.message ? body.message : 'say hi briefly'
-  const { db, authToken, paths } = getCtx()
+  const ctx = getCtx()
+  const { db, authToken, paths } = ctx
+  let tested: { providerName: string; modelId: string } | undefined
+  const started = Date.now()
   try {
     assertProviderReady(db, authToken, body.model)
-    const { providerName, modelId } = parseModelString(body.model)
+    tested = parseModelString(body.model)
     const res = await testProviderModel({
-      providerName,
-      modelId,
+      ...tested,
       env: mergeSecretsIntoEnv(db, authToken),
-      ...(providerName === 'openai-codex'
+      ...(tested.providerName === 'openai-codex'
         ? { apiKey: await loadOpenAICodexAccessToken(db, authToken) }
         : {}),
       message,
       signal: c.req.raw.signal,
     })
+    recordProviderTest(ctx, tested.providerName, tested.modelId, { ms: Date.now() - started })
     // Provider setup mutations may already have crossed the readiness
     // threshold; repeat the idempotent seed after a real successful request
     // so first-run completion can be coupled to this proof without a race.
     ensureSetupSeeded(db, paths)
     return c.json(res satisfies ProviderTestResponse)
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
+    const error = (err as Error).message
+    // A request that reached the provider says something about it; a refused model string does not.
+    if (tested && !c.req.raw.signal.aborted) {
+      recordProviderTest(ctx, tested.providerName, tested.modelId, { error })
+    }
+    return c.json({ error }, 400)
   }
 })
 

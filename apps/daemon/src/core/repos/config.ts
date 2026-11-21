@@ -18,7 +18,11 @@ import { SERVICES } from '../services.ts'
  * (polling watermarks, derived topic ids, …). Kept here so the allowlist
  * still gates accidental misuse from the generic field write endpoint.
  */
+/** The outcome of each provider's last test, as JSON; core/provider-checks.ts reads and writes it. */
+export const PROVIDER_CHECKS_KEY = 'PROVIDER_CHECKS'
+
 const INTERNAL_CONFIG_KEYS: readonly string[] = [
+  PROVIDER_CHECKS_KEY,
   // Telegram: polling watermark + derived topic/message ids.
   'TELEGRAM_LAST_UPDATE_ID',
   'TELEGRAM_SERVICE_TOPIC_ID',

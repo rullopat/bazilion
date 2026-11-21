@@ -95,7 +95,8 @@ Daemon paths are again relative to `apps/daemon/`.
   command in `apps/cli/src/commands/` and a web page or component; both clients call the same
   route.
 - A setting: a field in `src/core/services.ts` (a provider: an entry in `src/core/providers.ts`).
-  It then shows on `/config` and is accepted by `bazilion config set`.
+  It then shows under Setup (`/config`; a provider under **Add a provider**) and is accepted by
+  `bazilion config set`.
 - An Agent tool: a handler in `src/runtime/tools/`, added in `src/runtime/pi/tools.ts`. When it
   needs the daemon (the database, credentials, a long-lived resource), add a host in `src/lib/`,
   an RPC method and the worker-side proxy.

@@ -107,7 +107,6 @@ export const doctorCommand = defineCommand({
     console.log(`  ${r.triggers.active} active trigger(s), ${r.triggers.disabled} disabled`)
     console.log(`  ${r.tokens.active} active web token(s)`)
 
-    const anyCloudProvider = r.providers.configured.length > 0
     const hasProfiles = (r.database?.ok ? r.database.profiles : 0) > 0
     const hasAgents = (r.database?.ok ? r.database.totalAgents : 0) > 0
 
@@ -121,13 +120,12 @@ export const doctorCommand = defineCommand({
     if (!hasProfiles || !hasAgents) {
       console.log('next steps')
       const todo: string[] = []
-      if (!anyCloudProvider) {
-        todo.push('  - set a cloud api key (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY)')
-        todo.push('    or make sure LMStudio / Ollama is running locally')
-      }
       if (!hasProfiles) {
-        todo.push('  - enable a provider: bazilion provider enable <provider>')
-        todo.push('  - save a model: bazilion provider models-set <provider> <model-id>')
+        todo.push('  - connect a provider: bazilion provider connect <provider>')
+        todo.push(
+          '    (anthropic, openai, google, openai-codex after `bazilion auth openai login`,',
+        )
+        todo.push('    or a local lmstudio / ollama; `bazilion provider list --all` has the rest)')
       }
       if (!hasAgents) todo.push('  - spawn an agent: bazilion agent spawn --profile <id>')
       for (const line of todo) console.log(line)
