@@ -239,6 +239,6 @@ test.each([
   providerStateRepo.setEnabled(env.db, 'lmstudio', false)
   const refused = new AbortController()
   registerAgent(agentId, refused)
-  await expect(scheduled(refused)).rejects.toThrow(/disabled/)
+  await expect(scheduled(refused)).rejects.toThrow(/switched off/)
   expect(isActiveAgent(agentId)).toBe(false)
 })

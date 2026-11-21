@@ -27,7 +27,9 @@ const set = (key: string, value: string) =>
   })
 async function card() {
   const body = (await (await configRouter.request('/services')).json()) as ServiceConfigResponse
-  const service = body.services.find((service) => service.id === 'image-generation')
+  // A model function: chosen on the Models page, so the Services page does not list it.
+  expect(body.services.map((service) => service.id)).not.toContain('image-generation')
+  const service = body.functions.find((service) => service.id === 'image-generation')
   if (!service) throw new Error('Missing image service')
   return service
 }

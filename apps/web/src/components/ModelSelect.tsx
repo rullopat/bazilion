@@ -1,11 +1,11 @@
 import type { ModelGroup } from '@bazilion/api-types'
 
-/** Curated chat models grouped by provider: an AvailableModelsResponse. */
+/** The chat models Agents may use, grouped by provider: an AvailableModelsResponse. */
 export const AVAILABLE_MODELS_PATH = '/api/config/available-models'
 
 /**
- * A labelled `provider:model` picker over the curated models. `emptyOption` labels the "no choice"
- * entry (for example "Use the template default"); a value outside the curated list stays selectable.
+ * A labelled `provider:model` picker over the chat models in use. `emptyOption` labels the "no
+ * choice" entry (for example "Use the template default"); a value outside the list stays selectable.
  */
 export function ModelSelect({
   label,
@@ -22,7 +22,7 @@ export function ModelSelect({
   emptyOption?: string
   required?: boolean
 }) {
-  const curated = groups.some((group) =>
+  const listed = groups.some((group) =>
     group.models.some((model) => `${group.provider}:${model}` === value),
   )
   return (
@@ -39,11 +39,11 @@ export function ModelSelect({
         ) : (
           !value && (
             <option value="" disabled>
-              {groups.length === 0 ? 'No curated models: enable one under Setup' : 'Pick a model'}
+              {groups.length === 0 ? 'No chat model yet: add one under Setup' : 'Pick a model'}
             </option>
           )
         )}
-        {value && !curated && <option value={value}>{value} (not curated)</option>}
+        {value && !listed && <option value={value}>{value} (not in Chat)</option>}
         {groups.map((group) => (
           <optgroup key={group.provider} label={group.provider}>
             {group.models.map((model) => {

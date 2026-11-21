@@ -122,7 +122,7 @@ test('a provider that cannot serve the Agent is refused at admission, before any
   providerStateRepo.setEnabled(env.db, 'lmstudio', false)
   await expect(runTurn('http')).rejects.toMatchObject({
     name: 'ExecutionUnavailableError',
-    message: expect.stringMatching(/lmstudio provider is disabled/),
+    message: expect.stringMatching(/lmstudio is switched off/),
   })
 
   createProfile(env.db, env.paths, { id: 'codex', defaultModel: 'openai-codex:gpt-6-astra' })
@@ -130,7 +130,7 @@ test('a provider that cannot serve the Agent is refused at admission, before any
   providerStateRepo.setEnabled(env.db, 'openai-codex', true)
   await expect(runTurn('http')).rejects.toMatchObject({
     name: 'ExecutionUnavailableError',
-    message: expect.stringMatching(/openai-codex is not connected/),
+    message: expect.stringMatching(/ChatGPT is not signed in/),
   })
   expect(spawned).toEqual([])
 })

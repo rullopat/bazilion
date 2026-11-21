@@ -55,7 +55,7 @@ export function SpawnDialog({
     api<AvailableModelsResponse>(AVAILABLE_MODELS_PATH, { signal: controller.signal })
       .then((response) => setModelGroups(response.teams))
       .catch(() => {
-        // Without the curated list the template default still applies.
+        // Without the list of chat models the template default still applies.
       })
     return () => controller.abort()
   }, [])

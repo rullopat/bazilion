@@ -29,7 +29,7 @@ and keeps the old one. You choose which account pays.
 
 ## As built
 
-- Settings: **Content tools → Image generation** on `/config/services`, or
+- Settings: **Images** on **Setup → Models** (`/config`), or
   `bazilion config set BAZILION_IMAGE_MODEL <value>`; the card says whether the account is ready.
 - Code: `apps/daemon/src/lib/image-generation.ts` (the daemon host) and the `image_generate` tool.
 - Images are saved like delivered files ([BAZ-034](BAZ-034-durable-agent-deliverables.md)).

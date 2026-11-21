@@ -1,77 +1,247 @@
 import type {
+  ConnectProviderRequest,
+  ConnectProviderResponse,
+  ProviderCatalogResponse,
+  ProviderCheck,
+  ProviderConfigEntry,
   ProviderConfigResponse,
+  ProviderFailure,
   ProviderTestRequest,
   ProviderTestResponse,
   SetProviderEnabledResponse,
   SetProviderModelsRequest,
   SetProviderModelsResponse,
+  TestProviderResponse,
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
-import { createClient } from '../client.ts'
-import { apiPath, positional, printRows } from '../command-helpers.ts'
+import { type BazilionClient, createClient } from '../client.ts'
+import { apiPath, askSecret, confirm, positional, printRows } from '../command-helpers.ts'
+import { collectFlagValues } from '../repeatable-args.ts'
 
 const providerArg = positional('Provider id (e.g. anthropic)')
+
+const STATE: Record<ProviderConfigEntry['state'], string> = {
+  working: 'working',
+  failing: 'failing',
+  untested: 'not tested',
+  incomplete: 'needs credentials',
+  off: 'off',
+}
+
+async function loadProvider(client: BazilionClient, id: string): Promise<ProviderConfigEntry> {
+  const { providers } = await client.get<ProviderConfigResponse>('/api/config/providers')
+  const provider = providers.find((entry) => entry.id === id)
+  if (!provider) throw new Error(`unknown provider: ${id} (see: bazilion provider list --all)`)
+  return provider
+}
+
+function checkLine(check: ProviderCheck): string {
+  const when = new Date(check.at).toISOString().replace(/\.\d+Z$/, 'Z')
+  return check.ok
+    ? `${check.model} answered in ${((check.ms ?? 0) / 1000).toFixed(1)} s (${when})`
+    : `${check.failure?.title ?? 'failed'} (${when})`
+}
+
+function printFailure(failure: ProviderFailure): void {
+  console.error(failure.title)
+  console.error(failure.hint)
+  if (failure.detail) console.error(`details: ${failure.detail}`)
+}
 
 const listCmd = defineCommand({
   meta: {
     name: 'list',
-    description: 'List all providers with enabled/disabled state and curated model counts',
+    description: 'List the providers in use with their state; --all lists every provider',
   },
   args: {
-    enabled: { type: 'boolean', description: 'Show only enabled providers' },
+    all: { type: 'boolean', description: 'Also list providers that are not set up' },
+    enabled: { type: 'boolean', description: 'Show only providers that are switched on' },
   },
   async run({ args }) {
     const { providers } = await createClient().get<ProviderConfigResponse>('/api/config/providers')
     printRows(
       providers
-        .filter((p) => !args.enabled || p.enabled)
+        .filter((p) => (args.enabled ? p.enabled : args.all || p.listed))
         .map((p) => [
           p.id,
-          p.enabled ? 'enabled' : 'disabled',
-          `${p.curated.length} curated`,
-          `${p.catalog.length} catalog`,
+          p.listed ? STATE[p.state] : 'not set up',
+          `${p.models.length} models`,
+          p.check ? checkLine(p.check) : '',
         ]),
-      '(no providers to show)',
+      args.all
+        ? '(no providers to show)'
+        : '(no provider is set up: bazilion provider connect <id>, or list them all with --all)',
     )
+  },
+})
+
+const connectCmd = defineCommand({
+  meta: {
+    name: 'connect',
+    description:
+      'Connect a provider in one step: save its key or address, choose models, test, switch on',
+  },
+  args: {
+    name: providerArg,
+    key: {
+      type: 'string',
+      description: 'API key or access token (asked for, without echo, when left out)',
+    },
+    url: { type: 'string', description: 'Address of a local model server' },
+    set: {
+      type: 'string',
+      description: 'Another setting of the provider as NAME=value (repeatable)',
+    },
+    models: {
+      type: 'string',
+      description: 'Comma-separated chat models (default: the suggested ones)',
+    },
+    test: {
+      type: 'boolean',
+      default: true,
+      description: 'Ask a model for a short reply before saving anything (--no-test skips it)',
+    },
+  },
+  async run({ args, rawArgs }) {
+    const client = createClient()
+    const provider = await loadProvider(client, args.name)
+    const fields: Record<string, string> = {}
+    for (const pair of collectFlagValues(rawArgs, 'set')) {
+      const at = pair.indexOf('=')
+      if (at <= 0) throw new Error(`--set takes NAME=value, got "${pair}"`)
+      fields[pair.slice(0, at)] = pair.slice(at + 1)
+    }
+    const main = provider.fields.filter((field) => !field.advanced)
+    const secret = main.find((field) => field.kind === 'secret')
+    const address = main.find((field) => field.kind === 'config')
+    if (args.url) {
+      if (provider.connect !== 'local' || !address) {
+        throw new Error(`--url is for local model servers; ${provider.id} takes --key or --set`)
+      }
+      fields[address.envVar] = args.url
+    }
+    if (args.key) {
+      const target = secret ?? provider.fields.find((field) => field.kind === 'secret')
+      if (!target) throw new Error(`${provider.id} takes no key`)
+      fields[target.envVar] = args.key
+    } else if (secret && !provider.configured && !(secret.envVar in fields)) {
+      const typed = await askSecret(`${provider.displayName} ${secret.label}: `)
+      if (!typed) throw new Error('no key given')
+      fields[secret.envVar] = typed
+    }
+
+    const models = args.models
+      ?.split(',')
+      .map((model) => model.trim())
+      .filter(Boolean)
+    if (!models && provider.models.length === 0 && provider.suggested.length === 0) {
+      if (provider.connect !== 'local') {
+        throw new Error(
+          `choose chat models with --models (see: bazilion provider models ${provider.id})`,
+        )
+      }
+    }
+    // A local server suggests what it has loaded: ask it, with the address being connected.
+    let chosen = models
+    if (!chosen && provider.connect === 'local' && provider.models.length === 0) {
+      const catalog = await client.post<ProviderCatalogResponse>(
+        apiPath('config', 'providers', provider.id, 'catalog'),
+        { fields },
+      )
+      chosen = catalog.models.filter((model) => model.suggested).map((model) => model.id)
+    }
+
+    const body: ConnectProviderRequest = {
+      ...(Object.keys(fields).length > 0 ? { fields } : {}),
+      ...(chosen ? { models: chosen } : {}),
+      ...(args.test ? {} : { test: false }),
+    }
+    const result = await client.post<ConnectProviderResponse>(
+      apiPath('config', 'providers', provider.id, 'connect'),
+      body,
+    )
+    if (!result.connected) {
+      printFailure(result.failure)
+      console.error('Nothing was saved.')
+      process.exitCode = 1
+      return
+    }
+    console.log(`${result.provider.id}: connected`)
+    if (result.check) console.log(`  ${checkLine(result.check)}`)
+    else console.log('  not tested')
+    console.log(`  models: ${result.provider.models.join(', ') || '(none)'}`)
+    for (const dropped of result.dropped) console.log(`  left out: ${dropped.model}`)
+    for (const t of result.movedTemplates) console.log(`  template ${t.id} now uses ${t.model}`)
+  },
+})
+
+const disconnectCmd = defineCommand({
+  meta: {
+    name: 'disconnect',
+    description: 'Forget a provider: its stored key or sign-in, its chat models and its test',
+  },
+  args: {
+    name: providerArg,
+    yes: { type: 'boolean', description: 'Do not ask for confirmation' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    const provider = await loadProvider(client, args.name)
+    if (
+      !args.yes &&
+      !(await confirm(`Disconnect ${provider.displayName} and remove its stored credentials?`))
+    ) {
+      console.log('cancelled')
+      return
+    }
+    const result = await client.del<SetProviderModelsResponse>(
+      apiPath('config', 'providers', provider.id),
+    )
+    console.log(`${provider.id}: disconnected`)
+    for (const t of result.movedTemplates) console.log(`template ${t.id} now uses ${t.model}`)
   },
 })
 
 const modelsCmd = defineCommand({
   meta: {
     name: 'models',
-    description: 'Show curated + catalog + live models for one provider',
+    description: 'Show a provider’s chat models: the ones Agents may use, and what it offers',
   },
   args: { name: providerArg },
   async run({ args }) {
-    const { providers } = await createClient().get<ProviderConfigResponse>('/api/config/providers')
-    const p = providers.find((x) => x.id === args.name)
-    if (!p) throw new Error(`unknown provider: ${args.name}`)
-    console.log(`# ${p.id} (${p.enabled ? 'enabled' : 'disabled'})`)
+    const client = createClient()
+    const p = await loadProvider(client, args.name)
+    const catalog = await client.get<ProviderCatalogResponse>(
+      apiPath('config', 'providers', p.id, 'catalog'),
+    )
+    console.log(`# ${p.id} (${p.listed ? STATE[p.state] : 'not set up'})`)
     if (p.hint) console.log(`  ${p.hint}`)
     for (const field of p.fields) console.log(`  ${field.envVar}: ${field.set ? 'set' : 'unset'}`)
-    if (!p.enabled) console.log(`  (enable with \`bazilion provider enable ${p.id}\`)`)
+    if (!p.enabled) console.log(`  (connect with \`bazilion provider connect ${p.id}\`)`)
 
-    console.log('\n## curated')
-    if (p.curated.length === 0) console.log('  (none — use `provider models-set` to pin some)')
-    else for (const m of p.curated) console.log(`  ${m}`)
+    console.log('\n## in use')
+    if (p.models.length === 0) console.log('  (none: `provider connect` or `provider models-set`)')
+    else for (const m of p.models) console.log(`  ${m}`)
 
-    console.log('\n## catalog (from pi-ai)')
-    if (p.catalog.length === 0) console.log('  (empty)')
-    else for (const m of p.catalog) console.log(`  ${m}`)
-
-    if (p.live) {
-      console.log('\n## live (from upstream /v1/models)')
-      if (p.live.error) console.log(`  (error: ${p.live.error})`)
-      else if (p.live.models.length === 0) console.log('  (empty)')
-      else for (const m of p.live.models) console.log(`  ${m}`)
-    }
+    console.log('\n## offered')
+    if (catalog.listError) console.log(`  (the provider's own list failed: ${catalog.listError})`)
+    printRows(
+      catalog.models.map((model) => [
+        `  ${model.id}`,
+        model.name ?? '',
+        model.contextWindow ? `${Math.round(model.contextWindow / 1000)}K` : '',
+        model.price ? `$${model.price.input} in, $${model.price.output} out per 1M` : '',
+        model.suggested ? 'suggested' : '',
+      ]),
+      '  (nothing listed)',
+    )
   },
 })
 
 const modelsSetCmd = defineCommand({
   meta: {
     name: 'models-set',
-    description: 'Replace the curated model list for a provider (comma-separated)',
+    description: 'Replace the chat models Agents may use from a provider (comma-separated)',
   },
   args: {
     name: providerArg,
@@ -87,49 +257,61 @@ const modelsSetCmd = defineCommand({
       apiPath('config', 'providers', args.name, 'models'),
       body,
     )
-    console.log(`saved ${saved.models.length} curated model(s) for ${args.name}`)
+    console.log(`saved ${saved.models.length} model(s) for ${args.name}`)
     for (const m of saved.models) console.log(`  ${m}`)
     for (const t of saved.movedTemplates) console.log(`template ${t.id} now uses ${t.model}`)
   },
 })
 
+async function setEnabled(name: string, enabled: boolean): Promise<void> {
+  const res = await createClient().put<SetProviderEnabledResponse>(
+    apiPath('config', 'providers', name, 'enabled'),
+    { enabled },
+  )
+  console.log(`${res.name}: ${res.enabled ? 'enabled' : 'disabled'}`)
+}
+
 const enableCmd = defineCommand({
-  meta: { name: 'enable', description: 'Toggle a provider on so agents can use it' },
+  meta: { name: 'enable', description: 'Switch a connected provider back on' },
   args: { name: providerArg },
-  async run({ args }) {
-    const res = await createClient().put<SetProviderEnabledResponse>(
-      apiPath('config', 'providers', args.name, 'enabled'),
-      { enabled: true },
-    )
-    console.log(`${res.name}: enabled`)
-  },
+  run: ({ args }) => setEnabled(args.name, true),
 })
 
 const disableCmd = defineCommand({
   meta: {
     name: 'disable',
-    description: 'Toggle a provider off — agents will refuse its model strings',
+    description: 'Pause a provider without removing its key; Agents on its models are refused',
   },
   args: { name: providerArg },
-  async run({ args }) {
-    const res = await createClient().put<SetProviderEnabledResponse>(
-      apiPath('config', 'providers', args.name, 'enabled'),
-      { enabled: false },
-    )
-    console.log(`${res.name}: disabled`)
-  },
+  run: ({ args }) => setEnabled(args.name, false),
 })
 
 const testCmd = defineCommand({
-  meta: { name: 'test', description: 'Send a single chat to a model and print the reply' },
+  meta: {
+    name: 'test',
+    description: 'Test a provider (its cheapest model in use) or send one chat to a provider:model',
+  },
   args: {
-    model: positional('Model string, e.g. anthropic:claude-opus-4-8'),
-    message: { type: 'string', description: 'Message text (default "say hi briefly")' },
+    model: positional('Provider id, or a model string such as anthropic:claude-haiku-5-5'),
+    message: { type: 'string', description: 'Message text for a model string' },
   },
   async run({ args }) {
+    const client = createClient()
+    if (!args.model.includes(':')) {
+      const { check } = await client.post<TestProviderResponse>(
+        apiPath('config', 'providers', args.model, 'test'),
+      )
+      if (check.ok) {
+        console.log(`${args.model}: ${checkLine(check)}`)
+        return
+      }
+      if (check.failure) printFailure(check.failure)
+      process.exitCode = 1
+      return
+    }
     const body: ProviderTestRequest = { model: args.model, message: args.message }
     console.log(`-> ${args.model}: ${args.message ?? 'say hi briefly'}`)
-    const res = await createClient().post<ProviderTestResponse>('/api/providers/test', body)
+    const res = await client.post<ProviderTestResponse>('/api/providers/test', body)
     console.log(`<- ${res.content}`)
     if (res.usage) {
       console.log(`(${res.usage.promptTokens} in, ${res.usage.completionTokens} out)`)
@@ -138,13 +320,15 @@ const testCmd = defineCommand({
 })
 
 export const providerCommand = defineCommand({
-  meta: { name: 'provider', description: 'Manage and test LLM providers' },
+  meta: { name: 'provider', description: 'Connect, test and manage LLM providers' },
   subCommands: {
     list: listCmd,
-    enable: enableCmd,
-    disable: disableCmd,
+    connect: connectCmd,
+    disconnect: disconnectCmd,
+    test: testCmd,
     models: modelsCmd,
     'models-set': modelsSetCmd,
-    test: testCmd,
+    enable: enableCmd,
+    disable: disableCmd,
   },
 })

@@ -11,13 +11,14 @@ One setting, `BAZILION_IMAGE_MODEL`, chooses the model and the account that pays
 | Value | Account |
 | --- | --- |
 | `off` (default) | Image generation is off; Agents have no `image_generate` tool. |
-| `openai-codex:gpt-image-2` | Your ChatGPT login (**Connect ChatGPT** on `/config`, or `bazilion auth openai login`); uses the subscription. |
-| `openai:gpt-image-2` | `OPENAI_API_KEY` (the OpenAI card on `/config`); billed per image by OpenAI. |
+| `openai-codex:gpt-image-2` | Your ChatGPT login (ChatGPT under **Add a provider**, or `bazilion auth openai login`); uses the subscription. |
+| `openai:gpt-image-2` | `OPENAI_API_KEY` (the OpenAI provider); billed per image by OpenAI. |
 | `openrouter:google/gemini-3.1-flash-image` | `OPENROUTER_API_KEY`; billed by OpenRouter. |
 | `openrouter:openai/gpt-image-2` | `OPENROUTER_API_KEY`; billed by OpenRouter. |
 
-In the web UI, choose it on `/config/services` (**Content tools → Image generation**); the card's
-status line says whether the chosen account is ready. From the CLI:
+In the web UI, choose it under **Images** on **Setup → Models** (`/config`). Each choice says
+whether its account is ready, and one that is not has a button that connects the provider it
+needs. From the CLI:
 
 ```sh
 bazilion config set BAZILION_IMAGE_MODEL openai-codex:gpt-image-2

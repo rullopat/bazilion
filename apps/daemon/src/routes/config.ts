@@ -1,89 +1,129 @@
-// /api/config/* — provider matrix, services, per-provider enabled toggle and
-// curated models, and per-field config/secret writes.
+// /api/config/*: model providers (state, connect, test, disconnect, models), what Agents think
+// and draw with, service cards, and per-field config/secret writes.
 
 import type {
   AvailableModelsResponse,
-  ProviderConfigEntry,
+  ConnectProviderRequest,
+  ProviderCatalogRequest,
   ProviderConfigResponse,
   ServiceCard,
   ServiceConfigResponse,
-  ServiceFieldState,
+  SetProviderEnabledResponse,
   SetProviderModelsRequest,
-  SetProviderModelsResponse,
 } from '@bazilion/api-types'
-import { IMAGE_MODEL_CHOICES, imageRoute } from '../core/image-generation-config.ts'
+import { imageRoute } from '../core/image-generation-config.ts'
 import {
   type BazilionDb,
-  ensureSetupSeeded,
   findFieldByEnvVar,
   groupAvailableModels,
   mergeSecretsIntoEnv,
   openConfig,
   openSecrets,
-  providerModelRepo,
-  providerStateRepo,
-  replaceCuratedModels,
   type ServiceDef,
   servicesByCategory,
 } from '../core/index.ts'
-import { findProvider, PROVIDERS } from '../core/providers.ts'
 import { getCtx } from '../lib/ctx.ts'
+import {
+  connectProvider,
+  disconnectProvider,
+  discoverLocalProviders,
+  forgetChecksFor,
+  modelsOverview,
+  providerCatalog,
+  providerEntries,
+  requireProvider,
+  setProviderEnabled,
+  setProviderModels,
+  testProvider,
+} from '../lib/provider-setup.ts'
+import { fieldStates, readStoredSettings, writeSetting } from '../lib/setting-fields.ts'
 import { searchStatus } from '../lib/web-search.ts'
 import { hasCredentials } from '../runtime/auth/openai-codex.ts'
-import { listCatalogModels, listCatalogModelsSync } from '../runtime/index.ts'
 import { jsonBody, newRouter } from './http.ts'
 
 export const configRouter = newRouter()
 
-// /api/config/providers
-configRouter.get('/providers', async (c) => {
-  const { db, authToken } = getCtx()
-  const env = mergeSecretsIntoEnv(db, authToken)
-  const configValues = readAll(() => openConfig(db).getAll())
-  const secretValues = readAll(() => openSecrets(db, authToken).getAll())
+// ─── Providers ───────────────────────────────────────────────────────────
 
-  const enabledSet = providerStateRepo.listEnabled(db)
+// Every provider with its state. Nothing here asks a provider anything, so the page opens at
+// once whatever a local server is doing.
+configRouter.get('/providers', (c) =>
+  c.json({ providers: providerEntries(getCtx()) } satisfies ProviderConfigResponse),
+)
 
-  const entries = await Promise.all(
-    PROVIDERS.map(async (provider): Promise<ProviderConfigEntry> => {
-      const enabled = enabledSet.has(provider.id)
-      // Live model listings are fetched only for enabled providers, and briefly.
-      const { catalog, live } = enabled
-        ? await listCatalogModels(provider.id, env, AbortSignal.timeout(5_000))
-        : { catalog: listCatalogModelsSync(provider.id), live: undefined }
-      return {
-        id: provider.id,
-        displayName: provider.displayName,
-        ...(provider.hint ? { hint: provider.hint } : {}),
-        enabled,
-        fields: resolveFieldStates(provider, configValues, secretValues),
-        catalog: catalog.filter((model) => !isImageChoice(provider.id, model)),
-        ...(live
-          ? {
-              live: {
-                ...live,
-                models: live.models.filter((model) => !isImageChoice(provider.id, model)),
-              },
-            }
-          : {}),
-        curated: providerModelRepo.list(db, provider.id),
-      }
-    }),
+// Model servers answering at their usual addresses on this machine.
+configRouter.get('/providers/local', async (c) => c.json(await discoverLocalProviders(getCtx())))
+
+// A provider's chat models: the bundled catalog with its facts, plus the provider's own list.
+configRouter.get('/providers/:name/catalog', async (c) =>
+  c.json(await providerCatalog(getCtx(), c.req.param('name'), undefined, c.req.raw.signal)),
+)
+
+// The same with field values that are not saved yet (an address or key being typed).
+configRouter.post('/providers/:name/catalog', async (c) => {
+  const body = await jsonBody<ProviderCatalogRequest>(c)
+  return c.json(
+    await providerCatalog(getCtx(), c.req.param('name'), body?.fields, c.req.raw.signal),
   )
-
-  const body: ProviderConfigResponse = { providers: entries }
-  return c.json(body)
 })
 
-// /api/config/services — non-provider service cards (e.g. SearXNG, Brave).
+// Save, switch on and test in one step; a failed test saves nothing.
+configRouter.post('/providers/:name/connect', async (c) => {
+  const body = (await jsonBody<ConnectProviderRequest>(c)) ?? {}
+  return c.json(await connectProvider(getCtx(), c.req.param('name'), body, c.req.raw.signal))
+})
+
+// Ask the provider's cheapest chosen model again; the outcome is remembered.
+configRouter.post('/providers/:name/test', async (c) =>
+  c.json(await testProvider(getCtx(), c.req.param('name'), c.req.raw.signal)),
+)
+
+// Forget the provider: credentials, models, test.
+configRouter.delete('/providers/:name', (c) =>
+  c.json(disconnectProvider(getCtx(), c.req.param('name'))),
+)
+
+// Pause or resume a provider without touching its credentials.
+configRouter.put('/providers/:name/enabled', async (c) => {
+  const name = c.req.param('name')
+  requireProvider(name)
+  const enabled = (await jsonBody<{ enabled: unknown }>(c))?.enabled
+  if (typeof enabled !== 'boolean') {
+    return c.json({ error: 'body must be {"enabled": boolean}' }, 400)
+  }
+  setProviderEnabled(getCtx(), name, enabled)
+  return c.json({ name, enabled } satisfies SetProviderEnabledResponse)
+})
+
+// The chat models Agents may use from one provider.
+configRouter.put('/providers/:name/models', async (c) => {
+  const body = await jsonBody<SetProviderModelsRequest>(c)
+  if (!Array.isArray(body?.models)) {
+    return c.json({ error: 'models must be an array of strings' }, 400)
+  }
+  const models = body.models.filter((m): m is string => typeof m === 'string')
+  return c.json(setProviderModels(getCtx(), c.req.param('name'), models))
+})
+
+// ─── Models by function ──────────────────────────────────────────────────
+
+// What Agents think with (chat models, who uses each) and draw with (image routes).
+configRouter.get('/models', (c) => c.json(modelsOverview(getCtx())))
+
+// Chat models grouped by provider: the model menus of Agents and templates.
+configRouter.get('/available-models', (c) =>
+  c.json({ teams: groupAvailableModels(getCtx().db) } satisfies AvailableModelsResponse),
+)
+
+// ─── Services ────────────────────────────────────────────────────────────
+
+// Service cards (web search, the browser, …), and the model functions chosen on the Models page.
 configRouter.get('/services', (c) => {
   const { db, authToken } = getCtx()
-  const configValues = readAll(() => openConfig(db).getAll())
-  const secretValues = readAll(() => openSecrets(db, authToken).getAll())
-
+  const stored = readStoredSettings(db, authToken)
   const env = mergeSecretsIntoEnv(db, authToken)
   const image = imageRoute(env, hasCredentials(db, authToken))
-  const services: ServiceCard[] = servicesByCategory('service').map((svc) => ({
+  const card = (svc: ServiceDef): ServiceCard => ({
     ...(svc.id === 'image-generation'
       ? { status: image.ready ? `Ready: ${image.model}.` : image.reason }
       : {}),
@@ -92,59 +132,17 @@ configRouter.get('/services', (c) => {
     displayName: svc.displayName,
     ...(svc.hint ? { hint: svc.hint } : {}),
     ...(svc.team ? { team: svc.team } : {}),
-    fields: resolveFieldStates(svc, configValues, secretValues),
-  }))
-
-  const body: ServiceConfigResponse = { services }
-  return c.json(body)
+    fields: fieldStates(svc.fields, stored),
+  })
+  return c.json({
+    services: servicesByCategory('service').map(card),
+    functions: servicesByCategory('function').map(card),
+  } satisfies ServiceConfigResponse)
 })
 
-// /api/config/providers/:name/enabled — flip the admin switch.
-configRouter.put('/providers/:name/enabled', async (c) => {
-  const name = c.req.param('name')
-  if (!findProvider(name)) return c.json({ error: `unknown provider: ${name}` }, 404)
+// ─── Fields ──────────────────────────────────────────────────────────────
 
-  const enabled = (await jsonBody<{ enabled: unknown }>(c))?.enabled
-  if (typeof enabled !== 'boolean') {
-    return c.json({ error: 'body must be {"enabled": boolean}' }, 400)
-  }
-
-  const { db, paths } = getCtx()
-  providerStateRepo.setEnabled(db, name, enabled)
-  ensureSetupSeeded(db, paths)
-  return c.json({ name, enabled })
-})
-
-// /api/config/providers/:name/models — curated model list.
-configRouter.get('/providers/:name/models', (c) => {
-  const name = c.req.param('name')
-  if (!findProvider(name)) return c.json({ error: `unknown provider: ${name}` }, 404)
-  const { db } = getCtx()
-  return c.json({ models: providerModelRepo.list(db, name) })
-})
-
-configRouter.put('/providers/:name/models', async (c) => {
-  const name = c.req.param('name')
-  if (!findProvider(name)) return c.json({ error: `unknown provider: ${name}` }, 404)
-  const body = await jsonBody<SetProviderModelsRequest>(c)
-  if (!Array.isArray(body?.models)) {
-    return c.json({ error: 'models must be an array of strings' }, 400)
-  }
-  const models = body.models.filter((m): m is string => typeof m === 'string')
-
-  if (models.some((model) => isImageChoice(name, model.trim()))) {
-    return c.json(
-      { error: 'Configure image models in Services → Image generation, not as chat models.' },
-      400,
-    )
-  }
-  const { db, paths } = getCtx()
-  const saved = replaceCuratedModels(db, name, models)
-  ensureSetupSeeded(db, paths)
-  return c.json(saved satisfies SetProviderModelsResponse)
-})
-
-// /api/config/fields/:envVar — write-through for any envVar the registry knows.
+// Write-through for any setting the registry knows.
 configRouter.put('/fields/:envVar', async (c) => {
   const envVar = c.req.param('envVar')
   const field = findFieldByEnvVar(envVar)
@@ -159,24 +157,10 @@ configRouter.put('/fields/:envVar', async (c) => {
   }
 
   const { db, authToken } = getCtx()
-  if (field.kind === 'config') {
-    const store = openConfig(db)
-    if (body.value === '') store.remove(envVar)
-    else store.set(envVar, body.value)
-  } else {
-    const store = openSecrets(db, authToken)
-    if (body.value === '') store.remove(envVar)
-    else store.set(envVar, body.value)
-  }
-
+  writeSetting(db, authToken, field, body.value)
+  forgetChecksFor(db, envVar)
   return c.json(readFieldState(db, authToken, envVar, field.kind))
 })
-
-// /api/config/available-models — provider-grouped curated models. Drives
-// the model dropdowns on the profile + agent spawn pages.
-configRouter.get('/available-models', (c) =>
-  c.json({ teams: groupAvailableModels(getCtx().db) } satisfies AvailableModelsResponse),
-)
 
 configRouter.delete('/fields/:envVar', (c) => {
   const envVar = c.req.param('envVar')
@@ -184,59 +168,10 @@ configRouter.delete('/fields/:envVar', (c) => {
   if (!field) return c.json({ error: `unknown envVar: ${envVar}` }, 404)
 
   const { db, authToken } = getCtx()
-  if (field.kind === 'config') {
-    openConfig(db).remove(envVar)
-  } else {
-    openSecrets(db, authToken).remove(envVar)
-  }
+  writeSetting(db, authToken, field, '')
+  forgetChecksFor(db, envVar)
   return c.body(null, 204)
 })
-
-// ─── helpers ─────────────────────────────────────────────────────────────
-
-/** Image models are chosen under Services → Image generation, never as chat models. */
-function isImageChoice(provider: string, model: string): boolean {
-  return (IMAGE_MODEL_CHOICES as readonly string[]).includes(`${provider}:${model}`)
-}
-
-function mask(value: string): string {
-  if (value.length === 0) return ''
-  return value.length > 8 ? `${value.slice(0, 6)}…` : '***'
-}
-
-function resolveFieldStates(
-  service: Pick<ServiceDef, 'fields'>,
-  configValues: Record<string, string>,
-  secretValues: Record<string, string>,
-): ServiceFieldState[] {
-  return service.fields.map((f) => {
-    const val = (f.kind === 'config' ? configValues[f.envVar] : secretValues[f.envVar]) ?? ''
-    const state: ServiceFieldState = {
-      envVar: f.envVar,
-      kind: f.kind,
-      label: f.label,
-      set: val.length > 0,
-      ...(f.placeholder ? { placeholder: f.placeholder } : {}),
-      ...(f.description ? { description: f.description } : {}),
-      ...(f.options ? { options: f.options } : {}),
-      ...(f.optionLabels ? { optionLabels: f.optionLabels } : {}),
-    }
-    if (f.kind === 'config') {
-      state.value = val
-    } else if (val.length > 0) {
-      state.preview = mask(val)
-    }
-    return state
-  })
-}
-
-function readAll(read: () => Record<string, string>): Record<string, string> {
-  try {
-    return read()
-  } catch {
-    return {}
-  }
-}
 
 interface FieldState {
   envVar: string
@@ -257,5 +192,6 @@ function readFieldState(
     return { envVar, kind, set: v.length > 0, value: v }
   }
   const v = openSecrets(db, authToken).get(envVar) ?? ''
-  return { envVar, kind, set: v.length > 0, ...(v.length > 0 ? { preview: mask(v) } : {}) }
+  const preview = v.length > 8 ? `${v.slice(0, 6)}…` : '***'
+  return { envVar, kind, set: v.length > 0, ...(v.length > 0 ? { preview } : {}) }
 }

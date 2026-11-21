@@ -166,22 +166,29 @@ The daemon and the packed CLI pin `@earendil-works/pi-ai`, `pi-agent-core`, `pi-
 `pi-mcp` to the same version (1.5.2). An operator's own Pi install is not touched.
 
 - **Provider table.** `apps/daemon/src/core/providers.ts` has one `PROVIDERS` entry per provider:
-  its `/config` card, key and credential variables, Pi's id where it differs, an endpoint the
-  operator may set, local servers (LM Studio, Ollama, llama.cpp) and live `/models` listings.
-  Pi's bundled catalog supplies the model ids. Model strings are `provider:model`.
+  its fields, key and credential variables, Pi's id where it differs, an endpoint the operator
+  may set, local servers (LM Studio, Ollama, llama.cpp), live `/models` listings and the models
+  suggested when connecting. Pi's bundled catalog supplies the model ids with their names, sizes
+  and list prices. Model strings are `provider:model`.
 - **Model runtime.** `runtime/providers/pi-runtime.ts:createPiModel` builds a Pi `ModelRuntime`
   whose credentials live in memory only; Pi reads no auth or model files and fetches no catalog.
   An id that is not in the catalog goes only to an endpoint the provider declares, otherwise it
   fails as "Unknown model", so a typo never sends a key to another vendor's default URL.
-- **Enabled providers.** A provider is usable once it is enabled on `/config` or with
-  `bazilion provider enable <id>`; turns, compaction and the provider test refuse a disabled one.
-- **Model list.** Each provider's list on `/config` (`bazilion provider models-set <id> <models>`)
-  feeds the model pickers. Saving it without a model that an Agent template defaults to moves the
+- **Connected providers.** Connecting (`POST /api/config/providers/:id/connect`,
+  `bazilion provider connect <id>`, `lib/provider-setup.ts`) asks the cheapest chosen model for a
+  short reply and only then saves the fields and models and switches the provider on. Turns,
+  compaction and the provider test refuse a provider that is switched off, and one cannot be
+  switched on without credentials. See [models and providers](models-and-providers.md).
+- **Model list.** Each provider's chat models (`bazilion provider models-set <id> <models>`)
+  feed the model pickers. Saving it without a model that an Agent template defaults to moves the
   template to the provider's first remaining model, or to the first available model of another
   provider when none remains; the save reports each move. A template on a model that was never
   listed and an Agent's own model override are left as they are.
-- **Provider test.** `POST /api/providers/test` (`bazilion provider test <provider:model>`) sends
-  one short request through the same runtime and reports the reply or the provider's error.
+- **Provider test.** `POST /api/config/providers/:id/test` (`bazilion provider test <id>`) asks
+  a provider's cheapest chat model, and `POST /api/providers/test`
+  (`bazilion provider test <provider:model>`) one named model, through the same runtime. The
+  outcome is kept as the provider's state, with a failure worded for the operator
+  (`lib/provider-failure.ts`) beside the provider's own message.
 - **MCP** runs in the daemon with `pi-mcp`; workers only proxy calls. See [MCP](mcp.md).
 - **Web search and image generation** are daemon hosts, not Pi extensions. See
   [web research](web-research.md) and [image generation](image-generation.md).

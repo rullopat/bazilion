@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import type { BazilionDb } from './db/client.ts'
-import { openConfig } from './repos/config.ts'
+import { openConfig, PROVIDER_CHECKS_KEY } from './repos/config.ts'
 import { openSecrets } from './repos/secrets.ts'
 
 export interface AuthFile {
@@ -41,12 +41,14 @@ export function readAuthFile(authFile: string): AuthFile {
  * env-shaped record. Precedence (low → high): config → secrets → env. The
  * caller supplies the bootstrap `password` (typically `readAuthFile().token`)
  * because the secrets table is encrypted with it. A secret that does not
- * decrypt (corrupt row, other password) is left out.
+ * decrypt (corrupt row, other password) is left out. The record of provider
+ * tests is state, not a setting, and stays out.
  */
 export function mergeSecretsIntoEnv(
   db: BazilionDb,
   password: string,
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  return { ...openConfig(db).getAll(), ...openSecrets(db, password).getAll(), ...env }
+  const { [PROVIDER_CHECKS_KEY]: _checks, ...config } = openConfig(db).getAll()
+  return { ...config, ...openSecrets(db, password).getAll(), ...env }
 }

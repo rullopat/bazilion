@@ -24,7 +24,7 @@ async function saveModels(provider: string, models: string[]) {
 }
 const modelOf = (id: string) => profileRepo.get(env.db, id)?.defaultModel
 
-test('a template follows its model out of the curated list', async () => {
+test('a template follows its model out of the list of chat models', async () => {
   providerStateRepo.setEnabled(env.db, 'anthropic', true)
   expect(await saveModels('anthropic', ['mistyped'])).toEqual({
     models: ['mistyped'],
@@ -32,14 +32,14 @@ test('a template follows its model out of the curated list', async () => {
   })
   // First-run setup seeds the default template from the list.
   expect(modelOf(DEFAULT_PROFILE_ID)).toBe('anthropic:mistyped')
-  createProfile(env.db, env.paths, { id: 'pinned', defaultModel: 'anthropic:never-curated' })
+  createProfile(env.db, env.paths, { id: 'pinned', defaultModel: 'anthropic:never-listed' })
 
   expect(await saveModels('anthropic', ['corrected', 'second'])).toEqual({
     models: ['corrected', 'second'],
     movedTemplates: [{ id: DEFAULT_PROFILE_ID, name: 'Default', model: 'anthropic:corrected' }],
   })
   expect(modelOf(DEFAULT_PROFILE_ID)).toBe('anthropic:corrected')
-  expect(modelOf('pinned')).toBe('anthropic:never-curated')
+  expect(modelOf('pinned')).toBe('anthropic:never-listed')
 
   // Reordering or adding removes nothing, so nothing moves.
   expect((await saveModels('anthropic', ['second', 'corrected', 'third'])).movedTemplates).toEqual(

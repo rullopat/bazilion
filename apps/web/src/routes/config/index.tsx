@@ -1,669 +1,152 @@
 import type {
-  HealthReport,
-  OpenAICodexStatus,
-  ProviderConfigEntry,
+  ModelsResponse,
   ProviderConfigResponse,
-  SetProviderModelsResponse,
+  TestProviderResponse,
 } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { CheckCircle2, ChevronDown, ChevronRight, Search, Server } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { BackupCard } from '../../components/BackupCard'
-import { Button } from '../../components/Button'
+import { useState } from 'react'
 import { ConfigPage } from '../../components/ConfigPage'
-import { ConfirmDialog } from '../../components/ConfirmDialog'
-import { FieldRow } from '../../components/FieldRow'
+import { AddProviderDialog } from '../../components/setup/AddProviderDialog'
+import { ModelPicker } from '../../components/setup/ModelPicker'
 import {
-  type InstallationReadiness,
-  InstallationReadinessCard,
-} from '../../components/InstallationReadinessCard'
-import { EmptyState, Stat, StatusBadge } from '../../components/Page'
-import { RuntimeCard } from '../../components/RuntimeCard'
-import { api, errorMessage } from '../../lib/api'
+  ChatModelsCard,
+  ImagesCard,
+  ProvidersCard,
+  StatusLine,
+} from '../../components/setup/ModelsCards'
+import { ProviderSheet } from '../../components/setup/ProviderSheet'
+import { api } from '../../lib/api'
 import { daemonClient } from '../../lib/daemon-client'
-import {
-  groupProviders,
-  providerHasConfiguration,
-  providerReadiness,
-} from '../../lib/provider-presentation'
 
-interface ProvidersData {
-  providers: ProviderConfigEntry[]
-  openaiCodex: OpenAICodexStatus
-  runtime: HealthReport['shellSecurity']
-  readiness: InstallationReadiness
+/** What is open over the page, in the address so that a link or the back button finds it. */
+interface ModelsSearch {
+  /** A provider's sheet. */
+  provider?: string
+  /** "Add a provider": `new` for the list, or a provider id to connect straight away. */
+  add?: string
+  /** The chat model picker. */
+  pick?: true
 }
 
-const fetchProvidersData = createServerFn({ method: 'GET' }).handler(
-  async (): Promise<ProvidersData> => {
-    const c = daemonClient()
-    const [{ providers }, openaiCodex, health] = await Promise.all([
-      c.get<ProviderConfigResponse>('/api/config/providers'),
-      c.get<OpenAICodexStatus>('/api/auth/openai'),
-      c.get<HealthReport>('/api/health/details'),
-    ])
-    return {
-      providers,
-      openaiCodex,
-      runtime: health.shellSecurity,
-      readiness: { ok: health.ok },
-    }
-  },
-)
-
-export const Route = createFileRoute('/config/')({
-  loader: () => fetchProvidersData(),
-  component: ProvidersPage,
+const fetchModelsPage = createServerFn({ method: 'GET' }).handler(async () => {
+  const daemon = daemonClient()
+  const [{ providers }, models] = await Promise.all([
+    daemon.get<ProviderConfigResponse>('/api/config/providers'),
+    daemon.get<ModelsResponse>('/api/config/models'),
+  ])
+  // "Tested two minutes ago" is counted from one clock, on the server and in the browser.
+  return { providers, models, now: Date.now() }
 })
 
-function ProvidersPage() {
-  const { providers, openaiCodex, runtime, readiness } = Route.useLoaderData()
-  const setupComplete = providers.some((p) => p.enabled && p.curated.length > 0)
-  const startedComplete = useRef(setupComplete)
-  const [showCompletion, setShowCompletion] = useState(false)
-  const [query, setQuery] = useState('')
-  const sections = useMemo(() => groupProviders(providers, query), [providers, query])
-  const configured = providers.filter(providerHasConfiguration).length
-  const enabled = providers.filter((provider) => provider.enabled).length
+export const Route = createFileRoute('/config/')({
+  validateSearch: (search: Record<string, unknown>): ModelsSearch => ({
+    ...(typeof search.provider === 'string' && search.provider
+      ? { provider: search.provider }
+      : {}),
+    ...(typeof search.add === 'string' && search.add ? { add: search.add } : {}),
+    ...(search.pick === true || search.pick === 'true' ? { pick: true as const } : {}),
+  }),
+  loader: () => fetchModelsPage(),
+  component: ModelsPage,
+})
 
-  useEffect(() => {
-    if (!startedComplete.current && setupComplete) setShowCompletion(true)
-  }, [setupComplete])
-
-  return (
-    <ConfigPage
-      title="Providers"
-      description={
-        <>
-          Connect the model services your agents may use. Credentials stay encrypted; advanced
-          endpoint and environment names remain available inside each provider.
-        </>
-      }
-    >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Configured" value={configured} detail="credentials, models, or toggle" />
-        <Stat label="Enabled" value={enabled} detail="available to agents" />
-        <Stat
-          label="Selected models"
-          value={providers.reduce(
-            (count, provider) => count + (provider.enabled ? provider.curated.length : 0),
-            0,
-          )}
-          detail="across enabled providers"
-        />
-      </div>
-
-      <InstallationReadinessCard report={readiness} />
-
-      <BackupCard />
-
-      <RuntimeCard shell={runtime} />
-
-      {!setupComplete && <SetupBlockerBanner providers={providers} openaiCodex={openaiCodex} />}
-
-      {showCompletion && (
-        <section
-          role="status"
-          className="rounded-2xl border border-success/30 bg-success/10 p-5 text-sm"
-        >
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <h2 className="m-0 font-body text-base font-semibold text-foreground">
-                Your default workspace is ready
-              </h2>
-              <p className="mt-1 text-muted-foreground">
-                Bazilion created the default Agent template and Team. Test the selected model below
-                before relying on it, or continue to spawn your first agent.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <a href="/agents" className="btn-primary no-underline">
-                  Spawn your first agent
-                  <ChevronRight className="size-4" aria-hidden="true" />
-                </a>
-                <Button variant="ghost" onClick={() => setShowCompletion(false)}>
-                  Keep configuring
-                </Button>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <div className="rounded-2xl border border-border bg-card p-4 shadow-baziu-sm sm:p-5">
-        <label htmlFor="provider-search" className="m-0 text-sm font-semibold text-foreground">
-          Find a provider
-        </label>
-        <div className="relative mt-2">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <input
-            id="provider-search"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by service, model, or advanced key"
-            className="pl-9"
-          />
-        </div>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          Start with one provider. Everything else stays collapsed until you need it.
-        </p>
-      </div>
-
-      {sections.length === 0 ? (
-        <EmptyState
-          icon={<Search className="size-4" aria-hidden="true" />}
-          title="No providers match"
-          description={`Try another search instead of “${query}”.`}
-          actions={
-            <Button variant="ghost" onClick={() => setQuery('')}>
-              Clear search
-            </Button>
-          }
-        />
-      ) : (
-        <div className="space-y-4">
-          {sections.map((section) => (
-            <details
-              key={`${section.key}:${query}`}
-              open={
-                Boolean(query) ||
-                section.key === 'configured' ||
-                (!setupComplete && section.key === 'recommended')
-              }
-              className="group/providers overflow-hidden rounded-2xl border border-border bg-card shadow-baziu-sm"
-            >
-              <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 marker:hidden sm:px-5">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-                  <Server className="size-4" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-foreground">
-                    {section.title}
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                    {section.description}
-                  </span>
-                </span>
-                <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-                  {section.providers.length}
-                </span>
-                <ChevronDown
-                  className="size-4 shrink-0 text-muted-foreground transition-transform group-open/providers:rotate-180"
-                  aria-hidden="true"
-                />
-              </summary>
-              <div className="space-y-2 border-t border-border bg-muted/20 p-2 sm:p-3">
-                {section.providers.map((provider) => (
-                  <ProviderCard
-                    key={provider.id}
-                    p={provider}
-                    initiallyOpen={
-                      provider.enabled ||
-                      Boolean(query) ||
-                      (!setupComplete && provider.id === 'openai-codex')
-                    }
-                    openaiCodexStatus={provider.id === 'openai-codex' ? openaiCodex : undefined}
-                  />
-                ))}
-              </div>
-            </details>
-          ))}
-        </div>
-      )}
-    </ConfigPage>
-  )
-}
-
-function SetupBlockerBanner({
-  providers,
-  openaiCodex,
-}: {
-  providers: ProviderConfigEntry[]
-  openaiCodex: OpenAICodexStatus
-}) {
-  const issues: string[] = []
-  for (const p of providers) {
-    if (!p.enabled) continue
-    if (p.id === 'openai-codex' && !openaiCodex.connected) {
-      issues.push(`${p.id}: enabled but ChatGPT is not connected — click "Connect ChatGPT" below`)
-    }
-    if (p.curated.length === 0) {
-      issues.push(
-        `${p.id}: enabled but no curated models — add at least one name in the "curated models" box below and save`,
-      )
-    }
-  }
-  const enabledCount = providers.filter((p) => p.enabled).length
-  return (
-    <div role="status" className="rounded-2xl border border-warning/30 bg-warning/10 p-5 text-sm">
-      <div className="font-semibold text-foreground mb-1">Finish your first provider</div>
-      <p className="text-muted-foreground mb-2">
-        Enable one provider, save at least one exact model id, then send the small test request.
-        Saving the model creates your default resources; a successful test confirms that the
-        credential and model actually work.
-      </p>
-      {issues.length > 0 ? (
-        <ul className="list-disc space-y-1 pl-5 text-warning">
-          {issues.map((i) => (
-            <li key={i}>{i}</li>
-          ))}
-        </ul>
-      ) : enabledCount === 0 ? (
-        <p className="text-warning">
-          No provider is enabled. Open a recommended option below and follow its steps.
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
-function ProviderCard({
-  p,
-  openaiCodexStatus,
-  initiallyOpen,
-}: {
-  p: ProviderConfigEntry
-  openaiCodexStatus: OpenAICodexStatus | undefined
-  initiallyOpen: boolean
-}) {
+function ModelsPage() {
+  const { providers, models, now } = Route.useLoaderData()
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const router = useRouter()
-  const [enabled, setEnabled] = useState(p.enabled)
-  const [expanded, setExpanded] = useState(initiallyOpen)
-  const [models, setModels] = useState(p.curated.join('\n'))
-  const [savingModels, setSavingModels] = useState(false)
-  const [modelStatus, setModelStatus] = useState<
-    { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
-  >(null)
-  const [toggleError, setToggleError] = useState<string | null>(null)
-  const [testModel, setTestModel] = useState(p.curated[0] ?? '')
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<
-    { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
-  >(null)
-  const readiness = providerReadiness({ ...p, enabled })
 
-  const providerPath = `/api/config/providers/${encodeURIComponent(p.id)}`
+  const listed = providers.filter((provider) => provider.listed)
+  const usable = listed.filter((provider) => provider.enabled)
+  const open = (next: ModelsSearch) => void navigate({ search: next })
+  const close = () => open({})
+  const reload = () => router.invalidate({ sync: true })
+  const sheet = providers.find((provider) => provider.id === search.provider && provider.listed)
 
-  async function toggle(next: boolean) {
-    setEnabled(next)
-    setToggleError(null)
-    try {
-      await api(`${providerPath}/enabled`, { method: 'PUT', body: { enabled: next } })
-      if (next) setExpanded(true)
-      await router.invalidate()
-    } catch (error) {
-      setEnabled(!next)
-      setToggleError(errorMessage(error))
-    }
-  }
-
-  async function saveModels(e: React.FormEvent) {
-    e.preventDefault()
-    setSavingModels(true)
-    setModelStatus(null)
-    try {
-      const list = models
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-      const saved = await api<SetProviderModelsResponse>(`${providerPath}/models`, {
-        method: 'PUT',
-        body: { models: list },
-      })
-      const moved = saved.movedTemplates.map((t) => `Template ${t.name} now uses ${t.model}.`)
-      setModelStatus({ kind: 'success', message: ['Models saved.', ...moved].join(' ') })
-      setTestModel(list[0] ?? '')
-      setTestResult(null)
-      await router.invalidate()
-    } catch (e) {
-      setModelStatus({ kind: 'error', message: errorMessage(e) })
-    } finally {
-      setSavingModels(false)
-    }
-  }
-
-  async function testConnection() {
-    if (!testModel) return
+  async function testAll() {
     setTesting(true)
-    setTestResult(null)
     try {
-      await api('/api/providers/test', {
-        body: {
-          model: `${p.id}:${testModel}`,
-          message: 'Reply with exactly: Bazilion connection verified.',
-        },
-      })
-      setTestResult({ kind: 'success', message: `Verified ${p.displayName} with ${testModel}.` })
-      await router.invalidate()
-    } catch (error) {
-      setTestResult({ kind: 'error', message: errorMessage(error) })
+      // One short request each; a failure is that provider's state, not an error of the page.
+      await Promise.all(
+        usable
+          .filter((provider) => provider.models.length > 0)
+          .map((provider) =>
+            api<TestProviderResponse>(
+              `/api/config/providers/${encodeURIComponent(provider.id)}/test`,
+              { method: 'POST' },
+            ).catch(() => undefined),
+          ),
+      )
+      await reload()
     } finally {
       setTesting(false)
     }
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-card">
-      <header className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-3 sm:px-4">
-        <button
-          type="button"
-          className="unstyled flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
-          aria-expanded={expanded}
-          aria-controls={`provider-${p.id}`}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          <ChevronRight
-            className={`size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
-            aria-hidden="true"
-          />
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-foreground">
-              {p.displayName}
-            </span>
-            <span className="block truncate font-mono text-xs text-muted-foreground">{p.id}</span>
-          </span>
-        </button>
-        <StatusBadge variant={readiness.tone}>{readiness.label}</StatusBadge>
-        <label className="m-0 flex cursor-pointer items-center gap-1.5 rounded-lg px-1 text-xs font-semibold">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => toggle(e.target.checked)}
-            className="size-4"
-            aria-label={`${enabled ? 'Disable' : 'Enable'} ${p.displayName}`}
-          />
-          <span className={enabled ? 'text-success' : 'text-muted-foreground'}>
-            {enabled ? 'enabled' : 'disabled'}
-          </span>
-        </label>
-        <span className="w-full pl-6 text-xs text-muted-foreground sm:w-auto sm:pl-0">
-          {p.curated.length > 0 && <span>{p.curated.length} curated</span>}
-          {p.catalog.length > 0 && <span> · {p.catalog.length} catalog</span>}
-          {p.live && !p.live.error && <span> · {p.live.models.length} live</span>}
-        </span>
-      </header>
-
-      {toggleError && (
-        <p role="alert" className="mx-4 mb-3 text-sm text-danger">
-          {toggleError}
-        </p>
-      )}
-
-      {expanded && (
-        <div id={`provider-${p.id}`} className="border-t border-dashed px-3 py-4 sm:px-4">
-          {p.hint && <p className="text-xs text-muted-foreground mb-2">{p.hint}</p>}
-
-          {p.id === 'openai-codex' && openaiCodexStatus && (
-            <OpenAICodexCard status={openaiCodexStatus} />
-          )}
-
-          {p.fields.map((f) => (
-            <FieldRow key={f.envVar} field={f} />
-          ))}
-
-          <h4
-            id={`provider-${p.id}-models-label`}
-            className="mt-4 mb-1 font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            Models available to agents
-          </h4>
-          {p.curated.length === 0 && (
-            <p className="mb-2 text-xs font-medium text-warning">
-              First-run setup needs at least one model name here — type one (e.g.{' '}
-              <code className="font-mono">{p.catalog[0] ?? p.live?.models[0] ?? 'model-name'}</code>
-              ) and click <em>save models</em>. Catalog chips below are the safest source when
-              available.
-            </p>
-          )}
-          <form onSubmit={saveModels}>
-            <textarea
-              id={`provider-${p.id}-models`}
-              aria-labelledby={`provider-${p.id}-models-label`}
-              value={models}
-              onChange={(e) => setModels(e.target.value)}
-              rows={Math.max(3, Math.min(8, models.split('\n').length))}
-              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-sm outline-none focus:ring-2 focus:ring-ring/30"
-              placeholder={
-                p.catalog.length === 0 && !p.live
-                  ? 'Type model names one per line, e.g. qwen3-coder-30b'
-                  : 'Click catalog chips below, or type names one per line'
-              }
-            />
-            <div className="flex items-center gap-3 mt-2">
-              <button
-                type="submit"
-                disabled={savingModels}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
-              >
-                {savingModels ? 'Saving…' : 'Save models'}
-              </button>
-              {modelStatus && (
-                <span
-                  role={modelStatus.kind === 'error' ? 'alert' : 'status'}
-                  className={`text-xs ${
-                    modelStatus.kind === 'error' ? 'text-danger' : 'text-success'
-                  }`}
-                >
-                  {modelStatus.message}
-                </span>
-              )}
-            </div>
-          </form>
-
-          {p.catalog.length > 0 && (
-            <>
-              <h4 className="mt-4 mb-1 text-xs uppercase tracking-wide text-muted-foreground">
-                catalog
-              </h4>
-              <ChipList
-                items={p.catalog}
-                onPick={(name) => setModels((m) => (m.includes(name) ? m : `${m}\n${name}`.trim()))}
-              />
-            </>
-          )}
-          {p.live && !p.live.error && p.live.models.length > 0 && (
-            <>
-              <h4 className="mt-4 mb-1 text-xs uppercase tracking-wide text-muted-foreground">
-                live
-              </h4>
-              <ChipList
-                items={p.live.models}
-                onPick={(name) => setModels((m) => (m.includes(name) ? m : `${m}\n${name}`.trim()))}
-              />
-            </>
-          )}
-          {p.live?.error && (
-            <p role="alert" className="text-xs text-danger mt-2">
-              Could not fetch live models: {p.live.error}
-            </p>
-          )}
-
-          {enabled && p.curated.length > 0 && (
-            <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3">
-              <h4 className="m-0 font-body text-sm font-semibold text-foreground">
-                Test the connection
-              </h4>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Sends one short real request. Your provider may charge its normal token cost.
-              </p>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-                <label className="m-0 min-w-0 flex-1 text-xs font-semibold text-foreground">
-                  Model
-                  <select
-                    className="mt-1"
-                    value={testModel}
-                    onChange={(event) => setTestModel(event.target.value)}
-                  >
-                    {p.curated.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Button
-                  variant="ghost"
-                  disabled={testing || !testModel}
-                  onClick={() => void testConnection()}
-                >
-                  {testing ? 'Testing…' : 'Send test request'}
-                </Button>
-              </div>
-              {testResult && (
-                <p
-                  role={testResult.kind === 'error' ? 'alert' : 'status'}
-                  className={`mt-3 rounded-lg px-3 py-2 text-sm ${
-                    testResult.kind === 'error'
-                      ? 'bg-danger/10 text-danger'
-                      : 'bg-success/10 text-success'
-                  }`}
-                >
-                  {testResult.message}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function ChipList({ items, onPick }: { items: string[]; onPick: (name: string) => void }) {
-  return (
-    <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto rounded-md border bg-background p-1.5">
-      {items.map((m) => (
-        <button
-          key={m}
-          type="button"
-          onClick={() => onPick(m)}
-          aria-label={`Add ${m} to selected models`}
-          className="rounded border bg-card px-2 py-0.5 font-mono text-xs hover:border-primary hover:bg-accent"
-        >
-          {m}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
-  const router = useRouter()
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
-  const loginRequest = useRef<AbortController | null>(null)
-
-  useEffect(
-    () => () => {
-      // A client-side route change does not automatically cancel fetch().
-      // End the gateway request so the daemon can release its OAuth slot.
-      loginRequest.current?.abort()
-    },
-    [],
-  )
-
-  async function connect() {
-    loginRequest.current?.abort()
-    const controller = new AbortController()
-    loginRequest.current = controller
-    setBusy(true)
-    setErr(null)
-    try {
-      await api('/api/auth/openai/login', { method: 'POST', signal: controller.signal })
-      if (controller.signal.aborted) return
-      await router.invalidate()
-    } catch (e) {
-      if (controller.signal.aborted) return
-      setErr(errorMessage(e))
-    } finally {
-      if (loginRequest.current === controller) {
-        loginRequest.current = null
-        if (!controller.signal.aborted) setBusy(false)
-      }
-    }
-  }
-  async function disconnect() {
-    setBusy(true)
-    setErr(null)
-    try {
-      await api('/api/auth/openai', { method: 'DELETE' })
-      await router.invalidate()
-    } catch (e) {
-      setErr(errorMessage(e))
-      throw e
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <div className="rounded-md border bg-muted/30 p-3 mb-3">
-        {status.connected ? (
-          <>
-            <div className="flex flex-wrap gap-2 items-center mb-2">
-              <span className="rounded-full bg-success/10 text-success px-2 py-0.5 text-xs font-semibold uppercase">
-                connected
-              </span>
-              {status.accountId && (
-                <span className="text-xs text-muted-foreground">
-                  account <code className="font-mono">{status.accountId}</code>
-                </span>
-              )}
-              {status.expiresAt && (
-                <span className="text-xs text-muted-foreground">
-                  token expires {new Date(status.expiresAt).toISOString().replace(/\.\d+Z$/, 'Z')}
-                </span>
-              )}
-            </div>
-            <Button variant="danger" onClick={() => setConfirmDisconnect(true)} disabled={busy}>
-              Disconnect ChatGPT
-            </Button>
-          </>
-        ) : (
-          <>
-            <p className="text-xs text-muted-foreground mb-2">
-              Sign in with your ChatGPT account — the OAuth flow opens a new browser tab. The
-              loopback callback at <code className="font-mono">localhost:1455</code> only works when
-              you're using the web UI on the same machine as the daemon. For remote setups or
-              callback trouble, run{' '}
-              <code className="font-mono">bazilion auth openai login --device-code</code> on the
-              client. From a source checkout, run{' '}
-              <code className="font-mono">
-                pnpm tsx apps/cli/src/index.ts auth openai login --device-code
-              </code>{' '}
-              from the repository root.
-            </p>
-            <Button variant="primary" onClick={connect} disabled={busy}>
-              {busy ? 'opening browser…' : 'Connect ChatGPT →'}
-            </Button>
-          </>
-        )}
-        {err && (
-          <p role="alert" className="text-sm text-danger mt-2">
-            {err}
-          </p>
-        )}
-      </div>
-      <ConfirmDialog
-        open={confirmDisconnect}
-        onOpenChange={setConfirmDisconnect}
-        title="Disconnect ChatGPT?"
-        description={
-          <p>
-            This removes the saved OpenAI Codex OAuth credentials. Agents using an{' '}
-            <code>openai-codex</code> model will stop working until you connect again.
-          </p>
-        }
-        confirmLabel="Disconnect ChatGPT"
-        onConfirm={disconnect}
+    <ConfigPage
+      title="Models"
+      description="What your Agents think and draw with, and the accounts behind it."
+    >
+      <StatusLine
+        providers={listed}
+        chat={models.chat}
+        now={now}
+        testing={testing}
+        onOpen={(id) => open({ provider: id })}
+        onTestAll={() => void testAll()}
       />
-    </>
+      <ChatModelsCard
+        chat={models.chat}
+        hasProviders={usable.length > 0}
+        onPick={() => open({ pick: true })}
+        onChanged={reload}
+      />
+      <ImagesCard images={models.images} onConnect={(id) => open({ add: id })} onChanged={reload} />
+      <ProvidersCard
+        providers={listed}
+        total={providers.length}
+        images={models.images}
+        now={now}
+        onOpen={(id) => open({ provider: id })}
+        onAdd={() => open({ add: 'new' })}
+      />
+
+      {search.add && (
+        <AddProviderDialog
+          key={search.add}
+          providers={providers}
+          imageRoutes={models.images.routes}
+          start={search.add === 'new' ? undefined : search.add}
+          onClose={close}
+          onConnected={reload}
+          onOpenProvider={(id) => open({ provider: id })}
+        />
+      )}
+      {search.pick && (
+        <ModelPicker
+          providers={usable}
+          chat={models.chat}
+          onClose={close}
+          onSaved={reload}
+          onAddProvider={() => open({ add: 'new' })}
+        />
+      )}
+      {sheet && (
+        <ProviderSheet
+          key={sheet.id}
+          provider={sheet}
+          chat={models.chat.filter((model) => model.provider === sheet.id)}
+          imageRoutes={models.images.routes.filter((route) => route.provider === sheet.id)}
+          imageSelected={models.images.selected}
+          onClose={close}
+          onChanged={reload}
+          onPickModels={() => open({ pick: true })}
+          onReconnect={() => open({ add: sheet.id })}
+        />
+      )}
+    </ConfigPage>
   )
 }

@@ -1,5 +1,5 @@
-// Every fact Bazilion keeps about an LLM provider, in one table. The /config page renders each
-// entry as a card (`fields` are its inputs, stored like any other service field), and the runtime
+// Every fact Bazilion keeps about an LLM provider, in one table. Setup lists each entry under
+// "Add a provider" (`fields` are its inputs, stored like any other service field), and the runtime
 // reads credentials, endpoints and Pi's provider id from the same entry. Pi's own catalog supplies
 // the models; adding a provider Pi knows means adding one entry here.
 
@@ -28,8 +28,15 @@ export interface ProviderDef {
   endpoint?: { env?: string; fallback?: string }
   /** A server on the operator's machine: always available, models come only from it. */
   local?: { key: string; authHeader: boolean }
-  /** OpenAI-compatible `GET /models` listing, used to offer live model ids on /config. */
+  /** OpenAI-compatible `GET /models` listing, used to offer the provider's own model ids. */
   modelsUrl?: string
+  /** Listed first under "Add a provider" and on the first-run screen. */
+  popular?: boolean
+  /**
+   * The models the connect form ticks to begin with, the capable one first: it becomes the
+   * Default template's model on a first run. Kept by hand; a test fails when Pi's catalog drops one.
+   */
+  suggested?: readonly string[]
 }
 
 function apiKey(
@@ -72,25 +79,31 @@ function localServer(
     endpoint: { env: provider.urlEnv, fallback: provider.url },
     local: provider.local,
     fields: [
-      { envVar: provider.urlEnv, kind: 'config', label: 'Endpoint URL', placeholder: provider.url },
-      { envVar: provider.keyEnv, kind: 'secret', ...provider.keyField },
+      { envVar: provider.urlEnv, kind: 'config', label: 'Address', placeholder: provider.url },
+      { envVar: provider.keyEnv, kind: 'secret', advanced: true, ...provider.keyField },
     ],
   }
 }
 
-/** The /config display order: ChatGPT, OpenAI, Anthropic, then rough popularity; local last. */
+/** The order providers are listed in: ChatGPT, OpenAI, Anthropic, then rough popularity; local last. */
 export const PROVIDERS: readonly ProviderDef[] = [
   {
     id: 'openai-codex',
-    displayName: 'OpenAI ChatGPT (OAuth)',
-    hint: 'Use your ChatGPT Plus/Pro/Team account (same login as Codex CLI)',
+    displayName: 'ChatGPT',
+    hint: 'Use your ChatGPT Plus, Pro or Team plan. No API key.',
     // Credentials come from the OAuth flow (/api/auth/openai), not from fields.
     fields: [],
+    popular: true,
+    suggested: ['gpt-6.1-sol', 'gpt-6-luna'],
   },
-  apiKey('openai', 'OpenAI', 'OPENAI_API_KEY', {
-    hint: 'GPT models · platform.openai.com',
-    placeholder: 'sk-...',
-  }),
+  {
+    ...apiKey('openai', 'OpenAI', 'OPENAI_API_KEY', {
+      hint: 'GPT models · platform.openai.com',
+      placeholder: 'sk-...',
+    }),
+    popular: true,
+    suggested: ['gpt-6.1-sol', 'gpt-6-luna'],
+  },
   {
     id: 'anthropic',
     displayName: 'Anthropic',
@@ -103,13 +116,20 @@ export const PROVIDERS: readonly ProviderDef[] = [
         kind: 'secret',
         label: 'OAuth token (alternative to API key)',
         description: 'Takes precedence over ANTHROPIC_API_KEY when set',
+        advanced: true,
       },
     ],
+    popular: true,
+    suggested: ['claude-fable-5-2', 'claude-haiku-5-5'],
   },
-  apiKey('google', 'Google (Gemini)', 'GEMINI_API_KEY', {
-    hint: 'Gemini models · ai.google.dev (free tier available)',
-    placeholder: 'AIza...',
-  }),
+  {
+    ...apiKey('google', 'Google Gemini', 'GEMINI_API_KEY', {
+      hint: 'Gemini models · ai.google.dev (free tier available)',
+      placeholder: 'AIza...',
+    }),
+    popular: true,
+    suggested: ['gemini-4-argon', 'gemini-3.8-flash'],
+  },
   {
     id: 'google-vertex',
     displayName: 'Google Vertex AI',
@@ -139,6 +159,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
         label: 'Explicit credentials JSON (learning reviews)',
         description:
           'Service-account or ADC JSON given only to the learning-review worker, which cannot read ambient ADC files.',
+        advanced: true,
       },
     ],
   },
@@ -298,11 +319,15 @@ export const PROVIDERS: readonly ProviderDef[] = [
       { envVar: 'CLOUDFLARE_ACCOUNT_ID', kind: 'config', label: 'Account ID' },
     ],
   },
-  apiKey('openrouter', 'OpenRouter', 'OPENROUTER_API_KEY', {
-    hint: 'Proxy for 200+ models · openrouter.ai',
-    placeholder: 'sk-or-...',
-    modelsUrl: 'https://openrouter.ai/api/v1',
-  }),
+  {
+    ...apiKey('openrouter', 'OpenRouter', 'OPENROUTER_API_KEY', {
+      hint: 'Many providers through one key · openrouter.ai',
+      placeholder: 'sk-or-...',
+      modelsUrl: 'https://openrouter.ai/api/v1',
+    }),
+    popular: true,
+    suggested: ['~anthropic/claude-sonnet-latest', '~anthropic/claude-haiku-latest'],
+  },
   {
     id: 'vercel-ai-gateway',
     displayName: 'Vercel AI Gateway',
@@ -316,6 +341,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
         kind: 'config',
         label: 'Base URL (optional)',
         placeholder: 'https://ai-gateway.vercel.sh/v1',
+        advanced: true,
       },
     ],
   },
@@ -414,6 +440,13 @@ export function isProviderConfigured(id: string, env: Env): boolean {
   if (provider.local) return true
   if (provider.configured) return provider.configured(env)
   return (provider.keyEnv ?? []).some((name) => Boolean(env[name]))
+}
+
+/** The providers that read `envVar` as one of their fields (a few keys are shared). */
+export function providersUsingField(envVar: string): string[] {
+  return PROVIDERS.filter((provider) =>
+    provider.fields.some((field) => field.envVar === envVar),
+  ).map((provider) => provider.id)
 }
 
 /** Where to list the provider's live models (`GET <url>/models`), when it offers that. */

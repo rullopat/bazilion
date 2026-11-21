@@ -9,6 +9,8 @@ Start with the [README](../README.md): install, first run and the CLI.
 
 ## Running Bazilion
 
+- [Models and providers](models-and-providers.md): connect a provider, choose the models Agents
+  use, and read what its state means
 - [Private gateway](private-gateway.md): reach the web UI from other devices over Tailscale
 - [Backup, restore and reset](backup.md)
 - [Upgrades](upgrades.md)

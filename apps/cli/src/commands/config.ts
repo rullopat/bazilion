@@ -22,10 +22,12 @@ const listCmd = defineCommand({
   },
   async run() {
     const client = createClient()
-    // Both endpoints return ServiceCard-shaped entries — merge and print.
+    // Providers, model functions and services all carry fields: merge and print.
     const { providers } = await client.get<ProviderConfigResponse>('/api/config/providers')
-    const { services } = await client.get<ServiceConfigResponse>('/api/config/services')
-    const all: ServiceCard[] = [...providers, ...services]
+    const { services: cards, functions } =
+      await client.get<ServiceConfigResponse>('/api/config/services')
+    const services = [...functions, ...cards]
+    const all: Pick<ServiceCard, 'id' | 'fields'>[] = [...providers, ...services]
 
     printRows(
       all.flatMap((svc) => svc.fields.map((f) => [svc.id, f.envVar, f.kind, displayValue(f)])),

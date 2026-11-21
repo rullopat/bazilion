@@ -17,13 +17,8 @@ export function ConfigPage({
 }) {
   return (
     <PageShell size={size}>
-      <PageHeader
-        eyebrow="Configuration"
-        title={title}
-        description={description}
-        actions={actions}
-      />
-      <SectionTabs label="Configuration sections" base="/config" tabs={CONFIG_TABS} />
+      <PageHeader eyebrow="Setup" title={title} description={description} actions={actions} />
+      <SectionTabs label="Setup sections" base="/config" tabs={CONFIG_TABS} />
       <div className="space-y-6">{children}</div>
     </PageShell>
   )

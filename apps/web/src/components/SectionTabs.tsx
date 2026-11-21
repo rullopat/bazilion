@@ -51,9 +51,10 @@ export const TEMPLATE_TABS = [
 ] as const
 
 export const CONFIG_TABS = [
-  ['', 'Providers'],
+  ['', 'Models'],
   ['/services', 'Services'],
   ['/mcp', 'MCP'],
   ['/integrations/telegram', 'Integrations'],
   ['/tokens', 'Tokens'],
+  ['/system', 'System'],
 ] as const

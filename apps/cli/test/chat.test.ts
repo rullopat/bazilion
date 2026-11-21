@@ -55,7 +55,7 @@ test('provider test sends one request to an enabled provider and refuses a disab
 
   const disabled = await server.cli(['provider', 'test', 'groq:llama-3.1-8b-instant'])
   expect(disabled.exitCode).not.toBe(0)
-  expect(disabled.stderr + disabled.stdout).toMatch(/groq provider is disabled/)
+  expect(disabled.stderr + disabled.stdout).toMatch(/groq is switched off/)
   expect(mock.callCount()).toBe(1)
 })
 
