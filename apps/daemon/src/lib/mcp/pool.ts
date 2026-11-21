@@ -9,6 +9,7 @@ import type { McpTransport } from '@bazilion/api-types'
 import {
   McpAbortError,
   McpClient,
+  McpConnectionClosedError,
   McpSessionExpiredError,
   type McpTransport as PiTransport,
   StdioTransport,
@@ -101,6 +102,8 @@ export interface McpConnection {
   /** The server's tools, listed on first use and again after `notifications/tools/list_changed`. */
   tools?: InjectedMcpTool[]
   toolsStale: boolean
+  /** Why the connection closed, when the server-to-client stream found the session gone. */
+  sessionLost?: McpSessionExpiredError
   close(): Promise<void>
 }
 
@@ -190,7 +193,10 @@ function open(server: McpServerConfig, options: McpConnectOptions): McpConnectio
   client.onError((error) => {
     console.warn(`mcp: server ${server.name}: ${error.message}`)
     // The server-to-client stream found the session gone: the next use reconnects.
-    if (error instanceof McpSessionExpiredError) void conn.close()
+    if (error instanceof McpSessionExpiredError) {
+      conn.sessionLost = error
+      void conn.close()
+    }
   })
   client.onNotification('notifications/tools/list_changed', () => {
     conn.toolsStale = true
@@ -229,6 +235,15 @@ function connection(
   })
 }
 
+/**
+ * What a failed request reports. A lost session is noticed twice, by the request itself and by the
+ * server-to-client stream. When the stream is first, closing the connection ends the request as
+ * "connection closed": report the lost session instead, so the same event reads the same either way.
+ */
+function failureOf(conn: McpConnection, error: unknown): unknown {
+  return conn.sessionLost && error instanceof McpConnectionClosedError ? conn.sessionLost : error
+}
+
 /** The server's tools as `mcp__<server>__<tool>`; names a model API would reject are skipped. */
 export async function listMcpTools(
   server: McpServerConfig,
@@ -258,8 +273,9 @@ export async function listMcpTools(
     }
     conn.tools = tools
     return tools
-  } catch (error) {
+  } catch (raw) {
     conn.toolsStale = true // List again next time.
+    const error = failureOf(conn, raw)
     if (error instanceof McpSessionExpiredError) await conn.close()
     throw error
   } finally {
@@ -285,9 +301,10 @@ export async function callMcpTool(
       throw new Error(text || `MCP tool ${rawName} reported an error`)
     }
     return parts.length ? parts : [{ type: 'text', text: '(no content)' }]
-  } catch (error) {
+  } catch (raw) {
     // An HTTP server that restarted no longer knows the session: close it, so the next use
     // reconnects. The failed call is not replayed.
+    const error = failureOf(conn, raw)
     if (error instanceof McpSessionExpiredError) await conn.close()
     throw error
   } finally {

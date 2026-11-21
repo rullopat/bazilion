@@ -20,6 +20,8 @@ export async function mcpHttpFixture() {
   let redirect: string | undefined
   let delayMethod: string | undefined
   let release: (() => void) | undefined
+  let streamHeld: Promise<void> | undefined
+  let letStreamIn: (() => void) | undefined
   let session = 'fixture-session'
   let restarts = 0
   const streams = new Set<ServerResponse>()
@@ -34,6 +36,7 @@ export async function mcpHttpFixture() {
     req.headers['mcp-session-id'] !== undefined && req.headers['mcp-session-id'] !== session
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (req.method === 'GET') {
+      await streamHeld
       if (unknownSession(req)) {
         res.writeHead(404).end()
         return
@@ -58,15 +61,17 @@ export async function mcpHttpFixture() {
       authorization: req.headers.authorization,
       session: req.headers['mcp-session-id'] as string | undefined,
     })
-    if (unknownSession(req)) {
-      res.writeHead(404).end()
-      return
-    }
+    // A held request waits before its session is looked at, so a test decides which of two
+    // requests learns of a lost session first.
     if (msg.method === delayMethod)
       await new Promise<void>((resolve) => {
         release = resolve
       })
     if (res.destroyed) return
+    if (unknownSession(req)) {
+      res.writeHead(404).end()
+      return
+    }
     if (msg.id === undefined) {
       res.writeHead(202).end()
       return
@@ -124,6 +129,17 @@ export async function mcpHttpFixture() {
       release?.()
       release = undefined
     },
+    /** Keep the client's stream request waiting at the door until `releaseStream`. */
+    holdStream() {
+      streamHeld = new Promise<void>((resolve) => {
+        letStreamIn = resolve
+      })
+    },
+    releaseStream() {
+      streamHeld = undefined
+      letStreamIn?.()
+      letStreamIn = undefined
+    },
     async changeTools(value: FixtureTool[]) {
       tools = value
       for (const stream of streams)
@@ -141,6 +157,7 @@ export async function mcpHttpFixture() {
     },
     async close() {
       release?.()
+      letStreamIn?.()
       for (const stream of streams) stream.destroy()
       server.closeAllConnections()
       await new Promise<void>((resolve) => server.close(() => resolve()))

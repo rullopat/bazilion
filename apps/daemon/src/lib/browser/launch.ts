@@ -7,7 +7,13 @@ import { mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Browser, BrowserContext, CDPSession, Page } from 'playwright'
 
-const STARTUP_MS = 15_000
+// A first start reads a few hundred megabytes of browser files. From a cold disk that takes a
+// few seconds on most machines and has taken over 15 s on a small, busy one, where a second
+// start then needs a quarter of a second. A start that works returns as soon as the browser
+// prints its endpoint, so a generous limit only delays the report of one that hangs.
+const STARTUP_MS = 60_000
+/** Attaching to a browser that is already listening. */
+const CONNECT_MS = 15_000
 
 export interface LaunchOptions {
   executablePath: string
@@ -260,7 +266,7 @@ export async function launchBrowser(opts: LaunchOptions): Promise<AgentBrowser> 
       })
     })
     const { chromium } = await import('playwright')
-    browser = await chromium.connectOverCDP(endpoint, { timeout: STARTUP_MS, isLocal: true })
+    browser = await chromium.connectOverCDP(endpoint, { timeout: CONNECT_MS, isLocal: true })
     cdp = await browser.newBrowserCDPSession()
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' })
     const context = browser.contexts()[0]
