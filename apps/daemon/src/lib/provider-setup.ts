@@ -407,6 +407,50 @@ async function askModel(
   }
 }
 
+/**
+ * Why a connect has no model to ask. A local server is asked for its list, so that one that is
+ * switched off is said to be off rather than saved as connected.
+ */
+async function nothingToAsk(
+  provider: ProviderDef,
+  env: NodeJS.ProcessEnv,
+  signal?: AbortSignal,
+): Promise<ProviderFailure> {
+  const name = provider.displayName
+  if (!provider.local) {
+    return {
+      kind: 'model',
+      title: `No chat model was chosen for ${name}`,
+      hint: 'Choose at least one: connecting asks it for a short reply.',
+      detail: '',
+    }
+  }
+  const limit = AbortSignal.timeout(LIST_TIMEOUT_MS)
+  const live = await listLiveModels(
+    provider.id,
+    env,
+    signal ? AbortSignal.any([signal, limit]) : limit,
+  )
+  if (live?.error) {
+    // An HTTP status is the server's own answer; anything else means it could not be reached.
+    const message = /^\d{3}\b/.test(live.error) ? live.error : `Connection error.: ${live.error}`
+    return describeProviderFailure(message, {
+      provider,
+      modelName: '',
+      address: hostOf(localAddress(provider, env)),
+      secrets: provider.fields
+        .filter((field) => field.kind === 'secret')
+        .flatMap((field) => env[field.envVar] ?? []),
+    })
+  }
+  return {
+    kind: 'model',
+    title: `${name} lists no models`,
+    hint: `Load or download a model in ${name}, then connect again.`,
+    detail: '',
+  }
+}
+
 function missingCredentials(provider: ProviderDef): ProviderFailure {
   const name = provider.displayName
   if (provider.id === 'openai-codex') {
@@ -473,7 +517,10 @@ export async function connectProvider(
 
   let check: ProviderCheck | null = null
   const dropped: { model: string; detail: string }[] = []
-  if (request.test !== false && models.length > 0) {
+  if (request.test !== false && models.length === 0) {
+    return { connected: false, failure: await nothingToAsk(provider, env, signal) }
+  }
+  if (request.test !== false) {
     let refused: ProviderFailure | undefined
     for (const model of cheapestFirst(id, models).slice(0, MAX_TEST_ATTEMPTS)) {
       const asked = await askModel(ctx, provider, model, env, signal)

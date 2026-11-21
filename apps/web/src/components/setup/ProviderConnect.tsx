@@ -186,7 +186,8 @@ export function ProviderConnect({
       const body: ConnectProviderRequest = {
         fields: changedFields(provider, values),
         models: chosen.map((model) => model.id),
-        ...(test ? {} : { test: false }),
+        // A test needs a model to ask: with none ticked this only saves.
+        ...(test && chosen.length > 0 ? {} : { test: false }),
       }
       const result = await api<ConnectProviderResponse>(
         `/api/config/providers/${encodeURIComponent(provider.id)}/connect`,

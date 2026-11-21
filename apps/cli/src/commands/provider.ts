@@ -65,7 +65,7 @@ const listCmd = defineCommand({
         .map((p) => [
           p.id,
           p.listed ? STATE[p.state] : 'not set up',
-          `${p.models.length} models`,
+          p.models.length === 1 ? '1 model' : `${p.models.length} models`,
           p.check ? checkLine(p.check) : '',
         ]),
       args.all
