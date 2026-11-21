@@ -140,10 +140,19 @@ describe.skipIf(!available)('agents in a running browser', () => {
       ],
       { stdio: 'ignore', env: { PATH: process.env.PATH ?? '', HOME: join(root, 'operator-home') } },
     )
+    // The browser creates this file, then writes into it: wait for an endpoint, not for the file.
+    // A first start from a cold disk can take a while (see STARTUP_MS in launch.ts).
     const portFile = join(profile, 'DevToolsActivePort')
-    await vi.waitFor(() => expect(existsSync(portFile)).toBe(true), { timeout: 20_000 })
-    const endpoint = parseDevToolsActivePort(readFileSync(portFile, 'utf8'))
-    if (!endpoint) throw new Error('the browser published no endpoint')
+    const endpoint = await vi.waitFor(
+      () => {
+        const published = existsSync(portFile)
+          ? parseDevToolsActivePort(readFileSync(portFile, 'utf8'))
+          : null
+        if (!published) throw new Error('the browser published no endpoint')
+        return published
+      },
+      { timeout: 60_000 },
+    )
     config = {
       headless: true,
       allowPrivate: true,
@@ -152,7 +161,7 @@ describe.skipIf(!available)('agents in a running browser', () => {
       idleMs: 60_000,
       maxSessions: 4,
     }
-  }, 30_000)
+  }, 90_000)
 
   afterAll(async () => {
     await shutdownResources()
