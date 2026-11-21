@@ -355,10 +355,11 @@ describe.skipIf(!available)('launch controls', () => {
     const first = await launch('persistent', false)
     const page = await pageOf(first.context)
     await page.goto(`${origin.origin}/sw-page`)
-    await page.waitForFunction("document.title === 'SW-RESOLVED'")
-    await page.waitForFunction(
-      'navigator.serviceWorker.getRegistrations().then((all) => all.length > 0 && all.every((r) => r.active))',
-    )
+    // The browser stores a worker once it is installed: one closed before that is lost. The page
+    // reports the worker's state in its title, which this waits for. (waitForFunction takes a
+    // returned promise as "true" at once, so it cannot wait on getRegistrations() itself.)
+    await page.waitForFunction('/^SW-(ACTIVATED|REJECTED)/.test(document.title)')
+    expect(await page.title()).toBe('SW-ACTIVATED')
     await first.context.addCookies([
       {
         name: 'baziu',

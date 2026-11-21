@@ -14,9 +14,15 @@ export interface InstrumentedOrigin {
 }
 
 const PAGES: Record<string, string> = {
+  // The title follows the worker: SW-INSTALLING, SW-INSTALLED, SW-ACTIVATING, SW-ACTIVATED.
   '/sw-page': `<!doctype html><title>sw-probe</title><p>service worker probe</p><script>
 navigator.serviceWorker.register('/sw.js', { scope: '/sw-scope/' }).then(
-  () => { document.title = 'SW-RESOLVED' },
+  (registration) => {
+    const worker = registration.installing || registration.waiting || registration.active
+    const report = () => { document.title = 'SW-' + worker.state.toUpperCase() }
+    worker.addEventListener('statechange', report)
+    report()
+  },
   (e) => { document.title = 'SW-REJECTED:' + e.name },
 )</script>`,
   '/download-page': `<!doctype html><title>download-probe</title><a id="dl" href="/file.bin" download>download</a>`,
