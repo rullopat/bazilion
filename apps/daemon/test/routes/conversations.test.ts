@@ -116,8 +116,11 @@ test("the operator's first message names a conversation that still has its numbe
   // Named once: later messages and a title the operator chose are left alone.
   name(numbered.id, 'Something else')
   expect(titled()).toBe('Add a dark-mode toggle to the landing page and make sure…')
+  // Also when it was renamed in the very millisecond it was created.
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
   const chosen = await start('Conversation 9')
   await request(`/${chosen.id}`, 'PATCH', { title: 'Conversation 7' })
+  clock.mockRestore()
   name(chosen.id, 'Hello')
   expect(conversations.get(env.db, agentId, chosen.id)?.title).toBe('Conversation 7')
   // A conversation that already has turns keeps its numbered title: only a first message names.

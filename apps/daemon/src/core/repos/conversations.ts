@@ -114,8 +114,11 @@ export function hasDefaultTitle(conversation: Conversation): boolean {
 }
 
 export function rename(db: BazilionDb, agentId: string, id: string, title: string): Conversation {
+  // A renamed conversation is told from a new one by its later timestamp, so the rename is
+  // always later: one made in the millisecond the conversation was created still counts.
   db.raw.run(
-    'UPDATE agent_conversations SET title = ?, updated_at = ? WHERE agent_id = ? AND id = ?',
+    `UPDATE agent_conversations SET title = ?, updated_at = MAX(?, created_at + 1)
+    WHERE agent_id = ? AND id = ?`,
     [validTitle(title), Date.now(), agentId, id],
   )
   const conversation = get(db, agentId, id)
