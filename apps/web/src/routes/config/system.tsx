@@ -1,15 +1,22 @@
-import type { HealthReport } from '@bazilion/api-types'
+import type { HealthReport, ToolsResponse } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { BackupCard } from '../../components/BackupCard'
 import { ConfigPage } from '../../components/ConfigPage'
-import { InstallationReadinessCard } from '../../components/InstallationReadinessCard'
-import { RuntimeCard } from '../../components/RuntimeCard'
+import { BackupCard, HealthCard, RuntimeCard } from '../../components/setup/SystemCards'
 import { daemonClient } from '../../lib/daemon-client'
 
 const fetchSystem = createServerFn({ method: 'GET' }).handler(async () => {
-  const health = await daemonClient().get<HealthReport>('/api/health/details')
-  return { ok: health.ok, runtime: health.shellSecurity }
+  const daemon = daemonClient()
+  const [health, { tools }] = await Promise.all([
+    daemon.get<HealthReport>('/api/health/details'),
+    daemon.get<ToolsResponse>('/api/config/tools'),
+  ])
+  return {
+    ok: health.ok,
+    runtime: health.shellSecurity,
+    // The same words as on the Commands card, where these are set.
+    commands: tools.find((tool) => tool.id === 'commands')?.state ?? null,
+  }
 })
 
 export const Route = createFileRoute('/config/system')({
@@ -18,14 +25,14 @@ export const Route = createFileRoute('/config/system')({
 })
 
 function SystemPage() {
-  const { ok, runtime } = Route.useLoaderData()
+  const { ok, runtime, commands } = Route.useLoaderData()
   return (
     <ConfigPage
       title="System"
       description="The installation itself: its health, how Agents run commands, and a backup of everything."
     >
-      <InstallationReadinessCard report={{ ok }} />
-      <RuntimeCard shell={runtime} />
+      <HealthCard ok={ok} />
+      <RuntimeCard shell={runtime} state={commands} />
       <BackupCard />
     </ConfigPage>
   )

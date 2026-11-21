@@ -1,6 +1,6 @@
 import type { CatalogModel, ProviderConfigEntry, ProviderFailure } from '@bazilion/api-types'
-import { AlertTriangle, Search } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { AlertTriangle, Check, Info, type LucideIcon, Search, X } from 'lucide-react'
+import type { ComponentProps, ReactNode } from 'react'
 import { factsLine, modelName, priceLine, providerStatus, type Tone } from '../../lib/model-facts'
 import { cn } from '../../lib/utils'
 
@@ -224,7 +224,10 @@ export function Waiting({ children }: { children: ReactNode }) {
   )
 }
 
-/** A card of the Models page: an icon, what it holds, an action, then its rows. */
+/**
+ * A card of a Setup page: an icon, what the card holds, its state or its main action, then its
+ * rows (`CardRow`), its text and controls (`CardBody`, `CardForm`) or its facts (`Facts`).
+ */
 export function SetupCard({
   icon,
   title,
@@ -236,9 +239,11 @@ export function SetupCard({
   icon: ReactNode
   title: string
   description: ReactNode
+  /** A `Chip` with the card's state, or the button that adds to it. */
   action?: ReactNode
+  /** The id the title gets: it names the card for assistive technology and for links. */
   labelledBy: string
-  children: ReactNode
+  children?: ReactNode
 }) {
   return (
     <section
@@ -267,5 +272,253 @@ export function SetupCard({
       </div>
       {children}
     </section>
+  )
+}
+
+/** A row that spans a card under its heading: the unit of every list on the Setup pages. */
+export const CARD_ROW =
+  'flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 sm:px-5'
+
+export function CardRow({ className, ...props }: ComponentProps<'div'>) {
+  return <div className={cn(CARD_ROW, className)} {...props} />
+}
+
+/** A card's list of things, each a `ListRow`. */
+export function CardList({ className, ...props }: ComponentProps<'ul'>) {
+  return <ul className={cn('m-0 list-none p-0', className)} {...props} />
+}
+
+/**
+ * One thing in a card's list: its name with its state, a line of what there is to know about it,
+ * what can be done with it, and under all that whatever it last reported.
+ */
+export function ListRow({
+  title,
+  chip,
+  meta,
+  actions,
+  children,
+}: {
+  title: ReactNode
+  /** The thing's state, beside its name. */
+  chip?: ReactNode
+  /** Secondary facts, on one wrapping line. */
+  meta?: ReactNode
+  actions?: ReactNode
+  children?: ReactNode
+}) {
+  return (
+    <li className={cn(CARD_ROW, 'min-h-14 py-2.5')}>
+      <div className="min-w-0 flex-1 basis-64">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="min-w-0 break-words text-[0.95rem] font-semibold text-foreground">
+            {title}
+          </span>
+          {chip}
+        </div>
+        {meta && (
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.82rem] text-muted-foreground">
+            {meta}
+          </div>
+        )}
+      </div>
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {children && <div className="min-w-0 basis-full pb-1">{children}</div>}
+    </li>
+  )
+}
+
+const CARD_BODY = 'grid gap-4 border-t border-border px-4 py-4 sm:px-5'
+
+/** The part of a card that holds text and controls, with the card's own margins. */
+export function CardBody({ className, ...props }: ComponentProps<'div'>) {
+  return <div className={cn(CARD_BODY, className)} {...props} />
+}
+
+/** A card's form: the same space as `CardBody`. */
+export function CardForm({ className, ...props }: ComponentProps<'form'>) {
+  return <form className={cn(CARD_BODY, className)} {...props} />
+}
+
+export type NoticeTone = Tone | 'danger'
+
+const NOTICE: Record<NoticeTone, { box: string; mark: string; icon: LucideIcon }> = {
+  success: { box: 'border-success/30 bg-success/10', mark: 'text-success', icon: Check },
+  warning: { box: 'border-warning/35 bg-warning/10', mark: 'text-warning', icon: AlertTriangle },
+  danger: { box: 'border-danger/30 bg-danger/10', mark: 'text-danger', icon: AlertTriangle },
+  neutral: { box: 'border-border bg-muted/40', mark: 'text-muted-foreground', icon: Info },
+}
+
+/** Something to know inside a card: a warning, a result, a thing to do next. */
+export function Notice({
+  tone = 'warning',
+  title,
+  children,
+  actions,
+  role = 'status',
+  className,
+}: {
+  tone?: NoticeTone
+  title?: ReactNode
+  children?: ReactNode
+  /** Buttons under the text. */
+  actions?: ReactNode
+  /** `alert` for what went wrong just now; `status` for what is simply so. */
+  role?: 'status' | 'alert'
+  className?: string
+}) {
+  const { box, mark, icon: Icon } = NOTICE[tone]
+  return (
+    <div
+      role={role}
+      className={cn(
+        'flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm text-foreground',
+        box,
+        className,
+      )}
+    >
+      <Icon className={cn('mt-0.5 size-4 shrink-0', mark)} aria-hidden="true" />
+      <div className="min-w-0 flex-1 break-words">
+        {title && <div className="font-semibold">{title}</div>}
+        {children}
+        {actions && <div className="mt-2.5 flex flex-wrap gap-2">{actions}</div>}
+      </div>
+    </div>
+  )
+}
+
+const BANNER: Record<NoticeTone, string> = {
+  success: 'border-success/30 bg-success/10',
+  warning: 'border-warning/35 bg-warning/10',
+  danger: 'border-danger/30 bg-danger/10',
+  neutral: 'border-border bg-card shadow-baziu-sm',
+}
+
+/** The line above a page's cards: how things stand as a whole, with the one thing to do. */
+export function Banner({
+  tone,
+  lead,
+  children,
+  action,
+  role = 'status',
+}: {
+  tone: NoticeTone
+  /** The sentence that says it. */
+  lead: ReactNode
+  /** What follows from it, in a quieter voice. */
+  children?: ReactNode
+  action?: ReactNode
+  role?: 'status' | 'alert'
+}) {
+  const Icon = tone === 'neutral' ? null : NOTICE[tone].icon
+  return (
+    <div
+      role={role}
+      className={cn(
+        'flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm',
+        BANNER[tone],
+      )}
+    >
+      <div className={cn('flex min-w-0 flex-1 items-start gap-3', Icon ? 'basis-64' : 'basis-72')}>
+        {Icon && (
+          <Icon className={cn('mt-0.5 size-5 shrink-0', NOTICE[tone].mark)} aria-hidden="true" />
+        )}
+        <div className="min-w-0">
+          <span className="font-semibold text-foreground">{lead}</span>
+          {children && (
+            <>
+              {' '}
+              <span className="text-muted-foreground">{children}</span>
+            </>
+          )}
+        </div>
+      </div>
+      {action}
+    </div>
+  )
+}
+
+/** Facts about something: a name and what it is now, one to a row. */
+export function Facts({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <dl
+      className={cn(
+        'm-0 divide-y divide-border border-t border-border px-4 text-sm sm:px-5',
+        className,
+      )}
+    >
+      {children}
+    </dl>
+  )
+}
+
+export function Fact({
+  label,
+  tone,
+  children,
+}: {
+  label: string
+  /** Colours a value that is good or needs attention; left out, it is plain. */
+  tone?: Tone
+  children: ReactNode
+}) {
+  return (
+    <div className="grid gap-x-4 gap-y-0.5 py-3 sm:grid-cols-[14rem_minmax(0,1fr)]">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          'm-0 min-w-0 break-words font-medium',
+          tone === 'success' && 'text-success',
+          tone === 'warning' && 'text-warning',
+          (tone === undefined || tone === 'neutral') && 'text-foreground',
+        )}
+      >
+        {children}
+      </dd>
+    </div>
+  )
+}
+
+/** The outcome of some checks, one to a line. */
+export function CheckList({ children, ...props }: ComponentProps<'ul'>) {
+  return (
+    <ul className="m-0 grid list-none gap-2.5 p-0" {...props}>
+      {children}
+    </ul>
+  )
+}
+
+export function CheckItem({
+  ok,
+  label,
+  children,
+}: {
+  ok: boolean
+  /** What was checked. */
+  label: string
+  /** What was found, or what to do about it. */
+  children?: ReactNode
+}) {
+  return (
+    <li className="flex items-start gap-2.5 text-sm">
+      <span
+        aria-hidden="true"
+        className={cn(
+          'mt-px flex size-5 shrink-0 items-center justify-center rounded-full',
+          ok ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning',
+        )}
+      >
+        {ok ? <Check className="size-3.5" /> : <X className="size-3.5" />}
+      </span>
+      <span className="min-w-0 break-words">
+        <span className="sr-only">{ok ? 'Passed: ' : 'Failed: '}</span>
+        <span className="font-semibold text-foreground">{label}</span>
+        {children && (
+          <span className={cn('ml-2', ok ? 'text-muted-foreground' : 'font-medium text-warning')}>
+            {children}
+          </span>
+        )}
+      </span>
+    </li>
   )
 }

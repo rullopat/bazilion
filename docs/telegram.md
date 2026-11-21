@@ -11,24 +11,29 @@ internet.
    **Bot Settings → Group Privacy → Turn off**.
 2. Create a supergroup, enable **Topics** in its settings, add the bot and make it an admin with
    the **Manage topics** permission.
-3. Save the bot token and the supergroup chat id (`-100…`) under **Setup → Telegram**
-   (`/config/telegram`), or with
-   `bazilion telegram config set --token <token> --chat <id>`.
-4. Run the setup checks: **run preflight** on the web page, or `bazilion telegram health`. The bot
+3. Save the bot token and the supergroup chat id (`-100…`) on the **Bot** card under
+   **Setup → Telegram** (`/config/telegram`), or with
+   `bazilion telegram config set --token <token> --chat <id>`. The two are saved together; a
+   stored token is shown as saved, never in full, so a new group needs the token again.
+4. Run the setup checks: **Run preflight** on the web page, or `bazilion telegram health`. The bot
    starts by itself, creates the service topic and pins an Agent directory there.
-5. Pair yourself as the owner: create a one-time code on the web page or with
+5. Pair yourself as the owner: **Generate pairing code** on the web page or
    `bazilion telegram pairing create`, then send `/pair <code>` in the service topic within ten
    minutes. Until then the bot answers nobody.
 
-`bazilion telegram bot status` shows the polling state; **restart bot** on the web page or
-`bazilion telegram bot restart` restarts it. Disconnecting (clearing the credentials, or
-`bazilion telegram config clear`) stops the bot and everything it sends. When Telegram migrates the
-group to a new chat id, the web page and `bazilion telegram reconnect` switch to it.
+Each card on the page says how things stand: the **Bot** card whether the bot runs, the others
+what the last preflight found, whether an owner is paired, and how many people are allowed.
+`bazilion telegram bot status` shows the polling state; **Restart bot** on the web page or
+`bazilion telegram bot restart` restarts it. Disconnecting (**Disconnect Telegram**, or
+`bazilion telegram config clear`) stops the bot and everything it sends. Saving a new token or
+group starts pairing over: the owner and the allowed users are forgotten. When Telegram migrates
+the group to a new chat id, **Reconnect** on the web page and `bazilion telegram reconnect` switch
+to it.
 
 ## Who can use the bot
 
-The paired owner, plus the people the owner adds: `/allow <user id>` in Telegram, the allowlist
-card on the web page, or `bazilion telegram allow <user id>`. Someone who is not on the list gets a
+The paired owner, plus the people the owner adds: `/allow <user id>` in Telegram, the **Allowed
+users** card on the web page, or `bazilion telegram allow <user id>`. Someone who is not on the list gets a
 reply with their user id to pass on. `/deny`, `/allowed` and `bazilion telegram deny|allowed`
 manage the list. Everyone on the list can chat with Agents, answer their questions and run the
 commands; only the owner can `/allow` and `/deny`. Removing someone also cancels the messages they

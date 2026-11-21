@@ -3,7 +3,6 @@
 
 import type { ServiceCard, ServiceFieldState, SetFieldsResponse } from '@bazilion/api-types'
 import {
-  AlertTriangle,
   AppWindow,
   ChevronRight,
   FileText,
@@ -24,8 +23,8 @@ import {
   numberProblems,
 } from '../../lib/tool-form'
 import { cn } from '../../lib/utils'
-import { Button } from '../Button'
-import { Chip, SetupCard, Switch } from './parts'
+import { Problem, SaveBar, SecretField, SwitchRow, saveStatus, TextField } from './form'
+import { CardForm, Chip, Notice, SetupCard } from './parts'
 
 const ICONS: Record<string, LucideIcon> = {
   'web-search': Search,
@@ -139,16 +138,14 @@ export function ToolCard({
     />
   )
 
-  const status =
-    Object.keys(refused).length > 0
-      ? { text: 'Nothing was saved: see above.', className: 'text-warning' }
-      : error
-        ? { text: `Nothing was saved: ${error}`, className: 'text-warning' }
-        : dirty
-          ? { text: 'Not saved yet.', className: 'text-warning' }
-          : justSaved && !touched
-            ? { text: 'Saved. It applies from the next turn.', className: 'text-success' }
-            : { text: card.footnote ?? '', className: 'text-muted-foreground' }
+  const status = saveStatus({
+    refused: Object.keys(refused).length > 0,
+    error,
+    dirty,
+    saved: justSaved && !touched,
+    savedText: 'Saved. It applies from the next turn.',
+    footnote: card.footnote,
+  })
 
   return (
     <SetupCard
@@ -158,16 +155,8 @@ export function ToolCard({
       labelledBy={titleId}
       action={card.state && <Chip tone={TONE[card.state.tone]}>{card.state.label}</Chip>}
     >
-      <form onSubmit={save} className="grid gap-4 border-t border-border px-4 py-4 sm:px-5">
-        {card.note && (
-          <p
-            role="status"
-            className="m-0 flex items-start gap-2.5 rounded-xl border border-warning/35 bg-warning/10 px-3.5 py-3 text-sm text-foreground"
-          >
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
-            <span className="min-w-0 break-words">{card.note}</span>
-          </p>
-        )}
+      <CardForm onSubmit={save}>
+        {card.note && <Notice tone="warning">{card.note}</Notice>}
 
         {main.map(field)}
 
@@ -196,22 +185,12 @@ export function ToolCard({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={!dirty || busy || Object.keys(problems).length > 0}
-          >
-            {busy ? 'Saving…' : 'Save'}
-          </Button>
-          <p
-            role="status"
-            className={cn('m-0 min-w-0 flex-1 basis-56 text-sm font-medium', status.className)}
-          >
-            {status.text}
-          </p>
-        </div>
-      </form>
+        <SaveBar
+          busy={busy}
+          disabled={!dirty || Object.keys(problems).length > 0}
+          status={status}
+        />
+      </CardForm>
     </SetupCard>
   )
 }
@@ -248,28 +227,26 @@ function Setting({
           Set in the daemon’s environment as <code>{field.envVar}</code>, which wins over this page.
         </span>
       )}
-      {problem && (
-        <span role="alert" className="mt-1 block text-xs font-semibold text-warning">
-          {problem}
-        </span>
-      )}
+      {problem && <Problem>{problem}</Problem>}
     </>
   )
   const input = field.input
 
   if (field.kind === 'secret') {
     return (
-      <SecretSetting
-        id={id}
-        field={field}
+      <SecretField
+        label={field.label}
+        saved={field.set}
+        preview={field.preview}
         value={value}
         removed={removed}
         disabled={disabled}
+        placeholder={field.placeholder}
+        hint={field.description}
+        notes={under}
         onChange={onChange}
         onRemove={onRemove}
-      >
-        {under}
-      </SecretSetting>
+      />
     )
   }
 
@@ -335,21 +312,14 @@ function Setting({
 
   if (input.type === 'switch') {
     return (
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-foreground">{field.label}</div>
-          {field.description && (
-            <div className="text-sm text-muted-foreground">{field.description}</div>
-          )}
-          {under}
-        </div>
-        <Switch
-          label={field.label}
-          checked={value === input.on}
-          disabled={locked}
-          onChange={(checked) => onChange(checked ? input.on : input.off)}
-        />
-      </div>
+      <SwitchRow
+        label={field.label}
+        description={field.description}
+        notes={under}
+        checked={value === input.on}
+        disabled={locked}
+        onChange={(checked) => onChange(checked ? input.on : input.off)}
+      />
     )
   }
 
@@ -387,119 +357,16 @@ function Setting({
   }
 
   return (
-    <div>
-      <label htmlFor={id} className="m-0 text-sm font-semibold text-foreground">
-        {field.label}
-      </label>
-      <input
-        id={id}
-        type="text"
-        value={value}
-        disabled={locked}
-        autoComplete="off"
-        spellCheck={false}
-        placeholder={field.placeholder ?? ''}
-        aria-invalid={problem ? true : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 max-w-xl font-mono"
-      />
-      {field.description && (
-        <span className="mt-1 block text-xs text-muted-foreground">{field.description}</span>
-      )}
-      {under}
-    </div>
-  )
-}
-
-/** A key: shown as saved until it is replaced or removed, both of which wait for Save. */
-function SecretSetting({
-  id,
-  field,
-  value,
-  removed,
-  disabled,
-  onChange,
-  onRemove,
-  children,
-}: {
-  id: string
-  field: ServiceFieldState
-  value: string
-  removed: boolean
-  disabled: boolean
-  onChange: (value: string) => void
-  onRemove: (removed: boolean) => void
-  children: React.ReactNode
-}) {
-  const [replacing, setReplacing] = useState(false)
-  const typing = !field.set || replacing
-  return (
-    <div>
-      <label htmlFor={id} className="m-0 text-sm font-semibold text-foreground">
-        {field.label}
-      </label>
-      {typing ? (
-        <div className="mt-1.5 flex max-w-xl flex-wrap items-center gap-2">
-          <input
-            id={id}
-            type="password"
-            value={value}
-            disabled={disabled}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={field.placeholder ?? ''}
-            onChange={(event) => onChange(event.target.value)}
-            className="min-w-0 flex-1 basis-56 font-mono"
-          />
-          {field.set && (
-            <Button
-              variant="ghost"
-              disabled={disabled}
-              onClick={() => {
-                onChange('')
-                setReplacing(false)
-              }}
-            >
-              Keep the saved one
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="mt-1.5 flex min-h-[2.65rem] max-w-xl flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-muted/40 px-3.5 py-1.5 text-sm">
-          <span className="min-w-0 flex-1 basis-40 text-foreground">
-            {removed ? (
-              'Will be removed when you save.'
-            ) : (
-              <>
-                Saved: <span className="font-mono">{field.preview ?? '•••'}</span>, stored encrypted
-              </>
-            )}
-          </span>
-          {removed ? (
-            <Button variant="ghost" disabled={disabled} onClick={() => onRemove(false)}>
-              Keep it
-            </Button>
-          ) : (
-            <span className="flex gap-2">
-              <Button
-                id={id}
-                variant="ghost"
-                disabled={disabled}
-                onClick={() => setReplacing(true)}
-              >
-                Replace
-              </Button>
-              <Button variant="ghost" disabled={disabled} onClick={() => onRemove(true)}>
-                Remove
-              </Button>
-            </span>
-          )}
-        </div>
-      )}
-      {field.description && (
-        <span className="mt-1 block text-xs text-muted-foreground">{field.description}</span>
-      )}
-      {children}
-    </div>
+    <TextField
+      label={field.label}
+      value={value}
+      disabled={locked}
+      placeholder={field.placeholder}
+      hint={field.description}
+      notes={under}
+      invalid={Boolean(problem)}
+      mono
+      onChange={onChange}
+    />
   )
 }

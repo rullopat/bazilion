@@ -5,16 +5,7 @@ import type {
   ProviderConfigEntry,
   SetProviderModelsResponse,
 } from '@bazilion/api-types'
-import {
-  AlertTriangle,
-  Check,
-  ChevronRight,
-  Images,
-  MessageSquare,
-  Plug,
-  Plus,
-  X,
-} from 'lucide-react'
+import { ChevronRight, Images, MessageSquare, Plug, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import {
@@ -27,9 +18,7 @@ import {
 } from '../../lib/model-facts'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { Chip, ProviderAvatar, SetupCard, StateChip } from './parts'
-
-const ROW = 'flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 sm:px-5'
+import { Banner, Chip, ProviderAvatar, CARD_ROW as ROW, SetupCard, StateChip } from './parts'
 
 /** The line above the cards: whether everything Agents rely on answers, and what does not. */
 export function StatusLine({
@@ -64,34 +53,28 @@ export function StatusLine({
           const models = chat.filter((model) => model.provider === provider.id)
           const agents = models.reduce((sum, model) => sum + model.usedBy.agents, 0)
           return (
-            <div
+            <Banner
               key={provider.id}
-              role="status"
-              className="flex flex-wrap items-center gap-3 rounded-2xl border border-warning/35 bg-warning/10 px-4 py-3 text-sm"
+              tone="warning"
+              lead={
+                <>
+                  {provider.check?.failure?.title ??
+                    `${provider.displayName}: ${providerStatus(provider, now).label.toLowerCase()}`}
+                  .
+                </>
+              }
+              action={
+                <Button variant="ghost" onClick={() => onOpen(provider.id)}>
+                  Open {provider.displayName}
+                </Button>
+              }
             >
-              <div className="flex min-w-0 flex-1 basis-64 items-start gap-3">
-                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden="true" />
-                <div className="min-w-0">
-                  <span className="font-semibold text-foreground">
-                    {provider.check?.failure?.title ??
-                      `${provider.displayName}: ${providerStatus(provider, now).label.toLowerCase()}`}
-                    .
-                  </span>{' '}
-                  <span className="text-muted-foreground">
-                    {models.length === 0
-                      ? 'No chat model runs on it.'
-                      : `${models.length === 1 ? '1 chat model runs' : `${models.length} chat models run`} on it${
-                          agents === 0
-                            ? ''
-                            : `, used by ${agents === 1 ? '1 Agent' : `${agents} Agents`}`
-                        }.`}
-                  </span>
-                </div>
-              </div>
-              <Button variant="ghost" onClick={() => onOpen(provider.id)}>
-                Open {provider.displayName}
-              </Button>
-            </div>
+              {models.length === 0
+                ? 'No chat model runs on it.'
+                : `${models.length === 1 ? '1 chat model runs' : `${models.length} chat models run`} on it${
+                    agents === 0 ? '' : `, used by ${agents === 1 ? '1 Agent' : `${agents} Agents`}`
+                  }.`}
+            </Banner>
           )
         })}
       </div>
@@ -99,48 +82,37 @@ export function StatusLine({
   }
   if (untested.length > 0) {
     return (
-      <div
-        role="status"
-        className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-baziu-sm"
+      <Banner
+        tone="neutral"
+        lead={
+          untested.length === 1
+            ? `${untested[0]?.displayName} has not been tested.`
+            : `${untested.length} providers have not been tested.`
+        }
+        action={
+          <Button variant="ghost" disabled={testing} onClick={onTestAll}>
+            {testing ? 'Testing…' : untested.length === 1 ? 'Test it' : 'Test them'}
+          </Button>
+        }
       >
-        <div className="min-w-0 flex-1 basis-72">
-          <span className="font-semibold text-foreground">
-            {untested.length === 1
-              ? `${untested[0]?.displayName} has not been tested.`
-              : `${untested.length} providers have not been tested.`}
-          </span>{' '}
-          <span className="text-muted-foreground">
-            A test sends one short message to the cheapest model of each.
-          </span>
-        </div>
-        <Button variant="ghost" disabled={testing} onClick={onTestAll}>
-          {testing ? 'Testing…' : untested.length === 1 ? 'Test it' : 'Test them'}
-        </Button>
-      </div>
+        A test sends one short message to the cheapest model of each.
+      </Banner>
     )
   }
   const working = on.filter((provider) => provider.state === 'working')
   if (working.length === 0) return null
   return (
-    <div
-      role="status"
-      className="flex flex-wrap items-center gap-3 rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm"
+    <Banner
+      tone="success"
+      lead={working.length === 1 ? 'Your provider answers.' : 'Every provider answers.'}
+      action={
+        <Button variant="ghost" disabled={testing} onClick={onTestAll}>
+          {testing ? 'Testing…' : 'Test again'}
+        </Button>
+      }
     >
-      <div className="flex min-w-0 flex-1 basis-64 items-start gap-3">
-        <Check className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />
-        <div className="min-w-0">
-          <span className="font-semibold text-foreground">
-            {working.length === 1 ? 'Your provider answers.' : 'Every provider answers.'}
-          </span>{' '}
-          <span className="text-muted-foreground">
-            {chat.length === 1 ? '1 chat model' : `${chat.length} chat models`} for your Agents.
-          </span>
-        </div>
-      </div>
-      <Button variant="ghost" disabled={testing} onClick={onTestAll}>
-        {testing ? 'Testing…' : 'Test again'}
-      </Button>
-    </div>
+      {chat.length === 1 ? '1 chat model' : `${chat.length} chat models`} for your Agents.
+    </Banner>
   )
 }
 
