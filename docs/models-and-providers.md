@@ -42,6 +42,7 @@ Google Vertex AI) connects without a key.
 | Not tested yet | Saved without a test, or its key or models changed since |
 | Needs a key | Switched on, but its credentials are gone |
 | Turned off | Paused; what is saved stays saved |
+| Saved, not in use | A key was saved but no model chosen, as 0.50 allowed; **Connect** chooses its models and tests it |
 
 Nothing asks a provider on its own: a state is the outcome of connecting, of **Test again**
 (`bazilion provider test <id>`) or of `bazilion provider test <provider:model>`. Changing a
