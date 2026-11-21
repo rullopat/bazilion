@@ -46,6 +46,7 @@ const SETTINGS = [
   'LMSTUDIO_API_KEY',
   'OLLAMA_URL',
   'LLAMACPP_URL',
+  'MISTRAL_API_KEY',
   'BAZILION_IMAGE_MODEL',
 ]
 
@@ -193,6 +194,35 @@ test('a server that is off, and a missing key, are said in plain words', async (
       hint: 'Start LM Studio and switch its server on, then try again.',
     },
   })
+
+  // With no model to ask, a server that is off is still said to be off, and nothing is saved.
+  const offUnnamed = await connect('lmstudio', {
+    fields: { LMSTUDIO_URL: 'http://127.0.0.1:1/v1' },
+    models: [],
+  })
+  expect(offUnnamed).toMatchObject({
+    connected: false,
+    failure: { kind: 'unreachable', title: 'Nothing answers at 127.0.0.1:1' },
+  })
+  expect(openConfig(env.db).get('LMSTUDIO_URL')).toBeUndefined()
+  expect(await provider('lmstudio')).toMatchObject({ enabled: false, state: 'off' })
+  // A server that answers with an empty list has nothing to ask either.
+  const empty = await modelServer({ models: [] })
+  expect(await connect('ollama', { fields: { OLLAMA_URL: empty } })).toMatchObject({
+    connected: false,
+    failure: { kind: 'model', title: 'Ollama lists no models' },
+  })
+  expect((await provider('ollama')).enabled).toBe(false)
+  // A hosted provider without suggestions needs its models named, and is not asked for a list.
+  expect(await connect('mistral', { fields: { MISTRAL_API_KEY: 'made-up' } })).toMatchObject({
+    connected: false,
+    failure: { kind: 'model', title: 'No chat model was chosen for Mistral' },
+  })
+  expect(openSecrets(env.db, 'test-only').get('MISTRAL_API_KEY')).toBeUndefined()
+  // Saving without a test stays possible with no model.
+  const unasked = await connect('ollama', { fields: { OLLAMA_URL: empty }, test: false })
+  expect(unasked).toMatchObject({ connected: true, check: null })
+  expect(await provider('ollama')).toMatchObject({ enabled: true, state: 'untested', models: [] })
 
   const noKey = await connect('anthropic', { models: ['claude-haiku-5-5'] })
   expect(noKey).toMatchObject({

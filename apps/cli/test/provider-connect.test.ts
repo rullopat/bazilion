@@ -93,6 +93,22 @@ test('provider test remembers the outcome; a paused provider says so', async () 
   expect((await server.cli(['provider', 'enable', 'lmstudio'])).stdout).toContain('enabled')
 })
 
+test('a local server that is off is not saved as connected', async () => {
+  const address = 'http://127.0.0.1:1/v1'
+  const off = await server.cli(['provider', 'connect', 'ollama', '--url', address])
+  expect(off.exitCode).toBe(1)
+  expect(off.stderr).toContain('Nothing answers at 127.0.0.1:1')
+  expect(off.stderr).toContain('Nothing was saved.')
+  expect((await server.cli(['provider', 'list'])).stdout).not.toContain('ollama')
+
+  // Asked not to test, the address is saved for later.
+  const later = await server.cli(['provider', 'connect', 'ollama', '--url', address, '--no-test'])
+  expect(later.exitCode).toBe(0)
+  expect(later.stdout).toContain('not tested')
+  expect((await server.cli(['provider', 'list'])).stdout).toMatch(/ollama\s+not tested\s+0 models/)
+  expect((await server.cli(['provider', 'disconnect', 'ollama', '--yes'])).exitCode).toBe(0)
+})
+
 test('a hosted provider connects with its suggested models; the key is never printed', async () => {
   const key = 'sk-ant-secret-0123456789'
   const connected = await server.cli([

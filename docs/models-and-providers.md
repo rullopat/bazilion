@@ -23,7 +23,8 @@ bazilion auth openai login && bazilion provider connect openai-codex    # a Chat
 
 Connecting asks the cheapest chosen model for a short reply first. Only when it answers are the
 key, the models and the on switch saved, so a key that does not work is never stored. A model the
-provider refuses for your account is left out and the next one is asked. **Save without testing**
+provider refuses for your account is left out and the next one is asked. With no model to ask,
+because a local server is off or lists none, nothing is saved either. **Save without testing**
 (`--no-test`) skips the request and leaves the provider "not tested".
 
 On a first run, `/welcome` is the same step on one screen: choose, connect, **Start chatting**.
