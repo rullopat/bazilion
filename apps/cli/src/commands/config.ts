@@ -1,45 +1,79 @@
 import type {
   ProviderConfigResponse,
   ServiceCard,
-  ServiceConfigResponse,
   ServiceFieldState,
   SetFieldRequest,
+  SetFieldsRequest,
+  SetFieldsResponse,
+  ToolsResponse,
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { apiPath, positional, printRows } from '../command-helpers.ts'
 
 function displayValue(f: ServiceFieldState): string {
-  if (!f.set) return '(unset)'
-  if (f.kind === 'secret') return f.preview ?? '(set)'
-  return f.value ?? '(set)'
+  const source = f.environment ? ' (from the daemon’s environment)' : ''
+  if (f.kind === 'secret') return f.set ? `${f.preview ?? '(set)'}${source}` : `(unset)${source}`
+  if (f.environment) return `${f.effective ?? ''}${source}`
+  if (f.set) return f.value ?? '(set)'
+  return f.effective ? `${f.effective} (default)` : '(unset)'
+}
+
+/** What a setting takes, when it is more specific than text. */
+function accepts(field: ServiceFieldState): string | undefined {
+  const input = field.input
+  switch (input.type) {
+    case 'choice':
+      return input.options.map((option) => `${option.value} (${option.label})`).join(', ')
+    case 'switch':
+      // Yes or no reads the same whichever way round the page shows it.
+      return [input.on, input.off].includes('true')
+        ? 'true or false'
+        : `${input.on} or ${input.off}`
+    case 'number': {
+      const shown = input.scale
+        ? ` (the Tools page shows ${input.unit ?? 'units'}: ${input.scale} each)`
+        : ''
+      return `a whole number from ${input.min} to ${input.max}${shown}`
+    }
+    default:
+      return undefined
+  }
 }
 
 const listCmd = defineCommand({
   meta: {
     name: 'list',
-    description: 'List every configurable field (credentials + URLs) across all services',
+    description:
+      'List every setting of providers, model functions and tools, and what is in effect',
   },
   async run() {
     const client = createClient()
-    // Providers, model functions and services all carry fields: merge and print.
+    // Providers, model functions and tools all carry fields: merge and print.
     const { providers } = await client.get<ProviderConfigResponse>('/api/config/providers')
-    const { services: cards, functions } =
-      await client.get<ServiceConfigResponse>('/api/config/services')
-    const services = [...functions, ...cards]
-    const all: Pick<ServiceCard, 'id' | 'fields'>[] = [...providers, ...services]
+    const { tools, functions } = await client.get<ToolsResponse>('/api/config/tools')
+    const cards = [...functions, ...tools]
+    const all: Pick<ServiceCard, 'id' | 'fields'>[] = [...providers, ...cards]
 
     printRows(
       all.flatMap((svc) => svc.fields.map((f) => [svc.id, f.envVar, f.kind, displayValue(f)])),
       '(no fields registered)',
     )
-    for (const svc of services) {
-      if (svc.status) console.log(`\n${svc.displayName}: ${svc.status}`)
-      for (const field of svc.fields) {
-        if (field.options)
-          console.log(
-            `${field.envVar} choices: ${field.options.map((value) => (field.optionLabels?.[value] ? `${value} (${field.optionLabels[value]})` : value)).join(', ')}`,
-          )
+    console.log('')
+    for (const card of cards) {
+      const state = [card.state?.label, card.note].filter(Boolean).join('. ')
+      if (state) console.log(`${card.displayName}: ${state}`)
+      for (const field of card.fields) {
+        if (field.input.type !== 'choice') continue
+        const chosen = field.input.options.find((option) => option.value === field.effective)
+        if (chosen?.note) console.log(`  ${chosen.note.text}`)
+      }
+    }
+    console.log('')
+    for (const card of cards) {
+      for (const field of card.fields) {
+        const takes = accepts(field)
+        if (takes) console.log(`${field.envVar}: ${takes}`)
       }
     }
   },
@@ -48,26 +82,50 @@ const listCmd = defineCommand({
 const setCmd = defineCommand({
   meta: {
     name: 'set',
-    description: 'Set a configurable field (auto-routes to secrets or plaintext store)',
+    description:
+      'Set one setting (NAME value), or several that are saved together (NAME=value NAME=value)',
   },
   args: {
-    envVar: positional('Env var name (e.g. ANTHROPIC_API_KEY, LMSTUDIO_URL)'),
-    value: positional('New value (empty string clears the field)'),
+    envVar: positional('Setting name (e.g. ANTHROPIC_API_KEY), or NAME=value'),
+    value: {
+      type: 'positional',
+      required: false,
+      description: 'New value (an empty string clears the setting)',
+    },
   },
   async run({ args }) {
-    const body: SetFieldRequest = { value: args.value }
-    const state = await createClient().put<ServiceFieldState>(
-      apiPath('config', 'fields', args.envVar),
-      body,
-    )
-    console.log(`${state.envVar} (${state.kind}): ${displayValue(state)}`)
+    const client = createClient()
+    if (!args.envVar.includes('=')) {
+      if (args.value === undefined) {
+        throw new Error(`give ${args.envVar} a value, or use NAME=value`)
+      }
+      const body: SetFieldRequest = { value: args.value }
+      const state = await client.put<ServiceFieldState>(
+        apiPath('config', 'fields', args.envVar),
+        body,
+      )
+      console.log(`${state.envVar} (${state.kind}): ${displayValue(state)}`)
+      return
+    }
+    // NAME=value pairs: checked together, and stored only when all of them pass.
+    const values: Record<string, string> = {}
+    for (const token of args._) {
+      const at = token.indexOf('=')
+      if (at <= 0) throw new Error(`expected NAME=value, got "${token}"`)
+      values[token.slice(0, at)] = token.slice(at + 1)
+    }
+    const body: SetFieldsRequest = { values }
+    const { fields } = await client.put<SetFieldsResponse>('/api/config/fields', body)
+    for (const state of fields) {
+      console.log(`${state.envVar} (${state.kind}): ${displayValue(state)}`)
+    }
   },
 })
 
 const rmCmd = defineCommand({
-  meta: { name: 'rm', description: 'Remove a configurable field value' },
+  meta: { name: 'rm', description: 'Remove a setting, back to its default' },
   args: {
-    envVar: positional('Env var name to clear'),
+    envVar: positional('Setting name to clear'),
   },
   async run({ args }) {
     await createClient().del(apiPath('config', 'fields', args.envVar))
@@ -78,7 +136,7 @@ const rmCmd = defineCommand({
 export const configCommand = defineCommand({
   meta: {
     name: 'config',
-    description: 'Service settings: credentials (stored encrypted) and URLs/IDs (plaintext)',
+    description: 'Settings: credentials (stored encrypted), choices, switches and addresses',
   },
   subCommands: {
     list: listCmd,

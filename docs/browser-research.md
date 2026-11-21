@@ -38,8 +38,8 @@ names them, and `npx playwright install-deps chromium` installs them.
 
 ## Settings
 
-Set them on `/config/services` (**Browser Automation**), or with
-`bazilion config set <KEY> <value>`:
+Set them on the **Browser** card under **Setup → Tools** (`/config/tools`), where the rarer ones
+are under **More settings**, or with `bazilion config set <KEY> <value>`:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -65,7 +65,8 @@ With `BROWSER_ATTACH=true`, Agents do not get browsers of their own. They work i
 Chromium you have open, signed in wherever you are.
 
 1. In Chrome 144 or later, open `chrome://inspect/#remote-debugging` and allow remote debugging.
-2. Set `BROWSER_ATTACH` to `true` on `/config/services` or with `bazilion config set`.
+2. Choose **My running Chrome** on the **Browser** card under **Setup → Tools**, or run
+   `bazilion config set BROWSER_ATTACH true`.
 3. At an Agent's first browser action, Chrome asks whether to allow the connection. Allow it within
    a minute.
 

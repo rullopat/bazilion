@@ -67,16 +67,6 @@ export function searchRoute(
   }
 }
 
-/** The Config page's one-line summary, independent of any Agent's model. */
-export function searchStatus(env: NodeJS.ProcessEnv): string {
-  const route = env.BAZILION_WEB_SEARCH_ROUTE || 'auto'
-  if (route === 'off') return 'Web search is off.'
-  if (route === 'native' || (route === 'auto' && !env.BRAVE_API_KEY && !env.SEARXNG_URL))
-    return 'Hosted search for Agents on OpenAI or ChatGPT models; other Agents have no web_search.'
-  const backend = searchRoute(env, '', false)
-  return backend.backend ? `Web search uses ${backend.backend}.` : backend.reason
-}
-
 export interface WebSearchHostOptions {
   backend: SearchBackend
   env: () => NodeJS.ProcessEnv

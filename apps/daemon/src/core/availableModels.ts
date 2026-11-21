@@ -1,13 +1,9 @@
 // Enumerates models that agents are actually allowed to use right now:
-// every curated model of every currently-enabled provider. Drives the model
-// dropdowns on the profile and agent forms.
+// every curated model of every currently-enabled provider.
 //
 // A provider must be both (a) toggled on in `provider_state` AND (b) have
-// at least one curated entry in `provider_models` to show up here. Drop a
-// provider off either side and it disappears from the list without a UI
-// edit — the dropdowns are entirely data-driven.
+// at least one curated entry in `provider_models` to show up here.
 
-import type { ModelGroup } from '@bazilion/api-types'
 import type { BazilionDb } from './db/client.ts'
 import * as providerModelRepo from './repos/providerModels.ts'
 import * as providerStateRepo from './repos/providerState.ts'
@@ -34,19 +30,6 @@ export function listAvailableModels(db: BazilionDb): AvailableModel[] {
     }
   }
   return out
-}
-
-/**
- * Same as `listAvailableModels` but grouped by provider — the shape the web
- * dropdowns consume directly via `<optgroup>`.
- */
-export function groupAvailableModels(db: BazilionDb): ModelGroup[] {
-  const groups: ModelGroup[] = []
-  for (const provider of providerStateRepo.listEnabled(db)) {
-    const models = providerModelRepo.list(db, provider)
-    if (models.length > 0) groups.push({ provider, models })
-  }
-  return groups
 }
 
 /**

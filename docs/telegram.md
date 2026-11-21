@@ -11,8 +11,8 @@ internet.
    **Bot Settings → Group Privacy → Turn off**.
 2. Create a supergroup, enable **Topics** in its settings, add the bot and make it an admin with
    the **Manage topics** permission.
-3. Save the bot token and the supergroup chat id (`-100…`) on the web page
-   `/config/integrations/telegram`, or with
+3. Save the bot token and the supergroup chat id (`-100…`) under **Setup → Telegram**
+   (`/config/telegram`), or with
    `bazilion telegram config set --token <token> --chat <id>`.
 4. Run the setup checks: **run preflight** on the web page, or `bazilion telegram health`. The bot
    starts by itself, creates the service topic and pins an Agent directory there.

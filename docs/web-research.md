@@ -15,13 +15,13 @@ The managed browser is separate from search; see [managed browser](browser-resea
 
 ## Configure the search backend
 
-`BAZILION_WEB_SEARCH_ROUTE` picks the backend (**Web search** on `/config/services`, or
-`bazilion config set BAZILION_WEB_SEARCH_ROUTE <value>`):
+`BAZILION_WEB_SEARCH_ROUTE` picks the backend: the **Web search** card under **Setup → Tools**
+(`/config/tools`), or `bazilion config set BAZILION_WEB_SEARCH_ROUTE <value>`:
 
 | Value | Backend |
 | --- | --- |
 | `auto` (default) | Brave when `BRAVE_API_KEY` is set, else SearXNG when `SEARXNG_URL` is set, else `native`. |
-| `brave` | The Brave Search API with `BRAVE_API_KEY` (**Brave Search** on `/config/services`). |
+| `brave` | The Brave Search API with `BRAVE_API_KEY` (the key field on the same card). |
 | `searxng` | Your SearXNG instance at `SEARXNG_URL`, with its JSON output enabled. |
 | `native` | The search built into the Agent's own model: OpenAI models with `OPENAI_API_KEY`, or ChatGPT models with the ChatGPT login. It returns a written answer and the pages it cites. Other models get no `web_search`. |
 | `off` | No `web_search` tool. |

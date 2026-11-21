@@ -28,7 +28,7 @@ const PAGES: Array<[label: string, hint: string, path: string]> = [
   ['Teams', 'Register and remove Teams', '/teams'],
   ['Templates', 'Agent and Team templates', '/templates'],
   ['Skills', 'Prompt skills', '/skills'],
-  ['Setup', 'Models, providers, services, access', '/config'],
+  ['Setup', 'Models, tools, Telegram, access', '/config'],
 ]
 
 /** Destinations whose label or hint holds every word of the query. */

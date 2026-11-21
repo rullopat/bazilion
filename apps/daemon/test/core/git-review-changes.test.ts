@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -142,6 +142,27 @@ test('a patch is bounded, truncated with a visible marker, and never runs for ex
       omitted: 'excluded',
     })
     expect(report.withheld.excluded).toBeGreaterThan(0)
+  })
+})
+
+test('a file rewritten in the second it was staged, at the same size, is still a change', async () => {
+  baseRepo()
+  // A file, and an index, with one and the same time: Git cannot tell from size and time that the
+  // file changed, so it compares contents. The review reads a copy of the index and must not lose
+  // that by giving the copy a later time.
+  const then = Math.floor(Date.now() / 1000) - 3_600
+  const flag = join(root, 'flag.txt')
+  writeFileSync(flag, 'on\n')
+  utimesSync(flag, then, then)
+  git('add', 'flag.txt')
+  git('commit', '-qm', 'add flag')
+  writeFileSync(flag, 'no\n')
+  utimesSync(flag, then, then)
+  utimesSync(join(root, '.git', 'index'), then, then)
+
+  await review(async (captured, base) => {
+    const report = await listChanges(captured, base, await readRepositoryIdentity(captured))
+    expect(report.changes.map((change) => change.path)).toContain('flag.txt')
   })
 })
 

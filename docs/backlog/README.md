@@ -41,5 +41,6 @@ are never reused, so the gaps below are deliberate.
 | [BAZ-071](done/BAZ-071-installation-diagnostics.md) | Installation diagnostics | 0.24.0 | |
 | [BAZ-072](done/BAZ-072-web-workspace.md) | One web workspace | 0.50.0 | [workspace](../workspace.md) |
 | [BAZ-073](done/BAZ-073-models-by-function.md) | Models by function, connected in one step | 0.51.0 | [models and providers](../models-and-providers.md) |
+| [BAZ-074](done/BAZ-074-tools-and-model-names.md) | Tools with typed settings, model names in the menus | 0.52.0 | [tools](../tools.md) |
 
 No story is in draft or in progress.

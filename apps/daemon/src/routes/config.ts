@@ -1,27 +1,18 @@
 // /api/config/*: model providers (state, connect, test, disconnect, models), what Agents think
-// and draw with, service cards, and per-field config/secret writes.
+// and draw with, the tools and their settings, and config/secret writes.
 
 import type {
-  AvailableModelsResponse,
   ConnectProviderRequest,
   ProviderCatalogRequest,
   ProviderConfigResponse,
-  ServiceCard,
-  ServiceConfigResponse,
+  ServiceFieldState,
+  SetFieldsRequest,
+  SetFieldsResponse,
   SetProviderEnabledResponse,
   SetProviderModelsRequest,
 } from '@bazilion/api-types'
-import { imageRoute } from '../core/image-generation-config.ts'
-import {
-  type BazilionDb,
-  findFieldByEnvVar,
-  groupAvailableModels,
-  mergeSecretsIntoEnv,
-  openConfig,
-  openSecrets,
-  type ServiceDef,
-  servicesByCategory,
-} from '../core/index.ts'
+import { type BazilionDb, findFieldByEnvVar } from '../core/index.ts'
+import type { ServiceField } from '../core/services.ts'
 import { getCtx } from '../lib/ctx.ts'
 import {
   connectProvider,
@@ -36,9 +27,13 @@ import {
   setProviderModels,
   testProvider,
 } from '../lib/provider-setup.ts'
-import { fieldStates, readStoredSettings, writeSetting } from '../lib/setting-fields.ts'
-import { searchStatus } from '../lib/web-search.ts'
-import { hasCredentials } from '../runtime/auth/openai-codex.ts'
+import {
+  fieldStates,
+  normalizeSetting,
+  readStoredSettings,
+  writeSetting,
+} from '../lib/setting-fields.ts'
+import { toolsOverview } from '../lib/tools-overview.ts'
 import { jsonBody, newRouter } from './http.ts'
 
 export const configRouter = newRouter()
@@ -107,42 +102,62 @@ configRouter.put('/providers/:name/models', async (c) => {
 
 // ─── Models by function ──────────────────────────────────────────────────
 
-// What Agents think with (chat models, who uses each) and draw with (image routes).
+// What Agents think with (chat models with their names and facts, and who uses each) and draw
+// with (image routes). The Models page and the model menus of Agents and templates read this.
 configRouter.get('/models', (c) => c.json(modelsOverview(getCtx())))
 
-// Chat models grouped by provider: the model menus of Agents and templates.
-configRouter.get('/available-models', (c) =>
-  c.json({ teams: groupAvailableModels(getCtx().db) } satisfies AvailableModelsResponse),
-)
+// ─── Tools ───────────────────────────────────────────────────────────────
 
-// ─── Services ────────────────────────────────────────────────────────────
-
-// Service cards (web search, the browser, …), and the model functions chosen on the Models page.
-configRouter.get('/services', (c) => {
-  const { db, authToken } = getCtx()
-  const stored = readStoredSettings(db, authToken)
-  const env = mergeSecretsIntoEnv(db, authToken)
-  const image = imageRoute(env, hasCredentials(db, authToken))
-  const card = (svc: ServiceDef): ServiceCard => ({
-    ...(svc.id === 'image-generation'
-      ? { status: image.ready ? `Ready: ${image.model}.` : image.reason }
-      : {}),
-    ...(svc.id === 'web-search' ? { status: searchStatus(env) } : {}),
-    id: svc.id,
-    displayName: svc.displayName,
-    ...(svc.hint ? { hint: svc.hint } : {}),
-    ...(svc.team ? { team: svc.team } : {}),
-    fields: fieldStates(svc.fields, stored),
-  })
-  return c.json({
-    services: servicesByCategory('service').map(card),
-    functions: servicesByCategory('function').map(card),
-  } satisfies ServiceConfigResponse)
-})
+// The tools (web search, the browser, commands, …) with what each is doing now, and the model
+// functions chosen on the Models page.
+configRouter.get('/tools', async (c) => c.json(await toolsOverview(getCtx())))
 
 // ─── Fields ──────────────────────────────────────────────────────────────
 
-// Write-through for any setting the registry knows.
+function fieldState(db: BazilionDb, authToken: string, field: ServiceField): ServiceFieldState {
+  const [state] = fieldStates([field], readStoredSettings(db, authToken))
+  return state as ServiceFieldState
+}
+
+// Several settings saved together, as one card of the Tools page does: every value is checked
+// first, and nothing is stored unless all of them pass. An empty value clears a setting.
+configRouter.put('/fields', async (c) => {
+  const body = await jsonBody<SetFieldsRequest>(c)
+  const values = body?.values
+  if (!values || typeof values !== 'object' || Array.isArray(values)) {
+    return c.json({ error: 'body must be {"values": {"NAME": "value", …}}' }, 400)
+  }
+  const accepted: { field: ServiceField; value: string }[] = []
+  const errors: Record<string, string> = {}
+  for (const [envVar, raw] of Object.entries(values)) {
+    const field = findFieldByEnvVar(envVar)
+    if (!field) errors[envVar] = `unknown setting: ${envVar}`
+    else if (typeof raw !== 'string') errors[envVar] = `${envVar} must be text`
+    else {
+      const checked = normalizeSetting(field, raw)
+      if ('error' in checked) errors[envVar] = checked.error
+      else accepted.push({ field, value: checked.value })
+    }
+  }
+  const [firstError] = Object.values(errors)
+  if (firstError) return c.json({ error: firstError, errors }, 400)
+
+  const { db, authToken } = getCtx()
+  db.raw.transaction(() => {
+    for (const { field, value } of accepted) {
+      writeSetting(db, authToken, field, value)
+      forgetChecksFor(db, field.envVar)
+    }
+  })()
+  return c.json({
+    fields: fieldStates(
+      accepted.map(({ field }) => field),
+      readStoredSettings(db, authToken),
+    ),
+  } satisfies SetFieldsResponse)
+})
+
+// One setting, as `bazilion config set` writes it.
 configRouter.put('/fields/:envVar', async (c) => {
   const envVar = c.req.param('envVar')
   const field = findFieldByEnvVar(envVar)
@@ -152,14 +167,13 @@ configRouter.put('/fields/:envVar', async (c) => {
   if (!body || typeof body.value !== 'string') {
     return c.json({ error: 'body must be {"value": "<string>"}' }, 400)
   }
-  if (body.value && field.options && !field.options.includes(body.value)) {
-    return c.json({ error: `Choose one of: ${field.options.join(', ')}` }, 400)
-  }
+  const checked = normalizeSetting(field, body.value)
+  if ('error' in checked) return c.json({ error: checked.error }, 400)
 
   const { db, authToken } = getCtx()
-  writeSetting(db, authToken, field, body.value)
+  writeSetting(db, authToken, field, checked.value)
   forgetChecksFor(db, envVar)
-  return c.json(readFieldState(db, authToken, envVar, field.kind))
+  return c.json(fieldState(db, authToken, field))
 })
 
 configRouter.delete('/fields/:envVar', (c) => {
@@ -172,26 +186,3 @@ configRouter.delete('/fields/:envVar', (c) => {
   forgetChecksFor(db, envVar)
   return c.body(null, 204)
 })
-
-interface FieldState {
-  envVar: string
-  kind: 'secret' | 'config'
-  set: boolean
-  value?: string
-  preview?: string
-}
-
-function readFieldState(
-  db: BazilionDb,
-  authToken: string,
-  envVar: string,
-  kind: 'secret' | 'config',
-): FieldState {
-  if (kind === 'config') {
-    const v = openConfig(db).get(envVar) ?? ''
-    return { envVar, kind, set: v.length > 0, value: v }
-  }
-  const v = openSecrets(db, authToken).get(envVar) ?? ''
-  const preview = v.length > 8 ? `${v.slice(0, 6)}…` : '***'
-  return { envVar, kind, set: v.length > 0, ...(v.length > 0 ? { preview } : {}) }
-}

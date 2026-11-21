@@ -1,4 +1,4 @@
-import type { ServiceConfigResponse } from '@bazilion/api-types'
+import type { ToolsResponse } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { IMAGE_MODEL_CHOICES } from '../../src/core/image-generation-config.ts'
 import { isSetupComplete, openSecrets } from '../../src/core/index.ts'
@@ -26,42 +26,45 @@ const set = (key: string, value: string) =>
     body: JSON.stringify({ value }),
   })
 async function card() {
-  const body = (await (await configRouter.request('/services')).json()) as ServiceConfigResponse
-  // A model function: chosen on the Models page, so the Services page does not list it.
-  expect(body.services.map((service) => service.id)).not.toContain('image-generation')
+  const body = (await (await configRouter.request('/tools')).json()) as ToolsResponse
+  // A model function: chosen on the Models page, so the Tools page does not list it.
+  expect(body.tools.map((tool) => tool.id)).not.toContain('image-generation')
   const service = body.functions.find((service) => service.id === 'image-generation')
   if (!service) throw new Error('Missing image service')
   return service
 }
 
-test('one image-model setting; its status says whether the chosen account is ready', async () => {
-  expect((await card()).status).toBe('Image generation is off.')
+test('one image-model setting; its note says whether the chosen account is ready', async () => {
+  expect((await card()).note).toBe('Image generation is off.')
   expect((await card()).fields.map((field) => field.envVar)).toEqual(['BAZILION_IMAGE_MODEL'])
-  expect((await card()).fields[0]?.options).toEqual(IMAGE_MODEL_CHOICES)
+  const input = (await card()).fields[0]?.input
+  expect(input?.type === 'choice' && input.options.map((option) => option.value)).toEqual(
+    IMAGE_MODEL_CHOICES,
+  )
   expect((await set('BAZILION_IMAGE_MODEL', 'arbitrary-model')).status).toBe(400)
 
   await set('BAZILION_IMAGE_MODEL', 'openai:gpt-image-2')
-  expect((await card()).status).toContain('OPENAI_API_KEY')
+  expect((await card()).note).toContain('OPENAI_API_KEY')
   openSecrets(env.db, 'test-only').set('OPENAI_API_KEY', 'direct-private')
-  expect((await card()).status).toBe('Ready: openai:gpt-image-2.')
+  expect((await card()).note).toBe('Ready: openai:gpt-image-2.')
 
   await set('BAZILION_IMAGE_MODEL', 'openai-codex:gpt-image-2')
-  expect((await card()).status).toContain('ChatGPT login')
+  expect((await card()).note).toContain('ChatGPT login')
   saveLoginCredentials(env.db, 'test-only', {
     access: 'oauth-private',
     refresh: 'refresh-private',
     expires: Date.now() + 3600000,
   })
   const ready = await card()
-  expect(ready.status).toBe('Ready: openai-codex:gpt-image-2.')
+  expect(ready.note).toBe('Ready: openai-codex:gpt-image-2.')
   expect(JSON.stringify(ready)).not.toMatch(/direct-private|oauth-private|refresh-private/)
   clearCredentials(env.db, 'test-only')
-  expect((await card()).status).toContain('ChatGPT login')
+  expect((await card()).note).toContain('ChatGPT login')
 
   await set('BAZILION_IMAGE_MODEL', 'openrouter:google/gemini-3.1-flash-image')
-  expect((await card()).status).toContain('OPENROUTER_API_KEY')
+  expect((await card()).note).toContain('OPENROUTER_API_KEY')
   expect((await set('BAZILION_IMAGE_MODEL', 'off')).status).toBe(200)
-  expect((await card()).status).toBe('Image generation is off.')
+  expect((await card()).note).toBe('Image generation is off.')
   expect(isSetupComplete(env.db)).toBe(false)
 })
 

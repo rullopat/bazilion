@@ -1,4 +1,4 @@
-// /config/integrations/telegram — bot credentials, setup checks, bot restart, owner pairing,
+// /config/telegram — bot credentials, setup checks, bot restart, owner pairing,
 // attention notifications and the member allowlist.
 
 import type {
@@ -11,12 +11,12 @@ import type {
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
-import { Button } from '../../../components/Button'
-import { ConfigPage } from '../../../components/ConfigPage'
-import { ConfirmDialog } from '../../../components/ConfirmDialog'
-import { NotificationSettings } from '../../../components/NotificationSettings'
-import { api, errorMessage } from '../../../lib/api'
-import { daemonClient } from '../../../lib/daemon-client'
+import { Button } from '../../components/Button'
+import { ConfigPage } from '../../components/ConfigPage'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { NotificationSettings } from '../../components/NotificationSettings'
+import { api, errorMessage } from '../../lib/api'
+import { daemonClient } from '../../lib/daemon-client'
 
 const BASE = '/api/config/telegram'
 
@@ -24,7 +24,7 @@ const fetchTelegramConfig = createServerFn({ method: 'GET' }).handler(() =>
   daemonClient().get<TelegramConfigState>('/api/config/telegram'),
 )
 
-export const Route = createFileRoute('/config/integrations/telegram')({
+export const Route = createFileRoute('/config/telegram')({
   loader: () => fetchTelegramConfig(),
   component: TelegramIntegrationPage,
 })

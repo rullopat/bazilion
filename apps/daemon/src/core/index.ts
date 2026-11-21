@@ -11,11 +11,7 @@ export {
   attentionSummary,
   projectAttention,
 } from './attention.ts'
-export {
-  groupAvailableModels,
-  isSetupComplete,
-  listAvailableModels,
-} from './availableModels.ts'
+export { isSetupComplete, listAvailableModels } from './availableModels.ts'
 export { replaceCuratedModels } from './curatedModels.ts'
 export type { BazilionDb } from './db/client.ts'
 export { openDb, openInMemoryDb } from './db/client.ts'

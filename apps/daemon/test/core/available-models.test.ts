@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import {
   type BazilionDb,
-  groupAvailableModels,
   initSchema,
   listAvailableModels,
   openInMemoryDb,
@@ -21,7 +20,6 @@ afterEach(() => {
 
 test('empty DB yields empty lists', () => {
   expect(listAvailableModels(db)).toEqual([])
-  expect(groupAvailableModels(db)).toEqual([])
 })
 
 test('only enabled providers with curated models surface', () => {
@@ -34,19 +32,13 @@ test('only enabled providers with curated models surface', () => {
   providerModelRepo.replace(db, 'openai', ['gpt-4o'])
   // openai but disabled-then-enabled — still has its curated entries
   providerModelRepo.replace(db, 'groq', ['llama-3.3-70b']) // disabled → omitted
-  // lmstudio is enabled but has no curated models → omitted from teams
+  // lmstudio is enabled but has no curated models → omitted
 
   const list = listAvailableModels(db)
   expect(list.map((m) => m.value).sort()).toEqual([
     'anthropic:claude-opus-4-6',
     'anthropic:claude-sonnet-4-6',
     'openai:gpt-4o',
-  ])
-
-  const teams = groupAvailableModels(db)
-  expect(teams).toEqual([
-    { provider: 'anthropic', models: ['claude-opus-4-6', 'claude-sonnet-4-6'] },
-    { provider: 'openai', models: ['gpt-4o'] },
   ])
 })
 

@@ -47,6 +47,6 @@ was checked. Setup is sorted by what a model does, not by which of 45 vendors ha
   normal rate for a few tokens. No free "list models" call is used for this.
 - A provider that stops working later is noticed only at the next test or the next failed turn;
   nothing tests in the background.
-- Services (web search, the browser, shell safety) keeps its page of one field per row.
-- Model menus on Agents and templates still show `provider:model` ids.
+- Services and the model menus were left as they were; [BAZ-074](BAZ-074-tools-and-model-names.md)
+  redid both in 0.52.0.
 - Video generation and voice transcription do not exist; a new function would be one more card.

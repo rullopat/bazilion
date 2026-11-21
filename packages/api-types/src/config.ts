@@ -1,42 +1,102 @@
-// Setup (`/config`): model providers, the models Agents may use, service cards and their fields.
+// Setup (`/config`): model providers, the models Agents may use, the tools and their settings.
 
-/** One stored field of a provider or service card; SERVICES in apps/daemon/src/core/services.ts. */
+export interface SettingOption {
+  value: string
+  label: string
+  /** One line about what choosing it means. */
+  hint?: string
+  /** What choosing it would meet on this installation right now, such as a key that is missing. */
+  note?: { text: string; tone: 'ok' | 'warning' }
+}
+
+/**
+ * How a setting is entered and checked. Every setting is stored as text under its `envVar`:
+ * a switch as its `on` or `off` value, a number in its base unit (`scale` shown units each).
+ */
+export type SettingInput =
+  | { type: 'text' }
+  | { type: 'choice'; options: SettingOption[]; default: string }
+  | { type: 'switch'; on: string; off: string; default: boolean }
+  | {
+      type: 'number'
+      default: number
+      min: number
+      max: number
+      /** The unit people read, e.g. `minutes`; the stored number is `scale` times what they type. */
+      unit?: string
+      scale?: number
+    }
+
+/** One stored setting of a provider, a tool or a model function; SERVICES in core/services.ts. */
 export interface ServiceFieldState {
-  options?: readonly string[]
-  optionLabels?: Readonly<Record<string, string>>
   envVar: string
   kind: 'secret' | 'config'
   label: string
   placeholder?: string
   description?: string
-  /** A field most installations never set; the web shows it under "More settings". */
+  /** A setting most installations never touch; the web shows it under "More settings". */
   advanced?: boolean
-  /** True when the field has a non-empty value in its storage backend. */
+  input: SettingInput
+  /** True when the setting has a non-empty value in its storage backend. */
   set: boolean
-  /** For `kind: 'config'` (plaintext): the actual value. Omitted for secrets. */
+  /** For `kind: 'config'` (plaintext): the stored value. Omitted for secrets. */
   value?: string
   /** For `kind: 'secret'`: a truncated preview like "sk-abc…". Omitted when unset. */
   preview?: string
+  /**
+   * What is in effect, read as the daemon reads it: the default when nothing valid is stored.
+   * Omitted for secrets.
+   */
+  effective?: string
+  /**
+   * The stored value is one the daemon cannot use, so something else is in effect: a mistyped
+   * mode or number saved before values were checked. Saving the card replaces it.
+   */
+  unusable?: boolean
+  /** The daemon's own environment sets this, which wins over what is stored here. */
+  environment?: boolean
+  /** It matters only while these other settings of its card have one of these values. */
+  when?: { envVar: string; is: string[] }[]
+}
+
+/** What a tool is doing now, in a few words. */
+export interface ServiceState {
+  label: string
+  tone: 'on' | 'warning' | 'off'
 }
 
 export interface ServiceCard {
-  status?: string
   id: string
   displayName: string
   hint?: string
-  /** Display section label (e.g. "Web tools"); cards without one are shown under "Other". */
-  team?: string
+  /** What is in effect now. */
+  state?: ServiceState
+  /** A further line, such as whether Docker has the image, or why a model function is not ready. */
+  note?: string
+  /** Something worth knowing that is not a setting of the card. */
+  footnote?: string
   fields: ServiceFieldState[]
 }
 
-export interface ServiceConfigResponse {
-  services: ServiceCard[]
+/** `GET /api/config/tools` */
+export interface ToolsResponse {
+  /** What Agents can do besides thinking: search, read pages, browse, run commands. */
+  tools: ServiceCard[]
   /** Model functions (image generation): chosen on the Models page, listed by `config list`. */
   functions: ServiceCard[]
 }
 
 export interface SetFieldRequest {
   value: string
+}
+
+/** `PUT /api/config/fields`: several settings saved together; an empty value clears one. */
+export interface SetFieldsRequest {
+  values: Record<string, string>
+}
+
+export interface SetFieldsResponse {
+  fields: ServiceFieldState[]
 }
 
 // ─── Providers ───────────────────────────────────────────────────────────
@@ -235,17 +295,6 @@ export interface ModelsResponse {
     selected: string
     routes: ImageRouteEntry[]
   }
-}
-
-/** The chat models of one provider Agents may use. */
-export interface ModelGroup {
-  provider: string
-  models: string[]
-}
-
-/** `GET /api/config/available-models`: chat models grouped by provider (under `teams`). */
-export interface AvailableModelsResponse {
-  teams: ModelGroup[]
 }
 
 export interface ProviderTestRequest {

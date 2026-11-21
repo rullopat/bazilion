@@ -58,6 +58,42 @@ export function usedByLine(usedBy: ChatModelEntry['usedBy']): string {
   return parts.length > 0 ? parts.join(', ') : 'Not used yet'
 }
 
+/** The two facts that matter when choosing a model: how much it reads, whether it sees images. */
+export function menuFacts(
+  model: Pick<ChatModelEntry, 'contextWindow' | 'images' | 'providerConnect'>,
+): string {
+  const context = formatContext(model.contextWindow)
+  if (!context) return model.providerConnect === 'local' ? 'on this computer' : ''
+  return `${context} · ${model.images ? 'sees images' : 'text only'}`
+}
+
+export interface MenuGroup {
+  provider: string
+  name: string
+  /** Why its models may not answer, when its last test failed or its credentials are gone. */
+  trouble: string | null
+  models: ChatModelEntry[]
+}
+
+/** Chat models by provider, in the order the Models page lists them. */
+export function menuGroups(models: readonly ChatModelEntry[]): MenuGroup[] {
+  const groups = new Map<string, MenuGroup>()
+  for (const model of models) {
+    const group = groups.get(model.provider) ?? {
+      provider: model.provider,
+      name: model.providerName,
+      trouble:
+        model.providerState === 'failing' || model.providerState === 'incomplete'
+          ? 'not working'
+          : null,
+      models: [],
+    }
+    group.models.push(model)
+    groups.set(model.provider, group)
+  }
+  return [...groups.values()]
+}
+
 /** Whether a model matches what was typed: every word, in its name or id. */
 export function matchesModel(model: Pick<CatalogModel, 'id' | 'name'>, query: string): boolean {
   const haystack = `${model.name ?? ''} ${model.id}`.toLowerCase()

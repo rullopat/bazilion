@@ -1,7 +1,7 @@
 import type {
-  AvailableModelsResponse,
+  ChatModelEntry,
   LoadedProfile,
-  ModelGroup,
+  ModelsResponse,
   SkillInfo,
   SkillsMode,
 } from '@bazilion/api-types'
@@ -10,7 +10,7 @@ import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { Button } from '../../../../components/Button'
-import { AVAILABLE_MODELS_PATH, ModelSelect } from '../../../../components/ModelSelect'
+import { MODELS_PATH, ModelMenu } from '../../../../components/ModelMenu'
 import { PageShell } from '../../../../components/Page'
 import { SectionTabs, TEMPLATE_TABS } from '../../../../components/SectionTabs'
 import { SkillsPicker } from '../../../../components/SkillsPicker'
@@ -31,10 +31,10 @@ const fetchProfile = createServerFn({ method: 'GET' })
       throw error
     }
     const [models, skills] = await Promise.all([
-      client.get<AvailableModelsResponse>(AVAILABLE_MODELS_PATH),
+      client.get<ModelsResponse>(MODELS_PATH),
       client.get<SkillInfo[]>('/api/skills'),
     ])
-    return { loaded, modelGroups: models.teams, skills }
+    return { loaded, chatModels: models.chat, skills }
   })
 
 export const Route = createFileRoute('/templates/agents/$id/')({
@@ -49,7 +49,7 @@ export const Route = createFileRoute('/templates/agents/$id/')({
 type DirtyChange = (section: string, dirty: boolean) => void
 
 function ProfileDetailPage() {
-  const { loaded, modelGroups, skills } = Route.useLoaderData()
+  const { loaded, chatModels, skills } = Route.useLoaderData()
   const { profile, files } = loaded
   const [tab, setTab] = useState<'basics' | 'skills'>('basics')
   const [dirtySections, setDirtySections] = useState<Record<string, boolean>>({})
@@ -105,7 +105,7 @@ function ProfileDetailPage() {
           profileId={profile.id}
           initialName={profile.name}
           currentModel={profile.defaultModel}
-          modelGroups={modelGroups}
+          chatModels={chatModels}
           onDirtyChange={reportDirty}
         />
         <FileCard
@@ -344,13 +344,13 @@ function SettingsCard({
   profileId,
   initialName,
   currentModel,
-  modelGroups,
+  chatModels,
   onDirtyChange,
 }: {
   profileId: string
   initialName: string
   currentModel: string
-  modelGroups: ModelGroup[]
+  chatModels: ChatModelEntry[]
   onDirtyChange: DirtyChange
 }) {
   const router = useRouter()
@@ -383,11 +383,11 @@ function SettingsCard({
             Name
             <input value={name} onChange={(event) => setName(event.target.value)} />
           </label>
-          <ModelSelect
+          <ModelMenu
             label="Default model"
             value={model}
             onChange={setModel}
-            groups={modelGroups}
+            models={chatModels}
             required
           />
         </div>

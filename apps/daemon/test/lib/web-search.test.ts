@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net'
 import { expect, test, vi } from 'vitest'
 import { responsesStream } from '../../src/lib/openai-responses.ts'
-import { createWebSearchHost, searchRoute, searchStatus } from '../../src/lib/web-search.ts'
+import { createWebSearchHost, searchRoute } from '../../src/lib/web-search.ts'
 import { webSearchTool } from '../../src/runtime/tools/web.ts'
 import type { WebSearchOutput } from '../../src/runtime/worker/ipc-protocol.ts'
 
@@ -29,8 +29,6 @@ test('auto picks Brave, then SearXNG, then the hosted search of an OpenAI or Cha
       false,
     ),
   ).toEqual({ backend: 'openai' })
-  expect(searchStatus(brave)).toBe('Web search uses brave.')
-  expect(searchStatus({})).toContain('OpenAI or ChatGPT')
 })
 
 test('Brave and SearXNG results come back as readable links', async () => {

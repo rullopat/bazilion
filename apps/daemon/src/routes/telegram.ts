@@ -295,8 +295,7 @@ agentTelegramRouter.post('/:id/telegram/bind', async (c) => {
   if (!live) {
     return c.json(
       {
-        error:
-          'Telegram bot is not running — configure credentials at /config/integrations/telegram',
+        error: 'Telegram bot is not running: set it up under Setup, Telegram (/config/telegram)',
       },
       503,
     )

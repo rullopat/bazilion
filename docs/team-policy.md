@@ -27,7 +27,8 @@ An Agent that moves to another Team loses its edges and joins the new Team with 
 Team a new member starts isolated until you add edges. Edits take effect immediately and the last
 write wins.
 
-The 8-hop loop guard on message chains is separate from policy: it bounds cost, not reach.
+The loop guard on message chains (the first message and eight replies, unless changed under
+**Setup → Tools**) is separate from policy: it bounds cost, not reach.
 
 ## Surfaces
 

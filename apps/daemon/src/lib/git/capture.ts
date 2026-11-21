@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type ContextDirectory, ContextReadError } from './context-directory.ts'
@@ -227,11 +227,21 @@ export async function captureRepositoryGit(
       }
     }
     for (const name of ['HEAD', 'index', 'packed-refs', 'shallow']) {
+      // Looked at before it is read: an index rewritten in between only gets an older time here.
+      const written = name === 'index' ? git.entry(name) : null
       const content = git.read(name, Math.min(METADATA_READ_LARGE, METADATA_BYTES - bytes))
       if (content) {
         count++
         bytes += content.length
         writeFileSync(join(scratch, name), content, { mode: 0o600 })
+        // Git compares the contents of a file that is not older than the index, because a change
+        // made in the second the file was staged leaves its size and time as they were. A copy of
+        // the index made now is newer than every file, and such a change would go unseen: the
+        // copy keeps the time of the index it was made from.
+        if (written) {
+          const seconds = Math.floor(written.mtimeMs / 1000)
+          utimesSync(join(scratch, name), seconds, seconds)
+        }
       }
     }
     for (const name of ['refs', 'objects']) {

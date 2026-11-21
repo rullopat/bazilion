@@ -1,5 +1,5 @@
 import {
-  type AvailableModelsResponse,
+  type ModelsResponse,
   REASONING_LEVELS,
   type ReasoningLevel,
   type ResolvedAgent,
@@ -9,15 +9,12 @@ import { useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import { useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
-import { AVAILABLE_MODELS_PATH, ModelSelect } from '../ModelSelect'
+import { MODELS_PATH, ModelMenu } from '../ModelMenu'
 
 /** The model and reasoning level of one Agent, over its template's defaults. */
 export function AgentModel({ agent }: { agent: ResolvedAgent }) {
   const router = useRouter()
-  const models = useResource(
-    (signal) => api<AvailableModelsResponse>(AVAILABLE_MODELS_PATH, { signal }),
-    [],
-  )
+  const models = useResource((signal) => api<ModelsResponse>(MODELS_PATH, { signal }), [])
   const savedModel = agent.agent.modelOverride ?? ''
   const [model, setModel] = useState(savedModel)
   const [reasoning, setReasoning] = useState<ReasoningLevel>(agent.reasoningLevel)
@@ -48,15 +45,15 @@ export function AgentModel({ agent }: { agent: ResolvedAgent }) {
 
   return (
     <form onSubmit={(event) => void save(event)} className="[&_label]:mt-0">
-      <ModelSelect
+      <ModelMenu
         label="Model"
         value={model}
         onChange={(value) => {
           setModel(value)
           setSaved(false)
         }}
-        groups={models.data?.teams ?? []}
-        emptyOption={`The template's (${agent.profile.defaultModel})`}
+        models={models.data?.chat ?? []}
+        inherited={{ label: 'The template’s model', model: agent.profile.defaultModel }}
       />
       <label>
         Reasoning
