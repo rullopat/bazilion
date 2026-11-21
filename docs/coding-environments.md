@@ -26,8 +26,8 @@ nothing. Learning reviews get no repository instructions.
 ## Host or Docker
 
 `BAZILION_BASH_SANDBOX` applies to every turn: chat, Telegram, follow-ups, schedules and inbox.
-Set it on `/config/services` (**Agent Runtime → Agent Shell Security**) or with
-`bazilion config set BAZILION_BASH_SANDBOX docker`.
+Set it on the **Commands** card under **Setup → Tools** (`/config/tools`), which says whether
+Docker has the image before you save, or with `bazilion config set BAZILION_BASH_SANDBOX docker`.
 
 | Setting | What runs |
 | --- | --- |

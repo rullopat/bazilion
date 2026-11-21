@@ -1,16 +1,36 @@
-// Per-service field registry — the settings Setup (`/config`) and `bazilion config` know.
+// The settings Setup (`/config`) and `bazilion config` know.
 //
-// Each entry describes one "thing" the user might configure: an LLM provider
-// (from the provider table in providers.ts), a model function (image generation)
-// or an ancillary service (Brave Search, SearXNG, …). Fields know which storage
-// backend they live in: `secret` → the encrypted `secrets` table, `config` → the
-// plaintext `config` table. The registry is the single source of truth for the
-// Services page and for the generic field-write endpoint's dispatch.
+// Each entry is one thing the user may set up: an LLM provider (from the provider table in
+// providers.ts), a model function (image generation), a tool (web search, the browser, …) or an
+// integration (Telegram). A field knows where it is stored (`secret`: the encrypted `secrets`
+// table, `config`: the plaintext `config` table) and how it is entered and checked (`input`).
+// The registry is the single source of truth for the Tools page, for `bazilion config` and for
+// the field-write endpoints.
 
-import { IMAGE_MODEL_CHOICES, IMAGE_ROUTES } from './image-generation-config.ts'
+import { IMAGE_ROUTES } from './image-generation-config.ts'
 import { PROVIDERS } from './providers.ts'
 
 export type FieldKind = 'secret' | 'config'
+
+export interface FieldOption {
+  value: string
+  label: string
+  /** One line about what choosing it means. */
+  hint?: string
+}
+
+/**
+ * How a setting is entered and checked. Whatever the input, the stored value is text, the same
+ * text the daemon's environment could carry under the field's name.
+ */
+export type FieldInput =
+  /** Free text; `format` is checked when it is saved. */
+  | { type: 'text'; format?: 'url' | 'path' | 'docker-image' }
+  | { type: 'choice'; options: readonly FieldOption[]; default: string }
+  /** Stored as `on` or `off`; `default` is the position when nothing is stored. */
+  | { type: 'switch'; on: string; off: string; default: boolean }
+  /** A whole number in its base unit; people see it divided by `scale`, in `unit`. */
+  | { type: 'number'; default: number; min: number; max: number; unit?: string; scale?: number }
 
 export interface ServiceField {
   /** Env var name — canonical key in both stores. */
@@ -19,33 +39,46 @@ export interface ServiceField {
   label: string
   placeholder?: string
   description?: string
-  options?: readonly string[]
-  optionLabels?: Readonly<Record<string, string>>
+  /** Free text when left out. */
+  input?: FieldInput
   /** A field most installations never set; shown under "More settings". */
   advanced?: boolean
+  /** It matters only while these other fields of its card have one of these values. */
+  when?: readonly { envVar: string; is: readonly string[] }[]
 }
 
-/** `function` is a model function with its own place on the Models page (image generation). */
-export type ServiceCategory = 'provider' | 'function' | 'service' | 'integration'
+/**
+ * `function` is a model function with its own place on the Models page (image generation);
+ * `tool` is a card on the Tools page.
+ */
+export type ServiceCategory = 'provider' | 'function' | 'tool' | 'integration'
 
 export interface ServiceDef {
   /** For providers, the provider id (e.g. 'anthropic'). */
   id: string
   displayName: string
   category: ServiceCategory
-  /** Display grouping label shown above the card on the /config tabs. */
-  team?: string
-  /** Sign-up link, docs, or 1-line description shown on the card. */
+  /** One line under the name: what it is for. */
   hint?: string
+  /** Something worth knowing that is not a setting of the card. */
+  footnote?: string
   fields: ServiceField[]
 }
 
-/**
- * One-liner: what's shown on each service card.
- * Order here is the display order on the config page.
- */
+const yesNo = (fallback: boolean): FieldInput => ({
+  type: 'switch',
+  on: 'true',
+  off: 'false',
+  default: fallback,
+})
+
+const BROWSER_ON = { envVar: 'BROWSER_ENABLED', is: ['true'] } as const
+const OWN_BROWSER = { envVar: 'BROWSER_ATTACH', is: ['false'] } as const
+const RUNNING_BROWSER = { envVar: 'BROWSER_ATTACH', is: ['true'] } as const
+
+/** Order here is the display order on the Tools page and in `bazilion config list`. */
 export const SERVICES: ServiceDef[] = [
-  // LLM providers: one card per entry of the provider table.
+  // LLM providers: one entry per row of the provider table.
   ...PROVIDERS.map(
     ({ id, displayName, hint, fields }): ServiceDef => ({
       id,
@@ -56,28 +89,11 @@ export const SERVICES: ServiceDef[] = [
     }),
   ),
 
-  // --- Ancillary services (web search, etc) ---
-  {
-    id: 'web-search',
-    displayName: 'Web search',
-    category: 'service',
-    team: 'Web Search',
-    hint: 'The web_search tool of every Agent turn. Auto uses Brave when BRAVE_API_KEY is set, else SearXNG when SEARXNG_URL is set, else the search hosted by an Agent on an OpenAI (API key) or ChatGPT model.',
-    fields: [
-      {
-        envVar: 'BAZILION_WEB_SEARCH_ROUTE',
-        kind: 'config',
-        label: 'Search backend',
-        options: ['auto', 'brave', 'searxng', 'native', 'off'],
-        description:
-          'auto (default), brave, searxng, native (the Agent’s own OpenAI or ChatGPT model) or off. A chosen backend that is not configured leaves Agents without web_search.',
-      },
-    ],
-  },
+  // --- Model functions ---
   {
     id: 'image-generation',
     displayName: 'Image generation',
-    // Chosen under Images on the Models page; the field stays here for `bazilion config`.
+    // Chosen under Images on the Models page; the field is here for `bazilion config`.
     category: 'function',
     hint: 'The image_generate tool: images are saved to Team Results. At most four image_generate calls per turn.',
     fields: [
@@ -85,85 +101,231 @@ export const SERVICES: ServiceDef[] = [
         envVar: 'BAZILION_IMAGE_MODEL',
         kind: 'config',
         label: 'Image model',
-        options: IMAGE_MODEL_CHOICES,
-        optionLabels: {
-          off: 'Off',
-          ...Object.fromEntries(IMAGE_ROUTES.map((route) => [route.id, route.label])),
+        input: {
+          type: 'choice',
+          default: 'off',
+          options: [
+            { value: 'off', label: 'Off' },
+            ...IMAGE_ROUTES.map((route) => ({ value: route.id, label: route.label })),
+          ],
         },
         description:
           'Off by default. API-key routes are billed per image; the ChatGPT sign-in uses your subscription.',
       },
     ],
   },
+
+  // --- Tools: what Agents can do besides thinking ---
   {
-    id: 'firecrawl',
-    displayName: 'Firecrawl',
-    category: 'service',
-    team: 'Web Search',
-    hint: 'web_fetch fallback for JS-heavy/blocked pages · firecrawl.dev (free tier available)',
+    id: 'web-search',
+    displayName: 'Web search',
+    category: 'tool',
+    hint: 'Where an Agent’s searches go.',
+    footnote: 'Applies to every Agent, in every kind of turn.',
+    fields: [
+      {
+        envVar: 'BAZILION_WEB_SEARCH_ROUTE',
+        kind: 'config',
+        label: 'Search with',
+        input: {
+          type: 'choice',
+          default: 'auto',
+          options: [
+            {
+              value: 'auto',
+              label: 'Automatic',
+              hint: 'Brave when a key is saved, else SearXNG, else the model’s own search.',
+            },
+            {
+              value: 'brave',
+              label: 'Brave Search',
+              hint: 'Needs the key below. Free tier at brave.com/search/api.',
+            },
+            {
+              value: 'searxng',
+              label: 'SearXNG',
+              hint: 'Your own instance, at the address below.',
+            },
+            {
+              value: 'native',
+              label: 'The model’s own search',
+              hint: 'Only Agents on OpenAI or ChatGPT models can search.',
+            },
+            { value: 'off', label: 'Off', hint: 'Agents cannot search the web.' },
+          ],
+        },
+      },
+      { envVar: 'BRAVE_API_KEY', kind: 'secret', label: 'Brave API key', placeholder: 'BSA…' },
+      {
+        envVar: 'SEARXNG_URL',
+        kind: 'config',
+        label: 'SearXNG address',
+        placeholder: 'https://searxng.example.com',
+        input: { type: 'text', format: 'url' },
+      },
+    ],
+  },
+  {
+    id: 'web-pages',
+    displayName: 'Web pages',
+    category: 'tool',
+    hint: 'How an Agent reads a page it was given or found. The built-in reader is always on and needs no account.',
     fields: [
       {
         envVar: 'FIRECRAWL_API_KEY',
         kind: 'secret',
-        label: 'API key',
-        placeholder: 'fc-...',
+        label: 'Firecrawl API key',
+        placeholder: 'fc-…',
         description:
-          'When set, web_fetch automatically falls back to Firecrawl if the primary Readability extraction yields too little content.',
+          'Optional, for pages that need JavaScript: used only when the built-in reader gets too little text. Free tier at firecrawl.dev.',
       },
       {
         envVar: 'FIRECRAWL_URL',
         kind: 'config',
-        label: 'Base URL (optional, for self-hosted)',
+        label: 'Firecrawl address',
         placeholder: 'https://api.firecrawl.dev',
+        description: 'Only for a Firecrawl you host yourself.',
+        input: { type: 'text', format: 'url' },
+        advanced: true,
       },
     ],
   },
   {
-    id: 'brave-search',
-    displayName: 'Brave Search',
-    category: 'service',
-    team: 'Web Search',
-    hint: 'Web search tool · free tier at brave.com/search/api/',
-    fields: [{ envVar: 'BRAVE_API_KEY', kind: 'secret', label: 'API key', placeholder: 'BSA...' }],
-  },
-  {
-    id: 'searxng',
-    displayName: 'SearXNG',
-    category: 'service',
-    team: 'Web Search',
-    hint: 'Self-hosted meta-search engine · searxng.org',
+    id: 'browser',
+    displayName: 'Browser',
+    category: 'tool',
+    hint: 'Lets an Agent open pages, click, fill forms and stay logged in.',
+    footnote: 'Each Agent’s browser is stopped and reset under Browser in its Agent tab.',
     fields: [
       {
-        envVar: 'SEARXNG_URL',
+        envVar: 'BROWSER_ENABLED',
         kind: 'config',
-        label: 'Instance URL',
-        placeholder: 'https://searxng.example.com',
+        label: 'Agents can use a browser',
+        input: yesNo(true),
       },
-    ],
-  },
-  {
-    id: 'shell-security',
-    displayName: 'Agent Shell Security',
-    category: 'service',
-    team: 'Agent Runtime',
-    hint: 'Applies to every Agent turn, whatever its origin. Host execution is unisolated.',
-    fields: [
       {
-        envVar: 'BAZILION_BASH_APPROVAL',
+        envVar: 'BROWSER_ATTACH',
         kind: 'config',
-        label: 'Dangerous-command approval',
-        placeholder: 'off',
+        label: 'Which browser',
+        when: [BROWSER_ON],
+        input: {
+          type: 'choice',
+          default: 'false',
+          options: [
+            {
+              value: 'false',
+              label: 'A browser of its own for each Agent',
+              hint: 'Its logins are kept apart from yours and from other Agents.',
+            },
+            {
+              value: 'true',
+              label: 'My running Chrome',
+              hint: 'Agents work in your Chrome or Chromium, with your logins, in tabs of their own. Allow it first at chrome://inspect/#remote-debugging.',
+            },
+          ],
+        },
+      },
+      {
+        envVar: 'BROWSER_HEADLESS',
+        kind: 'config',
+        label: 'Show the browser window',
+        description: 'Off: it works out of sight. Not used with your running Chrome.',
+        // The setting is "headless": the window shows when it is false.
+        input: { type: 'switch', on: 'false', off: 'true', default: false },
+        advanced: true,
+        when: [BROWSER_ON, OWN_BROWSER],
+      },
+      {
+        envVar: 'BROWSER_ALLOW_PRIVATE_NETWORK',
+        kind: 'config',
+        label: 'Reach addresses on your own network',
+        description: 'Off is safer. On is for local development only.',
+        input: yesNo(false),
+        advanced: true,
+        when: [BROWSER_ON],
+      },
+      {
+        envVar: 'BROWSER_IDLE_MS',
+        kind: 'config',
+        label: 'Close an idle browser after',
+        input: {
+          type: 'number',
+          default: 900_000,
+          min: 60_000,
+          max: 86_400_000,
+          unit: 'minutes',
+          scale: 60_000,
+        },
+        advanced: true,
+        when: [BROWSER_ON],
+      },
+      {
+        envVar: 'BROWSER_MAX_SESSIONS',
+        kind: 'config',
+        label: 'Browsers open at the same time',
+        input: { type: 'number', default: 4, min: 1, max: 64, unit: 'at most' },
+        advanced: true,
+        when: [BROWSER_ON],
+      },
+      {
+        envVar: 'BROWSER_EXECUTABLE_PATH',
+        kind: 'config',
+        label: 'Browser program',
+        placeholder: '/usr/bin/brave-browser',
         description:
-          'Use off or dangerous (classified commands require per-call approval). Unattended turns auto-deny; interactive turns may approve once.',
+          'A Chromium-family browser to use. Left empty, Bazilion uses the first installed Chrome, Brave, Edge or Chromium, and downloads Chromium once when there is none.',
+        input: { type: 'text', format: 'path' },
+        advanced: true,
+        when: [BROWSER_ON, OWN_BROWSER],
       },
+      {
+        envVar: 'BROWSER_ATTACH_URL',
+        kind: 'config',
+        label: 'Address of the running browser',
+        placeholder: 'http://127.0.0.1:9222',
+        description:
+          'For a browser started with --remote-debugging-port. Left empty, Bazilion finds the running Chrome or Chromium itself.',
+        input: { type: 'text', format: 'url' },
+        advanced: true,
+        when: [BROWSER_ON, RUNNING_BROWSER],
+      },
+    ],
+  },
+  {
+    id: 'commands',
+    displayName: 'Commands',
+    category: 'tool',
+    hint: 'Where an Agent’s shell commands run, and what it must ask first.',
+    footnote: 'A Team can name a Docker image of its own in its settings.',
+    fields: [
       {
         envVar: 'BAZILION_BASH_SANDBOX',
         kind: 'config',
-        label: 'Sandbox mode',
-        placeholder: 'off',
-        options: ['off', 'docker'],
+        label: 'Commands run',
+        input: {
+          type: 'choice',
+          default: 'off',
+          options: [
+            {
+              value: 'off',
+              label: 'On this computer',
+              hint: 'No isolation: a command can reach whatever you can.',
+            },
+            {
+              value: 'docker',
+              label: 'In a Docker container',
+              hint: 'A fresh container with no network for every command.',
+            },
+          ],
+        },
+      },
+      {
+        envVar: 'BAZILION_BASH_APPROVAL',
+        kind: 'config',
+        label: 'Ask before dangerous commands',
         description:
-          'Use off for unisolated host tools or docker (bash runs in a fresh network-disabled container; host file tools are hidden). Applies to every turn origin.',
+          'In a chat you allow or deny each one. Schedules, Telegram and inbox turns deny them.',
+        input: { type: 'switch', on: 'dangerous', off: 'off', default: false },
       },
       {
         envVar: 'BAZILION_BASH_SANDBOX_IMAGE',
@@ -171,94 +333,33 @@ export const SERVICES: ServiceDef[] = [
         label: 'Docker image',
         placeholder: 'debian:bookworm-slim',
         description:
-          'Local image with /bin/bash; Bazilion never pulls it and never falls back to host execution. A Team can name its own.',
-      },
-      {
-        envVar: 'BAZILION_AGENT_LOOP_MAX_HOPS',
-        kind: 'config',
-        label: 'Agent-message hop limit',
-        placeholder: '8',
-        description:
-          'Maximum causal hops in an agent-to-agent message chain before the daemon stops it. Default 8.',
+          'A local image with /bin/bash. Bazilion never pulls it and never falls back to this computer. A Team can name its own.',
+        input: { type: 'text', format: 'docker-image' },
+        advanced: true,
+        when: [{ envVar: 'BAZILION_BASH_SANDBOX', is: ['docker'] }],
       },
     ],
   },
   {
-    id: 'browser',
-    displayName: 'Browser Automation',
-    category: 'service',
-    team: 'Browser',
-    hint: 'Each Agent gets its own persistent browser profile (cookies, logins), kept across turns and Team moves and excluded from backups. Reset under Browser in the web workspace, or deleting the Agent, removes it. With "Use my running browser" on, Agents work in your own Chrome or Chromium instead.',
+    id: 'agent-messages',
+    displayName: 'Messages between Agents',
+    category: 'tool',
+    hint: 'Stops Agents from answering each other without end.',
     fields: [
       {
-        envVar: 'BROWSER_ENABLED',
+        envVar: 'BAZILION_AGENT_LOOP_MAX_HOPS',
         kind: 'config',
-        label: 'Enable browser tools',
-        placeholder: 'true',
-        description: 'Give Agent turns the browser_* tools (true/false). Default true.',
-      },
-      {
-        envVar: 'BROWSER_EXECUTABLE_PATH',
-        kind: 'config',
-        label: 'Browser executable (optional)',
-        placeholder: '/usr/bin/brave-browser',
-        description:
-          'Absolute path to a Chromium-family browser. When unset, Bazilion uses the first installed Chrome, Brave, Edge or Chromium; when none is installed it downloads Chromium once.',
-      },
-      {
-        envVar: 'BROWSER_ATTACH',
-        kind: 'config',
-        label: 'Use my running browser',
-        placeholder: 'false',
-        description:
-          'true makes Agents work in the Chrome or Chromium you already have open, with your logins, in tabs of their own. Allow it first in Chrome at chrome://inspect/#remote-debugging. Default false: each Agent gets a browser of its own.',
-      },
-      {
-        envVar: 'BROWSER_ATTACH_URL',
-        kind: 'config',
-        label: 'Running browser address (optional)',
-        placeholder: 'http://127.0.0.1:9222',
-        description:
-          'DevTools address of the browser to use when "Use my running browser" is on, for one started with --remote-debugging-port. When unset, Bazilion finds the running Chrome or Chromium itself.',
-      },
-      {
-        envVar: 'BROWSER_HEADLESS',
-        kind: 'config',
-        label: 'Headless',
-        placeholder: 'true',
-        description:
-          'true (default) runs the browser without a window; false opens a visible browser window on the desktop the daemon runs in. Not used with a running browser.',
-      },
-      {
-        envVar: 'BROWSER_ALLOW_PRIVATE_NETWORK',
-        kind: 'config',
-        label: 'Allow private network',
-        placeholder: 'false',
-        description:
-          'Permit the browser to reach loopback/private IPs (SSRF guard off). Default false — only enable for local dev. Never enable for untrusted browsing.',
-      },
-      {
-        envVar: 'BROWSER_IDLE_MS',
-        kind: 'config',
-        label: 'Idle timeout (ms)',
-        placeholder: '900000',
-        description: 'Close an idle browser session after this many ms. Default 900000 (15 min).',
-      },
-      {
-        envVar: 'BROWSER_MAX_SESSIONS',
-        kind: 'config',
-        label: 'Max concurrent sessions',
-        placeholder: '4',
-        description: 'Cap on simultaneously-open browser sessions (LRU-evicted). Default 4.',
+        label: 'Stop a chain after',
+        description: 'The first message between two Agents and this many replies are delivered.',
+        input: { type: 'number', default: 8, min: 0, max: 100, unit: 'replies' },
       },
     ],
   },
 
   // --- External integrations (chat bridges, etc) ---
-  // Each integration has its own dedicated /config/integrations/* page with
-  // workflow-specific UI (preflight health, setup wizard, …). The fields
-  // here exist so the keys are allowlisted in the config/secrets stores and
-  // surfaced through the generic `PUT /api/config/fields/:envVar` endpoint.
+  // Telegram has its own page (`/config/telegram`) with its own flow (preflight, pairing, …).
+  // The fields are here so that the keys are known to the stores and to
+  // `PUT /api/config/fields/:envVar`.
   // Daemon-managed internal state keys (watermarks, derived topic ids) live
   // in repos/config.ts:INTERNAL_CONFIG_KEYS instead, since the user never
   // edits them.

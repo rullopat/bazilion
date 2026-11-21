@@ -51,12 +51,12 @@ async function findService(id: string): Promise<{
     value?: string
   }>
 }> {
-  const res = await fetch(`${server.url}/api/config/services`, {
+  const res = await fetch(`${server.url}/api/config/tools`, {
     headers: { authorization: `Bearer ${server.token}` },
   })
   expect(res.ok).toBe(true)
   const body = (await res.json()) as {
-    services: Array<{
+    tools: Array<{
       id: string
       fields: Array<{
         envVar: string
@@ -66,8 +66,8 @@ async function findService(id: string): Promise<{
       }>
     }>
   }
-  const service = body.services.find((entry) => entry.id === id)
-  if (!service) throw new Error(`service ${id} missing from /api/config/services response`)
+  const service = body.tools.find((entry) => entry.id === id)
+  if (!service) throw new Error(`tool ${id} missing from /api/config/tools response`)
   return service
 }
 
@@ -144,28 +144,73 @@ test('bazilion config set routes config-kind fields to plaintext store', async (
   expect(url?.set).toBe(true)
 })
 
-test('shell sandbox settings are configurable through the shared CLI and web service surface', async () => {
-  const shellSecurity = await findService('shell-security')
-  expect(shellSecurity.fields.map((field) => field.envVar)).toEqual([
-    'BAZILION_BASH_APPROVAL',
+test('the Commands settings are the same from the CLI and the Tools page, and are checked', async () => {
+  const commands = await findService('commands')
+  expect(commands.fields.map((field) => field.envVar)).toEqual([
     'BAZILION_BASH_SANDBOX',
+    'BAZILION_BASH_APPROVAL',
     'BAZILION_BASH_SANDBOX_IMAGE',
-    'BAZILION_AGENT_LOOP_MAX_HOPS',
   ])
 
   const invalid = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'bogus'])
   expect(invalid.exitCode).not.toBe(0)
-  expect(`${invalid.stdout}${invalid.stderr}`).toContain('Choose one of: off, docker')
+  expect(`${invalid.stdout}${invalid.stderr}`).toContain(
+    'BAZILION_BASH_SANDBOX must be one of: off, docker',
+  )
+  // A mistyped approval mode used to be stored, and then failed every turn.
+  const typo = await server.cli(['config', 'set', 'BAZILION_BASH_APPROVAL', 'Dangerous'])
+  expect(typo.exitCode).not.toBe(0)
+  expect(`${typo.stdout}${typo.stderr}`).toContain('must be dangerous or off')
   const set = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'docker'])
   expect(set.exitCode).toBe(0)
   expect(set.stdout).toMatch(/BAZILION_BASH_SANDBOX.*docker/)
 
-  const updated = await findService('shell-security')
+  const updated = await findService('commands')
   expect(updated.fields.find((field) => field.envVar === 'BAZILION_BASH_SANDBOX')).toMatchObject({
     kind: 'config',
     set: true,
     value: 'docker',
   })
+  expect((await server.cli(['config', 'rm', 'BAZILION_BASH_SANDBOX'])).exitCode).toBe(0)
+})
+
+test('several settings are saved together or not at all; yes and no are stored as true and false', async () => {
+  const mixed = await server.cli([
+    'config',
+    'set',
+    'BROWSER_MAX_SESSIONS=2',
+    'BROWSER_IDLE_MS=soon',
+  ])
+  expect(mixed.exitCode).not.toBe(0)
+  expect(`${mixed.stdout}${mixed.stderr}`).toContain('BROWSER_IDLE_MS must be a whole number')
+  const browser = await findService('browser')
+  expect(browser.fields.find((field) => field.envVar === 'BROWSER_MAX_SESSIONS')?.set).toBe(false)
+
+  const saved = await server.cli([
+    'config',
+    'set',
+    'BROWSER_MAX_SESSIONS=2',
+    'BROWSER_HEADLESS=no',
+    'SEARXNG_URL=https://search.example.com',
+  ])
+  expect(saved.exitCode).toBe(0)
+  expect(saved.stdout).toMatch(/BROWSER_MAX_SESSIONS \(config\): 2/)
+  expect(saved.stdout).toMatch(/BROWSER_HEADLESS \(config\): false/)
+  const one = await server.cli(['config', 'set', 'BROWSER_MAX_SESSIONS'])
+  expect(one.exitCode).not.toBe(0)
+
+  const listed = await server.cli(['config', 'list'])
+  expect(listed.stdout).toMatch(/browser\s+BROWSER_MAX_SESSIONS\s+config\s+2\b/)
+  expect(listed.stdout).toMatch(/browser\s+BROWSER_ENABLED\s+config\s+true \(default\)/)
+  expect(listed.stdout).toContain('Web search: Using SearXNG')
+  expect(listed.stdout).toContain('Browser: On: a browser per Agent')
+  expect(listed.stdout).toContain('BROWSER_ENABLED: true or false')
+  expect(listed.stdout).toMatch(
+    /BAZILION_WEB_SEARCH_ROUTE: auto \(Automatic\), brave \(Brave Search\)/,
+  )
+  for (const name of ['BROWSER_MAX_SESSIONS', 'BROWSER_HEADLESS', 'SEARXNG_URL']) {
+    expect((await server.cli(['config', 'rm', name])).exitCode).toBe(0)
+  }
 })
 
 test('bazilion config set routes secret-kind fields to encrypted store', async () => {

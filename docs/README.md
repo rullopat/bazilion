@@ -11,6 +11,8 @@ Start with the [README](../README.md): install, first run and the CLI.
 
 - [Models and providers](models-and-providers.md): connect a provider, choose the models Agents
   use, and read what its state means
+- [Tools](tools.md): web search, the page reader, the browser, commands and message chains on one
+  page, each card saved whole
 - [Private gateway](private-gateway.md): reach the web UI from other devices over Tailscale
 - [Backup, restore and reset](backup.md)
 - [Upgrades](upgrades.md)

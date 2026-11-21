@@ -1,7 +1,7 @@
 import type {
-  AvailableModelsResponse,
+  ChatModelEntry,
   CreateProfileRequest,
-  ModelGroup,
+  ModelsResponse,
   ProfileSummary,
   ProfileTemplates,
   SkillInfo,
@@ -12,7 +12,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
-import { AVAILABLE_MODELS_PATH, ModelSelect } from '../../../components/ModelSelect'
+import { MODELS_PATH, ModelMenu } from '../../../components/ModelMenu'
 import {
   ItemList,
   ItemRow,
@@ -32,11 +32,11 @@ const fetchProfiles = createServerFn({ method: 'GET' }).handler(async () => {
   const client = daemonClient()
   const [profiles, models, skills, templates] = await Promise.all([
     client.get<ProfileSummary[]>('/api/profiles'),
-    client.get<AvailableModelsResponse>(AVAILABLE_MODELS_PATH),
+    client.get<ModelsResponse>(MODELS_PATH),
     client.get<SkillInfo[]>('/api/skills'),
     client.get<ProfileTemplates>('/api/profiles/_/templates'),
   ])
-  return { profiles, modelGroups: models.teams, skills, templates }
+  return { profiles, chatModels: models.chat, skills, templates }
 })
 
 export const Route = createFileRoute('/templates/agents/')({
@@ -45,7 +45,7 @@ export const Route = createFileRoute('/templates/agents/')({
 })
 
 function ProfilesPage() {
-  const { profiles, modelGroups, skills, templates } = Route.useLoaderData()
+  const { profiles, chatModels, skills, templates } = Route.useLoaderData()
   const router = useRouter()
   const [deleteTarget, setDeleteTarget] = useState<ProfileSummary | null>(null)
 
@@ -59,7 +59,7 @@ function ProfilesPage() {
       <SectionTabs label="Template kinds" base="/templates" tabs={TEMPLATE_TABS} />
 
       <CreateProfileForm
-        modelGroups={modelGroups}
+        chatModels={chatModels}
         skills={skills}
         templates={templates}
         onCreated={() => router.invalidate()}
@@ -172,12 +172,12 @@ const FILES: { key: FileKey; label: string; hint: string; rows: number; optional
 ]
 
 function CreateProfileForm({
-  modelGroups,
+  chatModels,
   skills,
   templates,
   onCreated,
 }: {
-  modelGroups: ModelGroup[]
+  chatModels: ChatModelEntry[]
   skills: SkillInfo[]
   templates: ProfileTemplates
   onCreated: () => Promise<void>
@@ -316,14 +316,14 @@ function CreateProfileForm({
                 <input value={name} onChange={(event) => setName(event.target.value)} />
               </label>
             </div>
-            <ModelSelect
+            <ModelMenu
               label="Default model"
               value={model}
               onChange={setModel}
-              groups={modelGroups}
+              models={chatModels}
               required
             />
-            {modelGroups.length === 0 && (
+            {chatModels.length === 0 && (
               <p className="muted text-[0.85em]">
                 Connect a provider under <a href="/config">Setup</a> first.
               </p>

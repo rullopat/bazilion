@@ -18,14 +18,14 @@ import { Route as SkillsIndexRouteImport } from './routes/skills/index'
 import { Route as ConfigIndexRouteImport } from './routes/config/index'
 import { Route as AttentionIndexRouteImport } from './routes/attention/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
-import { Route as ConfigTokensRouteImport } from './routes/config/tokens'
+import { Route as ConfigToolsRouteImport } from './routes/config/tools'
+import { Route as ConfigTelegramRouteImport } from './routes/config/telegram'
 import { Route as ConfigSystemRouteImport } from './routes/config/system'
-import { Route as ConfigServicesRouteImport } from './routes/config/services'
 import { Route as ConfigMcpRouteImport } from './routes/config/mcp'
+import { Route as ConfigAccessRouteImport } from './routes/config/access'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as TemplatesTeamsIndexRouteImport } from './routes/templates/teams/index'
 import { Route as TemplatesAgentsIndexRouteImport } from './routes/templates/agents/index'
-import { Route as ConfigIntegrationsTelegramRouteImport } from './routes/config/integrations/telegram'
 import { Route as TemplatesTeamsIdIndexRouteImport } from './routes/templates/teams/$id/index'
 import { Route as TemplatesAgentsIdIndexRouteImport } from './routes/templates/agents/$id/index'
 
@@ -74,9 +74,14 @@ const AgentsIndexRoute = AgentsIndexRouteImport.update({
   path: '/agents/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConfigTokensRoute = ConfigTokensRouteImport.update({
-  id: '/config/tokens',
-  path: '/config/tokens',
+const ConfigToolsRoute = ConfigToolsRouteImport.update({
+  id: '/config/tools',
+  path: '/config/tools',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfigTelegramRoute = ConfigTelegramRouteImport.update({
+  id: '/config/telegram',
+  path: '/config/telegram',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfigSystemRoute = ConfigSystemRouteImport.update({
@@ -84,14 +89,14 @@ const ConfigSystemRoute = ConfigSystemRouteImport.update({
   path: '/config/system',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConfigServicesRoute = ConfigServicesRouteImport.update({
-  id: '/config/services',
-  path: '/config/services',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ConfigMcpRoute = ConfigMcpRouteImport.update({
   id: '/config/mcp',
   path: '/config/mcp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfigAccessRoute = ConfigAccessRouteImport.update({
+  id: '/config/access',
+  path: '/config/access',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
@@ -109,12 +114,6 @@ const TemplatesAgentsIndexRoute = TemplatesAgentsIndexRouteImport.update({
   path: '/templates/agents/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConfigIntegrationsTelegramRoute =
-  ConfigIntegrationsTelegramRouteImport.update({
-    id: '/config/integrations/telegram',
-    path: '/config/integrations/telegram',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const TemplatesTeamsIdIndexRoute = TemplatesTeamsIdIndexRouteImport.update({
   id: '/templates/teams/$id/',
   path: '/templates/teams/$id/',
@@ -131,17 +130,17 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
   '/api/$': typeof ApiSplatRoute
+  '/config/access': typeof ConfigAccessRoute
   '/config/mcp': typeof ConfigMcpRoute
-  '/config/services': typeof ConfigServicesRoute
   '/config/system': typeof ConfigSystemRoute
-  '/config/tokens': typeof ConfigTokensRoute
+  '/config/telegram': typeof ConfigTelegramRoute
+  '/config/tools': typeof ConfigToolsRoute
   '/agents/': typeof AgentsIndexRoute
   '/attention/': typeof AttentionIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/skills/': typeof SkillsIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
-  '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
   '/templates/teams/': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id/': typeof TemplatesAgentsIdIndexRoute
@@ -152,17 +151,17 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
   '/api/$': typeof ApiSplatRoute
+  '/config/access': typeof ConfigAccessRoute
   '/config/mcp': typeof ConfigMcpRoute
-  '/config/services': typeof ConfigServicesRoute
   '/config/system': typeof ConfigSystemRoute
-  '/config/tokens': typeof ConfigTokensRoute
+  '/config/telegram': typeof ConfigTelegramRoute
+  '/config/tools': typeof ConfigToolsRoute
   '/agents': typeof AgentsIndexRoute
   '/attention': typeof AttentionIndexRoute
   '/config': typeof ConfigIndexRoute
   '/skills': typeof SkillsIndexRoute
   '/teams': typeof TeamsIndexRoute
   '/templates': typeof TemplatesIndexRoute
-  '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/templates/agents': typeof TemplatesAgentsIndexRoute
   '/templates/teams': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id': typeof TemplatesAgentsIdIndexRoute
@@ -174,17 +173,17 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
   '/api/$': typeof ApiSplatRoute
+  '/config/access': typeof ConfigAccessRoute
   '/config/mcp': typeof ConfigMcpRoute
-  '/config/services': typeof ConfigServicesRoute
   '/config/system': typeof ConfigSystemRoute
-  '/config/tokens': typeof ConfigTokensRoute
+  '/config/telegram': typeof ConfigTelegramRoute
+  '/config/tools': typeof ConfigToolsRoute
   '/agents/': typeof AgentsIndexRoute
   '/attention/': typeof AttentionIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/skills/': typeof SkillsIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
-  '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
   '/templates/teams/': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id/': typeof TemplatesAgentsIdIndexRoute
@@ -197,17 +196,17 @@ export interface FileRouteTypes {
     | '/login'
     | '/welcome'
     | '/api/$'
+    | '/config/access'
     | '/config/mcp'
-    | '/config/services'
     | '/config/system'
-    | '/config/tokens'
+    | '/config/telegram'
+    | '/config/tools'
     | '/agents/'
     | '/attention/'
     | '/config/'
     | '/skills/'
     | '/teams/'
     | '/templates/'
-    | '/config/integrations/telegram'
     | '/templates/agents/'
     | '/templates/teams/'
     | '/templates/agents/$id/'
@@ -218,17 +217,17 @@ export interface FileRouteTypes {
     | '/login'
     | '/welcome'
     | '/api/$'
+    | '/config/access'
     | '/config/mcp'
-    | '/config/services'
     | '/config/system'
-    | '/config/tokens'
+    | '/config/telegram'
+    | '/config/tools'
     | '/agents'
     | '/attention'
     | '/config'
     | '/skills'
     | '/teams'
     | '/templates'
-    | '/config/integrations/telegram'
     | '/templates/agents'
     | '/templates/teams'
     | '/templates/agents/$id'
@@ -239,17 +238,17 @@ export interface FileRouteTypes {
     | '/login'
     | '/welcome'
     | '/api/$'
+    | '/config/access'
     | '/config/mcp'
-    | '/config/services'
     | '/config/system'
-    | '/config/tokens'
+    | '/config/telegram'
+    | '/config/tools'
     | '/agents/'
     | '/attention/'
     | '/config/'
     | '/skills/'
     | '/teams/'
     | '/templates/'
-    | '/config/integrations/telegram'
     | '/templates/agents/'
     | '/templates/teams/'
     | '/templates/agents/$id/'
@@ -261,17 +260,17 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   WelcomeRoute: typeof WelcomeRoute
   ApiSplatRoute: typeof ApiSplatRoute
+  ConfigAccessRoute: typeof ConfigAccessRoute
   ConfigMcpRoute: typeof ConfigMcpRoute
-  ConfigServicesRoute: typeof ConfigServicesRoute
   ConfigSystemRoute: typeof ConfigSystemRoute
-  ConfigTokensRoute: typeof ConfigTokensRoute
+  ConfigTelegramRoute: typeof ConfigTelegramRoute
+  ConfigToolsRoute: typeof ConfigToolsRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   AttentionIndexRoute: typeof AttentionIndexRoute
   ConfigIndexRoute: typeof ConfigIndexRoute
   SkillsIndexRoute: typeof SkillsIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
   TemplatesIndexRoute: typeof TemplatesIndexRoute
-  ConfigIntegrationsTelegramRoute: typeof ConfigIntegrationsTelegramRoute
   TemplatesAgentsIndexRoute: typeof TemplatesAgentsIndexRoute
   TemplatesTeamsIndexRoute: typeof TemplatesTeamsIndexRoute
   TemplatesAgentsIdIndexRoute: typeof TemplatesAgentsIdIndexRoute
@@ -343,11 +342,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/config/tokens': {
-      id: '/config/tokens'
-      path: '/config/tokens'
-      fullPath: '/config/tokens'
-      preLoaderRoute: typeof ConfigTokensRouteImport
+    '/config/tools': {
+      id: '/config/tools'
+      path: '/config/tools'
+      fullPath: '/config/tools'
+      preLoaderRoute: typeof ConfigToolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/config/telegram': {
+      id: '/config/telegram'
+      path: '/config/telegram'
+      fullPath: '/config/telegram'
+      preLoaderRoute: typeof ConfigTelegramRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/config/system': {
@@ -357,18 +363,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfigSystemRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/config/services': {
-      id: '/config/services'
-      path: '/config/services'
-      fullPath: '/config/services'
-      preLoaderRoute: typeof ConfigServicesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/config/mcp': {
       id: '/config/mcp'
       path: '/config/mcp'
       fullPath: '/config/mcp'
       preLoaderRoute: typeof ConfigMcpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/config/access': {
+      id: '/config/access'
+      path: '/config/access'
+      fullPath: '/config/access'
+      preLoaderRoute: typeof ConfigAccessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/$': {
@@ -390,13 +396,6 @@ declare module '@tanstack/react-router' {
       path: '/templates/agents'
       fullPath: '/templates/agents/'
       preLoaderRoute: typeof TemplatesAgentsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/config/integrations/telegram': {
-      id: '/config/integrations/telegram'
-      path: '/config/integrations/telegram'
-      fullPath: '/config/integrations/telegram'
-      preLoaderRoute: typeof ConfigIntegrationsTelegramRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/templates/teams/$id/': {
@@ -421,17 +420,17 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   WelcomeRoute: WelcomeRoute,
   ApiSplatRoute: ApiSplatRoute,
+  ConfigAccessRoute: ConfigAccessRoute,
   ConfigMcpRoute: ConfigMcpRoute,
-  ConfigServicesRoute: ConfigServicesRoute,
   ConfigSystemRoute: ConfigSystemRoute,
-  ConfigTokensRoute: ConfigTokensRoute,
+  ConfigTelegramRoute: ConfigTelegramRoute,
+  ConfigToolsRoute: ConfigToolsRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   AttentionIndexRoute: AttentionIndexRoute,
   ConfigIndexRoute: ConfigIndexRoute,
   SkillsIndexRoute: SkillsIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,
   TemplatesIndexRoute: TemplatesIndexRoute,
-  ConfigIntegrationsTelegramRoute: ConfigIntegrationsTelegramRoute,
   TemplatesAgentsIndexRoute: TemplatesAgentsIndexRoute,
   TemplatesTeamsIndexRoute: TemplatesTeamsIndexRoute,
   TemplatesAgentsIdIndexRoute: TemplatesAgentsIdIndexRoute,

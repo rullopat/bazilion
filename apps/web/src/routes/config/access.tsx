@@ -27,21 +27,21 @@ const fetchTokens = createServerFn({ method: 'GET' })
     return { ...tokens, ...sessions }
   })
 
-export const Route = createFileRoute('/config/tokens')({
+export const Route = createFileRoute('/config/access')({
   // The router parses `?all=1` into the number 1 (and would rewrite a string '1' as `"1"`).
   validateSearch: (search: Record<string, unknown>): { all?: 1 } => ({
     all: search.all === 1 ? 1 : undefined,
   }),
   loaderDeps: ({ search }) => ({ all: search.all === 1 }),
   loader: ({ deps }) => fetchTokens({ data: deps }),
-  component: TokensPage,
+  component: AccessPage,
 })
 
 function when(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 16).replace('T', ' ')
 }
 
-function TokensPage() {
+function AccessPage() {
   const { tokens, sessions } = Route.useLoaderData()
   const includeRevoked = Route.useSearch().all === 1
   const router = useRouter()
@@ -58,7 +58,7 @@ function TokensPage() {
 
   return (
     <ConfigPage
-      title="API tokens"
+      title="Access"
       description={
         <>
           Every token has full access to the HTTP API, the CLI and browser login. The{' '}
@@ -75,7 +75,7 @@ function TokensPage() {
         actions={
           <a
             className="ghost-btn"
-            href={includeRevoked ? '/config/tokens' : '/config/tokens?all=1'}
+            href={includeRevoked ? '/config/access' : '/config/access?all=1'}
           >
             {includeRevoked ? 'Hide revoked' : 'Show revoked'}
           </a>

@@ -72,6 +72,10 @@ bazilion provider models anthropic                         # in use, and offered
 bazilion provider models-set anthropic claude-fable-5-2,claude-haiku-5-5
 ```
 
+Wherever a model is chosen (an Agent's **Agent** tab, **Spawn an agent**, an Agent template) the
+menu shows these names by provider, with how much each model reads and whether it sees images.
+The CLI and the API keep the `provider:model` id.
+
 Each row on the page says who uses the model. Removing a model an Agent template defaults to
 moves the template to another model and says so; an Agent with its own model on a removed model
 is refused until it gets another one in its **Agent** tab.

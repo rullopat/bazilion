@@ -98,15 +98,18 @@ opens any Agent, Team or page by name.
 **Manage** holds the list pages: Agents, Teams, **Templates** (Agent and Team templates),
 **Skills** and **Setup** (`/config`). Setup opens on **Models**: the chat models your Agents
 think with, the image model they draw with, and the providers behind them, each with whether it
-answers ([models and providers](docs/models-and-providers.md)). Its other tabs are services,
-MCP, Telegram, tokens and the system's health and backup. **Attention** lists what needs you.
+answers ([models and providers](docs/models-and-providers.md)). **Tools** holds web search, the
+browser and how commands run, one card each ([tools](docs/tools.md)); the other tabs are MCP,
+Telegram, Access (tokens and sessions) and System (health and backup). **Attention** lists what
+needs you.
 The web UI and the CLI offer the same management features.
 
 ## Configuration
 
 Settings are environment-variable-shaped keys. Set them under **Setup** or with
 `bazilion config set <KEY> <value>` (secrets are stored encrypted, other values in plain text), or
-in the daemon's own environment, which wins. The ones you are most likely to change:
+in the daemon's own environment, which wins. A value is checked before it is stored. The ones you
+are most likely to change:
 
 | Key | Default | |
 | --- | --- | --- |

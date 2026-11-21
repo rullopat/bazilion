@@ -1,9 +1,9 @@
 import {
   type Agent,
-  type AvailableModelsResponse,
+  type ChatModelEntry,
   DEFAULT_PROFILE_ID,
   DEFAULT_TEAM_ID,
-  type ModelGroup,
+  type ModelsResponse,
   type Profile,
   type SpawnAgentRequest,
   type Team,
@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react'
 import { api, errorMessage } from '../lib/api'
 import { Button } from './Button'
 import { Dialog, DialogActions } from './Dialog'
-import { AVAILABLE_MODELS_PATH, ModelSelect } from './ModelSelect'
+import { MODELS_PATH, ModelMenu } from './ModelMenu'
 
 /** The one way to spawn an Agent; opens its chat afterwards. */
 export function SpawnDialog({
@@ -39,7 +39,7 @@ export function SpawnDialog({
   )
   const [name, setName] = useState('')
   const [model, setModel] = useState('')
-  const [modelGroups, setModelGroups] = useState<ModelGroup[]>([])
+  const [chatModels, setChatModels] = useState<ChatModelEntry[]>([])
   const [teamId, setTeamId] = useState(
     teams.find((team) => team.id === initialTeamId)?.id ??
       teams.find((team) => team.id === DEFAULT_TEAM_ID)?.id ??
@@ -52,8 +52,8 @@ export function SpawnDialog({
 
   useEffect(() => {
     const controller = new AbortController()
-    api<AvailableModelsResponse>(AVAILABLE_MODELS_PATH, { signal: controller.signal })
-      .then((response) => setModelGroups(response.teams))
+    api<ModelsResponse>(MODELS_PATH, { signal: controller.signal })
+      .then((response) => setChatModels(response.chat))
       .catch(() => {
         // Without the list of chat models the template default still applies.
       })
@@ -98,12 +98,15 @@ export function SpawnDialog({
             autoComplete="off"
           />
         </label>
-        <ModelSelect
+        <ModelMenu
           label="Model"
           value={model}
           onChange={setModel}
-          groups={modelGroups}
-          emptyOption="Use the template default"
+          models={chatModels}
+          inherited={{
+            label: 'The template’s model',
+            model: profiles.find((profile) => profile.id === profileId)?.defaultModel,
+          }}
         />
         <label>
           Team

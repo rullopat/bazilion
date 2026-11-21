@@ -1,4 +1,4 @@
-import type { CatalogModel, ProviderConfigEntry } from '@bazilion/api-types'
+import type { CatalogModel, ChatModelEntry, ProviderConfigEntry } from '@bazilion/api-types'
 import { expect, test } from 'vitest'
 import { hostOf, localLine } from '../src/components/setup/AddProviderDialog.tsx'
 import {
@@ -10,6 +10,8 @@ import {
   formatUsd,
   initialPicks,
   matchesModel,
+  menuFacts,
+  menuGroups,
   priceLine,
   providerStatus,
   usedByLine,
@@ -49,6 +51,7 @@ function provider(more: Partial<ProviderConfigEntry> = {}): ProviderConfigEntry 
         envVar: 'ANTHROPIC_API_KEY',
         kind: 'secret',
         label: 'API key',
+        input: { type: 'text' },
         set: true,
         preview: 'sk-ant…',
       },
@@ -208,4 +211,52 @@ test('a local server is described by where it was looked for', () => {
   expect(localLine({ ...server, found: true, models: ['a', 'b', 'c'] }, false)).toBe(
     'Running at 127.0.0.1:11434, 3 models',
   )
+})
+
+test('a model menu names models by provider, with the two facts that matter when choosing', () => {
+  const entry = (
+    value: string,
+    providerName: string,
+    more: Partial<ChatModelEntry> = {},
+  ): ChatModelEntry => ({
+    id: value.slice(value.indexOf(':') + 1),
+    value,
+    provider: value.slice(0, value.indexOf(':')),
+    providerName,
+    providerConnect: 'fields',
+    providerState: 'working',
+    selected: true,
+    suggested: false,
+    usedBy: { agents: 0, templates: [] },
+    ...more,
+  })
+  const claude = entry('anthropic:claude-fable-5-2', 'Anthropic', {
+    name: 'Claude Fable 5.2',
+    contextWindow: 1_000_000,
+    images: true,
+  })
+  const textOnly = entry('anthropic:claude-text', 'Anthropic', { contextWindow: 272_000 })
+  const local = entry('ollama:llama3.3', 'Ollama', {
+    providerConnect: 'local',
+    providerState: 'failing',
+  })
+  const unknown = entry('mistral:new-model', 'Mistral', { providerState: 'incomplete' })
+  expect(menuFacts(claude)).toBe('1M · sees images')
+  expect(menuFacts(textOnly)).toBe('272K · text only')
+  expect(menuFacts(local)).toBe('on this computer')
+  // Nothing is known about it: better no facts than made-up ones.
+  expect(menuFacts(unknown)).toBe('')
+
+  expect(
+    menuGroups([claude, local, textOnly, unknown]).map((group) => [
+      group.name,
+      group.trouble,
+      group.models.map((model) => model.id),
+    ]),
+  ).toEqual([
+    ['Anthropic', null, ['claude-fable-5-2', 'claude-text']],
+    ['Ollama', 'not working', ['llama3.3']],
+    ['Mistral', 'not working', ['new-model']],
+  ])
+  expect(menuGroups([])).toEqual([])
 })

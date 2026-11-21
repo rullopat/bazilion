@@ -5,6 +5,32 @@ Hand-written highlights per release. The full notes for every version are genera
 [`apps/cli/CHANGELOG.md`](apps/cli/CHANGELOG.md) (the `bazilion` package) and published as
 [GitHub releases](https://github.com/rullopat/bazilion/releases).
 
+## 0.52.0 — 2026-11-21
+
+A 0.51.x home opens as it is.
+
+- **Setup → Tools** replaces Services: web search, the page reader, the browser, commands and
+  message chains are one card each, with a choice, a switch or a number where there was a text
+  box, and one Save per card. A card says what is in effect, and what a choice would meet (a
+  missing key, Docker without the image) before you save. See [tools](docs/tools.md).
+- **Settings are checked before they are stored**, on the page and by `bazilion config set`: a
+  mistyped mode or number no longer reaches a turn. `config set NAME=value NAME=value` saves
+  several together or none.
+- **Model names in the menus:** an Agent's model, the spawn dialog and Agent templates show
+  "Claude Fable 5.2" under its provider, with how much it reads and whether it sees images, where
+  they showed `anthropic:claude-fable-5-2`.
+- **Setup tabs renamed:** Services is Tools, Integrations is Telegram, Tokens is Access. Their
+  addresses changed with them and are not redirected.
+- **Fixed:** Changes missed a file that was rewritten, at the same size, in the second it was
+  staged; the browser's first start from a cold disk has 60 s instead of 15; a tool call cut
+  short by a lost MCP session says "MCP session expired" whichever request noticed first; a
+  conversation renamed in the millisecond it was created keeps its name. The six tests that
+  failed one CI run in three for these and two other reasons no longer do.
+- **Changed for scripts:** `GET /api/config/services` is `GET /api/config/tools`, with a new
+  shape; `GET /api/config/available-models` is gone (`GET /api/config/models` has the names);
+  `PUT /api/config/fields/:name` refuses values it used to store, such as an unknown sandbox
+  mode.
+
 ## 0.51.0 — 2026-11-21
 
 A 0.50.x home opens as it is.

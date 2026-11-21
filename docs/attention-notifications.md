@@ -16,8 +16,8 @@ links to the item; otherwise open **Attention** in the web UI. A notice resolves
 
 ### Configure
 
-On the web: **Attention notifications** on `/config/integrations/telegram`. Switch it on, pick the
-kinds, optionally set quiet hours, and save. From the CLI:
+On the web: **Attention notifications** under **Setup → Telegram** (`/config/telegram`). Switch
+it on, pick the kinds, optionally set quiet hours, and save. From the CLI:
 
 ```sh
 bazilion notification settings
