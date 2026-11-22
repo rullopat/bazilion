@@ -188,6 +188,8 @@ export interface CredentialsForm {
   problems: { token?: string; chatId?: string }
   /** The group changed, and the daemon wants the stored token typed again with it. */
   needsToken: boolean
+  /** The token field is open for that: it stays open while a new group is typed. */
+  tokenOpen: boolean
   /** One of the two is still empty: they are saved together. */
   incomplete: boolean
   /** What Save sends; null while there is nothing to save or something to put right. */
@@ -216,12 +218,14 @@ export function credentialsForm(
   }
   const sound = !problems.token && !problems.chatId
   const dirty = token !== '' || chatChanged
-  const needsToken = hasToken(stored) && chatChanged && chatId !== '' && token === '' && sound
+  const tokenOpen = hasToken(stored) && chatChanged
+  const needsToken = tokenOpen && chatId !== '' && token === '' && sound
   const complete = token !== '' && chatId !== ''
   return {
     dirty,
     problems,
     needsToken,
+    tokenOpen,
     incomplete: dirty && sound && !complete && !needsToken,
     body: sound && complete ? { botToken: token, chatId } : null,
   }

@@ -4,7 +4,7 @@
 import type { Agent, ChatModelEntry, ProfileSummary, Team } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
 import { Bot } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { archiveAgent, deleteAgent, unarchiveAgent } from '../../lib/agent-actions'
 import { errorMessage } from '../../lib/api'
 import {
@@ -60,6 +60,15 @@ export function AgentsCard({
   const [moving, setMoving] = useState<Agent | null>(null)
   const [deleting, setDeleting] = useState<Agent | null>(null)
   const counts = agentCounts(agents)
+  // The archived row may have left the list, taking focus with it: the undo is where it goes,
+  // once the list has reloaded and the button can take it.
+  const restoreButton = useRef<HTMLButtonElement>(null)
+  const [focusRestore, setFocusRestore] = useState(false)
+  useEffect(() => {
+    if (!focusRestore || busy !== null) return
+    restoreButton.current?.focus()
+    setFocusRestore(false)
+  }, [focusRestore, busy])
   const groups = groupAgents(agents, teams, filter, query)
 
   async function run(agent: Agent, work: () => Promise<void>) {
@@ -78,6 +87,7 @@ export function AgentsCard({
     run(agent, async () => {
       await archiveAgent(agent.id)
       setArchived(agent)
+      setFocusRestore(true)
     })
   const restore = (agent: Agent) =>
     run(agent, async () => {
@@ -118,6 +128,7 @@ export function AgentsCard({
             tone="neutral"
             actions={
               <Button
+                ref={restoreButton}
                 variant="ghost"
                 disabled={busy !== null}
                 onClick={() => void restore(archived)}
@@ -144,7 +155,11 @@ export function AgentsCard({
           icon={<Bot className="size-5" />}
           title="No Agents yet"
           action={
-            <Button variant="primary" onClick={onSpawn}>
+            <Button
+              variant="primary"
+              disabled={templates.length === 0 || teams.length === 0}
+              onClick={onSpawn}
+            >
               Spawn an agent
             </Button>
           }
@@ -185,17 +200,13 @@ export function AgentsCard({
                     key={agent.id}
                     leading={<AgentAvatar identity={agent.identity} size={32} />}
                     title={
-                      isArchived ? (
-                        agent.name
-                      ) : (
-                        <Link
-                          to="/"
-                          search={{ agent: agent.id }}
-                          className="text-foreground hover:text-primary"
-                        >
-                          {agent.name}
-                        </Link>
-                      )
+                      <Link
+                        to="/"
+                        search={{ agent: agent.id }}
+                        className="text-foreground hover:text-primary"
+                      >
+                        {agent.name}
+                      </Link>
                     }
                     chip={isArchived && <Chip tone="neutral">Archived</Chip>}
                     meta={

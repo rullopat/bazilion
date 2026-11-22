@@ -49,7 +49,7 @@ function TelegramPage() {
   // Cards that hold what was typed start again from what is stored after a change.
   const [changes, setChanges] = useState(0)
   const [justSaved, setJustSaved] = useState(false)
-  // Revoking the owner empties the allowed users, which that card loads for itself.
+  // Pairing or revoking the owner changes the allowed users, which that card loads for itself.
   const [ownerResets, setOwnerResets] = useState(0)
 
   async function runPreflight() {
@@ -119,7 +119,7 @@ function TelegramPage() {
           ready: notifications.data?.telegramReady,
         })}
         justSaved={justSaved}
-        onSaved={() => changed({ saved: true, restarting: true })}
+        onSaved={() => changed({ saved: true, restarting: false })}
         onDisconnected={() => changed({ saved: false, restarting: false })}
       />
       <PreflightCard
@@ -135,7 +135,7 @@ function TelegramPage() {
       {stored.configured && (
         <PairingCard
           key={`pairing:${changes}`}
-          onReset={() => setOwnerResets((count) => count + 1)}
+          onOwnerChange={() => setOwnerResets((count) => count + 1)}
         />
       )}
       <NotificationsCard

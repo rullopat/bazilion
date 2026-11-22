@@ -13,7 +13,7 @@
 // need transparent backgrounds and Tailwind preflight, which is exactly what
 // raw <button type="button"> gives.
 
-import type { ButtonHTMLAttributes } from 'react'
+import type { ComponentProps } from 'react'
 
 export type ButtonVariant = 'primary' | 'ghost' | 'danger'
 
@@ -23,7 +23,8 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
   danger: 'danger-btn',
 }
 
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+// A ref reaches the <button>, for a caller that moves focus to it.
+interface Props extends ComponentProps<'button'> {
   variant: ButtonVariant
 }
 

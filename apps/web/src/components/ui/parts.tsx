@@ -524,9 +524,13 @@ export function RowMenu({
           {shown.map((item) => (
             <DropdownMenu.Item
               key={item.label}
-              disabled={Boolean(item.disabledReason)}
-              onSelect={item.onSelect}
-              className={MENU_ITEM}
+              // Not Radix's disabled, which skips the item: its reason must be reachable by keyboard.
+              aria-disabled={item.disabledReason ? true : undefined}
+              onSelect={(event) => {
+                if (item.disabledReason) event.preventDefault()
+                else item.onSelect()
+              }}
+              className={cn(MENU_ITEM, item.disabledReason && 'cursor-not-allowed')}
               // The highlight is the focus mark of a menu row; the app's own outline would double it.
               style={{ outline: 'none' }}
             >

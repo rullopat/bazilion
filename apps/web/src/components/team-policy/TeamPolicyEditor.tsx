@@ -1,6 +1,6 @@
 import type { Profile, TeamPolicyMode, TeamTemplate } from '@bazilion/api-types'
 import { Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import {
   defaultPosition,
@@ -34,11 +34,14 @@ export function TeamPolicyEditor({
   template,
   profiles,
   onSaved,
+  onDirtyChange,
 }: {
   template: TeamTemplate
   profiles: Profile[]
   /** Called after a save, so that the page around it shows the saved roster. */
   onSaved?: () => Promise<void>
+  /** Told whether there are unsaved changes, so the page does not act on the saved roster. */
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const [server, setServer] = useState(() => templateDocument(template))
   const [draft, setDraft] = useState(server)
@@ -48,6 +51,7 @@ export function TeamPolicyEditor({
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const dirty = !sameDocument(server, draft)
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
   const incomplete = useMemo(
     () =>
       new Set(

@@ -25,6 +25,7 @@ import { daemonClient } from '../../lib/daemon-client'
 import {
   allSkillsLine,
   count,
+  listed,
   matchesSkill,
   skillChosenBy,
   skillSourceLabel,
@@ -107,7 +108,7 @@ function SkillsPage() {
               }
             >
               {imported.skipped.length > 0 &&
-                `Already installed, so left as they were: ${imported.skipped.join(', ')}.`}
+                `Already installed, so left as they were: ${listed(imported.skipped.map((entry) => entry.name))}. To replace them, import again with the box ticked.`}
             </Notice>
             {importedFindings.length > 0 && (
               <FindingsNotice
@@ -163,7 +164,7 @@ function SkillsPage() {
                       {skillChosenBy(skill.name, templates) && (
                         <span>{skillChosenBy(skill.name, templates)}</span>
                       )}
-                      <span>
+                      <span title={skill.source ?? undefined}>
                         {skillSourceLabel(skill.source)}
                         {skill.importedAt !== null && `, ${ago(skill.importedAt, now)}`}
                       </span>

@@ -287,6 +287,8 @@ export function SecretField({
   const [replacing, setReplacing] = useState(false)
   // The field was given up for the saved value: the keyboard goes back to where it came from.
   const [kept, setKept] = useState(false)
+  // Remove and Keep it replace each other: focus follows to the one that appears.
+  const [moved, setMoved] = useState<'keep' | 'remove' | null>(null)
   const typing = !saved || replacing || open
   return (
     <div>
@@ -340,7 +342,15 @@ export function SecretField({
             )}
           </span>
           {removed ? (
-            <Button variant="ghost" disabled={disabled} onClick={() => onRemove?.(false)}>
+            <Button
+              variant="ghost"
+              disabled={disabled}
+              autoFocus={moved === 'keep'}
+              onClick={() => {
+                setMoved('remove')
+                onRemove?.(false)
+              }}
+            >
               Keep it
             </Button>
           ) : (
@@ -355,7 +365,15 @@ export function SecretField({
                 Replace
               </Button>
               {onRemove && (
-                <Button variant="ghost" disabled={disabled} onClick={() => onRemove(true)}>
+                <Button
+                  variant="ghost"
+                  disabled={disabled}
+                  autoFocus={moved === 'remove'}
+                  onClick={() => {
+                    setMoved('keep')
+                    onRemove(true)
+                  }}
+                >
                   Remove
                 </Button>
               )}

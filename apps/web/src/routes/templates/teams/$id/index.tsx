@@ -48,6 +48,8 @@ function TeamTemplatePage() {
   const router = useRouter()
   const [spawning, setSpawning] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // Spawning takes the saved roster: with changes on screen it would not be the one in view.
+  const [unsaved, setUnsaved] = useState(false)
 
   return (
     <ManagePage
@@ -57,7 +59,8 @@ function TeamTemplatePage() {
         <>
           <Button
             variant="primary"
-            disabled={template.slots.length === 0}
+            disabled={template.slots.length === 0 || unsaved}
+            aria-describedby={unsaved ? 'spawn-needs-save' : undefined}
             onClick={() => setSpawning(true)}
           >
             Spawn this Team
@@ -75,10 +78,16 @@ function TeamTemplatePage() {
         </>
       }
     >
+      {unsaved && (
+        <p id="spawn-needs-save" className="m-0 text-sm font-medium text-warning">
+          Save the roster to spawn it as it is on screen.
+        </p>
+      )}
       <TeamPolicyEditor
         template={template}
         profiles={profiles}
         onSaved={() => router.invalidate({ sync: true })}
+        onDirtyChange={setUnsaved}
       />
       {spawning && (
         <SpawnTeamModal

@@ -360,8 +360,8 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
         title={`Archive ${archiveTarget?.name ?? 'agent'}?`}
         description={
           <p>
-            The Agent leaves this list and receives no work. Restore it later under Manage, Agents,
-            with “Show archived”.
+            The Agent leaves this list and receives no work. Restore it later under Manage → Agents,
+            in Archived.
           </p>
         }
         confirmLabel="Archive agent"

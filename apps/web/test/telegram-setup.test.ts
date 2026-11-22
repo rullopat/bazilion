@@ -174,6 +174,7 @@ test('the credentials are saved together, and a new group needs the token again'
     dirty: false,
     problems: {},
     needsToken: false,
+    tokenOpen: false,
     incomplete: false,
     body: null,
   })
@@ -212,9 +213,21 @@ test('the credentials are saved together, and a new group needs the token again'
   expect(credentialsForm(stored, { token: '', chatId: '-1009876543210' })).toMatchObject({
     dirty: true,
     needsToken: true,
+    tokenOpen: true,
     incomplete: false,
     body: null,
   })
+  // The field it is typed into stays open while it is typed, and while the group is typed.
+  expect(credentialsForm(stored, { token: '1', chatId: '-1009876543210' })).toMatchObject({
+    needsToken: false,
+    tokenOpen: true,
+  })
+  expect(credentialsForm(stored, { token: '', chatId: '-' })).toMatchObject({
+    needsToken: false,
+    tokenOpen: true,
+  })
+  // The group put back: nothing to ask for.
+  expect(credentialsForm(stored, { token: '', chatId: stored.chatId }).tokenOpen).toBe(false)
   expect(credentialsForm(stored, { token, chatId: '-1009876543210' }).body).toEqual({
     botToken: token,
     chatId: '-1009876543210',

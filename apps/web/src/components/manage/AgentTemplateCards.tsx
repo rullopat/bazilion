@@ -8,7 +8,7 @@ import type {
   SkillsMode,
 } from '@bazilion/api-types'
 import { FileCode2, SlidersHorizontal } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import { cn } from '../../lib/utils'
 import { Button } from '../Button'
@@ -70,19 +70,28 @@ export function TemplateSettingsCard({
     setBusy(true)
     setError(null)
     try {
+      // The chosen list is sent only with "Chosen skills": under "All skills" it is kept as it
+      // was, for a later switch back.
       const next = {
         name: name.trim(),
         model,
         mode,
-        picked: mode === 'selected' ? new Set(picked) : new Set<string>(),
+        picked: mode === 'selected' ? new Set(picked) : stored.picked,
       }
+      const skillsChanged =
+        next.mode !== stored.mode ||
+        (next.mode === 'selected' && !sameSet(next.picked, stored.picked))
       await api(profilePath(profile.id), {
         method: 'PATCH',
         body: {
-          name: next.name,
-          defaultModel: next.model,
-          skillsMode: next.mode,
-          defaultSkills: [...next.picked],
+          ...(next.name !== stored.name ? { name: next.name } : {}),
+          ...(next.model !== stored.model ? { defaultModel: next.model } : {}),
+          ...(skillsChanged
+            ? {
+                skillsMode: next.mode,
+                ...(next.mode === 'selected' ? { defaultSkills: [...next.picked] } : {}),
+              }
+            : {}),
         },
       })
       setStored(next)
@@ -200,6 +209,36 @@ export function TemplateFilesCard({
     setDraft((current) => ({ ...current, [key]: value }))
   }
 
+  // Arrow keys move between the files, as in any tab list; Tab leaves the list.
+  const tabs = useRef<Partial<Record<FileKey, HTMLButtonElement | null>>>({})
+  function openTab(key: FileKey) {
+    setOpen(key)
+    tabs.current[key]?.focus()
+  }
+  function onTabKey(event: React.KeyboardEvent, index: number) {
+    const last = TEMPLATE_FILES.length - 1
+    const next =
+      event.key === 'ArrowRight'
+        ? index === last
+          ? 0
+          : index + 1
+        : event.key === 'ArrowLeft'
+          ? index === 0
+            ? last
+            : index - 1
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? last
+              : null
+    const target = next === null ? undefined : TEMPLATE_FILES[next]
+    if (!target) return
+    event.preventDefault()
+    openTab(target.key)
+  }
+  // A file added with its button is ready to be typed in.
+  const [added, setAdded] = useState<FileKey | null>(null)
+
   async function save(event: React.FormEvent) {
     event.preventDefault()
     if (!dirty || busy) return
@@ -239,7 +278,7 @@ export function TemplateFilesCard({
           aria-label="Template files"
           className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/50 p-1"
         >
-          {TEMPLATE_FILES.map((entry) => {
+          {TEMPLATE_FILES.map((entry, index) => {
             const selected = entry.key === open
             const absent = draft[entry.key] === null
             const changed = draft[entry.key] !== stored[entry.key]
@@ -249,9 +288,14 @@ export function TemplateFilesCard({
                 type="button"
                 role="tab"
                 id={`template-file-${entry.key}`}
+                ref={(node) => {
+                  tabs.current[entry.key] = node
+                }}
                 aria-selected={selected}
                 aria-controls="template-file-panel"
+                tabIndex={selected ? 0 : -1}
                 onClick={() => setOpen(entry.key)}
+                onKeyDown={(event) => onTabKey(event, index)}
                 className={cn(
                   'unstyled inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 font-mono text-xs font-semibold transition-colors sm:px-3',
                   selected
@@ -287,7 +331,10 @@ export function TemplateFilesCard({
                 variant="ghost"
                 className="mt-2"
                 disabled={busy}
-                onClick={() => edit(file.key, starter[file.key])}
+                onClick={() => {
+                  setAdded(file.key)
+                  edit(file.key, starter[file.key])
+                }}
               >
                 Add {file.name}
               </Button>
@@ -297,6 +344,9 @@ export function TemplateFilesCard({
               <>
                 <p className="m-0 text-sm text-muted-foreground">{file.hint}</p>
                 <textarea
+                  key={file.key}
+                  // biome-ignore lint/a11y/noAutofocus: it appears in place of the button pressed to add it.
+                  autoFocus={added === file.key}
                   aria-label={`${file.name} contents`}
                   value={content ?? ''}
                   disabled={busy}
@@ -327,6 +377,8 @@ export function TemplateFilesCard({
                   onClick={() => {
                     setDraft(stored)
                     setError(null)
+                    // The button goes away with the changes: focus goes back to the file in view.
+                    tabs.current[open]?.focus()
                   }}
                 >
                   Discard changes

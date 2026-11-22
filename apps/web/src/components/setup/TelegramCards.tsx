@@ -158,7 +158,8 @@ export function BotCard({
         error,
         dirty: form.dirty,
         saved: justSaved && !touched,
-        savedText: 'Saved. The bot starts again with these credentials.',
+        savedText:
+          'Saved. A new token or group restarts the bot: run the preflight in a few seconds.',
         footnote: stored.configured
           ? 'A new token or group restarts the bot and starts pairing over: the owner and the allowed users are forgotten.'
           : 'Saving starts the bot.',
@@ -178,7 +179,7 @@ export function BotCard({
           saved={hasToken(stored)}
           preview={stored.botTokenPreview}
           value={draft.token}
-          open={form.needsToken}
+          open={form.tokenOpen}
           disabled={busy}
           placeholder="1234567890:ABC…"
           hint={
@@ -375,10 +376,10 @@ function PollingFacts({ polling, now }: { polling: TelegramPollingState; now: nu
 
 /** The one person the bot belongs to: paired with a code sent in the group. */
 export function PairingCard({
-  onReset,
+  onOwnerChange,
 }: {
-  /** The owner was revoked, and the allowed users went with them. */
-  onReset: () => void
+  /** An owner was paired, or revoked with the allowed users: the list of them is out of date. */
+  onOwnerChange: () => void
 }) {
   const [status, setStatus] = useState<TelegramPairingStatus | null>(null)
   const [code, setCode] = useState<string | null>(null)
@@ -392,6 +393,27 @@ export function PairingCard({
   useEffect(() => {
     load().catch((cause) => setError(errorMessage(cause)))
   }, [])
+
+  // The code is sent in Telegram, not here: while one waits, ask every few seconds whether it was.
+  const waiting = status !== null && !status.paired && status.challengeActive
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restarted only when waiting starts or stops.
+  useEffect(() => {
+    if (!waiting) return
+    const timer = window.setInterval(() => {
+      api<TelegramPairingStatus>(path)
+        .then((next) => {
+          setStatus(next)
+          if (next.paired) {
+            setCode(null)
+            onOwnerChange()
+          }
+        })
+        .catch(() => {
+          // The next tick tries again; the card keeps what it showed.
+        })
+    }, 4000)
+    return () => window.clearInterval(timer)
+  }, [waiting])
 
   async function run(work: () => Promise<void>) {
     setBusy(true)
@@ -497,7 +519,7 @@ export function PairingCard({
           await api(`${path}/reset`, { body: { confirm: true } })
           setCode(null)
           await load()
-          onReset()
+          onOwnerChange()
         }}
       />
     </SetupCard>
