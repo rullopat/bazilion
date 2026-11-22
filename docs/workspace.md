@@ -85,7 +85,7 @@ also when you press it before the lists have arrived.
 | ⌥↓ ⌥↑, or Alt+↓ Alt+↑ | The next or previous Agent in the list |
 | ⌘. or Ctrl+. | Show or hide the side panel |
 
-The keys without ⌘ or Ctrl wait while you type in a field.
+The keys without ⌘ or Ctrl wait while you type in a field or a list or menu is open.
 
 ## The browser tab
 

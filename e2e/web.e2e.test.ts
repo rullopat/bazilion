@@ -155,6 +155,8 @@ test('dropdowns pick, and shortcuts open only outside fields and lists', async (
   await page.getByRole('option', { name: 'Errors', exact: true }).click()
   await pw(page.getByRole('combobox', { name: 'Severity' })).toContainText('Errors')
 
+  // A closed dropdown keeps the focus after a pick; the shortcuts work from there.
+  await page.getByRole('combobox', { name: 'Severity' }).focus()
   await page.keyboard.press('?')
   await pw(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible()
   await page.keyboard.press('Escape')
