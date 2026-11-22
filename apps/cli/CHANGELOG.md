@@ -1,5 +1,34 @@
 # bazilion
 
+## 0.53.0
+
+### Minor Changes
+
+- [#98](https://github.com/rullopat/bazilion/pull/98) [`9ffef28`](https://github.com/rullopat/bazilion/commit/9ffef2855f8b2512dd7c636d53152587582e3179) Thanks [@rullopat](https://github.com/rullopat)! - Manage is redone on the shared parts: Agents, Teams, Agent templates, Team templates and Skills under one tab bar, each with its list first and creation in a dialog. No daemon, CLI or database change; a 0.52 home opens as it is.
+
+  - **One section:** a Manage tab bar replaces the separate pages and the Templates sub-tabs. The Manage menu and Jump to name the five pages.
+  - **Agents:** grouped by Team; find by name, creature or vibe; Current / Archived / All; each row says its template and the model it answers with (and when that model is not in Chat). Archive, Move to another Team and Delete are in the row's **⋯** menu; an archived Agent has **Restore**, and archiving shows a notice with Restore.
+  - **Teams:** **Create a Team** asks for a name, makes the ID from it, and asks where the files are: a new folder, or a project folder to link to. Rows show the members; **Remove** is disabled, with the reason, while a Team has Agents.
+  - **Agent templates:** **New Agent template** creates from the built-in files and opens the template. Its page has a **Settings** card (name, default model, skills) and a **Files** card (SOUL, IDENTITY, BOOTSTRAP, AGENTS, TOOLS, one at a time; one Save for every changed file; a missing optional file can be added). A banner says when the default model is not in Chat. Rows say who uses a template; **Delete** is disabled while an Agent or a Team template uses it, which the daemon refused before.
+  - **Team templates:** a roster preview per row, **Spawn** from the list and **Spawn this Team** from the page; the spawn dialog asks for a new Team or one that exists. The roster editor uses the shared parts and says Agents and connections, not slots and allow edges.
+  - **Skills:** **Import skills** opens a dialog (OpenClaw, a folder, a ZIP file); a risky finding or an unreadable SKILL.md is shown under the skill and in a banner; rows say which templates chose the skill.
+  - **Attention:** a summary line and one row of filters (state, kind, severity); times are relative.
+  - **Shared parts:** `components/ui/` (moved from `components/setup/`) gains a row menu, empty states, group headers, choice cards and a filter select. The spawn dialogs and the Team form use them, in the workspace too.
+  - **Telegram pairing** is noticed by itself: while a code waits, the Owner pairing card checks every few seconds, and the allowed users can be added as soon as the owner is paired.
+  - **Keyboard:** row menus, the template's file tabs (arrow keys, Home, End) and the controls that replace each other keep focus where it belongs; a menu item that cannot be used is still reached, so its reason is read.
+  - **Fixed:** Skills and Attention threw a hydration error (React [#418](https://github.com/rullopat/bazilion/issues/418)) because dates were formatted in the server's and then the browser's locale.
+
+### Patch Changes
+
+- [#98](https://github.com/rullopat/bazilion/pull/98) [`67bd791`](https://github.com/rullopat/bazilion/commit/67bd7915042717e579e0ff68aedb68b84cd8399e) Thanks [@rullopat](https://github.com/rullopat)! - The six Setup pages are built from one set of cards: the look, the widths and the wording of Models, Tools, MCP, Telegram, Access and System now agree. No setting, route or command changes.
+
+  - **Telegram:** the bot, the preflight checks, owner pairing, Attention notifications and the allowed users are one card each, as wide as the other Setup pages, with the card's state in its corner (`Running`, `All passed`, `Paired`, `On`, `3 people`). A saved bot token is shown as saved and replaced from there. The form says what it needs before it can be saved: both the token and the group, a numeric group id, and the token again when the group changes (the daemon stores the two together), instead of the daemon refusing it afterwards. The **Bot** card says whether the bot runs from what the daemon knows, and from the last preflight once one was run. Others can be added to the allowed users once an owner is paired; before that the card says so instead of offering a form that was always refused. Buttons are named like the rest of Setup: **Run preflight**, **Restart bot**, **Generate pairing code**, **Reset owner**, **Disconnect Telegram**.
+  - **System:** Health, Agent runtime and Backup are the same cards. The runtime card shows the state the **Commands** card under Tools shows, and links to where it is set.
+  - **MCP:** **Add a server** and **Servers** are the same cards. The Servers card says how many are switched on, and a test's result stays under its server. The form says what the daemon would refuse (a name with other characters than letters, digits and underscores; an address that is not `http://` or `https://`, or that carries a user name, a password or a `#` part) and what is still missing, and **Add server** stays off until it can be sent.
+  - **Access:** **Mint a new token**, **Tokens** and **Browser sessions** are the same cards; the browser you are looking at is marked **This browser**. A number of days that is not a whole number of 1 or more is said under the field.
+  - **Shared parts:** `apps/web/src/components/setup/parts.tsx` and `form.tsx` hold the card, its rows and lists, notices, facts, fields, the saved-key row and the Save bar; the Models and Tools pages use the same ones and render as before.
+  - **Fixed:** resetting the Telegram owner says that it also removes everyone else from the allowed users; the **Replace** button of a saved key is announced as "Replace" instead of by the field's name, and puts the cursor in the field it opens; a preflight that could not be asked for is reported as that, not as a rejected token; the buttons of a list say which server, token or session they are for.
+
 ## 0.52.0
 
 ### Minor Changes
