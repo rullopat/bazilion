@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -247,8 +248,16 @@ function stdioServer(id: string, args: string[] = []): McpServerConfig {
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0)
-    // A reparented zombie has stopped executing; the test cannot reap init's child.
-    return !/^State:\s+Z/m.test(readFileSync(`/proc/${pid}/status`, 'utf8'))
+  } catch {
+    return false
+  }
+  // A reparented zombie has stopped executing; the test cannot reap init's child.
+  try {
+    if (process.platform === 'linux') {
+      return !/^State:\s+Z/m.test(readFileSync(`/proc/${pid}/status`, 'utf8'))
+    }
+    const state = execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' })
+    return state.trim() !== '' && !state.trim().startsWith('Z')
   } catch {
     return false
   }

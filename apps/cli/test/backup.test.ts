@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -37,6 +38,10 @@ import { DAEMON_PID_FILE } from '../../daemon/src/lib/daemon-liveness.ts'
 import { installRestoredHome } from '../src/commands/backup.ts'
 import { extractAgentId, runCli } from './helpers.ts'
 import { restartTestServer, startTestServer, type TestServer } from './server-fixture.ts'
+
+// The canonical temporary directory: on macOS /var is a link to /private/var, and the CLI
+// prints the paths it resolved.
+const tmp = realpathSync(tmpdir())
 
 const daemonEntry = join(import.meta.dirname, '..', '..', 'daemon', 'src', 'index.ts')
 
@@ -83,18 +88,18 @@ function appendTarEntries(source: string, entries: AppendedTarEntry[]): string {
     }
   }
   appended.push(Buffer.alloc(1024))
-  const output = join(tmpdir(), `bz-appended-${randomUUID()}.tar.gz`)
+  const output = join(tmp, `bz-appended-${randomUUID()}.tar.gz`)
   writeFileSync(output, gzipSync(Buffer.concat(appended)))
   return output
 }
 
 /** Copy of a backup whose extracted files were changed by `mutate`. */
 async function repack(archive: string, mutate: (dir: string) => void): Promise<string> {
-  const dir = mkdtempSync(join(tmpdir(), 'bz-repack-'))
+  const dir = mkdtempSync(join(tmp, 'bz-repack-'))
   try {
     await extract({ file: archive, cwd: dir })
     mutate(dir)
-    const output = join(tmpdir(), `bz-repacked-${randomUUID()}.tar.gz`)
+    const output = join(tmp, `bz-repacked-${randomUUID()}.tar.gz`)
     await create({ file: output, cwd: dir, gzip: true, portable: true }, ['.'])
     return output
   } finally {
@@ -103,7 +108,7 @@ async function repack(archive: string, mutate: (dir: string) => void): Promise<s
 }
 
 async function createBackup(): Promise<string> {
-  const archive = join(tmpdir(), `bz-backup-${randomUUID()}.tar.gz`)
+  const archive = join(tmp, `bz-backup-${randomUUID()}.tar.gz`)
   const created = await server.cli(['backup', 'create', archive])
   expect(created.exitCode, created.stderr).toBe(0)
   return archive
@@ -111,7 +116,7 @@ async function createBackup(): Promise<string> {
 
 /** A restore target `<parent>/home`; a private parent shows anything restore leaves behind. */
 function makeTarget(withData = true): { parent: string; home: string; cleanup(): void } {
-  const parent = mkdtempSync(join(tmpdir(), 'bz-restore-'))
+  const parent = mkdtempSync(join(tmp, 'bz-restore-'))
   const home = join(parent, 'home')
   if (withData) {
     mkdirSync(home)
@@ -143,7 +148,7 @@ async function exitedProcessId(): Promise<number> {
 }
 
 function tempEntries(prefix: string): Set<string> {
-  return new Set(readdirSync(tmpdir()).filter((entry) => entry.startsWith(prefix)))
+  return new Set(readdirSync(tmp).filter((entry) => entry.startsWith(prefix)))
 }
 
 test('backup create writes a tar.gz of the home around an online database snapshot', async () => {
@@ -155,7 +160,7 @@ test('backup create writes a tar.gz of the home around an online database snapsh
   writeFileSync(join(server.home, 'teams', 'default', 'browsers', 'notes.txt'), 'work product')
   expect(existsSync(join(server.home, 'bazilion.db-wal'))).toBe(true)
   expect(existsSync(join(server.home, DAEMON_PID_FILE))).toBe(true)
-  const archive = join(tmpdir(), `bz-backup-${randomUUID()}.tar.gz`)
+  const archive = join(tmp, `bz-backup-${randomUUID()}.tar.gz`)
 
   const created = await server.cli(['backup', 'create', archive])
   expect(created.exitCode, created.stderr).toBe(0)
@@ -263,8 +268,8 @@ test('an encrypted backup round-trips through its age identity', async () => {
   const device = webTokenRepo.create(live, 'preserved-device')
   live.close()
   const identity = await generateIdentity()
-  const encrypted = join(tmpdir(), `bz-backup-${randomUUID()}.tar.gz.age`)
-  const identityFile = join(tmpdir(), `bz-identity-${randomUUID()}.txt`)
+  const encrypted = join(tmp, `bz-backup-${randomUUID()}.tar.gz.age`)
+  const identityFile = join(tmp, `bz-identity-${randomUUID()}.txt`)
   writeFileSync(identityFile, `# created: test\n${identity}\n`, { mode: 0o600 })
 
   const created = await server.cli([
@@ -305,9 +310,9 @@ test('an encrypted backup round-trips through its age identity', async () => {
 
 test('a wrong identity or modified ciphertext leaves the target home untouched', async () => {
   const identity = await generateIdentity()
-  const encrypted = join(tmpdir(), `bz-backup-${randomUUID()}.tar.gz.age`)
-  const identityFile = join(tmpdir(), `bz-identity-${randomUUID()}.txt`)
-  const wrongIdentityFile = join(tmpdir(), `bz-wrong-identity-${randomUUID()}.txt`)
+  const encrypted = join(tmp, `bz-backup-${randomUUID()}.tar.gz.age`)
+  const identityFile = join(tmp, `bz-identity-${randomUUID()}.txt`)
+  const wrongIdentityFile = join(tmp, `bz-wrong-identity-${randomUUID()}.txt`)
   writeFileSync(identityFile, `${identity}\n`, { mode: 0o600 })
   const wrongIdentity = await generateIdentity()
   writeFileSync(wrongIdentityFile, `${wrongIdentity}\n`, { mode: 0o600 })
@@ -354,7 +359,7 @@ test('a cancelled backup download releases its online snapshot', async () => {
 })
 
 test('restore keeps a linked Team as a link to its external target', async () => {
-  const external = mkdtempSync(join(tmpdir(), 'bz-linked-team-target-'))
+  const external = mkdtempSync(join(tmp, 'bz-linked-team-target-'))
   writeFileSync(join(external, 'external.txt'), 'outside the backup')
   const added = await server.cli(['team', 'add', 'portable-link', '--link', external])
   expect(added.exitCode, added.stderr).toBe(0)
@@ -398,7 +403,7 @@ test('backup create refuses an output inside the home or over an existing file',
   expect(nested.stderr).toContain('write the backup outside the Bazilion home')
   expect(existsSync(inside)).toBe(false)
 
-  const scratch = mkdtempSync(join(tmpdir(), 'bz-existing-'))
+  const scratch = mkdtempSync(join(tmp, 'bz-existing-'))
   const existing = join(scratch, 'backup.tar.gz')
   writeFileSync(existing, 'existing-good-backup')
   const overwrite = await server.cli(['backup', 'create', existing])
@@ -426,7 +431,7 @@ test('a download that ends early leaves no backup behind', async () => {
     response.end(prefix)
   })
   await new Promise<void>((resolve) => shortServer.listen(0, '127.0.0.1', resolve))
-  const scratch = mkdtempSync(join(tmpdir(), 'bz-short-download-'))
+  const scratch = mkdtempSync(join(tmp, 'bz-short-download-'))
   try {
     const result = await server.cli(['backup', 'create', join(scratch, 'backup.tar.gz')], {
       BAZILION_SERVER: `http://127.0.0.1:${(shortServer.address() as AddressInfo).port}`,
@@ -500,7 +505,7 @@ test('restore refuses a missing file and the filesystem root', async () => {
   target.cleanup()
 
   const archive = await createBackup()
-  const root = await runCli(['backup', 'restore', archive, '--home', '../'.repeat(64)], tmpdir())
+  const root = await runCli(['backup', 'restore', archive, '--home', '../'.repeat(64)], tmp)
   expect(root.exitCode).not.toBe(0)
   expect(root.stderr).toContain('refusing to restore over the filesystem root')
   rmSync(archive, { force: true })
@@ -525,7 +530,7 @@ test('parallel online backups stay consistent during concurrent WAL writes', asy
 
   for (const archive of archives.slice(0, 2) as string[]) {
     const target = makeTarget(false)
-    const restored = await runCli(['backup', 'restore', archive, '--home', target.home], tmpdir())
+    const restored = await runCli(['backup', 'restore', archive, '--home', target.home], tmp)
     expect(restored.exitCode, restored.stderr).toBe(0)
     const snapshot = new DatabaseSync(join(target.home, 'bazilion.db'), { readOnly: true })
     const count = (side: string) =>
@@ -602,7 +607,7 @@ test.each([
   ['a hard link', [{ path: 'hard', type: 'Link', linkpath: 'auth.json' }], /unsupported Link/],
   [
     'an absolute link outside a Team slot',
-    [{ path: 'notes/link', type: 'SymbolicLink', linkpath: tmpdir() }],
+    [{ path: 'notes/link', type: 'SymbolicLink', linkpath: tmp }],
     /symbolic link leaving the home: notes\/link/,
   ],
   [
@@ -613,7 +618,7 @@ test.each([
   [
     'an entry below a linked Team slot',
     [
-      { path: 'teams/linked', type: 'SymbolicLink', linkpath: tmpdir() },
+      { path: 'teams/linked', type: 'SymbolicLink', linkpath: tmp },
       { path: 'teams/linked/escaped.txt', body: 'must not follow the link' },
     ],
     /backup places teams\/linked\/escaped\.txt below a symbolic link/,

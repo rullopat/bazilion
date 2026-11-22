@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -49,7 +49,7 @@ export interface TestServerFixtureOptions {
 }
 
 function initHome(options: TestServerFixtureOptions = {}): { home: string; token: string } {
-  const home = mkdtempSync(join(tmpdir(), 'bazilion-test-'))
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'bazilion-test-')))
   const paths = resolvePaths(home)
   for (const d of [
     paths.home,
