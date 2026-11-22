@@ -4,6 +4,8 @@ import { type ReactElement, createElement as typedCreateElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
 import {
+  ChoiceCards,
+  FilterSelect,
   SaveBar,
   SecretField,
   SelectField,
@@ -13,14 +15,17 @@ import {
 } from '../src/components/ui/form.tsx'
 import {
   Banner,
+  CardEmpty,
   CardList,
   CheckItem,
   CheckList,
   Chip,
   Fact,
   Facts,
+  GroupHeader,
   ListRow,
   Notice,
+  RowMenu,
   SetupCard,
 } from '../src/components/ui/parts.tsx'
 
@@ -349,4 +354,130 @@ test('a select is tied to its label and shows the choice that is made', () => {
   expect(attribute(select, 'select', 'id')).toBe(attribute(select, 'label', 'for'))
   expect(select).toContain('<option value="http" selected="">http</option>')
   expect(select).toContain('<option value="stdio">stdio</option>')
+})
+
+test('choice cards are one radio group, each option named by its title and told by its hint', () => {
+  const cards = html(
+    createElement(ChoiceCards, {
+      legend: 'Where its files are',
+      name: 'team-place',
+      value: 'link',
+      onChange: nothing,
+      options: [
+        { value: 'new', label: 'A new folder', hint: 'Bazilion makes one.' },
+        {
+          value: 'link',
+          label: 'A project folder',
+          hint: 'One that exists.',
+          note: { text: 'Found.', tone: 'ok' },
+        },
+      ],
+    }),
+  )
+  expect(cards).toContain(
+    '<legend class="mb-2 p-0 text-sm font-semibold text-foreground">Where its files are</legend>',
+  )
+  expect(cards.match(/type="radio"/g)).toHaveLength(2)
+  expect(cards.match(/name="team-place"/g)).toHaveLength(2)
+  expect(cards).toMatch(/checked="" value="link"/)
+  // The note is said only under the chosen option.
+  expect(cards).toContain('Found.')
+  const radios = Array.from(cards.matchAll(/aria-labelledby="([^"]+)" aria-describedby="([^"]+)"/g))
+  expect(radios).toHaveLength(2)
+  for (const [, title, about] of radios) {
+    expect(cards).toContain(`id="${title}"`)
+    expect(cards).toContain(`id="${about}"`)
+  }
+  expect(cards).toContain('md:grid-cols-2')
+  expect(
+    html(
+      createElement(ChoiceCards, {
+        legend: 'From',
+        name: 'source',
+        value: 'a',
+        columns: 3,
+        onChange: nothing,
+        options: [{ value: 'a', label: 'A' }],
+      }),
+    ),
+  ).toContain('md:grid-cols-3')
+})
+
+test('a filter select is named for assistive technology though its label is not shown', () => {
+  const select = html(
+    createElement(FilterSelect, {
+      label: 'Kind',
+      value: 'all',
+      onChange: nothing,
+      options: [
+        { value: 'all', label: 'All kinds' },
+        { value: 'lesson_proposal', label: 'Lesson proposals' },
+      ],
+    }),
+  )
+  expect(select).toMatch(/^<select aria-label="Kind"/)
+  expect(select).toContain('<option value="all" selected="">All kinds</option>')
+})
+
+test('a row menu is one button named for what it is about, its items out of sight until opened', () => {
+  const menu = html(
+    createElement(RowMenu, {
+      label: 'More for Mira',
+      items: [{ label: 'Archive', onSelect: nothing }, false, null],
+    }),
+  )
+  expect(menu).toMatch(/^<button[^>]*aria-label="More for Mira"/)
+  expect(menu).toContain('aria-haspopup="menu"')
+  expect(menu).toContain('aria-expanded="false"')
+  expect(menu).not.toContain('Archive')
+})
+
+test('an empty card says what would be here and how to get it; a group header names its group', () => {
+  const empty = html(
+    createElement(
+      CardEmpty,
+      {
+        title: 'No Agents yet',
+        action: createElement('button', { type: 'button' }, 'Spawn an agent'),
+      },
+      'An Agent is spawned from a template.',
+    ),
+  )
+  expect(empty).toContain(
+    '<p class="m-0 text-[0.95rem] font-semibold text-foreground">No Agents yet</p>',
+  )
+  expect(empty).toContain('An Agent is spawned from a template.')
+  expect(empty).toContain('>Spawn an agent</button>')
+
+  const header = html(
+    createElement(GroupHeader, {
+      title: 'Launch',
+      meta: '4 Agents · Restricted',
+      action: createElement('a', { href: '/' }, 'Open Team'),
+    }),
+  )
+  expect(header).toMatch(/<h3[^>]*>Launch<\/h3>/)
+  expect(header).toContain('4 Agents · Restricted')
+  expect(header).toContain('>Open Team</a>')
+})
+
+test('a list row can lead with an avatar, and Save can carry a Discard beside it', () => {
+  const row = html(
+    createElement(ListRow, {
+      leading: createElement('img', { alt: '' }),
+      title: 'Mira',
+    }),
+  )
+  expect(row).toMatch(
+    /<li[^>]*><span class="flex shrink-0 self-start pt-0.5"><img alt=""\/><\/span>/,
+  )
+  const bar = html(
+    createElement(SaveBar, {
+      busy: false,
+      disabled: false,
+      status: { text: 'Not saved yet.', tone: 'warning' as const },
+      extra: createElement('button', { type: 'button' }, 'Discard changes'),
+    }),
+  )
+  expect(bar).toMatch(/>Save<\/button><button type="button">Discard changes<\/button>/)
 })

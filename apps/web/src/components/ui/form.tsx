@@ -218,6 +218,34 @@ export function SelectField<Value extends string>({
   )
 }
 
+/** A filter in a card's toolbar: a small select named by its label, which is read, not shown. */
+export function FilterSelect<Value extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: Value
+  options: readonly { value: Value; label: string }[]
+  onChange: (value: Value) => void
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(event) => onChange(event.target.value as Value)}
+      className="min-h-9 w-auto max-w-full rounded-[12px] py-1 pl-2.5 pr-8 text-xs font-semibold"
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 /**
  * A key or token. A saved one is never shown or put back into a field: the row says that it is
  * saved, and it is replaced or removed from there. Both wait for the form's Save.
@@ -443,6 +471,7 @@ export function SaveBar({
   status,
   label = 'Save',
   busyLabel = 'Saving…',
+  extra,
 }: {
   busy: boolean
   /** Nothing to save, or something that cannot be saved as it is. */
@@ -450,12 +479,15 @@ export function SaveBar({
   status: SaveStatus
   label?: string
   busyLabel?: string
+  /** A button beside Save, such as Discard. */
+  extra?: ReactNode
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       <Button variant="primary" type="submit" disabled={disabled || busy}>
         {busy ? busyLabel : label}
       </Button>
+      {extra}
       <p
         role="status"
         className={cn('m-0 min-w-0 flex-1 basis-56 text-sm font-medium', STATUS[status.tone])}

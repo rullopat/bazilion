@@ -1,7 +1,16 @@
 // The parts every page outside the workspace is built from: a card with its heading, rows and
 // lists, notices and banners, facts, check lists, chips. The form parts are in form.tsx.
 
-import { AlertTriangle, Check, Info, type LucideIcon, Search, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  Info,
+  type LucideIcon,
+  MoreHorizontal,
+  Search,
+  X,
+} from 'lucide-react'
+import { DropdownMenu } from 'radix-ui'
 import type { ComponentProps, ReactNode } from 'react'
 import type { Tone } from '../../lib/model-facts'
 import { cn } from '../../lib/utils'
@@ -178,12 +187,15 @@ export function CardList({ className, ...props }: ComponentProps<'ul'>) {
  * what can be done with it, and under all that whatever it last reported.
  */
 export function ListRow({
+  leading,
   title,
   chip,
   meta,
   actions,
   children,
 }: {
+  /** An avatar or an icon before the name. */
+  leading?: ReactNode
   title: ReactNode
   /** The thing's state, beside its name. */
   chip?: ReactNode
@@ -194,6 +206,7 @@ export function ListRow({
 }) {
   return (
     <li className={cn(CARD_ROW, 'min-h-14 py-2.5')}>
+      {leading && <span className="flex shrink-0 self-start pt-0.5">{leading}</span>}
       <div className="min-w-0 flex-1 basis-64">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="min-w-0 break-words text-[0.95rem] font-semibold text-foreground">
@@ -405,5 +418,134 @@ export function CheckItem({
         )}
       </span>
     </li>
+  )
+}
+
+/** A card's line of controls above its list: a search box, a filter, an action. */
+export function CardToolbar({ className, ...props }: ComponentProps<'div'>) {
+  return <div className={cn(CARD_ROW, 'gap-y-2 py-3', className)} {...props} />
+}
+
+/** The heading of a group of rows inside a card's list. */
+export function GroupHeader({
+  title,
+  meta,
+  action,
+}: {
+  title: ReactNode
+  meta?: ReactNode
+  action?: ReactNode
+}) {
+  return (
+    <div className={cn(CARD_ROW, 'min-h-10 bg-muted/50 py-2')}>
+      <h3 className="m-0 min-w-0 font-body text-[0.72rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+        {title}
+      </h3>
+      {meta && <span className="text-xs text-muted-foreground">{meta}</span>}
+      {action && <span className="ml-auto text-xs font-semibold">{action}</span>}
+    </div>
+  )
+}
+
+/** What a card shows when it has nothing to list: what would be here, and how to get it. */
+export function CardEmpty({
+  icon,
+  title,
+  children,
+  action,
+}: {
+  icon?: ReactNode
+  title: ReactNode
+  children?: ReactNode
+  action?: ReactNode
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2 border-t border-border px-4 py-9 text-center sm:px-5">
+      {icon && (
+        <span
+          aria-hidden="true"
+          className="mb-1 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground"
+        >
+          {icon}
+        </span>
+      )}
+      <p className="m-0 text-[0.95rem] font-semibold text-foreground">{title}</p>
+      {children && <p className="m-0 max-w-md text-sm text-muted-foreground">{children}</p>}
+      {action && <div className="mt-2 flex flex-wrap justify-center gap-2">{action}</div>}
+    </div>
+  )
+}
+
+export interface RowMenuItem {
+  label: string
+  onSelect: () => void
+  /** A destructive action: said in the danger colour. */
+  danger?: boolean
+  /** Why it cannot be done now; the item is shown, disabled, with this under it. */
+  disabledReason?: string | null
+}
+
+const MENU_ITEM =
+  'flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg px-2.5 py-2 text-left text-sm outline-none transition-colors data-[highlighted]:bg-accent data-[disabled]:cursor-not-allowed'
+
+/**
+ * The rarer and the destructive actions on one row, behind a "More" button: the row itself keeps
+ * only what is done most.
+ */
+export function RowMenu({
+  label,
+  items,
+  disabled = false,
+}: {
+  /** What the menu is for, e.g. "More for Mira". */
+  label: string
+  items: readonly (RowMenuItem | null | false)[]
+  disabled?: boolean
+}) {
+  const shown = items.filter((item): item is RowMenuItem => Boolean(item))
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger
+        aria-label={label}
+        disabled={disabled}
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-card hover:text-foreground disabled:opacity-50 data-[state=open]:border-border data-[state=open]:bg-card data-[state=open]:text-foreground"
+      >
+        <MoreHorizontal className="size-[18px]" aria-hidden="true" />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={6}
+          className="z-50 min-w-[13rem] max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-baziu-lg"
+        >
+          {shown.map((item) => (
+            <DropdownMenu.Item
+              key={item.label}
+              disabled={Boolean(item.disabledReason)}
+              onSelect={item.onSelect}
+              className={MENU_ITEM}
+              // The highlight is the focus mark of a menu row; the app's own outline would double it.
+              style={{ outline: 'none' }}
+            >
+              <span
+                className={cn(
+                  'font-semibold',
+                  item.disabledReason
+                    ? 'text-muted-foreground'
+                    : item.danger
+                      ? 'text-danger'
+                      : 'text-foreground',
+                )}
+              >
+                {item.label}
+              </span>
+              {item.disabledReason && (
+                <span className="text-xs text-muted-foreground">{item.disabledReason}</span>
+              )}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   )
 }

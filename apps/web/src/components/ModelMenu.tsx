@@ -24,6 +24,7 @@ export function ModelMenu({
   models,
   inherited,
   required,
+  kit = false,
 }: {
   label: string
   /** A `provider:model`, or the empty string for the inherited choice (or for none yet). */
@@ -33,6 +34,8 @@ export function ModelMenu({
   /** Offers "take it from there" as the first choice, naming the model that is now. */
   inherited?: { label: string; model?: string }
   required?: boolean
+  /** Labelled like the fields of components/ui/form.tsx, with no margin of its own. */
+  kit?: boolean
 }) {
   const id = useId()
   const find = (candidate: string | undefined) => models.find((model) => model.value === candidate)
@@ -46,8 +49,15 @@ export function ModelMenu({
   const empty = models.length === 0 && !inherited
 
   return (
-    <div className="my-[0.6rem]">
-      <span id={`${id}-label`} className="block text-[0.9em] text-mocha">
+    <div className={kit ? 'min-w-0' : 'my-[0.6rem]'}>
+      <span
+        id={`${id}-label`}
+        className={
+          kit
+            ? 'mb-1.5 block text-sm font-semibold text-foreground'
+            : 'block text-[0.9em] text-mocha'
+        }
+      >
         {label}
       </span>
       <Select.Root

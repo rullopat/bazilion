@@ -1,367 +1,198 @@
 import type {
-  ChatModelEntry,
-  CreateProfileRequest,
   ModelsResponse,
   ProfileSummary,
   ProfileTemplates,
   SkillInfo,
-  SkillsMode,
+  Team,
+  TeamTemplate,
 } from '@bazilion/api-types'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { FileText } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
-import { MODELS_PATH, ModelMenu } from '../../../components/ModelMenu'
+import { ManagePage } from '../../../components/ManagePage'
+import { MODELS_PATH } from '../../../components/ModelMenu'
+import { CreateAgentTemplateDialog } from '../../../components/manage/AgentTemplateParts'
+import { SpawnDialog } from '../../../components/SpawnDialog'
 import {
-  ItemList,
-  ItemRow,
-  PageHeader,
-  PageShell,
-  SectionCard,
-  StatusBadge,
-} from '../../../components/Page'
-import { SectionTabs, TEMPLATE_TABS } from '../../../components/SectionTabs'
-import { SkillsPicker } from '../../../components/SkillsPicker'
-import { Tabs } from '../../../components/Tabs'
-import { UnsavedChangesGuard } from '../../../components/UnsavedChangesGuard'
-import { api, errorMessage } from '../../../lib/api'
+  CardEmpty,
+  CardList,
+  Chip,
+  ListRow,
+  RowMenu,
+  SetupCard,
+} from '../../../components/ui/parts'
+import { api } from '../../../lib/api'
 import { daemonClient } from '../../../lib/daemon-client'
+import {
+  count,
+  modelLine,
+  skillsLine,
+  templateDeleteBlocker,
+  templateName,
+  templateUseLine,
+} from '../../../lib/manage'
 
-const fetchProfiles = createServerFn({ method: 'GET' }).handler(async () => {
+const fetchTemplates = createServerFn({ method: 'GET' }).handler(async () => {
   const client = daemonClient()
-  const [profiles, models, skills, templates] = await Promise.all([
+  const [templates, teamTemplates, models, skills, starter, teams] = await Promise.all([
     client.get<ProfileSummary[]>('/api/profiles'),
+    client.get<TeamTemplate[]>('/api/team-templates'),
     client.get<ModelsResponse>(MODELS_PATH),
     client.get<SkillInfo[]>('/api/skills'),
     client.get<ProfileTemplates>('/api/profiles/_/templates'),
+    client.get<Team[]>('/api/teams'),
   ])
-  return { profiles, chatModels: models.chat, skills, templates }
+  return { templates, teamTemplates, chat: models.chat, skills, starter, teams }
 })
 
 export const Route = createFileRoute('/templates/agents/')({
-  loader: () => fetchProfiles(),
-  component: ProfilesPage,
+  // `?new=1` opens the create dialog, as the workspace's New menu does.
+  validateSearch: (search: Record<string, unknown>): { new?: 1 } => ({
+    new: search.new === 1 || search.new === '1' ? 1 : undefined,
+  }),
+  loader: () => fetchTemplates(),
+  component: AgentTemplatesPage,
 })
 
-function ProfilesPage() {
-  const { profiles, chatModels, skills, templates } = Route.useLoaderData()
+function AgentTemplatesPage() {
+  const { templates, teamTemplates, chat, skills, starter, teams } = Route.useLoaderData()
+  const search = Route.useSearch()
+  const navigate = useNavigate()
   const router = useRouter()
-  const [deleteTarget, setDeleteTarget] = useState<ProfileSummary | null>(null)
+  const [creating, setCreating] = useState(search.new === 1)
+  const [spawnFrom, setSpawnFrom] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<ProfileSummary | null>(null)
+  const closeCreate = () => {
+    setCreating(false)
+    if (search.new) void navigate({ to: '/templates/agents', search: {}, replace: true })
+  }
 
   return (
-    <PageShell size="wide">
-      <PageHeader
-        eyebrow="Templates"
+    <ManagePage
+      title="Agent templates"
+      description="What a new Agent starts with: its files, its model and its skills. Agents already spawned keep their own copies."
+      actions={
+        <Button variant="primary" onClick={() => setCreating(true)}>
+          New Agent template
+        </Button>
+      }
+    >
+      <SetupCard
+        labelledBy="manage-agent-templates"
+        icon={<FileText className="size-5" />}
         title="Agent templates"
-        description="Reusable identity, model and skills for newly spawned agents."
-      />
-      <SectionTabs label="Template kinds" base="/templates" tabs={TEMPLATE_TABS} />
-
-      <CreateProfileForm
-        chatModels={chatModels}
-        skills={skills}
-        templates={templates}
-        onCreated={() => router.invalidate()}
-      />
-
-      <SectionCard title="Templates">
-        {profiles.length === 0 ? (
-          <p className="muted">No Agent templates yet.</p>
+        description="Open one to edit its files, model and skills."
+        action={<Chip tone="neutral">{count(templates.length, 'template')}</Chip>}
+      >
+        {templates.length === 0 ? (
+          <CardEmpty
+            icon={<FileText className="size-5" />}
+            title="No Agent templates yet"
+            action={
+              <Button variant="primary" onClick={() => setCreating(true)}>
+                New Agent template
+              </Button>
+            }
+          >
+            Every Agent is spawned from a template.
+          </CardEmpty>
         ) : (
-          <ItemList>
-            {profiles.map((profile) => (
-              <ItemRow
-                key={profile.id}
-                title={
-                  <a href={`/templates/agents/${encodeURIComponent(profile.id)}`}>{profile.name}</a>
-                }
-                meta={
-                  <>
-                    <code>{profile.id}</code>
-                    <code>{profile.defaultModel}</code>
-                    <span>
-                      {profile.agentCount} agent{profile.agentCount === 1 ? '' : 's'}
-                    </span>
-                    <span>
-                      skills:{' '}
-                      {profile.skillsMode === 'all'
-                        ? 'all'
-                        : profile.defaultSkills.join(', ') || 'none'}
-                    </span>
-                  </>
-                }
-                actions={
-                  profile.agentCount === 0 ? (
-                    <Button variant="danger" onClick={() => setDeleteTarget(profile)}>
-                      Delete
-                    </Button>
-                  ) : (
-                    <StatusBadge title={`${profile.agentCount} agent(s) use this template`}>
-                      In use
-                    </StatusBadge>
-                  )
-                }
-              />
-            ))}
-          </ItemList>
+          <CardList>
+            {templates.map((template) => {
+              const model = modelLine(template.defaultModel, chat)
+              const blocker = templateDeleteBlocker(template, teamTemplates)
+              const href = `/templates/agents/${encodeURIComponent(template.id)}`
+              return (
+                <ListRow
+                  key={template.id}
+                  title={
+                    <a href={href} className="text-foreground hover:text-primary">
+                      {templateName(template)}
+                    </a>
+                  }
+                  chip={model.missing && <Chip tone="warning">Model not in Chat</Chip>}
+                  meta={
+                    <>
+                      <span className={model.missing ? 'font-semibold text-warning' : ''}>
+                        {model.name}
+                      </span>
+                      <span>{skillsLine(template)}</span>
+                      <span>{templateUseLine(template, teamTemplates)}</span>
+                      <code>{template.id}</code>
+                    </>
+                  }
+                  actions={
+                    <>
+                      <Button
+                        variant="ghost"
+                        aria-label={`Spawn an agent from ${templateName(template)}`}
+                        onClick={() => setSpawnFrom(template.id)}
+                      >
+                        Spawn
+                      </Button>
+                      <RowMenu
+                        label={`More for ${templateName(template)}`}
+                        items={[
+                          {
+                            label: 'Edit files and settings',
+                            onSelect: () => {
+                              window.location.assign(href)
+                            },
+                          },
+                          {
+                            label: 'Delete…',
+                            danger: true,
+                            disabledReason: blocker,
+                            onSelect: () => setDeleting(template),
+                          },
+                        ]}
+                      />
+                    </>
+                  }
+                />
+              )
+            })}
+          </CardList>
         )}
-      </SectionCard>
+      </SetupCard>
+
+      {creating && (
+        <CreateAgentTemplateDialog
+          chat={chat}
+          skills={skills}
+          starter={starter}
+          onClose={closeCreate}
+        />
+      )}
+      {spawnFrom && (
+        <SpawnDialog
+          profiles={templates}
+          teams={teams}
+          profileId={spawnFrom}
+          onClose={() => setSpawnFrom(null)}
+        />
+      )}
       <ConfirmDialog
-        open={deleteTarget !== null}
-        title={`Delete Agent template ${deleteTarget?.name ?? ''}?`}
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null)
+        }}
+        title={`Delete the ${deleting ? templateName(deleting) : ''} template?`}
         description={
-          <p>
-            This permanently deletes <code className="font-mono">{deleteTarget?.id}</code> and its
-            files. Existing Agents keep their own copies.
+          <p className="m-0">
+            This deletes the template and its files. No Agent and no Team template uses it.
           </p>
         }
-        confirmLabel="Delete Agent template"
+        confirmLabel="Delete template"
         onConfirm={async () => {
-          if (!deleteTarget) return
-          await api(`/api/profiles/${encodeURIComponent(deleteTarget.id)}`, { method: 'DELETE' })
-          await router.invalidate()
-        }}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!deleting) return
+          await api(`/api/profiles/${encodeURIComponent(deleting.id)}`, { method: 'DELETE' })
+          await router.invalidate({ sync: true })
         }}
       />
-    </PageShell>
-  )
-}
-
-type FileKey = 'soul' | 'identity' | 'bootstrap' | 'agents' | 'tools'
-type TabKey = 'basics' | FileKey | 'skills'
-
-const FILES: { key: FileKey; label: string; hint: string; rows: number; optional: boolean }[] = [
-  {
-    key: 'soul',
-    label: 'SOUL.md',
-    hint: 'Persona, values and operating principles. Part of every session.',
-    rows: 16,
-    optional: false,
-  },
-  {
-    key: 'identity',
-    label: 'IDENTITY.md',
-    hint: 'Name, creature, vibe, emoji, avatar: filled in during the first-run ritual.',
-    rows: 12,
-    optional: false,
-  },
-  {
-    key: 'bootstrap',
-    label: 'BOOTSTRAP.md',
-    hint: 'The first-run ritual; the agent retires it once introductions are done.',
-    rows: 16,
-    optional: true,
-  },
-  {
-    key: 'agents',
-    label: 'AGENTS.md',
-    hint: 'The workspace operating manual: memory discipline, red lines, channel etiquette.',
-    rows: 16,
-    optional: true,
-  },
-  {
-    key: 'tools',
-    label: 'TOOLS.md',
-    hint: 'Agent-specific tool notes and environment facts beyond the tool descriptions.',
-    rows: 14,
-    optional: true,
-  },
-]
-
-function CreateProfileForm({
-  chatModels,
-  skills,
-  templates,
-  onCreated,
-}: {
-  chatModels: ChatModelEntry[]
-  skills: SkillInfo[]
-  templates: ProfileTemplates
-  onCreated: () => Promise<void>
-}) {
-  const initialFiles = (): Record<FileKey, string> => ({
-    soul: templates.soul,
-    identity: templates.identity,
-    bootstrap: templates.bootstrap,
-    agents: templates.agents,
-    tools: templates.tools,
-  })
-  const [tab, setTab] = useState<TabKey>('basics')
-  const [id, setId] = useState('')
-  const [name, setName] = useState('')
-  const [model, setModel] = useState('')
-  const [files, setFiles] = useState(initialFiles)
-  // SOUL and IDENTITY are always created; the optional files start enabled.
-  const [enabled, setEnabled] = useState<Record<FileKey, boolean>>({
-    soul: true,
-    identity: true,
-    bootstrap: true,
-    agents: true,
-    tools: true,
-  })
-  const [skillsMode, setSkillsMode] = useState<SkillsMode>('all')
-  const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const starter = initialFiles()
-  const dirty =
-    id.length > 0 ||
-    name.length > 0 ||
-    model.length > 0 ||
-    FILES.some((file) => files[file.key] !== starter[file.key] || !enabled[file.key]) ||
-    skillsMode !== 'all' ||
-    picked.size > 0
-
-  function toggleFile(key: FileKey, on: boolean) {
-    setEnabled((current) => ({ ...current, [key]: on }))
-    if (!on && tab === key) setTab('basics')
-  }
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault()
-    setError(null)
-    setSubmitting(true)
-    try {
-      await api('/api/profiles', {
-        body: {
-          id: id.trim(),
-          name: name.trim() || undefined,
-          defaultModel: model,
-          skillsMode,
-          defaultSkills: skillsMode === 'selected' ? Array.from(picked) : [],
-          soul: files.soul,
-          identity: files.identity,
-          // null leaves an optional file out.
-          bootstrap: enabled.bootstrap ? files.bootstrap : null,
-          agents: enabled.agents ? files.agents : null,
-          tools: enabled.tools ? files.tools : null,
-        } satisfies CreateProfileRequest,
-      })
-      setId('')
-      setName('')
-      setModel('')
-      setFiles(initialFiles())
-      setEnabled({ soul: true, identity: true, bootstrap: true, agents: true, tools: true })
-      setPicked(new Set())
-      setSkillsMode('all')
-      setTab('basics')
-      await onCreated()
-    } catch (cause) {
-      setError(errorMessage(cause))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const file = FILES.find((entry) => entry.key === tab)
-  return (
-    <SectionCard title="Create an Agent template">
-      <form onSubmit={(event) => void submit(event)}>
-        <UnsavedChangesGuard when={dirty && !submitting} subject="Agent template draft" />
-        {error && (
-          <p role="alert" className="err">
-            {error}
-          </p>
-        )}
-        <Tabs
-          items={[
-            { id: 'basics', label: 'Basics' },
-            ...FILES.map((entry) => ({
-              id: entry.key,
-              label: entry.label.replace('.md', ''),
-              disabled: !enabled[entry.key],
-            })),
-            { id: 'skills', label: 'Skills' },
-          ]}
-          active={tab}
-          onChange={setTab}
-        />
-
-        <fieldset className="mb-5 rounded-md border border-frost p-3">
-          <legend className="px-1 text-[0.85em] font-medium text-mocha">Files to include</legend>
-          <div className="flex flex-wrap gap-x-5 gap-y-2 text-[0.9em]">
-            {FILES.map((entry) => (
-              <label
-                key={entry.key}
-                className={`m-0 inline-flex items-center gap-1.5 ${entry.optional ? 'cursor-pointer' : 'opacity-60'}`}
-                title={entry.optional ? undefined : 'always included'}
-              >
-                <input
-                  type="checkbox"
-                  checked={enabled[entry.key]}
-                  disabled={!entry.optional}
-                  onChange={(event) => toggleFile(entry.key, event.target.checked)}
-                />
-                {entry.label}
-              </label>
-            ))}
-          </div>
-          <p className="muted mt-2 text-[0.8em]">
-            Each spawned agent gets its own copy of the included files.
-          </p>
-        </fieldset>
-
-        {tab === 'basics' && (
-          <div>
-            <div className="grid gap-x-4 sm:grid-cols-2">
-              <label>
-                ID (slug)
-                <input value={id} onChange={(event) => setId(event.target.value)} required />
-              </label>
-              <label>
-                Name
-                <input value={name} onChange={(event) => setName(event.target.value)} />
-              </label>
-            </div>
-            <ModelMenu
-              label="Default model"
-              value={model}
-              onChange={setModel}
-              models={chatModels}
-              required
-            />
-            {chatModels.length === 0 && (
-              <p className="muted text-[0.85em]">
-                Connect a provider under <a href="/config">Setup</a> first.
-              </p>
-            )}
-          </div>
-        )}
-        {file && (
-          <div>
-            <p className="muted my-2 text-[0.85em]">{file.hint}</p>
-            <label>
-              {file.label}
-              <textarea
-                rows={file.rows}
-                value={files[file.key]}
-                onChange={(event) =>
-                  setFiles((current) => ({ ...current, [file.key]: event.target.value }))
-                }
-                className="font-mono text-[0.88em] leading-[1.55]"
-              />
-            </label>
-          </div>
-        )}
-        {tab === 'skills' && (
-          <SkillsPicker
-            mode={skillsMode}
-            onModeChange={setSkillsMode}
-            picked={picked}
-            onPickedChange={setPicked}
-            skills={skills}
-          />
-        )}
-
-        <div className="mt-5">
-          <Button variant="primary" type="submit" disabled={submitting || !id.trim() || !model}>
-            {submitting ? 'Creating…' : 'Create'}
-          </Button>
-        </div>
-      </form>
-    </SectionCard>
+    </ManagePage>
   )
 }

@@ -2,7 +2,8 @@
 
 **Attention** lists what needs you: lesson proposals waiting for a decision, failed or cancelled
 reviews, scheduled triggers that failed, Agent message loops that were stopped, and Agent queues
-paused after a daemon restart. It is the **Attention** page of the web UI and
+paused after a daemon restart. It is the **Attention** page of the web UI, which says how much is
+open, filters by state, kind and severity, and links each item to where it is dealt with; and
 `bazilion attention list|summary`. Failures and loop breaks can be acknowledged
 (`bazilion attention acknowledge <key> --yes`, or `acknowledge-all`); proposals and paused queues
 leave the list when you act on them.

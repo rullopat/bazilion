@@ -142,7 +142,7 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
               </DropdownMenu.Label>
               {sortedProfiles.length === 0 ? (
                 <DropdownMenu.Item asChild className={MENU_ITEM}>
-                  <a href="/templates/agents">Create an Agent template</a>
+                  <a href="/templates/agents?new=1">Create an Agent template</a>
                 </DropdownMenu.Item>
               ) : (
                 sortedProfiles.map((profile) => (
@@ -170,7 +170,7 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
               </DropdownMenu.Label>
               {teamTemplates.length === 0 ? (
                 <DropdownMenu.Item asChild className={MENU_ITEM}>
-                  <a href="/templates/teams">Create a Team template</a>
+                  <a href="/templates/teams?new=1">Create a Team template</a>
                 </DropdownMenu.Item>
               ) : (
                 teamTemplates.map((entry) => (
@@ -195,7 +195,7 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
               <DropdownMenu.Separator className="my-1.5 h-px bg-border" />
               <DropdownMenu.Item className={MENU_ITEM} onSelect={() => setCreateTeamOpen(true)}>
                 <Plus className="size-3.5" aria-hidden="true" />
-                Create a team
+                Create a Team
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
@@ -218,7 +218,7 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
                 Spawn first agent
               </Button>
             ) : (
-              <a href="/templates/agents" className="mt-3 text-xs font-semibold">
+              <a href="/templates/agents?new=1" className="mt-3 text-xs font-semibold">
                 Create an Agent template
               </a>
             )}
@@ -323,8 +323,8 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
       )}
       {createTeamOpen && (
         <Dialog
-          title="Create a team"
-          description="A Team is one workspace with its own USER.md, members and shared memory."
+          title="Create a Team"
+          description="A Team is one workspace: its folder, its Agents, its USER.md and shared memory, and who may message whom."
           busy={createTeamBusy}
           onClose={() => {
             setCreateTeamOpen(false)

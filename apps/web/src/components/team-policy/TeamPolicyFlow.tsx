@@ -27,6 +27,8 @@ import {
 
 interface AgentNodeData extends Record<string, unknown> {
   member: PolicyMember
+  /** What it is spawned from. */
+  subtitle: string
   isolated: boolean
   incomplete: boolean
 }
@@ -58,14 +60,14 @@ function AgentNode({ data, selected }: NodeProps<FlowNode<AgentNodeData, 'agent'
             {data.member.name}
           </span>
           <span className="mt-0.5 flex items-center gap-1.5 truncate text-[0.68rem] text-mocha-light">
-            slot
+            {data.subtitle}
           </span>
         </span>
         {data.isolated && (
-          <ShieldAlert className="h-4 w-4 flex-none text-[#a56568]" aria-label="No allow edges" />
+          <ShieldAlert className="h-4 w-4 flex-none text-[#a56568]" aria-label="No connections" />
         )}
         {data.incomplete && (
-          <CircleAlert className="h-4 w-4 flex-none text-warning" aria-label="Incomplete slot" />
+          <CircleAlert className="h-4 w-4 flex-none text-warning" aria-label="No template" />
         )}
       </div>
       <Handle
@@ -107,6 +109,8 @@ const NODE_TYPES: NodeTypes = {
   outside: OutsideNode,
 }
 
+const NO_NAMES: Readonly<Record<string, string>> = {}
+
 interface TeamPolicyFlowProps {
   document: PolicyDocument
   selectedId: string | null
@@ -116,12 +120,15 @@ interface TeamPolicyFlowProps {
   onRemoveEdge: (from: string, to: string) => void
   onMoveMember: (key: string, position: PolicyPosition) => void
   onOpenMember: (member: PolicyMember) => void
+  /** Template names by id, to say what each Agent is spawned from. */
+  templateNames?: Readonly<Record<string, string>>
 }
 
 export function TeamPolicyFlow({
   document,
   selectedId,
   incompleteKeys,
+  templateNames = NO_NAMES,
   onSelect,
   onConnect,
   onRemoveEdge,
@@ -151,14 +158,19 @@ export function TeamPolicyFlow({
         id: member.key,
         type: 'agent',
         position: member.position,
-        data: { member, isolated, incomplete },
-        ariaLabel: `${member.name}${isolated ? ', no allow edges' : ''}${incomplete ? ', incomplete' : ''}`,
+        data: {
+          member,
+          subtitle: templateNames[member.profileId] ?? 'No template',
+          isolated,
+          incomplete,
+        },
+        ariaLabel: `${member.name}${isolated ? ', no connections' : ''}${incomplete ? ', no template' : ''}`,
         selected: selectedId === member.key,
         deletable: false,
       }
     })
     return [outside, ...members]
-  }, [document, incompleteKeys, selectedId])
+  }, [document, incompleteKeys, selectedId, templateNames])
   const [nodes, setNodes, onNodesChange] = useNodesState<PolicyFlowNode>(computedNodes)
 
   useEffect(() => {

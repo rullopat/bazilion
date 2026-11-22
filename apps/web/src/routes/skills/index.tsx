@@ -1,26 +1,48 @@
-import type { ImportSkillsResponse, SkillInfo, SkillScanFinding } from '@bazilion/api-types'
+import type { ImportSkillsResponse, ProfileSummary, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../components/Button'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ManagePage } from '../../components/ManagePage'
+import { FindingsNotice, ImportSkillsDialog } from '../../components/manage/SkillsParts'
 import {
-  EmptyState,
-  ItemList,
-  ItemRow,
-  PageHeader,
-  PageShell,
-  SectionCard,
-  StatusBadge,
-} from '../../components/Page'
-import { FindingList, FindingSummary } from '../../components/SkillFindings'
-import { Tabs } from '../../components/Tabs'
-import { ApiError, api, errorMessage } from '../../lib/api'
+  Banner,
+  CardBody,
+  CardEmpty,
+  CardList,
+  CardToolbar,
+  Chip,
+  ListRow,
+  Notice,
+  RowMenu,
+  SearchField,
+  SetupCard,
+} from '../../components/ui/parts'
+import { api } from '../../lib/api'
 import { daemonClient } from '../../lib/daemon-client'
+import {
+  allSkillsLine,
+  count,
+  matchesSkill,
+  skillChosenBy,
+  skillSourceLabel,
+  skillState,
+  skillsNeedingALook,
+  skillUseSentence,
+} from '../../lib/manage'
+import { ago } from '../../lib/model-facts'
 
-const fetchSkills = createServerFn({ method: 'GET' }).handler(() =>
-  daemonClient().get<SkillInfo[]>('/api/skills'),
-)
+const fetchSkills = createServerFn({ method: 'GET' }).handler(async () => {
+  const client = daemonClient()
+  const [skills, templates] = await Promise.all([
+    client.get<SkillInfo[]>('/api/skills'),
+    client.get<ProfileSummary[]>('/api/profiles'),
+  ])
+  // "Imported 2 days ago" is counted from one clock, on the server and in the browser.
+  return { skills, templates, now: Date.now() }
+})
 
 export const Route = createFileRoute('/skills/')({
   loader: () => fetchSkills(),
@@ -28,279 +50,180 @@ export const Route = createFileRoute('/skills/')({
 })
 
 function SkillsPage() {
-  const skills = Route.useLoaderData()
+  const { skills, templates, now } = Route.useLoaderData()
   const router = useRouter()
-  const [removeTarget, setRemoveTarget] = useState<SkillInfo | null>(null)
-
-  return (
-    <PageShell size="wide">
-      <PageHeader
-        title="Skills"
-        description="Install and review the prompt-only skills available to your agents."
-      />
-      <ImportCard onImported={() => router.invalidate()} />
-
-      <SectionCard
-        title="Installed skills"
-        description={`${skills.length} skill${skills.length === 1 ? '' : 's'} available`}
-      >
-        {skills.length === 0 ? (
-          <EmptyState
-            title="No skills installed"
-            description="Import from OpenClaw, a server directory, or a ZIP archive to get started."
-          />
-        ) : (
-          <ItemList>
-            {skills.map((skill) => (
-              <ItemRow
-                key={skill.name}
-                title={<code>{skill.name}</code>}
-                meta={
-                  <>
-                    <FindingSummary findings={skill.scanFindings ?? []} />
-                    <span className="font-mono">{skill.source ?? 'unknown source'}</span>
-                    {skill.importedAt && (
-                      <span>imported {new Date(skill.importedAt).toLocaleDateString()}</span>
-                    )}
-                  </>
-                }
-                actions={
-                  <Button variant="danger" onClick={() => setRemoveTarget(skill)}>
-                    Remove
-                  </Button>
-                }
-              >
-                {skill.parseError ? (
-                  <p className="mb-0 mt-1 flex items-start gap-2 text-sm">
-                    <StatusBadge variant="danger">Parse error</StatusBadge>
-                    <span className="text-destructive">{skill.parseError}</span>
-                  </p>
-                ) : (
-                  skill.description && <p className="mb-0 mt-1 text-sm">{skill.description}</p>
-                )}
-              </ItemRow>
-            ))}
-          </ItemList>
-        )}
-      </SectionCard>
-      <ConfirmDialog
-        open={removeTarget !== null}
-        title={`Remove skill ${removeTarget?.name ?? ''}?`}
-        description={
-          <p>
-            This permanently deletes the installed <code className="font-mono">SKILL.md</code> and
-            every script and asset in the <code className="font-mono">{removeTarget?.name}</code>{' '}
-            directory. No Agent or Agent template can use the skill until it is imported again.
-          </p>
-        }
-        confirmLabel="Delete installed skill"
-        onConfirm={async () => {
-          if (!removeTarget) return
-          await api(`/api/skills/${encodeURIComponent(removeTarget.name)}`, { method: 'DELETE' })
-          await router.invalidate()
-        }}
-        onOpenChange={(open) => {
-          if (!open) setRemoveTarget(null)
-        }}
-      />
-    </PageShell>
-  )
-}
-
-type Source = 'openclaw' | 'path' | 'zip'
-
-function ImportCard({ onImported }: { onImported: () => void }) {
-  const [source, setSource] = useState<Source>('openclaw')
-  const [path, setPath] = useState('')
-  const [force, setForce] = useState(false)
-  const [zipFile, setZipFile] = useState<File | null>(null)
-  const [dragOver, setDragOver] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [findings, setFindings] = useState<SkillScanFinding[]>([])
-  const [submitting, setSubmitting] = useState(false)
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault()
-    setError(null)
-    setFindings([])
-    let body: unknown
-    if (source === 'zip') {
-      if (!zipFile) {
-        setError('Choose a ZIP file first.')
-        return
-      }
-      const form = new FormData()
-      form.set('file', zipFile)
-      if (force) form.set('force', 'true')
-      body = form
-    } else {
-      body = { source: source === 'openclaw' ? 'openclaw' : path.trim(), force }
-    }
-    setSubmitting(true)
-    try {
-      const imported = await api<ImportSkillsResponse>('/api/skills/import', { body })
-      setFindings(
-        Object.entries(imported.findings ?? {}).flatMap(([name, items]) =>
-          items.map((item) => ({ ...item, message: `${name}: ${item.message}` })),
-        ),
+  const [importing, setImporting] = useState(false)
+  const [imported, setImported] = useState<ImportSkillsResponse | null>(null)
+  const [removing, setRemoving] = useState<SkillInfo | null>(null)
+  const [query, setQuery] = useState('')
+  const shown = skills.filter((skill) => matchesSkill(skill, query))
+  const look = skillsNeedingALook(skills)
+  const importedFindings = imported
+    ? Object.entries(imported.findings ?? {}).flatMap(([name, items]) =>
+        items.map((item) => ({ ...item, message: `${name}: ${item.message}` })),
       )
-      setPath('')
-      setZipFile(null)
-      onImported()
-    } catch (cause) {
-      if (cause instanceof ApiError) {
-        setFindings((cause.body as { findings?: SkillScanFinding[] }).findings ?? [])
-      }
-      setError(errorMessage(cause))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  function chooseZip(file: File | undefined) {
-    if (!file) return
-    if (!/\.zip$/i.test(file.name)) {
-      setError('Only ZIP archives are supported.')
-      return
-    }
-    setZipFile(file)
-  }
+    : []
 
   return (
-    <SectionCard
-      title="Import skills"
-      description={
-        <>
-          Each skill's <code>SKILL.md</code> body is added to the system prompt of every agent it is
-          attached to.
-        </>
+    <ManagePage
+      title="Skills"
+      description="Prompt-only skills: a skill's SKILL.md is added to the system prompt of every Agent it is attached to. Templates attach skills at spawn; each Agent can change its own."
+      actions={
+        <Button variant="primary" onClick={() => setImporting(true)}>
+          Import skills
+        </Button>
       }
     >
-      <Tabs
-        items={[
-          { id: 'openclaw', label: 'OpenClaw' },
-          { id: 'path', label: 'Server directory' },
-          { id: 'zip', label: 'Upload ZIP' },
-        ]}
-        active={source}
-        onChange={(next) => {
-          setSource(next)
-          setError(null)
+      {look.length > 0 && (
+        <Banner
+          tone="warning"
+          lead={`${count(look.length, 'skill')} ${look.length === 1 ? 'needs' : 'need'} a look.`}
+        >
+          {look
+            .map((skill) =>
+              skill.parseError
+                ? `${skill.name} cannot be read`
+                : `${skill.name} has a risky finding`,
+            )
+            .join('; ')}
+          .
+        </Banner>
+      )}
+      <SetupCard
+        labelledBy="manage-skills"
+        icon={<Sparkles className="size-5" />}
+        title="Installed skills"
+        description={`Each was scanned when it was imported. ${allSkillsLine(templates) ?? ''}`}
+        action={<Chip tone="neutral">{count(skills.length, 'skill')}</Chip>}
+      >
+        {imported && (
+          <CardBody className="py-3">
+            <Notice
+              tone="success"
+              title={
+                imported.imported.length > 0
+                  ? `Imported ${count(imported.imported.length, 'skill')}: ${imported.imported.join(', ')}.`
+                  : 'Nothing new was imported.'
+              }
+            >
+              {imported.skipped.length > 0 &&
+                `Already installed, so left as they were: ${imported.skipped.join(', ')}.`}
+            </Notice>
+            {importedFindings.length > 0 && (
+              <FindingsNotice
+                findings={importedFindings}
+                title="Imported despite these findings:"
+              />
+            )}
+          </CardBody>
+        )}
+        {skills.length > 0 && (
+          <CardToolbar>
+            <SearchField
+              label="Find a skill"
+              placeholder="Find by name or description"
+              value={query}
+              onChange={setQuery}
+              className="min-w-0 flex-1 basis-60"
+            />
+          </CardToolbar>
+        )}
+        {skills.length === 0 ? (
+          <CardEmpty
+            icon={<Sparkles className="size-5" />}
+            title="No skills installed"
+            action={
+              <Button variant="primary" onClick={() => setImporting(true)}>
+                Import skills
+              </Button>
+            }
+          >
+            Import them from OpenClaw, a folder or a ZIP file.
+          </CardEmpty>
+        ) : shown.length === 0 ? (
+          <CardEmpty title={`No skill matches “${query.trim()}”`}>
+            Try another word from its name or description.
+          </CardEmpty>
+        ) : (
+          <CardList>
+            {shown.map((skill) => {
+              const state = skillState(skill)
+              const findings = skill.scanFindings ?? []
+              return (
+                <ListRow
+                  key={skill.name}
+                  title={<span className="font-mono text-[0.92em]">{skill.name}</span>}
+                  chip={state && <Chip tone={state.tone}>{state.label}</Chip>}
+                  meta={
+                    <>
+                      {skill.description && (
+                        <span className="basis-full text-foreground">{skill.description}</span>
+                      )}
+                      {skillChosenBy(skill.name, templates) && (
+                        <span>{skillChosenBy(skill.name, templates)}</span>
+                      )}
+                      <span>
+                        {skillSourceLabel(skill.source)}
+                        {skill.importedAt !== null && `, ${ago(skill.importedAt, now)}`}
+                      </span>
+                    </>
+                  }
+                  actions={
+                    <RowMenu
+                      label={`More for ${skill.name}`}
+                      items={[
+                        { label: 'Remove…', danger: true, onSelect: () => setRemoving(skill) },
+                      ]}
+                    />
+                  }
+                >
+                  {skill.parseError ? (
+                    <Notice
+                      tone="warning"
+                      title="Its SKILL.md cannot be read, so no Agent gets it."
+                    >
+                      <span className="break-words font-mono text-xs">{skill.parseError}</span>
+                    </Notice>
+                  ) : (
+                    findings.length > 0 && <FindingsNotice findings={findings} />
+                  )}
+                </ListRow>
+              )
+            })}
+          </CardList>
+        )}
+      </SetupCard>
+
+      {importing && (
+        <ImportSkillsDialog
+          onClose={() => setImporting(false)}
+          onImported={async (result) => {
+            setImporting(false)
+            setImported(result)
+            await router.invalidate({ sync: true })
+          }}
+        />
+      )}
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoving(null)
+        }}
+        title={`Remove the ${removing?.name ?? ''} skill?`}
+        description={
+          <p className="m-0">
+            This deletes its SKILL.md and every script and file in its folder. No Agent or template
+            can use it until it is imported again.{' '}
+            {removing && skillUseSentence(removing.name, templates)}
+          </p>
+        }
+        confirmLabel="Remove skill"
+        onConfirm={async () => {
+          if (!removing) return
+          await api(`/api/skills/${encodeURIComponent(removing.name)}`, { method: 'DELETE' })
+          await router.invalidate({ sync: true })
         }}
       />
-
-      {error && (
-        <p
-          role="alert"
-          className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        >
-          {error}
-        </p>
-      )}
-      {findings.length > 0 && (
-        <div className="mb-4 rounded-lg border border-border bg-muted/30 p-4 text-sm">
-          <StatusBadge
-            variant={
-              findings.some((finding) => finding.severity === 'danger') ? 'danger' : 'warning'
-            }
-            className="mb-2"
-          >
-            Scan findings
-          </StatusBadge>
-          <FindingList findings={findings} />
-        </div>
-      )}
-
-      <form className="space-y-4" onSubmit={(event) => void submit(event)}>
-        {source === 'openclaw' && (
-          <p className="text-sm leading-6 text-muted-foreground">
-            Imports every skill in <code>~/.openclaw/skills</code> on the server.
-          </p>
-        )}
-        {source === 'path' && (
-          <>
-            <p className="text-sm leading-6 text-muted-foreground">
-              An absolute path on the server: one skill folder (with a <code>SKILL.md</code>) or a
-              folder of skill folders.
-            </p>
-            <label className="max-w-2xl">
-              Server path
-              <input
-                value={path}
-                onChange={(event) => setPath(event.target.value)}
-                placeholder="/home/you/my-skills"
-                required
-              />
-            </label>
-          </>
-        )}
-        {source === 'zip' && (
-          <>
-            <p className="text-sm leading-6 text-muted-foreground">
-              A <code>.zip</code> archive with one folder per skill at its top level; the folder
-              name becomes the skill name.
-            </p>
-            <label
-              onDragOver={(event) => {
-                event.preventDefault()
-                setDragOver(true)
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(event) => {
-                event.preventDefault()
-                setDragOver(false)
-                chooseZip(event.dataTransfer.files[0])
-              }}
-              className={`relative block cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
-                dragOver
-                  ? 'border-primary bg-accent text-accent-foreground'
-                  : zipFile
-                    ? 'border-solid border-primary/40 bg-card text-foreground'
-                    : 'border-border bg-muted/30 text-muted-foreground hover:border-primary hover:bg-accent hover:text-accent-foreground'
-              }`}
-            >
-              <input
-                type="file"
-                accept=".zip,application/zip"
-                onChange={(event) => chooseZip(event.target.files?.[0])}
-                className="absolute h-px w-px overflow-hidden opacity-0"
-              />
-              {zipFile ? (
-                <span className="block break-all font-mono text-sm text-accent-foreground">
-                  {zipFile.name}
-                </span>
-              ) : (
-                <>
-                  <span className="block text-sm font-medium text-foreground">
-                    Click to choose a ZIP file
-                  </span>
-                  <span className="text-xs">or drag and drop it here</span>
-                </>
-              )}
-            </label>
-          </>
-        )}
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="primary" type="submit" disabled={submitting}>
-            {submitting
-              ? 'Importing…'
-              : source === 'zip'
-                ? 'Upload and import'
-                : source === 'openclaw'
-                  ? 'Import from OpenClaw'
-                  : 'Import'}
-          </Button>
-          <label className="m-0 inline-flex cursor-pointer items-center gap-1 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={force}
-              onChange={(event) => setForce(event.target.checked)}
-            />
-            <span>Overwrite existing</span>
-            <span className="text-muted-foreground">and accept scan findings</span>
-          </label>
-        </div>
-      </form>
-    </SectionCard>
+    </ManagePage>
   )
 }

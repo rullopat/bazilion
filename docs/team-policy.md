@@ -38,8 +38,8 @@ The loop guard on message chains (the first message and eight replies, unless ch
 | Open or restrict a Team | `bazilion team policy mode <team> open\|restricted` | Open/Restricted switch of the Connections view |
 | Add or remove an edge | `bazilion team policy allow\|deny <team> <from> <to>` | Connections view: the map or the table |
 | See what Agents said to each other | `bazilion team messages <team>` | Connections: recent messages |
-| Manage templates | `bazilion team-template list\|show\|create\|export\|import\|rm` | Templates → Teams |
-| Spawn a template into a Team | `bazilion team-template spawn <template> <team>` | Spawn team dialog |
+| Manage templates | `bazilion team-template list\|show\|create\|export\|import\|rm` | Manage → Team templates |
+| Spawn a template into a Team | `bazilion team-template spawn <template> <team>` | **Spawn** on Team templates, or **Spawn this Team** on its page |
 | Save a Team as a template | `bazilion team-template save <team> <template>` | Team tab → Settings → Save as Team template |
 
 On the map every Agent is a node with what it is doing, and every pair that is connected or that

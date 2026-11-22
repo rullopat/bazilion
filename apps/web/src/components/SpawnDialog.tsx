@@ -14,6 +14,8 @@ import { api, errorMessage } from '../lib/api'
 import { Button } from './Button'
 import { Dialog, DialogActions } from './Dialog'
 import { MODELS_PATH, ModelMenu } from './ModelMenu'
+import { SelectField, TextField } from './ui/form'
+import { Notice } from './ui/parts'
 
 /** The one way to spawn an Agent; opens its chat afterwards. */
 export function SpawnDialog({
@@ -77,69 +79,72 @@ export function SpawnDialog({
     }
   }
 
+  const template = profiles.find((profile) => profile.id === profileId)
   return (
-    <Dialog title="Spawn an agent" busy={busy} onClose={onClose}>
-      <form onSubmit={(event) => void submit(event)}>
-        <label>
-          Agent template
-          <select value={profileId} onChange={(event) => setProfileId(event.target.value)} required>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name || profile.id}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Name (optional; defaults to the template's)
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            autoComplete="off"
-          />
-        </label>
+    <Dialog
+      title="Spawn an agent"
+      description="It starts with its template's files, model and skills, in the Team you choose."
+      busy={busy}
+      onClose={onClose}
+    >
+      <form onSubmit={(event) => void submit(event)} className="grid gap-4">
+        <SelectField
+          label="Agent template"
+          value={profileId}
+          options={profiles.map((profile) => ({
+            value: profile.id,
+            label: profile.name || profile.id,
+          }))}
+          disabled={busy}
+          className="max-w-none"
+          onChange={setProfileId}
+        />
+        <TextField
+          label="Name"
+          value={name}
+          disabled={busy}
+          placeholder={template?.name || template?.id || 'The template’s name'}
+          hint="Leave it empty to use the template’s name."
+          className="max-w-none"
+          onChange={setName}
+        />
         <ModelMenu
+          kit
           label="Model"
           value={model}
           onChange={setModel}
           models={chatModels}
-          inherited={{
-            label: 'The template’s model',
-            model: profiles.find((profile) => profile.id === profileId)?.defaultModel,
-          }}
+          inherited={{ label: 'The template’s model', model: template?.defaultModel }}
         />
-        <label>
-          Team
-          <select value={teamId} onChange={(event) => setTeamId(event.target.value)}>
-            {teams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-                {team.id === DEFAULT_TEAM_ID ? ' (default)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        {restricted && (
-          <p className="text-xs text-muted-foreground">
-            This Team is restricted: the new Agent starts with no connections. Add them under
-            Connections.
-          </p>
-        )}
+        <SelectField
+          label="Team"
+          value={teamId}
+          options={teams.map((team) => ({
+            value: team.id,
+            label: team.id === DEFAULT_TEAM_ID ? `${team.name} (default)` : team.name,
+          }))}
+          disabled={busy}
+          className="max-w-none"
+          hint={
+            restricted
+              ? 'This Team is restricted: the new Agent starts with no connections. Add them under Connections.'
+              : undefined
+          }
+          onChange={setTeamId}
+        />
         {error && (
-          <p role="alert" className="err mt-2">
+          <Notice tone="warning" role="alert" title="It was not spawned.">
             {error}
-          </p>
+          </Notice>
         )}
-        <div className="mt-4">
-          <DialogActions>
-            <Button variant="ghost" disabled={busy} onClick={onClose}>
-              Cancel
-            </Button>
-            <Button variant="primary" type="submit" disabled={busy || !profileId}>
-              {busy ? 'Spawning…' : 'Spawn agent'}
-            </Button>
-          </DialogActions>
-        </div>
+        <DialogActions>
+          <Button variant="ghost" disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" type="submit" disabled={busy || !profileId || !teamId}>
+            {busy ? 'Spawning…' : 'Spawn agent'}
+          </Button>
+        </DialogActions>
       </form>
     </Dialog>
   )

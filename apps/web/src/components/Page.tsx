@@ -106,45 +106,6 @@ export function SectionCard({
   )
 }
 
-interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
-  title: ReactNode
-  description?: ReactNode
-  icon?: ReactNode
-  actions?: ReactNode
-}
-
-export function EmptyState({
-  title,
-  description,
-  icon,
-  actions,
-  className,
-  ...props
-}: EmptyStateProps) {
-  return (
-    <div
-      className={cn(
-        'flex min-h-40 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-10 text-center',
-        className,
-      )}
-      {...props}
-    >
-      {icon && (
-        <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-accent text-accent-foreground">
-          {icon}
-        </div>
-      )}
-      <h2 className="m-0 font-body text-base font-semibold text-foreground">{title}</h2>
-      {description && (
-        <div className="mt-1 max-w-lg text-sm leading-6 text-muted-foreground">{description}</div>
-      )}
-      {actions && (
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">{actions}</div>
-      )}
-    </div>
-  )
-}
-
 export type StatusBadgeVariant = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
 
 const STATUS_BADGE_CLASS: Record<StatusBadgeVariant, string> = {
@@ -218,26 +179,5 @@ export function ItemRow({
       </div>
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </li>
-  )
-}
-
-/** A labelled number tile. */
-export function Stat({
-  label,
-  value,
-  detail,
-}: {
-  label: string
-  value: ReactNode
-  detail?: string
-}) {
-  return (
-    <div className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-baziu-sm">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 text-2xl font-semibold text-foreground">{value}</div>
-      {detail && <div className="mt-0.5 text-xs leading-5 text-muted-foreground">{detail}</div>}
-    </div>
   )
 }

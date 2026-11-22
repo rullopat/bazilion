@@ -29,8 +29,8 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
 - **Sheets** open over the workspace for the deeper pages: an Agent's schedules, learning,
   mailbox, skills, Telegram and browser; a Team's USER.md, memory and settings.
 - **Jump to** in the top bar (Ctrl+K, or ⌘K on a Mac) opens any Agent, Team, view or page by
-  name. **Manage** holds the list pages that remain: Agents (archived ones too), Teams,
-  Templates, Skills and Setup.
+  name. **Manage** holds the housekeeping pages: Agents, Teams, Agent templates, Team
+  templates and Skills ([manage](manage.md)), and Setup.
 
 On a narrow screen the list, the conversation and the panel take turns: pick an Agent to see its
 conversation, and open the panel from the bar.

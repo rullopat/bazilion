@@ -45,9 +45,13 @@ export function SectionTabs({
   )
 }
 
-export const TEMPLATE_TABS = [
-  ['/agents', 'Agent templates'],
-  ['/teams', 'Team templates'],
+/** The Manage pages: suffixes of the root, each current on its own path and below. */
+export const MANAGE_TABS = [
+  ['/agents', 'Agents'],
+  ['/teams', 'Teams'],
+  ['/templates/agents', 'Agent templates'],
+  ['/templates/teams', 'Team templates'],
+  ['/skills', 'Skills'],
 ] as const
 
 export const CONFIG_TABS = [
