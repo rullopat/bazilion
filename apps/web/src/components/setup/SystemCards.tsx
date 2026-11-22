@@ -4,7 +4,7 @@
 import type { HealthReport, ServiceState } from '@bazilion/api-types'
 import { Archive, Download, HeartPulse, SquareTerminal } from 'lucide-react'
 import type { Tone } from '../../lib/model-facts'
-import { CardBody, CardRow, Chip, Fact, Facts, Notice, SetupCard } from './parts'
+import { CardBody, CardRow, Chip, Fact, Facts, Notice, SetupCard } from '../ui/parts'
 
 const TONE: Record<ServiceState['tone'], Tone> = {
   on: 'success',

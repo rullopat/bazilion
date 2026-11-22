@@ -11,8 +11,8 @@ import {
   notificationsState,
   sameNotifications,
 } from '../../lib/telegram-setup'
-import { CheckboxRow, Problem, SaveBar, SwitchRow, saveStatus, TextField } from './form'
-import { CardBody, CardForm, Chip, Notice, SetupCard, Waiting } from './parts'
+import { CheckboxRow, Problem, SaveBar, SwitchRow, saveStatus, TextField } from '../ui/form'
+import { CardBody, CardForm, Chip, Notice, SetupCard, Waiting } from '../ui/parts'
 
 const KINDS: Record<AttentionKind, string> = {
   lesson_proposal: 'Lesson proposals',

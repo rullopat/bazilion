@@ -10,7 +10,7 @@ import {
   SwitchRow,
   saveStatus,
   TextField,
-} from '../src/components/setup/form.tsx'
+} from '../src/components/ui/form.tsx'
 import {
   Banner,
   CardList,
@@ -22,7 +22,7 @@ import {
   ListRow,
   Notice,
   SetupCard,
-} from '../src/components/setup/parts.tsx'
+} from '../src/components/ui/parts.tsx'
 
 // Children are given as arguments, as JSX gives them; the types of createElement ask for them
 // among the props instead.

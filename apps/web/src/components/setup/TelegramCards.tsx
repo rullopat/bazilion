@@ -28,7 +28,7 @@ import {
 } from '../../lib/telegram-setup'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { Problem, SaveBar, SecretField, saveStatus, TextField } from './form'
+import { Problem, SaveBar, SecretField, saveStatus, TextField } from '../ui/form'
 import {
   Banner,
   CardBody,
@@ -44,7 +44,7 @@ import {
   Notice,
   SetupCard,
   Waiting,
-} from './parts'
+} from '../ui/parts'
 
 export const TELEGRAM_PATH = '/api/config/telegram'
 

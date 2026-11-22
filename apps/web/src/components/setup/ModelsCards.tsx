@@ -18,7 +18,8 @@ import {
 } from '../../lib/model-facts'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { Banner, Chip, ProviderAvatar, CARD_ROW as ROW, SetupCard, StateChip } from './parts'
+import { Banner, Chip, CARD_ROW as ROW, SetupCard } from '../ui/parts'
+import { ProviderAvatar, StateChip } from './provider-parts'
 
 /** The line above the cards: whether everything Agents rely on answers, and what does not. */
 export function StatusLine({

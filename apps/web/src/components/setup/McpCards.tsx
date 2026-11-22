@@ -7,7 +7,7 @@ import { api, errorMessage } from '../../lib/api'
 import { EMPTY_MCP_DRAFT, type McpDraft, mcpServerForm, serversState } from '../../lib/mcp-form'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { SecretField, SelectField, TextField } from './form'
+import { SecretField, SelectField, TextField } from '../ui/form'
 import {
   CardBody,
   CardForm,
@@ -18,7 +18,7 @@ import {
   Notice,
   SetupCard,
   Waiting,
-} from './parts'
+} from '../ui/parts'
 
 const serverPath = (id: string) => `/api/mcp-servers/${encodeURIComponent(id)}`
 

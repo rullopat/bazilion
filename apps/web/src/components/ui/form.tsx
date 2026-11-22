@@ -85,6 +85,97 @@ export function TextField({
   )
 }
 
+export interface Choice<Value extends string> {
+  value: Value
+  label: string
+  /** What choosing it means. */
+  hint?: ReactNode
+  /** What it would meet now, said under the chosen one. */
+  note?: { text: string; tone: 'ok' | 'warning' }
+}
+
+/** A choice between a few options that each need a sentence: radio cards, two abreast. */
+export function ChoiceCards<Value extends string>({
+  legend,
+  name,
+  value,
+  options,
+  onChange,
+  disabled = false,
+  notes,
+  columns = 2,
+}: {
+  legend: string
+  /** The radio group's name. */
+  name: string
+  value: Value
+  options: readonly Choice<Value>[]
+  onChange: (value: Value) => void
+  disabled?: boolean
+  notes?: ReactNode
+  /** Three for short options. */
+  columns?: 2 | 3
+}) {
+  const id = useId()
+  return (
+    <fieldset className="m-0 min-w-0 border-0 p-0" disabled={disabled}>
+      <legend className="mb-2 p-0 text-sm font-semibold text-foreground">{legend}</legend>
+      <div className={cn('grid gap-2', columns === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
+        {options.map((option, index) => {
+          const selected = option.value === value
+          const titleId = `${id}-${index}`
+          return (
+            <label
+              key={option.value}
+              className={cn(
+                'm-0 flex items-start gap-3 rounded-xl border px-3.5 py-3 transition-colors',
+                disabled ? 'cursor-default opacity-70' : 'cursor-pointer',
+                selected
+                  ? 'border-primary/50 bg-accent/40'
+                  : 'border-border bg-card hover:bg-muted/40',
+              )}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={option.value}
+                checked={selected}
+                onChange={() => onChange(option.value)}
+                aria-labelledby={titleId}
+                aria-describedby={`${titleId}-about`}
+                className="mt-[3px] size-[18px] shrink-0 accent-[var(--color-sapphire)]"
+              />
+              <span className="min-w-0">
+                <span id={titleId} className="block text-sm font-semibold text-foreground">
+                  {option.label}
+                </span>
+                <span id={`${titleId}-about`} className="block">
+                  {option.hint && (
+                    <span className="block break-words text-sm text-muted-foreground">
+                      {option.hint}
+                    </span>
+                  )}
+                  {selected && option.note && (
+                    <span
+                      className={cn(
+                        'mt-1 block break-words text-sm font-medium',
+                        option.note.tone === 'ok' ? 'text-success' : 'text-warning',
+                      )}
+                    >
+                      {option.note.text}
+                    </span>
+                  )}
+                </span>
+              </span>
+            </label>
+          )
+        })}
+      </div>
+      {notes}
+    </fieldset>
+  )
+}
+
 /** One of a few fixed choices, where a line of radio cards would be too much. */
 export function SelectField<Value extends string>({
   label,

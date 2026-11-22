@@ -23,8 +23,16 @@ import {
   numberProblems,
 } from '../../lib/tool-form'
 import { cn } from '../../lib/utils'
-import { Problem, SaveBar, SecretField, SwitchRow, saveStatus, TextField } from './form'
-import { CardForm, Chip, Notice, SetupCard } from './parts'
+import {
+  ChoiceCards,
+  Problem,
+  SaveBar,
+  SecretField,
+  SwitchRow,
+  saveStatus,
+  TextField,
+} from '../ui/form'
+import { CardForm, Chip, Notice, SetupCard } from '../ui/parts'
 
 const ICONS: Record<string, LucideIcon> = {
   'web-search': Search,
@@ -252,61 +260,15 @@ function Setting({
 
   if (input.type === 'choice') {
     return (
-      <fieldset className="m-0 min-w-0 border-0 p-0" disabled={locked}>
-        <legend className="mb-2 p-0 text-sm font-semibold text-foreground">{field.label}</legend>
-        <div className="grid gap-2 md:grid-cols-2">
-          {input.options.map((option, index) => {
-            const selected = option.value === value
-            const titleId = `${id}-${index}`
-            return (
-              <label
-                key={option.value}
-                className={cn(
-                  'm-0 flex items-start gap-3 rounded-xl border px-3.5 py-3 transition-colors',
-                  locked ? 'cursor-default opacity-70' : 'cursor-pointer',
-                  selected
-                    ? 'border-primary/50 bg-accent/40'
-                    : 'border-border bg-card hover:bg-muted/40',
-                )}
-              >
-                <input
-                  type="radio"
-                  name={field.envVar}
-                  value={option.value}
-                  checked={selected}
-                  onChange={() => onChange(option.value)}
-                  aria-labelledby={titleId}
-                  aria-describedby={`${titleId}-about`}
-                  className="mt-[3px] size-[18px] shrink-0 accent-[var(--color-sapphire)]"
-                />
-                <span className="min-w-0">
-                  <span id={titleId} className="block text-sm font-semibold text-foreground">
-                    {option.label}
-                  </span>
-                  <span id={`${titleId}-about`} className="block">
-                    {option.hint && (
-                      <span className="block break-words text-sm text-muted-foreground">
-                        {option.hint}
-                      </span>
-                    )}
-                    {selected && option.note && (
-                      <span
-                        className={cn(
-                          'mt-1 block break-words text-sm font-medium',
-                          option.note.tone === 'ok' ? 'text-success' : 'text-warning',
-                        )}
-                      >
-                        {option.note.text}
-                      </span>
-                    )}
-                  </span>
-                </span>
-              </label>
-            )
-          })}
-        </div>
-        {under}
-      </fieldset>
+      <ChoiceCards
+        legend={field.label}
+        name={field.envVar}
+        value={value}
+        options={input.options}
+        disabled={locked}
+        notes={under}
+        onChange={onChange}
+      />
     )
   }
 

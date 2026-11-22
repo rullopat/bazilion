@@ -8,8 +8,8 @@ import { api, errorMessage } from '../../lib/api'
 import { type TokenDraft, tokenForm, tokenState, when } from '../../lib/token-form'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { TextField } from './form'
-import { CardForm, CardList, CardRow, Chip, ListRow, Notice, SetupCard } from './parts'
+import { TextField } from '../ui/form'
+import { CardForm, CardList, CardRow, Chip, ListRow, Notice, SetupCard } from '../ui/parts'
 
 /** A token for another device, a script, or the CLI on another machine. */
 export function MintTokenCard({ onMinted }: { onMinted: () => Promise<void> }) {

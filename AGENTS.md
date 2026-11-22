@@ -118,10 +118,11 @@ Daemon paths are again relative to `apps/daemon/`.
   writes.
 - TypeScript is strict, with `noUncheckedIndexedAccess` and `verbatimModuleSyntax`; relative
   imports end in `.ts` (`apps/web` uses extensionless Vite imports).
-- Web: use the shared `<Button>` (`apps/web/src/components/Button.tsx`). A Setup page is built
-  from the parts in `apps/web/src/components/setup/`: `parts.tsx` (the card, its rows, body and
-  state chip, notices, facts, check lists) and `form.tsx` (fields, a saved key, switch rows, the
-  Save bar and its status words), not from markup of its own.
+- Web: use the shared `<Button>` (`apps/web/src/components/Button.tsx`). Setup, Manage and
+  Attention pages are built from the parts in `apps/web/src/components/ui/`: `parts.tsx` (the
+  card, its rows and lists, row menus, empty states, notices, facts, check lists, chips) and
+  `form.tsx` (fields, choice cards, a saved key, switch rows, the Save bar and its status words),
+  not from markup of their own.
 - Docs are short operator guides of current behaviour; update them with the code. Stories in
   `docs/backlog/` stay at 25–60 lines. Do not commit test evidence, release journals or build
   output.
