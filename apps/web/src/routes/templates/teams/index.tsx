@@ -89,6 +89,7 @@ function TeamTemplatesPage() {
               const href = `/templates/teams/${encodeURIComponent(template.id)}`
               return (
                 <ListRow
+                  inline
                   key={template.id}
                   title={
                     <a href={href} className="text-foreground hover:text-primary">

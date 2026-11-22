@@ -151,6 +151,7 @@ function SkillsPage() {
               const findings = skill.scanFindings ?? []
               return (
                 <ListRow
+                  inline
                   key={skill.name}
                   title={<span className="font-mono text-[0.92em]">{skill.name}</span>}
                   chip={state && <Chip tone={state.tone}>{state.label}</Chip>}

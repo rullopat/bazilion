@@ -193,7 +193,10 @@ export function ListRow({
   meta,
   actions,
   children,
+  inline = false,
 }: {
+  /** The actions are small (a menu, one short button): they stay beside the name on a phone. */
+  inline?: boolean
   /** An avatar or an icon before the name. */
   leading?: ReactNode
   title: ReactNode
@@ -205,9 +208,9 @@ export function ListRow({
   children?: ReactNode
 }) {
   return (
-    <li className={cn(CARD_ROW, 'min-h-14 py-2.5')}>
+    <li className={cn(CARD_ROW, 'min-h-14 py-2.5', inline && 'flex-nowrap')}>
       {leading && <span className="flex shrink-0 self-start pt-0.5">{leading}</span>}
-      <div className="min-w-0 flex-1 basis-64">
+      <div className={cn('min-w-0 flex-1', inline ? 'basis-0' : 'basis-64')}>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="min-w-0 break-words text-[0.95rem] font-semibold text-foreground">
             {title}

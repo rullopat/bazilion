@@ -181,6 +181,7 @@ export function AgentsCard({
                   .join(' · ')
                 return (
                   <ListRow
+                    inline
                     key={agent.id}
                     leading={<AgentAvatar identity={agent.identity} size={32} />}
                     title={

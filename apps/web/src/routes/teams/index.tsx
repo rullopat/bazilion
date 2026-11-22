@@ -74,6 +74,7 @@ function TeamsPage() {
               const blocker = teamRemoveBlocker(members.length)
               return (
                 <ListRow
+                  inline
                   key={team.id}
                   leading={
                     // A fixed slot, so that the names line up whatever the number of avatars.
