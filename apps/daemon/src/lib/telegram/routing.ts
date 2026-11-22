@@ -15,6 +15,7 @@ import { agentRepo, openConfig, profileRepo, telegramPairingRepo } from '../../c
 import type { Paths } from '../../core/paths.ts'
 import * as userQueue from '../../core/repos/user-queue.ts'
 import { enqueueUserInput } from '../user-queue.ts'
+import { approvalCallback, decideFromTelegram } from './approvals.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import { SPAWN_TEAM_CALLBACK_PREFIX, spawnTeamAndBind } from './commands/spawn-team.ts'
@@ -70,6 +71,7 @@ export interface RouterDeps {
 
 export type RouteOutcome =
   | { kind: 'question_answer' }
+  | { kind: 'approval_decision' }
   | { kind: 'service_command'; name: string; handled: boolean }
   | { kind: 'service_unknown_command'; name: string }
   | { kind: 'service_plain_text' }
@@ -429,7 +431,7 @@ async function resumePendingSpawn(
   return { kind: 'spawn_name_input', profileId, spawned: true }
 }
 
-/** Inline-keyboard taps: question answers and the /spawn and /spawn_team pickers. */
+/** Inline-keyboard taps: question answers, command approvals and the /spawn pickers. */
 async function routeCallback(deps: RouterDeps, q: CallbackQuery): Promise<RouteOutcome> {
   const callbackChatId = q.message?.chat.id
   if (callbackChatId !== deps.chatId || !allowedSender(deps.db, q.from)) {
@@ -448,6 +450,16 @@ async function routeCallback(deps: RouterDeps, q: CallbackQuery): Promise<RouteO
       .answerCallbackQuery(q.id, { text: answerFromTelegram(answer.questionId, answer.answer) })
       .catch(() => undefined)
     return { kind: 'question_answer' }
+  }
+
+  const decision = approvalCallback(data)
+  if (decision) {
+    await deps.api
+      .answerCallbackQuery(q.id, {
+        text: decideFromTelegram(deps.db, q.from.id, decision.approvalId, decision.decision),
+      })
+      .catch(() => undefined)
+    return { kind: 'approval_decision' }
   }
 
   // Spawn-team picker: tapping a team template spawns it at once (names come from the template).

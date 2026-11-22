@@ -13,6 +13,7 @@ import * as results from '../core/repos/results.ts'
 import * as queue from '../core/repos/user-queue.ts'
 import { isActiveAgent } from './agent-cancel.ts'
 import { commandApprovalRegistry } from './bash-approval.ts'
+import { signalLiveChange } from './live-signal.ts'
 import { questionRegistry } from './questions.ts'
 
 const TARGET_CHARS = 160
@@ -55,10 +56,12 @@ export function stepTarget(rawArguments: string): string | null {
 export function noteTurnFrame(agentId: string, frame: ChatFrame): void {
   if (frame.kind !== 'event' || frame.event.type !== 'tool_call') return
   steps().set(agentId, { tool: frame.event.name, target: stepTarget(frame.event.arguments) })
+  signalLiveChange()
 }
 
 export function noteTurnEnd(agentId: string): void {
   steps().delete(agentId)
+  signalLiveChange()
 }
 
 /** When the Agent's selected conversation last changed; null before its first turn. */
@@ -80,6 +83,7 @@ export function readActivity(db: BazilionDb, paths: Paths): AgentActivity[] {
   const approvals = commandApprovalRegistry.list()
   return agentRepo.list(db).map((agent) => {
     const working = isActiveAgent(agent.id)
+    const pending = queue.pendingCount(db, agent.id)
     const produced = saved.get(agent.id)
     return {
       agentId: agent.id,
@@ -88,7 +92,8 @@ export function readActivity(db: BazilionDb, paths: Paths): AgentActivity[] {
       step: working ? (steps().get(agent.id) ?? null) : null,
       questions: questions.filter((question) => question.agentId === agent.id).length,
       approvals: approvals.filter((approval) => approval.agentId === agent.id).length,
-      queuePaused: queue.isPaused(db, agent.id) && queue.pendingCount(db, agent.id) > 0,
+      queuePaused: queue.isPaused(db, agent.id) && pending > 0,
+      followUps: pending,
       lastActivityAt: lastActivityAt(db, paths, agent.id),
       results: produced?.count ?? 0,
       lastResultAt: produced?.lastAt ?? null,

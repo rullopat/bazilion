@@ -8,7 +8,7 @@ import type {
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { BellRing } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/Button'
 import { PageHeader, PageShell } from '../../components/Page'
 import { Segmented } from '../../components/Segmented'
@@ -27,6 +27,7 @@ import {
 import { api, errorMessage } from '../../lib/api'
 import { useAttentionCount } from '../../lib/attention-count'
 import { daemonClient } from '../../lib/daemon-client'
+import { useLive } from '../../lib/live'
 import { ATTENTION_KINDS, attentionSource, attentionSummary, severityLabel } from '../../lib/manage'
 import { ago } from '../../lib/model-facts'
 import { useHydrated } from '../../lib/use-resource'
@@ -35,6 +36,8 @@ const LIST_PATH = '/api/attention?state=all&limit=200'
 const SUMMARY_PATH = '/api/attention/summary'
 /** Questions expire in minutes and commands in two: the page keeps itself current. */
 const POLL_MS = 5_000
+/** "2 minutes ago" moves on even when nothing in the list changes. */
+const CLOCK_MS = 30_000
 
 /** What the item's button says: where it takes you and what you do there. */
 function actionLabel(item: AttentionItem): string {
@@ -81,6 +84,8 @@ function AttentionCenter() {
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ text: string; failed: boolean } | null>(null)
   const counts = useAttentionCount()
+  const live = useLive()
+  const revision = useRef<string | null>(null)
   // A clock time is written in the browser's own format, which the server cannot know.
   const hydrated = useHydrated()
   const visible = list.items.filter(
@@ -107,14 +112,33 @@ function AttentionCenter() {
     setNow(Date.now())
   }
 
+  // The live feed says when anything in the list changed. The first event is read too: something
+  // may have changed between loading the page and connecting.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh only sets state.
+  useEffect(
+    () =>
+      live.subscribe('attention', (event) => {
+        const changed = revision.current !== event.revision
+        revision.current = event.revision
+        if (changed) void refresh().catch(() => {})
+      }),
+    [live.subscribe],
+  )
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), CLOCK_MS)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Without the live feed, ask every few seconds while the page shows.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh only sets state.
   useEffect(() => {
-    if (busy !== null) return
+    if (busy !== null || live.connected) return
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void refresh().catch(() => {})
     }, POLL_MS)
     return () => clearInterval(timer)
-  }, [busy])
+  }, [busy, live.connected])
 
   async function run(key: string, request: () => Promise<string | null>) {
     setBusy(key)

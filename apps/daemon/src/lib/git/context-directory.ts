@@ -35,8 +35,9 @@ function component(name: string): void {
     throw new ContextReadError('unsafe_target')
 }
 
-/** Linux reaches an opened directory through its descriptor (/proc/self/fd); elsewhere
- * (untested) through its canonical path. */
+/** Linux reaches an opened directory through its descriptor (/proc/self/fd). Elsewhere (macOS,
+ * untested) it is reached through its canonical path, checked on every use to still name the
+ * directory that was opened: a replaced directory is refused, never read. */
 const FD_PATHS = process.platform === 'linux'
 
 /**
@@ -85,12 +86,25 @@ export class ContextDirectory {
   }
 
   get path(): string {
-    return FD_PATHS ? `/proc/self/fd/${this.fd}` : this.canonicalPath
+    return FD_PATHS ? `/proc/self/fd/${this.fd}` : this.checkedPath()
   }
 
   /** The worktree path handed to an external Git process (descriptor-pinned on Linux). */
   get gitWorktreePath(): string {
-    return FD_PATHS ? `/proc/${process.pid}/fd/${this.fd}` : this.canonicalPath
+    return FD_PATHS ? `/proc/${process.pid}/fd/${this.fd}` : this.checkedPath()
+  }
+
+  /** The canonical path, once it is seen to name the directory that was opened. */
+  private checkedPath(): string {
+    let stat: BigIntStats
+    try {
+      stat = lstatSync(this.canonicalPath, { bigint: true })
+    } catch {
+      throw new ContextReadError('root_changed')
+    }
+    if (!stat.isDirectory() || identity(stat) !== identity(this.originalIdentity))
+      throw new ContextReadError('root_changed')
+    return this.canonicalPath
   }
 
   /** Every public method is synchronous, so one check on entry covers the whole call. */
@@ -112,8 +126,9 @@ export class ContextDirectory {
   entry(name: string): Stats | null {
     component(name)
     this.assertOpen()
+    const path = join(this.path, name)
     try {
-      return lstatSync(join(this.path, name))
+      return lstatSync(path)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
       throw new ContextReadError('unreadable')
@@ -121,8 +136,9 @@ export class ContextDirectory {
   }
 
   private observe(name: string): BigIntStats | null {
+    const path = join(this.path, name)
     try {
-      return lstatSync(join(this.path, name), { bigint: true })
+      return lstatSync(path, { bigint: true })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
       throw new ContextReadError('unreadable')
@@ -186,6 +202,8 @@ export class ContextDirectory {
         stamp(fstatSync(fd, { bigint: true })) !== stamp(before)
       )
         throw new ContextReadError('source_changed')
+      // Without a pinned descriptor, the directory must still be the one opened after the read.
+      if (!FD_PATHS) this.checkedPath()
       this.observedFiles.set(name, stamp(before))
       return buffer.subarray(0, size)
     } catch (error) {

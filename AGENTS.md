@@ -16,6 +16,8 @@ pnpm typecheck                 # root tsc --noEmit, then the web app's typecheck
 pnpm lint                      # biome check (pnpm format applies fixes)
 pnpm test                      # vitest across the tree
 pnpm test:docker               # the Docker sandbox suite (needs Docker and debian:bookworm-slim)
+pnpm test:e2e                  # browser tests of the built package (pnpm build first; needs Chrome)
+pnpm site-pictures <dir>       # the website's product pictures (pnpm build first; needs cwebp)
 pnpm build                     # web build, then the CLI bundle
 pnpm vitest run <file>         # one file; add -t 'name' for one test
 pnpm tsx apps/cli/src/index.ts <command>   # the CLI from source; `serve` starts the daemon
@@ -110,6 +112,10 @@ Daemon paths are again relative to `apps/daemon/`.
   scratch home and a free port when you start a daemon by hand.
 - CLI tests boot the real daemon from source on a free port.
 - Opt-in suite: `BAZILION_TEST_DOCKER=1` (Docker sandbox).
+- `e2e/` drives the built package in Chrome on a scratch home against a stand-in model server
+  (`model-server.ts`, scripted per conversation), with the Paperboat demo (`demo.ts`). A test
+  fails on any page error, console error or failed request. `scripts/site-pictures.ts` uses the
+  same harness for the website's pictures.
 
 ## Conventions
 

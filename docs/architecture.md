@@ -137,8 +137,12 @@ token over IPC.
 - **Code changes.** Tool output streams live; Git is read through one read-only capture for the
   Changes views. See [change review](change-review.md).
 - **Activity.** `GET /api/activity` says, per Agent, whether a turn runs and its latest tool
-  call, and what waits for you; the [web workspace](workspace.md) polls it. A running turn's
-  step is kept in memory only.
+  call, and what waits for you. A running turn's step is kept in memory only.
+- **Live feed.** `GET /api/events` (server-sent events, `lib/live.ts`) pushes the activity feed
+  and what is open in Attention when they change: the question and approval registries, turn
+  start and end and acknowledgements signal at once (`lib/live-signal.ts`), and a check every
+  second catches the rest. It runs only while someone is connected. The
+  [web workspace](workspace.md) reads it instead of polling.
 
 ## Not built
 

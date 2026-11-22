@@ -22,6 +22,8 @@ export interface AgentActivity {
   approvals: number
   /** Follow-ups are waiting behind a paused queue. */
   queuePaused: boolean
+  /** Follow-ups waiting in the queue. */
+  followUps: number
   /** When the selected conversation last changed (epoch ms); null before the first turn. */
   lastActivityAt: number | null
   /** Saved results of this Agent. */

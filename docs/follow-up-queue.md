@@ -22,8 +22,10 @@ while the queue is paused:
 - When a follow-up finishes, the chat reloads to show its reply. **View conversation** opens the
   conversation it ran in.
 
-The chat checks the queue when it opens, after each of its own turns, when the conversation shows
-activity from elsewhere, and every 5 seconds while a follow-up waits or another turn runs.
+The chat checks the queue when it opens, after each of its own turns, and whenever the live
+updates say the Agent started or stopped working, its queue was paused or resumed, or the number
+of waiting follow-ups changed. While the live updates are down it asks every 5 seconds while a
+follow-up waits or another turn runs.
 
 ## CLI
 

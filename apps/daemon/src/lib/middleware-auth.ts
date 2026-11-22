@@ -42,6 +42,22 @@ function isSetupOpen(path: string): boolean {
   return false
 }
 
+/**
+ * For a long-lived response (the live event stream): a check that the request's credential still
+ * holds, so a revoked or expired token or session ends the stream instead of being served on.
+ */
+export function credentialCheck(c: Context): () => boolean {
+  const bearer = extractBearer(c.req.header('authorization'))
+  const sessionCookie = getCookie(
+    c,
+    publicOriginConfig(process.env.BAZILION_PUBLIC_ORIGIN).sessionCookie,
+  )
+  return () => {
+    if (bearer) return authenticateToken(bearer) !== null
+    return Boolean(sessionCookie && webSessionRepo.authenticate(getCtx().db, sessionCookie))
+  }
+}
+
 // biome-ignore lint/suspicious/noConfusingVoidType: hono's Next() returns Promise<void>; the union is the framework's middleware contract.
 export async function authMiddleware(c: Context, next: Next): Promise<Response | void> {
   const path = c.req.path

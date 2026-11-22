@@ -5,6 +5,7 @@ import type {
   AgentQuestionInput,
   AgentQuestionToolResult,
 } from '@bazilion/api-types'
+import { signalLiveChange } from './live-signal.ts'
 
 /** How long `ask_user` waits for the owner before the turn continues without an answer. */
 const QUESTION_WAIT_MS = 5 * 60_000
@@ -122,9 +123,11 @@ export class QuestionRegistry {
       clearTimeout(timer)
       signal?.removeEventListener('abort', cancel)
       resolve({ questionId: question.id, question: prompt, ...outcome })
+      signalLiveChange()
       return true
     }
     this.#pending.set(question.id, { question, result: promise, finish })
+    signalLiveChange()
     signal?.addEventListener('abort', cancel, { once: true })
     return { question, result: promise }
   }

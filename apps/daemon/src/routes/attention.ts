@@ -12,6 +12,7 @@ import {
 } from '../core/index.ts'
 import { waitingAttention } from '../lib/attention-waiting.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { signalLiveChange } from '../lib/live-signal.ts'
 import { newRouter } from './http.ts'
 
 export const attentionRouter = newRouter()
@@ -36,13 +37,19 @@ attentionRouter.get('/summary', (c) => {
   return c.json(attentionSummary(db, waitingAttention(db)))
 })
 
-attentionRouter.post('/acknowledge-all', (c) =>
-  c.json({ acknowledged: acknowledgeAllAttention(getCtx().db) }),
-)
+attentionRouter.post('/acknowledge-all', (c) => {
+  const acknowledged = acknowledgeAllAttention(getCtx().db)
+  signalLiveChange()
+  return c.json({ acknowledged })
+})
 
-attentionRouter.post('/:key/acknowledge', (c) =>
-  c.json({ item: acknowledgeAttention(getCtx().db, c.req.param('key'), true) }),
-)
-attentionRouter.delete('/:key/acknowledgement', (c) =>
-  c.json({ item: acknowledgeAttention(getCtx().db, c.req.param('key'), false) }),
-)
+attentionRouter.post('/:key/acknowledge', (c) => {
+  const item = acknowledgeAttention(getCtx().db, c.req.param('key'), true)
+  signalLiveChange()
+  return c.json({ item })
+})
+attentionRouter.delete('/:key/acknowledgement', (c) => {
+  const item = acknowledgeAttention(getCtx().db, c.req.param('key'), false)
+  signalLiveChange()
+  return c.json({ item })
+})

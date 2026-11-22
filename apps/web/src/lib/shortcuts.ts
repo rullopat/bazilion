@@ -34,15 +34,22 @@ export const SHORTCUTS: readonly Shortcut[] = [
 ]
 
 /**
- * Whether keys typed now belong to a field or a control that reads the keyboard itself (a
- * dropdown, a menu, a list), where a plain-key shortcut must not fire.
+ * Whether keys typed now belong to a field or a control that reads the keyboard itself (an open
+ * dropdown, a menu, a list), where a plain-key shortcut must not fire. A closed dropdown, which
+ * keeps the focus after a pick, lets them through.
  */
 export function isTyping(target: EventTarget | null): boolean {
   if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
+  const combobox = target.closest('[role="combobox"]')
+  if (
+    combobox &&
+    (combobox.tagName === 'INPUT' || combobox.getAttribute('aria-expanded') === 'true')
+  )
+    return true
   if (
     target.closest(
-      '[role="combobox"],[role="listbox"],[role="menu"],[role="option"],[role="menuitem"],[role="slider"]',
+      '[role="listbox"],[role="menu"],[role="option"],[role="menuitem"],[role="slider"]',
     )
   )
     return true

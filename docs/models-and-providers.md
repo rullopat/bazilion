@@ -16,7 +16,7 @@ or choose others, and press **Connect and test**. From a terminal:
 
 ```sh
 bazilion provider connect anthropic                 # asks for the key without echoing it
-bazilion provider connect openai --key sk-…  --models gpt-6.1-sol,gpt-6-luna
+bazilion provider connect openai --key sk-…  --models gpt-6.2-sol,gpt-6-luna
 bazilion provider connect lmstudio --url http://127.0.0.1:1234/v1
 bazilion auth openai login && bazilion provider connect openai-codex    # a ChatGPT plan
 ```

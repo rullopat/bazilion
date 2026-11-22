@@ -62,8 +62,13 @@ test('replacement root and child directories cannot validate an old capture', ()
   fs.mkdirSync(join(root, 'app'))
   fs.writeFileSync(join(root, 'app', 'AGENTS.md'), 'replacement')
   expect(() => directory.validate()).toThrow('root_changed')
-  // The child stays pinned to the directory it opened.
-  expect(child.read('AGENTS.md', 100)?.toString()).toBe('original')
+  if (process.platform === 'linux') {
+    // The child stays pinned to the directory it opened.
+    expect(child.read('AGENTS.md', 100)?.toString()).toBe('original')
+  } else {
+    // Without /proc it is reached by path, and refuses the directory that replaced it.
+    expect(() => child.read('AGENTS.md', 100)).toThrow('root_changed')
+  }
 })
 
 test('nested directory and leaf links do not disclose outside content', () => {

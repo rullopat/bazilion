@@ -10,7 +10,7 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   **Attention** with the number of open items ([attention](attention-notifications.md)),
   **Manage** for Agents, Teams, templates and skills ([manage](manage.md)), and **Setup** for
   models, tools and connections. The person icon at the end holds the theme (light, dark or the
-  same as the computer) and **Log out**.
+  same as the computer), desktop notifications (see below) and **Log out**.
 - **The overview** fills the middle while nothing is open: who is waiting for you, who is
   working, every Team with its members, the latest files from every Team, and the Agents that were
   active last. A Team opened on its own shows its members with what each is doing, its views,
@@ -45,14 +45,37 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   They are built from the same cards and fields as Setup and Manage.
 
 On a narrow screen the list, the conversation and the panel take turns: pick an Agent to see its
-conversation, and open the panel from the bar. The panel's tabs scroll sideways.
+conversation, and open the panel from the bar. The panel's tabs scroll sideways. Above the list,
+**Waiting for you** names the Agents waiting on a question or a command, up to three, with a link
+to Attention for the rest.
+
+## Live
+
+The workspace, the top bar's count, the tab title and Attention update as things happen: the
+daemon pushes what every Agent is doing and what is open in Attention over one event stream
+(`GET /api/events`), so a question shows the moment it is asked. One tab per browser holds the
+stream and shares it with the others. While it cannot connect (an older proxy, a daemon
+restarting) the pages ask every few seconds instead, and the stream is tried again.
+
+**Notify me on this computer**, in the person menu, turns on desktop notifications for this
+browser, after the browser asks you. When an Agent starts waiting for you and no Bazilion tab has
+the focus, a notification names the Agent and the question or command; clicking it opens the
+conversation. Browsers offer notifications on `https://` addresses and on this computer
+(`127.0.0.1`, `localhost`) only, and a browser that blocks them for the site is said so in the
+menu. They come with the live updates: while the stream is down, none are shown.
+
+Where the browser has no Web Locks (an `http://` address other than this computer), each tab has
+its own stream while it is visible and lets go of it when hidden, so hidden tabs do not take up
+the browser's few connections to the server. A stream ends within 20 seconds of its session being
+signed out or expiring.
 
 ## Jump to, and the keyboard
 
 **Jump to** lists the Agents waiting for you first, then those working, then actions (a new
 conversation with the open Agent, adding an Agent, switching the theme, the keyboard shortcuts),
 the other Agents by when they were last active, recent conversations, Teams, the open Team's
-views and the Manage and Setup pages. Type to narrow it down; Enter opens the one highlighted.
+views and the Manage and Setup pages. Type to narrow it down; Enter opens the one highlighted,
+also when you press it before the lists have arrived.
 
 | Keys | |
 | --- | --- |
@@ -62,7 +85,7 @@ views and the Manage and Setup pages. Type to narrow it down; Enter opens the on
 | ⌥↓ ⌥↑, or Alt+↓ Alt+↑ | The next or previous Agent in the list |
 | ⌘. or Ctrl+. | Show or hide the side panel |
 
-The keys without ⌘ or Ctrl wait while you type in a field.
+The keys without ⌘ or Ctrl wait while you type in a field or a list or menu is open.
 
 ## The browser tab
 
@@ -101,7 +124,8 @@ bazilion team messages <team> [--limit 50]     # what a Team's Agents said to ea
 ```
 
 `GET /api/activity` returns one entry per Agent that is not archived: whether a turn runs and its
-latest tool call, how many questions and shell approvals wait, whether its follow-up queue is
-paused, when its conversation last changed and how many files it has saved. The web UI reads it
-every three seconds while the tab is visible. `GET /api/teams/:id/messages?limit=100` lists the
+latest tool call, how many questions and shell approvals wait, how many follow-ups wait and
+whether its queue is paused, when its conversation last changed and how many files it has saved.
+The web UI gets the same entries pushed over `GET /api/events` (see [Live](#live)) and reads
+this route every three seconds only while that stream is down. `GET /api/teams/:id/messages?limit=100` lists the
 messages a Team's Agents sent and received, newest first, and marks nothing read.

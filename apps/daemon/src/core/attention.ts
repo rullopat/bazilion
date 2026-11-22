@@ -272,16 +272,25 @@ export function attentionSummary(
   waiting: readonly AttentionItem[] = [],
 ): AttentionSummary {
   const projected = projectAttention(db, { state: 'open', limit: 100_000 }, waiting)
+  return summarizeAttention(projected.items, projected.degraded)
+}
+
+/** The counts of a projection's open items. */
+export function summarizeAttention(
+  items: readonly AttentionItem[],
+  degraded: AttentionDegradedSource[],
+): AttentionSummary {
+  const open = items.filter((item) => item.acknowledgedAt === null)
   const bySeverity = { action_required: 0, error: 0, warning: 0 }
   const byKind = Object.fromEntries(ATTENTION_KINDS.map((kind) => [kind, 0])) as Record<
     AttentionKind,
     number
   >
-  for (const item of projected.items) {
+  for (const item of open) {
     bySeverity[item.severity]++
     byKind[item.kind]++
   }
-  return { openTotal: projected.items.length, bySeverity, byKind, degraded: projected.degraded }
+  return { openTotal: open.length, bySeverity, byKind, degraded }
 }
 
 export function acknowledgeAttention(

@@ -139,8 +139,9 @@ The coding tools depend on `BAZILION_BASH_SANDBOX` and `BAZILION_BASH_APPROVAL`
   command's error, never a host fallback.
 - **approval**: with `BAZILION_BASH_APPROVAL=dangerous`, `bash` (host or Docker) first classifies
   the command (`runtime/shell/security.ts`). A flagged command asks the daemon, which streams a
-  `command_approval` event and waits up to two minutes for `POST /api/shell-approvals/:id`, or
-  denies at once when nobody can answer.
+  `command_approval` event and waits up to five minutes for `POST /api/shell-approvals/:id` (or a
+  tap in Telegram, see [coding environments](coding-environments.md)), or denies at once when
+  nobody can answer.
 
 ## 6. Conversation commands
 
@@ -163,7 +164,7 @@ These run in the daemon, not in a worker.
 ## 7. Providers and Pi
 
 The daemon and the packed CLI pin `@earendil-works/pi-ai`, `pi-agent-core`, `pi-coding-agent` and
-`pi-mcp` to the same version (1.5.2). An operator's own Pi install is not touched.
+`pi-mcp` to the same version (1.6.0). An operator's own Pi install is not touched.
 
 - **Provider table.** `apps/daemon/src/core/providers.ts` has one `PROVIDERS` entry per provider:
   its fields, key and credential variables, Pi's id where it differs, an endpoint the operator
@@ -195,9 +196,9 @@ The daemon and the packed CLI pin `@earendil-works/pi-ai`, `pi-agent-core`, `pi-
 - **Upgrading Pi.** Bump the four packages together in `apps/daemon` and `apps/cli`, keep the
   settings above, and run the gates. A catalog change can add or drop model ids; saved Agent model
   choices are not rewritten. Upstream:
-  [SDK](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/sdk.md),
-  [models](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/models.md),
-  [MCP client](https://github.com/earendil-works/pi/blob/v1.5.2/packages/mcp/README.md).
+  [SDK](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/docs/sdk.md),
+  [models](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/docs/models.md),
+  [MCP client](https://github.com/earendil-works/pi/blob/v1.6.0/packages/mcp/README.md).
 
 ## 8. Cancellation and shutdown
 

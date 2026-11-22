@@ -26,7 +26,9 @@ process.stdin.on('end', () => {
     if (raw.includes(sentinel)) throw new Error('ambient credential entered review stdin')
   }
   const expectedEnvironmentKeys = ['HOME', 'LANG', 'LC_ALL', 'TEMP', 'TMP', 'TMPDIR']
-  if (JSON.stringify(Object.keys(process.env).sort()) !== JSON.stringify(expectedEnvironmentKeys)) {
+  // macOS adds __CF_USER_TEXT_ENCODING to every process; it carries no credential.
+  const keys = Object.keys(process.env).filter((key) => key !== '__CF_USER_TEXT_ENCODING')
+  if (JSON.stringify(keys.sort()) !== JSON.stringify(expectedEnvironmentKeys)) {
     throw new Error('review worker process environment was not minimal')
   }
   if (

@@ -2,6 +2,7 @@
 // slash commands. The pane remounts per Agent, so the Agent never changes under this hook.
 
 import type {
+  AgentActivity,
   Attachment,
   ChatCompactResponse,
   ChatContextResponse,
@@ -16,6 +17,7 @@ import type {
 } from '@bazilion/api-types'
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiFetch, errorMessage } from '../../lib/api'
+import { useLive } from '../../lib/live'
 import {
   applyEvent,
   cancelPendingApprovals,
@@ -96,6 +98,10 @@ export function useChatSession({
   const entryCountRef = useRef(0)
   const streamingRef = useRef(false)
   streamingRef.current = streaming
+  const staleRef = useRef(stale)
+  staleRef.current = stale
+  const activityRef = useRef<AgentActivity | null>(null)
+  const feed = useLive()
 
   const turnBusy = streaming || recoveredTurn
   // A turn from elsewhere (a follow-up, Telegram, a schedule) can be stopped from here too.
@@ -148,17 +154,40 @@ export function useChatSession({
     }
   }
 
-  async function refreshQueue() {
+  /** True when a follow-up had finished and the history was loaded again. */
+  async function refreshQueue(): Promise<boolean> {
     try {
       const next = await api<UserQueueListResponse>(`${base}/queue`)
       // A follow-up finished: its reply is in the history now.
-      if (openFollowUps(next) < openFollowUps(queueRef.current) && !streamingRef.current) {
-        void refreshHistory()
-      }
+      const finished =
+        openFollowUps(next) < openFollowUps(queueRef.current) && !streamingRef.current
+      if (finished) void refreshHistory()
       queueRef.current = next
       setQueue(next)
+      return finished
     } catch {
       // The next refresh tries again.
+      return false
+    }
+  }
+
+  /** Activity from another source (Telegram, a schedule, another tab) shows a reload banner. */
+  async function checkHead() {
+    if (!initialSessionHead || staleRef.current || streamingRef.current) return
+    try {
+      const head = await api<SessionHeadResponse>(`${base}/sessions/head`)
+      const known = knownHeadRef.current
+      if (
+        Boolean(head.unavailable) !== Boolean(known.unavailable) ||
+        head.file !== known.file ||
+        head.size !== known.size
+      ) {
+        setStale(true)
+        // Another source may be running a turn; the queue reports it, so Stop can show.
+        void refreshQueue()
+      }
+    } catch {
+      // Transient: the next change tries again.
     }
   }
 
@@ -170,40 +199,53 @@ export function useChatSession({
     void refreshQueue()
   }, [])
 
-  // The daemon has no push channel for follow-ups or turns from elsewhere: poll while one runs.
+  // The live feed says when this Agent starts or stops working, or its conversation moves on: the
+  // queue is read again then, and a conversation that moved without this tab is reported stale.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the handlers read refs.
+  useEffect(
+    () =>
+      feed.subscribe('activity', (event) => {
+        const now = event.agents.find((entry) => entry.agentId === agentId) ?? null
+        const was = activityRef.current
+        activityRef.current = now
+        if (!now || streamingRef.current) return
+        // The first reading: anything that moved since the page was rendered shows now.
+        if (!was) return void checkHead()
+        if (
+          now.working !== was.working ||
+          now.queuePaused !== was.queuePaused ||
+          now.followUps !== was.followUps
+        ) {
+          const ended = was.working && !now.working
+          void refreshQueue().then((reloaded) => {
+            if (ended && !reloaded) void checkHead()
+          })
+        } else if (!now.working && now.lastActivityAt !== was.lastActivityAt) {
+          void checkHead()
+        }
+      }),
+    [feed.subscribe, agentId],
+  )
+
+  // Without the live feed: ask about follow-ups while one runs.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshQueue reads refs.
   useEffect(() => {
-    if (!queueWorking) return
+    if (!queueWorking || feed.connected) return
     const timer = setInterval(() => {
       if (!document.hidden) void refreshQueue()
     }, QUEUE_POLL_MS)
     return () => clearInterval(timer)
-  }, [queueWorking])
+  }, [queueWorking, feed.connected])
 
-  // Activity from another source (Telegram, a schedule, another tab) shows a reload banner.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshQueue reads refs.
+  // Without the live feed: look for activity from another source every few seconds.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: checkHead reads refs.
   useEffect(() => {
-    if (!initialSessionHead || stale) return
-    const timer = setInterval(async () => {
-      if (document.hidden || streamingRef.current) return
-      try {
-        const head = await api<SessionHeadResponse>(`${base}/sessions/head`)
-        const known = knownHeadRef.current
-        if (
-          Boolean(head.unavailable) !== Boolean(known.unavailable) ||
-          head.file !== known.file ||
-          head.size !== known.size
-        ) {
-          setStale(true)
-          // Another source may be running a turn; the queue reports it, so Stop can show.
-          void refreshQueue()
-        }
-      } catch {
-        // Transient: the next tick tries again.
-      }
+    if (!initialSessionHead || stale || feed.connected) return
+    const timer = setInterval(() => {
+      if (!document.hidden) void checkHead()
     }, SESSION_POLL_MS)
     return () => clearInterval(timer)
-  }, [base, initialSessionHead, stale])
+  }, [base, initialSessionHead, stale, feed.connected])
 
   // A navigation cannot reopen the stream, but the daemon keeps the turn and its pending shell
   // approvals alive: show them again.
