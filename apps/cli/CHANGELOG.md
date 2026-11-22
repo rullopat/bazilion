@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.55.0
+
+### Minor Changes
+
+- [#102](https://github.com/rullopat/bazilion/pull/102) [`8d4ce3a`](https://github.com/rullopat/bazilion/commit/8d4ce3a2363342bc2c2679b6bdbe7cd9f8463bbe) Thanks [@rullopat](https://github.com/rullopat)! - Live updates in the web UI, desktop notifications, commands to approve in Telegram, a waiting strip on a phone, browser tests, and Pi 1.6.0.
+
 ## 0.54.0
 
 ### Minor Changes
