@@ -1,13 +1,17 @@
+// A Team's defaults for commands run in Docker: the image and the folder they start in.
+
 import type { CodingEnvironmentStatus, TeamCodingEnvironment } from '@bazilion/api-types'
-import { useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { api, errorMessage } from '../lib/api'
-import { Button } from './Button'
+import { SaveBar, saveStatus, TextField } from './ui/form'
+import { CardForm, Notice } from './ui/parts'
 
 /** The saved defaults for the form's two fields: an empty image means the installation's. */
 export function codingDefaultsBody(image: string, cwd: string): TeamCodingEnvironment {
   return { image: image.trim() || null, cwd: cwd.trim() || '.' }
 }
 
+/** The form, as the body of a card: it comes after the card's own facts. */
 export function CodingDefaultsCard({ teamId }: { teamId: string }) {
   const [status, setStatus] = useState<CodingEnvironmentStatus | null>(null)
   const [image, setImage] = useState('')
@@ -16,6 +20,7 @@ export function CodingDefaultsCard({ teamId }: { teamId: string }) {
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
   const url = `/api/teams/${encodeURIComponent(teamId)}/coding-environment`
+  const dirty = status !== null && (image !== (status.image ?? '') || cwd !== status.cwd)
 
   function show(next: CodingEnvironmentStatus) {
     setStatus(next)
@@ -34,7 +39,7 @@ export function CodingDefaultsCard({ teamId }: { teamId: string }) {
     return () => controller.abort()
   }, [url])
 
-  async function save(event: React.FormEvent) {
+  async function save(event: FormEvent) {
     event.preventDefault()
     setBusy(true)
     setError('')
@@ -54,46 +59,58 @@ export function CodingDefaultsCard({ teamId }: { teamId: string }) {
     }
   }
 
-  return (
-    <details>
-      <summary className="cursor-pointer text-sm">Docker sandbox defaults</summary>
-      <p className="my-3 text-sm text-muted-foreground">
-        Image and working directory for this Team's bash commands when BAZILION_BASH_SANDBOX is
-        docker
-        {status ? ` (currently ${status.sandboxMode})` : ''}. The image must already exist locally;
-        Bazilion never pulls it.
-      </p>
-      {error && (
-        <p role="alert" className="text-sm text-danger">
+  if (!status) {
+    return error ? (
+      <div className="border-t border-border px-4 py-4 sm:px-5">
+        <Notice role="alert" title="The Docker defaults could not be loaded.">
           {error}
+        </Notice>
+      </div>
+    ) : null
+  }
+  return (
+    <CardForm onSubmit={(event) => void save(event)}>
+      <div>
+        <h3 className="m-0 font-body text-sm font-semibold text-foreground">Commands in Docker</h3>
+        <p className="m-0 text-sm text-muted-foreground">
+          {status.sandboxMode === 'docker'
+            ? 'Commands run in Docker now. '
+            : 'Commands run on this computer now; these apply once Setup → Tools runs them in Docker. '}
+          The image must already be on this computer: Bazilion never downloads one.
         </p>
-      )}
-      {status && (
-        <form className="space-y-3" onSubmit={(event) => void save(event)}>
-          <label>
-            Local Docker image
-            <input
-              value={image}
-              placeholder={`${status.defaultImage} (installation default)`}
-              onChange={(event) => setImage(event.target.value)}
-            />
-          </label>
-          <label>
-            Working directory inside the Team
-            <input required value={cwd} onChange={(event) => setCwd(event.target.value)} />
-          </label>
-          <div className="flex items-center gap-3">
-            <Button type="submit" variant="primary" disabled={busy}>
-              {busy ? 'Saving…' : 'Save defaults'}
-            </Button>
-            {saved && (
-              <span role="status" className="text-xs text-success">
-                Saved
-              </span>
-            )}
-          </div>
-        </form>
-      )}
-    </details>
+      </div>
+      <div className="grid items-start gap-x-3 gap-y-4 sm:grid-cols-2">
+        <TextField
+          label="Image"
+          value={image}
+          mono
+          disabled={busy}
+          placeholder={status.defaultImage}
+          hint="Empty: the installation’s own."
+          className="max-w-none"
+          onChange={(value) => {
+            setImage(value)
+            setSaved(false)
+          }}
+        />
+        <TextField
+          label="Folder they start in"
+          value={cwd}
+          mono
+          disabled={busy}
+          hint="Inside the Team’s folder; “.” is the folder itself."
+          className="max-w-none"
+          onChange={(value) => {
+            setCwd(value)
+            setSaved(false)
+          }}
+        />
+      </div>
+      <SaveBar
+        busy={busy}
+        disabled={!dirty}
+        status={saveStatus({ error: error || null, dirty, saved })}
+      />
+    </CardForm>
   )
 }

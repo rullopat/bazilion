@@ -345,7 +345,7 @@ function PollingFacts({ polling, now }: { polling: TelegramPollingState; now: nu
   const moment = (at: number) => <time dateTime={new Date(at).toISOString()}>{ago(at, now)}</time>
   return (
     <>
-      <CardRow className="bg-muted/50 py-2 text-[0.7rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+      <CardRow className="bg-muted/50 py-2 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
         The running bot
       </CardRow>
       <Facts className="border-t-0">

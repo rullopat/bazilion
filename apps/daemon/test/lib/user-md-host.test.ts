@@ -14,12 +14,11 @@ beforeEach(() => {
 })
 afterEach(() => env.cleanup())
 
-test('get returns the seeded starter content + a stable etag on a fresh team', async () => {
-  // Fresh teams are seeded with DEFAULT_USER_MD, not ''.
+test('get returns the empty USER.md of a fresh team, with a stable etag', async () => {
   const host = createDbUserMdHost(env.db, env.paths)
   const r = await host.get(env.teamId)
-  expect(r.content).toContain('About Your Human')
-  expect(r.etag).toBe(etag(r.content))
+  expect(r.content).toBe('')
+  expect(r.etag).toBe(etag(''))
 })
 
 test('write persists through teamRepo and returns the new etag', async () => {

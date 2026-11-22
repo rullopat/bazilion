@@ -335,7 +335,7 @@ test('a list row gives a thing its name, its state, what there is to know and wh
     'docs_search Disabled http Enable 3 tools: search, fetch_page, list_sources bootstrap',
   )
   // A row with nothing but a name has no empty boxes around it.
-  expect(list).toMatch(/bootstrap<\/span><\/div><\/div><\/li><\/ul>$/)
+  expect(list).toMatch(/bootstrap<\/span><\/div><\/div><\/div><\/li><\/ul>$/)
 })
 
 test('a select is tied to its label and shows the choice that is made', () => {
@@ -350,10 +350,17 @@ test('a select is tied to its label and shows the choice that is made', () => {
       onChange: nothing,
     }),
   )
-  expect(attribute(select, 'select', 'id')).toBeTruthy()
-  expect(attribute(select, 'select', 'id')).toBe(attribute(select, 'label', 'for'))
-  expect(select).toContain('<option value="http" selected="">http</option>')
-  expect(select).toContain('<option value="stdio">stdio</option>')
+  // One dropdown for the whole app: a combobox button named by its label, then its choice.
+  const id = attribute(select, 'button', 'id')
+  expect(id).toBeTruthy()
+  expect(id).toBe(attribute(select, 'label', 'for'))
+  expect(attribute(select, 'button', 'role')).toBe('combobox')
+  const named = attribute(select, 'button', 'aria-labelledby')?.split(' ') ?? []
+  expect(named[0]).toBe(attribute(select, 'label', 'id'))
+  expect(select).toContain(`id="${named[1]}"`)
+  expect(select).toMatch(/>http<\/span>/)
+  // The options are out of sight until the list opens.
+  expect(select).not.toContain('stdio')
 })
 
 test('choice cards are one radio group, each option named by its title and told by its hint', () => {
@@ -415,8 +422,9 @@ test('a filter select is named for assistive technology though its label is not 
       ],
     }),
   )
-  expect(select).toMatch(/^<select aria-label="Kind"/)
-  expect(select).toContain('<option value="all" selected="">All kinds</option>')
+  expect(attribute(select, 'button', 'aria-label')).toBe('Kind')
+  expect(select).toMatch(/>All kinds<\/span>/)
+  expect(select).not.toContain('Lesson proposals')
 })
 
 test('a row menu is one button named for what it is about, its items out of sight until opened', () => {
@@ -444,7 +452,7 @@ test('an empty card says what would be here and how to get it; a group header na
     ),
   )
   expect(empty).toContain(
-    '<p class="m-0 text-[0.95rem] font-semibold text-foreground">No Agents yet</p>',
+    '<p class="m-0 text-base font-semibold text-foreground">No Agents yet</p>',
   )
   expect(empty).toContain('An Agent is spawned from a template.')
   expect(empty).toContain('>Spawn an agent</button>')
@@ -461,6 +469,29 @@ test('an empty card says what would be here and how to get it; a group header na
   expect(header).toContain('>Open Team</a>')
 })
 
+test('what a row reports goes under the row, even when its line never wraps', () => {
+  // An inline row keeps its menu beside the name on a phone. A notice under it must still get a
+  // line of its own: beside the name it squeezed the name to one letter per line (0.53.0).
+  const row = html(
+    createElement(
+      ListRow,
+      {
+        inline: true,
+        title: 'deploy-helper',
+        actions: createElement('button', { type: 'button' }, 'More'),
+      },
+      createElement('p', null, 'Risky finding'),
+    ),
+  )
+  const line =
+    /<li[^>]*><div class="([^"]*)">(.*?)<\/div><div class="([^"]*)"><p>Risky finding<\/p>/.exec(row)
+  expect(line?.[1]).toContain('flex-nowrap')
+  expect(line?.[2]).toContain('deploy-helper')
+  expect(line?.[2]).toContain('>More</button>')
+  expect(line?.[3]).toContain('basis-full')
+  expect(attribute(row, 'li', 'class')).not.toContain('flex-nowrap')
+})
+
 test('a list row can lead with an avatar, and Save can carry a Discard beside it', () => {
   const row = html(
     createElement(ListRow, {
@@ -469,7 +500,7 @@ test('a list row can lead with an avatar, and Save can carry a Discard beside it
     }),
   )
   expect(row).toMatch(
-    /<li[^>]*><span class="flex shrink-0 self-start pt-0.5"><img alt=""\/><\/span>/,
+    /<li[^>]*><div[^>]*><span class="flex shrink-0 self-start pt-0.5"><img alt=""\/><\/span>/,
   )
   const bar = html(
     createElement(SaveBar, {

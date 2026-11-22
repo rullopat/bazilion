@@ -284,14 +284,22 @@ test('Attention says how much is open and of what kind', () => {
   expect(attentionSummary(summary(2, 2, 1))).toEqual({
     tone: 'warning',
     lead: '5 open items.',
-    rest: '2 decisions waiting for you, and 3 errors or warnings to look at.',
+    rest: '2 decisions waiting for you and 3 errors or warnings to look at.',
   })
   expect(attentionSummary(summary(0, 1, 0))).toEqual({
     tone: 'neutral',
     lead: '1 open item.',
     rest: '1 error or warning to look at.',
   })
-  expect(severityLabel('action_required')).toEqual({ label: 'Needs you', tone: 'warning' })
+  // What an Agent waits on is named for what it is.
+  const waiting = {
+    ...summary(3, 0, 0),
+    byKind: { agent_question: 1, command_approval: 1 },
+  } as unknown as AttentionSummary
+  expect(attentionSummary(waiting).rest).toBe(
+    '1 question waiting for your answer, 1 command waiting for your approval, and 1 decision waiting for you.',
+  )
+  expect(severityLabel('action_required')).toEqual({ label: 'Waiting for you', tone: 'warning' })
   expect(severityLabel('error').label).toBe('Error')
   expect(severityLabel('warning').label).toBe('Warning')
   const item = { agentName: 'Dev', teamName: 'Launch' } as AttentionItem

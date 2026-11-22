@@ -1,20 +1,31 @@
+// An Agent's Telegram forum topic: open or make it, what of its work shows there, and its icon.
+
 import type { Agent, TelegramBindResponse, TelegramMirrorMode } from '@bazilion/api-types'
 import { useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { MessagesSquare } from 'lucide-react'
+import { type FormEvent, useState } from 'react'
 import { api, errorMessage } from '../lib/api'
 import { Button } from './Button'
 import { ConfirmDialog } from './ConfirmDialog'
+import { SaveBar, SelectField, saveStatus, TextField } from './ui/form'
+import { CardForm, Chip, Fact, Facts, Notice, RowMenu, SetupCard } from './ui/parts'
 
-/** An Agent's Telegram forum topic: bind, open, unbind, mirroring and the topic icon. */
+const MIRROR: readonly { value: TelegramMirrorMode; label: string }[] = [
+  { value: 'minimal', label: 'Its replies' },
+  { value: 'verbose', label: 'Its replies and every tool it uses' },
+]
+
 export function AgentTelegram({ agent }: { agent: Agent }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mirrorMode, setMirrorMode] = useState<TelegramMirrorMode>(agent.telegramMirrorMode)
   const [iconEmoji, setIconEmoji] = useState(agent.telegramIconEmoji ?? '')
+  const [iconSaved, setIconSaved] = useState(false)
   const [confirmUnbind, setConfirmUnbind] = useState(false)
   const path = `/api/agents/${encodeURIComponent(agent.id)}`
   const bound = agent.telegramTopicId !== null
+  const iconDirty = iconEmoji !== (agent.telegramIconEmoji ?? '')
 
   async function run(request: () => Promise<unknown>) {
     setBusy(true)
@@ -47,100 +58,96 @@ export function AgentTelegram({ agent }: { agent: Agent }) {
     )
   }
 
+  async function saveIcon(event: FormEvent) {
+    event.preventDefault()
+    await run(() =>
+      api(path, { method: 'PATCH', body: { telegramIconEmoji: iconEmoji.trim() || null } }),
+    )
+      .then(() => setIconSaved(true))
+      .catch(() => {})
+  }
+
   return (
-    <>
-      <div className="text-[0.9em]">
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          {bound ? (
-            <>
-              <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
-                bound
-              </span>
-              <span className="font-mono text-mocha">topic #{agent.telegramTopicId}</span>
-              <Button variant="ghost" onClick={() => void bind()} disabled={busy}>
-                Open in Telegram
-              </Button>
-              <Button variant="danger" onClick={() => setConfirmUnbind(true)} disabled={busy}>
-                Unbind
-              </Button>
-            </>
-          ) : (
-            <>
-              <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
-                unbound
-              </span>
-              <Button variant="ghost" onClick={() => void bind()} disabled={busy}>
-                {busy ? 'Binding…' : 'Bind a topic'}
-              </Button>
-            </>
+    <SetupCard
+      labelledBy="agent-telegram"
+      icon={<MessagesSquare className="size-5" />}
+      title="Telegram topic"
+      description={`${agent.name}’s own topic in the Telegram group: its turns show there, and a message there starts one.`}
+      action={
+        <div className="flex items-center gap-2">
+          {bound ? <Chip tone="success">Has a topic</Chip> : <Chip tone="neutral">No topic</Chip>}
+          {bound && (
+            <RowMenu
+              label={`More for ${agent.name}’s topic`}
+              disabled={busy}
+              items={[{ label: 'Unbind…', danger: true, onSelect: () => setConfirmUnbind(true) }]}
+            />
           )}
         </div>
-
-        <label className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-          <span className="text-mocha-light">Mirror mode</span>
-          <select
-            value={mirrorMode}
-            onChange={(event) => void saveMirrorMode(event.target.value as TelegramMirrorMode)}
-            className="sm:max-w-sm"
-            disabled={busy}
-          >
-            <option value="minimal">minimal — assistant messages only</option>
-            <option value="verbose">verbose — also tool calls</option>
-          </select>
-        </label>
-
-        <div className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="m-0">
-            Topic icon
-            <input
-              value={iconEmoji}
-              onChange={(event) => setIconEmoji(event.target.value)}
-              placeholder="(template default)"
-              maxLength={8}
-              className="w-40 font-mono"
-              disabled={busy}
-            />
-          </label>
-          <Button
-            variant="ghost"
-            onClick={() =>
-              void run(() =>
-                api(path, {
-                  method: 'PATCH',
-                  body: { telegramIconEmoji: iconEmoji.trim() || null },
-                }),
-              ).catch(() => {})
-            }
-            disabled={busy || iconEmoji === (agent.telegramIconEmoji ?? '')}
-          >
-            Save icon
-          </Button>
-        </div>
-
-        {error && (
-          <p role="alert" className="mt-2 text-sm text-danger">
+      }
+    >
+      {error && (
+        <div className="border-t border-border px-4 py-3 sm:px-5">
+          <Notice role="alert" title="That did not work.">
             {error}
-          </p>
-        )}
-
-        <p className="mt-3 text-[0.85em] text-mocha-light">
-          While bound, every assistant turn of this Agent is mirrored to the topic, and a message in
-          the topic starts a turn. On iOS, Telegram opens the topic list instead of the topic.
-        </p>
-      </div>
+          </Notice>
+        </div>
+      )}
+      <Facts>
+        <Fact label="Topic">
+          <span className="flex flex-wrap items-center gap-3">
+            <span>{bound ? `Topic ${agent.telegramTopicId}` : 'None yet'}</span>
+            <Button variant="ghost" onClick={() => void bind()} disabled={busy}>
+              {bound ? 'Open in Telegram' : busy ? 'Making it…' : 'Make its topic'}
+            </Button>
+          </span>
+        </Fact>
+      </Facts>
+      <CardForm onSubmit={(event) => void saveIcon(event)}>
+        <SelectField<TelegramMirrorMode>
+          label="What shows in the topic"
+          value={mirrorMode}
+          options={MIRROR}
+          disabled={busy}
+          hint="Changed at once."
+          onChange={(value) => void saveMirrorMode(value)}
+        />
+        <TextField
+          label="Topic icon"
+          value={iconEmoji}
+          disabled={busy}
+          placeholder="🦉"
+          hint="An emoji; empty takes the template’s."
+          className="max-w-40"
+          onChange={(value) => {
+            setIconEmoji(value.slice(0, 8))
+            setIconSaved(false)
+          }}
+        />
+        <SaveBar
+          busy={busy}
+          disabled={!iconDirty}
+          label="Save the icon"
+          status={saveStatus({
+            dirty: iconDirty,
+            saved: iconSaved,
+            footnote: 'On iOS, Telegram opens the list of topics rather than the topic.',
+          })}
+        />
+      </CardForm>
       <ConfirmDialog
         open={confirmUnbind}
         onOpenChange={setConfirmUnbind}
-        title={`Unbind ${agent.name} from Telegram?`}
+        title={`Unbind ${agent.name} from its topic?`}
         description={
-          <p>
-            Telegram ingress and mirroring stop for this Agent. The forum topic stays in Telegram
-            until you remove it there.
+          <p className="m-0">
+            Its turns stop showing in the topic, and messages there no longer reach it. The topic
+            stays in Telegram until you delete it there.
           </p>
         }
-        confirmLabel="Unbind Telegram topic"
+        confirmLabel="Unbind the topic"
         onConfirm={() => run(() => api(`${path}/telegram/binding`, { method: 'DELETE' }))}
       />
-    </>
+    </SetupCard>
   )
 }

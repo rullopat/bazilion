@@ -321,7 +321,7 @@ export function TemplateFilesCard({
         <CardForm onSubmit={save}>
           {file && content === null ? (
             <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
-              <p className="m-0 text-[0.95rem] font-semibold text-foreground">
+              <p className="m-0 text-base font-semibold text-foreground">
                 This template has no {file.name}
               </p>
               <p className="m-0 max-w-md text-sm text-muted-foreground">
@@ -353,7 +353,7 @@ export function TemplateFilesCard({
                   spellCheck={false}
                   rows={22}
                   onChange={(event) => edit(file.key, event.target.value)}
-                  className="min-h-[18rem] resize-y font-mono text-[0.85rem] leading-[1.6]"
+                  className="min-h-[18rem] resize-y font-mono text-sm leading-[1.6]"
                 />
               </>
             )

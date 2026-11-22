@@ -8,7 +8,7 @@ import type {
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { BellRing } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../../components/Button'
 import { PageHeader, PageShell } from '../../components/Page'
 import { Segmented } from '../../components/Segmented'
@@ -25,12 +25,33 @@ import {
   SetupCard,
 } from '../../components/ui/parts'
 import { api, errorMessage } from '../../lib/api'
+import { useAttentionCount } from '../../lib/attention-count'
 import { daemonClient } from '../../lib/daemon-client'
 import { ATTENTION_KINDS, attentionSource, attentionSummary, severityLabel } from '../../lib/manage'
 import { ago } from '../../lib/model-facts'
+import { useHydrated } from '../../lib/use-resource'
 
 const LIST_PATH = '/api/attention?state=all&limit=200'
 const SUMMARY_PATH = '/api/attention/summary'
+/** Questions expire in minutes and commands in two: the page keeps itself current. */
+const POLL_MS = 5_000
+
+/** What the item's button says: where it takes you and what you do there. */
+function actionLabel(item: AttentionItem): string {
+  switch (item.kind) {
+    case 'agent_question':
+      return 'Answer'
+    case 'command_approval':
+      return 'Decide'
+    case 'lesson_proposal':
+      return 'Review lesson'
+    default:
+      return 'Open'
+  }
+}
+
+const clock = (at: number) =>
+  new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 const loadAttention = createServerFn({ method: 'GET' }).handler(async () => {
   const client = daemonClient()
@@ -59,6 +80,9 @@ function AttentionCenter() {
   const [severity, setSeverity] = useState<Severity>('all')
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ text: string; failed: boolean } | null>(null)
+  const counts = useAttentionCount()
+  // A clock time is written in the browser's own format, which the server cannot know.
+  const hydrated = useHydrated()
   const visible = list.items.filter(
     (item) =>
       (state === 'all' ||
@@ -83,6 +107,15 @@ function AttentionCenter() {
     setNow(Date.now())
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh only sets state.
+  useEffect(() => {
+    if (busy !== null) return
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh().catch(() => {})
+    }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [busy])
+
   async function run(key: string, request: () => Promise<string | null>) {
     setBusy(key)
     setNotice(null)
@@ -93,6 +126,7 @@ function AttentionCenter() {
       setNotice({ text: errorMessage(cause), failed: true })
     } finally {
       await refresh().catch(() => {})
+      counts.refresh()
       setBusy(null)
     }
   }
@@ -170,7 +204,7 @@ function AttentionCenter() {
             onChange={setSeverity}
             options={[
               { value: 'all', label: 'Any severity' },
-              { value: 'action_required', label: 'Needs you' },
+              { value: 'action_required', label: 'Waiting for you' },
               { value: 'error', label: 'Errors' },
               { value: 'warning', label: 'Warnings' },
             ]}
@@ -195,7 +229,8 @@ function AttentionCenter() {
                 : 'No item matches'
             }
           >
-            Items come from learning reviews, schedules, follow-up queues and message loops.
+            Items come from Agents' questions and commands to approve, learning reviews, schedules,
+            follow-up queues and message loops.
           </CardEmpty>
         ) : (
           <CardList>
@@ -217,6 +252,9 @@ function AttentionCenter() {
                     <>
                       <span>{ATTENTION_KINDS[item.kind]}</span>
                       <span>{attentionSource(item)}</span>
+                      {item.expiresAt !== undefined && hydrated && (
+                        <span className="text-warning">Waits until {clock(item.expiresAt)}</span>
+                      )}
                       <time
                         dateTime={new Date(item.occurredAt).toISOString()}
                         title={new Date(item.occurredAt)
@@ -231,7 +269,7 @@ function AttentionCenter() {
                   actions={
                     <>
                       <Link to={item.href} className="ghost-btn no-underline">
-                        {item.kind === 'lesson_proposal' ? 'Review lesson' : 'Open'}
+                        {actionLabel(item)}
                       </Link>
                       {item.acknowledgeable && (
                         <Button

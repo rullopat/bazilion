@@ -29,7 +29,6 @@ export {
   DEFAULT_IDENTITY,
   DEFAULT_SOUL,
   DEFAULT_TOOLS,
-  DEFAULT_USER_MD,
 } from './profile/templates.ts'
 export { updateProfile } from './profile/update.ts'
 export * as agentLessonProposalRepo from './repos/agentLessonProposals.ts'

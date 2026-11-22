@@ -67,7 +67,7 @@ workspace (for example an offline package store).
 ## Team defaults
 
 A Team can name its own image and a working directory inside the Team; both apply only in Docker
-mode. On the web, open **Settings** in the Team tab and expand **Docker sandbox defaults**. From
+mode. On the web, open **Settings** in the Team tab: **Commands in Docker** is under **Workspace**. From
 the CLI:
 
 ```sh

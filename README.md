@@ -92,11 +92,15 @@ The home screen is one [workspace](docs/workspace.md): Teams and their Agents on
 with what it is doing right now; the open Agent's conversation in the middle; and a side panel
 with the Agent's settings, its Team, who may message whom (**Connections**), what changed in the
 workspace (**Changes**) and what was delivered (**Files**). Connections, Changes and Files also
-open across the whole width, as a map, a side-by-side diff and a gallery. **Jump to** (Ctrl+K)
-opens any Agent, Team or page by name.
+open across the whole width, as a map, a side-by-side diff and a gallery. With nothing open, an
+overview says who is waiting for you, who is working, and what was delivered last. **Jump to**
+(Ctrl+K, ⌘K on a Mac) opens any Agent, Team, conversation or page by name, waiting Agents first,
+and runs the common actions; `?` lists the keyboard shortcuts.
 
-**Manage** holds the housekeeping pages, under one tab bar: Agents (grouped by Team), Teams,
-Agent templates, Team templates and Skills ([manage](docs/manage.md)), and **Setup** (`/config`). Setup opens on **Models**: the chat models your Agents
+The top bar has three places. **Attention** counts what needs you, an Agent's question or a
+command to approve first. **Manage** holds the housekeeping pages, under one tab bar: Agents
+(grouped by Team), Teams, Agent templates, Team templates and Skills ([manage](docs/manage.md)).
+**Setup** (`/config`) is the configuration. Setup opens on **Models**: the chat models your Agents
 think with, the image model they draw with, and the providers behind them, each with whether it
 answers ([models and providers](docs/models-and-providers.md)). **Tools** holds web search, the
 browser and how commands run, one card each ([tools](docs/tools.md)); the other tabs are MCP,

@@ -17,6 +17,7 @@ import { ProviderAvatar } from '../components/setup/provider-parts'
 import { api } from '../lib/api'
 import { fetchAuthState } from '../lib/auth'
 import { daemonClient } from '../lib/daemon-client'
+import { usePageTitle } from '../lib/page-title'
 import { useResource } from '../lib/use-resource'
 
 const fetchProviders = createServerFn({ method: 'GET' }).handler(async () => {
@@ -49,6 +50,7 @@ const CARD = 'rounded-2xl border border-border bg-card shadow-baziu-sm'
 /** First run: choose a provider, connect it, start chatting. One screen, no other page needed. */
 function WelcomePage() {
   const providers = Route.useLoaderData()
+  usePageTitle('Welcome')
   const navigate = useNavigate()
   const [step, setStep] = useState<Step>({ at: 'choose' })
   const [starting, setStarting] = useState(false)
@@ -84,7 +86,7 @@ function WelcomePage() {
         <h1 className="m-0 font-display text-4xl leading-tight text-foreground">
           Connect a model to start
         </h1>
-        <p className="mt-3 max-w-2xl text-[0.98rem] leading-6 text-muted-foreground">
+        <p className="mt-3 max-w-2xl text-base leading-6 text-muted-foreground">
           Bazilion needs one provider to think with. More providers, web search, the browser and
           Telegram can wait until you want them.
         </p>
@@ -102,7 +104,7 @@ function WelcomePage() {
               className="flex items-center gap-2.5"
             >
               <span
-                className={`flex size-7 items-center justify-center rounded-full border-[1.5px] text-[0.8rem] font-bold ${
+                className={`flex size-7 items-center justify-center rounded-full border-[1.5px] text-sm font-bold ${
                   done
                     ? 'border-success bg-success text-white'
                     : now
@@ -329,7 +331,7 @@ function LocalServers({
                 tone={server?.found ? 'success' : 'neutral'}
               />
               <div className="min-w-0 flex-1 basis-56">
-                <div className="text-[0.95rem] font-semibold text-foreground">
+                <div className="text-base font-semibold text-foreground">
                   {provider.displayName}
                 </div>
                 <div

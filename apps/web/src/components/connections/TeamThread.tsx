@@ -59,7 +59,7 @@ export function TeamThread({
                     {name(message.toAgentId)}
                   </span>
                   {message.readAt === null && (
-                    <span className="shrink-0 rounded-full bg-warning/15 px-1.5 text-[0.68rem] font-semibold text-warning">
+                    <span className="shrink-0 rounded-full bg-warning/15 px-1.5 text-xs font-semibold text-warning">
                       unread
                     </span>
                   )}
@@ -72,11 +72,11 @@ export function TeamThread({
                     </time>
                   )}
                 </span>
-                <span className="line-clamp-2 break-words text-[0.82rem] leading-snug text-mocha group-open:hidden">
+                <span className="line-clamp-2 break-words text-sm leading-snug text-mocha group-open:hidden">
                   {text}
                 </span>
               </summary>
-              <p className="m-0 whitespace-pre-wrap break-words border-t border-frost/70 px-2.5 py-2 text-[0.82rem] leading-snug text-chocolate">
+              <p className="m-0 whitespace-pre-wrap break-words border-t border-frost/70 px-2.5 py-2 text-sm leading-snug text-chocolate">
                 {text}
               </p>
             </details>

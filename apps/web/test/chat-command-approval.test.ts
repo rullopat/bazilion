@@ -25,6 +25,7 @@ const pendingApproval: CommandApproval = {
     },
   ],
   status: 'pending',
+  createdAt: Date.UTC(2026, 7, 2, 11, 58),
   expiresAt: Date.UTC(2026, 7, 2, 12, 0),
 }
 

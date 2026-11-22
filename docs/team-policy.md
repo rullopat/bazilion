@@ -40,7 +40,7 @@ The loop guard on message chains (the first message and eight replies, unless ch
 | See what Agents said to each other | `bazilion team messages <team>` | Connections: recent messages |
 | Manage templates | `bazilion team-template list\|show\|create\|export\|import\|rm` | Manage → Team templates |
 | Spawn a template into a Team | `bazilion team-template spawn <template> <team>` | **Spawn** on Team templates, or **Spawn this Team** on its page |
-| Save a Team as a template | `bazilion team-template save <team> <template>` | Team tab → Settings → Save as Team template |
+| Save a Team as a template | `bazilion team-template save <team> <template>` | Team tab → Settings → Save as a Team template |
 
 On the map every Agent is a node with what it is doing, and every pair that is connected or that
 talked is one line: an arrowhead for each allowed direction, a dashed line for a pair that only

@@ -21,7 +21,7 @@ export function ProviderAvatar({
     <span
       aria-hidden="true"
       className={cn(
-        'flex size-9 shrink-0 items-center justify-center rounded-xl text-[0.95rem] font-bold',
+        'flex size-9 shrink-0 items-center justify-center rounded-xl text-base font-bold',
         tone === 'success' && 'bg-success/10 text-success',
         tone === 'warning' && 'bg-warning/10 text-warning',
         tone === 'accent' && 'bg-accent text-accent-foreground',
@@ -104,12 +104,12 @@ export function ModelRow({
       <span className="min-w-0">
         <span className="text-sm font-semibold text-foreground">{modelName(model)}</span>
         {model.suggested && (
-          <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[0.7rem] font-semibold text-accent-foreground">
+          <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-foreground">
             Suggested
           </span>
         )}
         {model.name && (
-          <span className="block break-all font-mono text-[0.72rem] text-muted-foreground">
+          <span className="block break-all font-mono text-xs text-muted-foreground">
             {model.id}
           </span>
         )}

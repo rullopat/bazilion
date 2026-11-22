@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react'
+import { usePageTitle } from '../lib/page-title'
 import { cn } from '../lib/utils'
 
 export type PageSize = 'narrow' | 'default' | 'wide'
@@ -37,6 +38,12 @@ export function PageHeader({
   className,
   ...props
 }: PageHeaderProps) {
+  // The tab says which page this is, most specific first: "Models · Setup".
+  usePageTitle(
+    typeof title === 'string'
+      ? [title, typeof eyebrow === 'string' ? eyebrow : null].filter(Boolean).join(' · ')
+      : null,
+  )
   return (
     <header
       className={cn('flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between', className)}

@@ -11,7 +11,6 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { isSetupComplete } from '../../src/core/availableModels.ts'
 import { ensureSetupSeeded } from '../../src/core/profile/seed.ts'
-import { DEFAULT_USER_MD } from '../../src/core/profile/templates.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as providerModelRepo from '../../src/core/repos/providerModels.ts'
 import * as providerStateRepo from '../../src/core/repos/providerState.ts'
@@ -52,11 +51,11 @@ test('the seeded default profile ships the default-on template files', () => {
   }
 })
 
-test("the seeded default team's user_md is DEFAULT_USER_MD", () => {
+test("the seeded default team's USER.md starts empty", () => {
   providerStateRepo.setEnabled(env.db, 'anthropic', true)
   providerModelRepo.replace(env.db, 'anthropic', ['claude-opus-4-6'])
   ensureSetupSeeded(env.db, env.paths)
-  expect(teamRepo.get(env.db, 'default', env.paths)?.userMd).toBe(DEFAULT_USER_MD)
+  expect(teamRepo.get(env.db, 'default', env.paths)?.userMd).toBe('')
 })
 
 test('ensureSetupSeeded is idempotent across repeat calls', () => {

@@ -315,7 +315,7 @@ function Editor({ team, policy }: { team: Team; policy: TeamPolicy }) {
             </div>
           )}
 
-          <h2 className="m-0 mb-1.5 mt-5 font-body text-[0.72rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+          <h2 className="m-0 mb-1.5 mt-5 font-body text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
             {pair
               ? 'Messages between them'
               : selectedActor

@@ -59,7 +59,7 @@ function AgentNode({ data, selected }: NodeProps<FlowNode<AgentNodeData, 'agent'
           <span className="block truncate text-sm font-semibold text-chocolate">
             {data.member.name}
           </span>
-          <span className="mt-0.5 flex items-center gap-1.5 truncate text-[0.68rem] text-mocha-light">
+          <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-mocha-light">
             {data.subtitle}
           </span>
         </span>

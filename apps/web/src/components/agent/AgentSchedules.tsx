@@ -1,46 +1,85 @@
-// An Agent's schedules: triggers that send it a message on an interval or a cron expression, and
-// their recent runs.
+// An Agent's schedules: messages it gets at set times, as if the operator had written them, and
+// what happened the last times they ran. Times are this computer's, where the daemon runs.
 
 import type {
   Agent,
   AgentTrigger,
-  CreateTriggerRequest,
   ListTriggersResponse,
+  TriggerDispatch,
 } from '@bazilion/api-types'
-import { useState } from 'react'
+import { CalendarClock, History, Plus } from 'lucide-react'
+import { type FormEvent, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
-import { useResource } from '../../lib/use-resource'
+import type { Tone } from '../../lib/model-facts'
+import {
+  describeSchedule,
+  EMPTY_SCHEDULE,
+  REPEATS,
+  type Repeat,
+  type ScheduleDraft,
+  type ScheduleField,
+  scheduleRequest,
+  WEEKDAYS,
+} from '../../lib/schedules'
+import { useHydrated, useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { ItemList, ItemRow, SectionCard } from '../Page'
+import { Dialog } from '../Dialog'
+import { SelectField, TextAreaField, TextField } from '../ui/form'
+import { CardEmpty, CardList, Chip, ListRow, Notice, RowMenu, SetupCard, Switch } from '../ui/parts'
 
 export function AgentSchedules({ agent }: { agent: Agent }) {
   const path = `/api/agents/${encodeURIComponent(agent.id)}/triggers`
   const data = useResource((signal) => api<ListTriggersResponse>(path, { signal }), [path])
   if (!data.data) {
     return data.error ? (
-      <p role="alert" className="err">
+      <Notice role="alert" title="The schedules could not be loaded.">
         {data.error}
-      </p>
+      </Notice>
     ) : (
-      <p role="status" className="muted">
+      <p role="status" className="m-0 text-sm text-muted-foreground">
         Loading the schedules…
       </p>
     )
   }
-  return <SchedulesView agentId={agent.id} {...data.data} onChanged={data.reload} />
+  return (
+    <SchedulesView
+      agentId={agent.id}
+      agentName={agent.name}
+      {...data.data}
+      onChanged={data.reload}
+    />
+  )
+}
+
+const RUN: Record<TriggerDispatch['status'], { label: string; tone: Tone }> = {
+  pending: { label: 'Waiting for the Agent', tone: 'neutral' },
+  running: { label: 'Running', tone: 'success' },
+  succeeded: { label: 'Done', tone: 'success' },
+  failed: { label: 'Failed', tone: 'warning' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
 }
 
 /** The schedules and their recent runs, as loaded. */
 export function SchedulesView({
   agentId,
+  agentName = 'The Agent',
   triggers,
   dispatches,
   onChanged,
-}: ListTriggersResponse & { agentId: string; onChanged: () => Promise<void> }) {
-  const [deleteTarget, setDeleteTarget] = useState<AgentTrigger | null>(null)
+}: ListTriggersResponse & {
+  agentId: string
+  agentName?: string
+  onChanged: () => Promise<void>
+}) {
+  const [adding, setAdding] = useState(false)
+  const [removing, setRemoving] = useState<AgentTrigger | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Dates are written in the browser's own format, which the server cannot know.
+  const hydrated = useHydrated()
+  const when = (at: number) => (hydrated ? new Date(at).toLocaleString() : '')
+  const byId = new Map(triggers.map((trigger) => [trigger.id, trigger]))
 
   async function toggle(trigger: AgentTrigger) {
     setBusyId(trigger.id)
@@ -59,203 +98,323 @@ export function SchedulesView({
   }
 
   return (
-    <div className="space-y-6">
-      <AddTriggerForm agentId={agentId} onAdded={() => void onChanged()} />
-      {error && (
-        <p role="alert" className="err">
-          {error}
-        </p>
+    <div className="grid gap-5">
+      <SetupCard
+        labelledBy="agent-schedules"
+        icon={<CalendarClock className="size-5" />}
+        title="Schedules"
+        description={`Each one sends ${agentName} its message at the times it says.`}
+        action={
+          triggers.length > 0 && (
+            <Button variant="primary" onClick={() => setAdding(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+              Add a schedule
+            </Button>
+          )
+        }
+      >
+        {error && (
+          <div className="border-t border-border px-4 py-3 sm:px-5">
+            <Notice role="alert" title="That did not work.">
+              {error}
+            </Notice>
+          </div>
+        )}
+        {triggers.length === 0 ? (
+          <CardEmpty
+            icon={<CalendarClock className="size-5" />}
+            title="No schedules yet"
+            action={
+              <Button variant="primary" onClick={() => setAdding(true)}>
+                <Plus className="size-4" aria-hidden="true" />
+                Add a schedule
+              </Button>
+            }
+          >
+            A schedule gives {agentName} a message at set times: a morning check, a weekly summary.
+          </CardEmpty>
+        ) : (
+          <CardList>
+            {triggers.map((trigger) => {
+              const schedule = describeSchedule(trigger)
+              return (
+                <ListRow
+                  key={trigger.id}
+                  inline
+                  title={
+                    schedule.raw ? (
+                      <code className="font-mono text-[0.92em]">{schedule.text}</code>
+                    ) : (
+                      schedule.text
+                    )
+                  }
+                  chip={
+                    trigger.enabled ? (
+                      <Chip tone="success">On</Chip>
+                    ) : (
+                      <Chip tone="neutral">Paused</Chip>
+                    )
+                  }
+                  meta={
+                    <span>
+                      {trigger.lastFiredAt
+                        ? `Last ran ${when(trigger.lastFiredAt)}`
+                        : 'Has not run yet'}
+                    </span>
+                  }
+                  actions={
+                    <>
+                      <Switch
+                        label={`${schedule.text}: ${trigger.enabled ? 'on' : 'paused'}`}
+                        checked={trigger.enabled}
+                        disabled={busyId === trigger.id}
+                        onChange={() => void toggle(trigger)}
+                      />
+                      <RowMenu
+                        label={`More for ${schedule.text}`}
+                        items={[
+                          {
+                            label: 'Delete…',
+                            danger: true,
+                            onSelect: () => setRemoving(trigger),
+                          },
+                        ]}
+                      />
+                    </>
+                  }
+                >
+                  <p className="m-0 whitespace-pre-wrap break-words rounded-xl bg-muted/50 px-3 py-2 text-sm text-foreground">
+                    {trigger.message}
+                  </p>
+                </ListRow>
+              )
+            })}
+          </CardList>
+        )}
+      </SetupCard>
+
+      <SetupCard
+        labelledBy="agent-schedule-runs"
+        icon={<History className="size-5" />}
+        title="Recent runs"
+        description="Each time a schedule came due, and how it went."
+      >
+        {dispatches.length === 0 ? (
+          <CardEmpty title="Nothing has run yet">
+            A schedule's first run shows here once its time comes.
+          </CardEmpty>
+        ) : (
+          <CardList>
+            {dispatches.map((dispatch) => {
+              const run = RUN[dispatch.status]
+              const trigger = byId.get(dispatch.triggerId)
+              return (
+                <ListRow
+                  key={dispatch.id}
+                  inline
+                  title={when(dispatch.scheduledAt) || '…'}
+                  chip={<Chip tone={run.tone}>{run.label}</Chip>}
+                  meta={
+                    <span>{trigger ? describeSchedule(trigger).text : 'A deleted schedule'}</span>
+                  }
+                >
+                  {dispatch.error && (
+                    <p className="m-0 break-words text-sm text-danger">{dispatch.error}</p>
+                  )}
+                </ListRow>
+              )
+            })}
+          </CardList>
+        )}
+      </SetupCard>
+
+      {adding && (
+        <AddSchedule
+          agentId={agentId}
+          agentName={agentName}
+          onClose={() => setAdding(false)}
+          onAdded={async () => {
+            setAdding(false)
+            await onChanged()
+          }}
+        />
       )}
 
-      <SectionCard title="Triggers">
-        {triggers.length === 0 ? (
-          <p className="muted">No triggers yet; add one above.</p>
-        ) : (
-          <ItemList>
-            {triggers.map((trigger) => (
-              <ItemRow
-                key={trigger.id}
-                className={trigger.enabled ? '' : 'opacity-60'}
-                title={
-                  <code>
-                    {trigger.kind === 'interval'
-                      ? `every ${trigger.intervalSec}s`
-                      : trigger.cronExpr}
-                  </code>
-                }
-                meta={
-                  <>
-                    <span>{trigger.kind}</span>
-                    <span>
-                      last fired{' '}
-                      {trigger.lastFiredAt
-                        ? new Date(trigger.lastFiredAt).toLocaleString()
-                        : 'never'}
-                    </span>
-                    <code className="break-all">{trigger.id}</code>
-                  </>
-                }
-                actions={
-                  <>
-                    <Button
-                      variant="ghost"
-                      disabled={busyId === trigger.id}
-                      onClick={() => void toggle(trigger)}
-                    >
-                      {busyId === trigger.id ? 'Working…' : trigger.enabled ? 'Disable' : 'Enable'}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      disabled={busyId === trigger.id}
-                      onClick={() => setDeleteTarget(trigger)}
-                    >
-                      Delete
-                    </Button>
-                  </>
-                }
-              >
-                <p className="mb-0 mt-2 whitespace-pre-wrap break-words text-sm">
-                  {trigger.message}
-                </p>
-              </ItemRow>
-            ))}
-          </ItemList>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Recent runs">
-        {dispatches.length === 0 ? (
-          <p className="muted">No scheduled occurrences yet.</p>
-        ) : (
-          <ItemList>
-            {dispatches.map((dispatch) => (
-              <ItemRow
-                key={dispatch.id}
-                title={new Date(dispatch.scheduledAt).toLocaleString()}
-                meta={<code>{dispatch.status}</code>}
-              >
-                {dispatch.error && (
-                  <p className="mb-0 mt-1 break-words text-sm text-danger">{dispatch.error}</p>
-                )}
-              </ItemRow>
-            ))}
-          </ItemList>
-        )}
-      </SectionCard>
-
       <ConfirmDialog
-        open={deleteTarget !== null}
-        title={`Delete ${deleteTarget?.kind ?? ''} trigger?`}
+        open={removing !== null}
+        title="Delete this schedule?"
         description={
-          <p>
-            This permanently removes trigger <code className="font-mono">{deleteTarget?.id}</code>,
-            its run history, and every future scheduled occurrence. The Agent itself is not deleted.
+          <p className="m-0">
+            {removing ? describeSchedule(removing).text : 'The schedule'} stops, and its run history
+            goes with it. {agentName} and its conversations stay.
           </p>
         }
-        confirmLabel="Delete trigger and history"
+        confirmLabel="Delete the schedule"
         onConfirm={async () => {
-          if (!deleteTarget) return
-          await api(`/api/triggers/${encodeURIComponent(deleteTarget.id)}`, { method: 'DELETE' })
+          if (!removing) return
+          await api(`/api/triggers/${encodeURIComponent(removing.id)}`, { method: 'DELETE' })
           await onChanged()
         }}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!open) setRemoving(null)
         }}
       />
     </div>
   )
 }
 
-function AddTriggerForm({ agentId, onAdded }: { agentId: string; onAdded: () => void }) {
-  const [kind, setKind] = useState<'interval' | 'cron'>('interval')
-  const [intervalSec, setIntervalSec] = useState(300)
-  const [cronExpr, setCronExpr] = useState('')
-  const [message, setMessage] = useState('')
+function AddSchedule({
+  agentId,
+  agentName,
+  onClose,
+  onAdded,
+}: {
+  agentId: string
+  agentName: string
+  onClose: () => void
+  onAdded: () => Promise<void>
+}) {
+  const [draft, setDraft] = useState<ScheduleDraft>(EMPTY_SCHEDULE)
+  const [tried, setTried] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault()
+  const set = <Key extends keyof ScheduleDraft>(key: Key, value: ScheduleDraft[Key]) => {
+    setDraft((current) => ({ ...current, [key]: value }))
     setError(null)
-    setSubmitting(true)
+  }
+  const built = scheduleRequest(draft)
+  // The schedule in words as soon as it is valid, before the message is written.
+  const timing = scheduleRequest({ ...draft, message: draft.message.trim() || '…' })
+  const preview = timing.request ? describeSchedule(timing.request) : null
+  const problemOf = (field: ScheduleField) =>
+    tried && built.field === field ? built.problem : undefined
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setTried(true)
+    if (!built.request) return
+    setBusy(true)
     try {
-      const request: CreateTriggerRequest =
-        kind === 'interval'
-          ? { kind, intervalSec, message: message.trim() }
-          : { kind, cronExpr: cronExpr.trim(), message: message.trim() }
-      await api(`/api/agents/${encodeURIComponent(agentId)}/triggers`, { body: request })
-      setMessage('')
-      setCronExpr('')
-      setIntervalSec(300)
-      onAdded()
+      await api(`/api/agents/${encodeURIComponent(agentId)}/triggers`, { body: built.request })
+      await onAdded()
     } catch (cause) {
       setError(errorMessage(cause))
-    } finally {
-      setSubmitting(false)
+      setBusy(false)
     }
   }
 
   return (
-    <SectionCard title="Add trigger">
-      <form onSubmit={(event) => void submit(event)}>
-        <div className="mb-3 flex flex-wrap gap-4">
-          <label className="m-0 inline-flex cursor-pointer items-center gap-1">
-            <input
-              type="radio"
-              checked={kind === 'interval'}
-              onChange={() => setKind('interval')}
-            />
-            interval (every N seconds)
-          </label>
-          <label className="m-0 inline-flex cursor-pointer items-center gap-1">
-            <input type="radio" checked={kind === 'cron'} onChange={() => setKind('cron')} />
-            cron (5-field)
-          </label>
-        </div>
-        {kind === 'interval' ? (
-          <label>
-            Interval (seconds)
-            <input
-              type="number"
-              min={1}
-              required
-              value={intervalSec}
-              onChange={(event) => setIntervalSec(Number(event.target.value))}
-            />
-          </label>
-        ) : (
-          <label>
-            Cron expression (minute hour day-of-month month day-of-week)
-            <input
-              type="text"
-              required
-              placeholder="*/15 * * * *"
-              value={cronExpr}
-              onChange={(event) => setCronExpr(event.target.value)}
-            />
-          </label>
-        )}
-        <label>
-          Message
-          <textarea
-            required
-            placeholder="e.g. check your inbox and act on anything new"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            className="min-h-[80px] font-mono text-[0.9em]"
+    <Dialog
+      title="Add a schedule"
+      description={`${agentName} gets the message at these times, as if you had written it.`}
+      busy={busy}
+      onClose={onClose}
+    >
+      <form onSubmit={(event) => void submit(event)} className="grid gap-4">
+        <div className="grid items-start gap-x-3 gap-y-4 sm:grid-cols-2">
+          <SelectField<Repeat>
+            label="Repeat"
+            value={draft.repeat}
+            options={REPEATS}
+            disabled={busy}
+            onChange={(value) => set('repeat', value)}
+            className="max-w-none"
           />
-        </label>
-        <div className="mt-3 flex items-center gap-3">
-          <Button variant="primary" type="submit" disabled={submitting}>
-            {submitting ? 'Adding…' : 'Add trigger'}
-          </Button>
-          {error && (
-            <span role="alert" className="text-[0.85em] text-danger">
-              {error}
-            </span>
+          {draft.repeat === 'minutes' && (
+            <TextField
+              label="Every how many minutes"
+              value={draft.minutes}
+              inputMode="numeric"
+              disabled={busy}
+              problem={problemOf('minutes')}
+              className="max-w-none"
+              onChange={(value) => set('minutes', value.replace(/\D/g, ''))}
+            />
+          )}
+          {(draft.repeat === 'daily' || draft.repeat === 'weekdays') && (
+            <TextField
+              label="At"
+              type="time"
+              value={draft.time}
+              problem={problemOf('time')}
+              disabled={busy}
+              className="max-w-none"
+              onChange={(value) => set('time', value)}
+            />
+          )}
+          {draft.repeat === 'cron' && (
+            <TextField
+              label="Cron expression"
+              value={draft.cron}
+              problem={problemOf('cron')}
+              mono
+              placeholder="*/15 9-17 * * 1-5"
+              disabled={busy}
+              className="max-w-none"
+              hint="Minute, hour, day of the month, month, day of the week."
+              onChange={(value) => set('cron', value)}
+            />
           )}
         </div>
+        {draft.repeat === 'weekly' && (
+          <div className="grid items-start gap-x-3 gap-y-4 sm:grid-cols-2">
+            <SelectField
+              label="On"
+              value={draft.day}
+              options={WEEKDAYS}
+              disabled={busy}
+              onChange={(value) => set('day', value)}
+              className="max-w-none"
+            />
+            <TextField
+              label="At"
+              type="time"
+              value={draft.time}
+              problem={problemOf('time')}
+              disabled={busy}
+              className="max-w-none"
+              onChange={(value) => set('time', value)}
+            />
+          </div>
+        )}
+        <TextAreaField
+          label="Message"
+          value={draft.message}
+          rows={3}
+          disabled={busy}
+          placeholder="Morning check: what is blocked, what ships today?"
+          problem={problemOf('message')}
+          onChange={(value) => set('message', value)}
+        />
+        {preview && (
+          <p className="m-0 text-sm text-muted-foreground">
+            {preview.raw ? (
+              <>
+                {agentName} gets it when <code>{preview.text}</code> matches, on this computer's
+                clock.
+              </>
+            ) : (
+              <>
+                {agentName} gets it: {preview.text.charAt(0).toLowerCase() + preview.text.slice(1)},
+                on this computer's clock.
+              </>
+            )}
+          </p>
+        )}
+        {error && (
+          <Notice role="alert" title="The schedule was not added.">
+            {error}
+          </Notice>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" type="submit" disabled={busy}>
+            {busy ? 'Adding…' : 'Add the schedule'}
+          </Button>
+          <Button variant="ghost" disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
       </form>
-    </SectionCard>
+    </Dialog>
   )
 }

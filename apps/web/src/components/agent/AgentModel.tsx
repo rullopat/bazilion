@@ -1,3 +1,6 @@
+// The model and reasoning level of one Agent, over its template's defaults. A choice is saved as
+// soon as it is made, with an Undo for the one before.
+
 import {
   type ModelsResponse,
   REASONING_LEVELS,
@@ -7,85 +10,106 @@ import {
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
+import { modelName } from '../../lib/model-facts'
 import { useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
 import { MODELS_PATH, ModelMenu } from '../ModelMenu'
+import { SelectField } from '../ui/form'
 
-/** The model and reasoning level of one Agent, over its template's defaults. */
+interface Choice {
+  model: string
+  reasoning: ReasoningLevel
+}
+
 export function AgentModel({ agent }: { agent: ResolvedAgent }) {
   const router = useRouter()
   const models = useResource((signal) => api<ModelsResponse>(MODELS_PATH, { signal }), [])
-  const savedModel = agent.agent.modelOverride ?? ''
-  const [model, setModel] = useState(savedModel)
-  const [reasoning, setReasoning] = useState<ReasoningLevel>(agent.reasoningLevel)
+  const stored: Choice = {
+    model: agent.agent.modelOverride ?? '',
+    reasoning: agent.reasoningLevel,
+  }
+  // What is on screen: the stored choice, or the one being saved.
+  const [shown, setShown] = useState<Choice>(stored)
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  // The choice before the last change, for Undo, and what that change was.
+  const [undo, setUndo] = useState<{ before: Choice; what: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const dirty = model !== savedModel || reasoning !== agent.reasoningLevel
 
-  async function save(event: React.FormEvent) {
-    event.preventDefault()
+  async function save(next: Choice, what: string | null) {
+    const before = shown
+    setShown(next)
     setSaving(true)
     setError(null)
-    setSaved(false)
     try {
       await api(`/api/agents/${encodeURIComponent(agent.agent.id)}`, {
         method: 'PATCH',
-        body: { modelOverride: model || null, reasoningLevel: reasoning },
+        body: { modelOverride: next.model || null, reasoningLevel: next.reasoning },
       })
-      // Wait for the page's data: the form is unchanged once it holds what was saved.
       await router.invalidate({ sync: true })
-      setSaved(true)
+      setUndo(what ? { before, what } : null)
     } catch (cause) {
+      setShown(before)
       setError(errorMessage(cause))
     } finally {
       setSaving(false)
     }
   }
 
+  const modelLabel = (value: string) => {
+    if (value === '') return 'the template’s model'
+    const model = models.data?.chat.find((entry) => entry.value === value)
+    return model ? modelName(model) : value
+  }
+
   return (
-    <form onSubmit={(event) => void save(event)} className="[&_label]:mt-0">
+    <div className="grid gap-3">
       <ModelMenu
+        kit
+        disabled={saving}
         label="Model"
-        value={model}
+        value={shown.model}
         onChange={(value) => {
-          setModel(value)
-          setSaved(false)
+          if (value !== shown.model)
+            void save({ ...shown, model: value }, `Model set to ${modelLabel(value)}`)
         }}
         models={models.data?.chat ?? []}
         inherited={{ label: 'The template’s model', model: agent.profile.defaultModel }}
       />
-      <label>
-        Reasoning
-        <select
-          value={reasoning}
-          onChange={(event) => {
-            setReasoning(event.target.value as ReasoningLevel)
-            setSaved(false)
-          }}
-        >
-          {REASONING_LEVELS.map((level) => (
-            <option key={level} value={level}>
-              {level}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" type="submit" disabled={saving || !dirty}>
-          {saving ? 'Saving…' : 'Save'}
-        </Button>
-        {saved && !dirty && (
-          <span role="status" className="text-sm text-success">
-            Saved. It applies from the next turn.
-          </span>
+      <SelectField<ReasoningLevel>
+        label="Reasoning"
+        value={shown.reasoning}
+        options={REASONING_LEVELS.map((level) => ({ value: level, label: level }))}
+        disabled={saving}
+        className="max-w-none"
+        onChange={(value) => {
+          if (value !== shown.reasoning)
+            void save({ ...shown, reasoning: value }, `Reasoning set to ${value}`)
+        }}
+      />
+      <p
+        role="status"
+        className={`m-0 flex min-h-8 flex-wrap items-center gap-x-2 text-sm ${error ? 'text-warning' : 'text-success'}`}
+      >
+        {error ? (
+          `Not saved: ${error}`
+        ) : saving ? (
+          <span className="text-muted-foreground">Saving…</span>
+        ) : undo ? (
+          <>
+            <span>{undo.what}. It applies from the next turn.</span>
+            <Button variant="ghost" onClick={() => void save(undo.before, null)}>
+              Undo
+            </Button>
+          </>
+        ) : (
+          <span className="text-muted-foreground">Changes apply from the next turn.</span>
         )}
-        {(error ?? models.error) && (
-          <span role="alert" className="text-sm text-danger">
-            {error ?? models.error}
-          </span>
-        )}
-      </div>
-    </form>
+      </p>
+      {models.error && (
+        <p role="alert" className="m-0 text-sm text-warning">
+          The models could not be loaded: {models.error}
+        </p>
+      )}
+    </div>
   )
 }

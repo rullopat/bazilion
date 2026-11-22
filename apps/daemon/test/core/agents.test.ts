@@ -350,7 +350,7 @@ test('resolveAgent assembles profile, skills, team, and model', () => {
   expect(resolved.profile.id).toBe('base')
   expect(resolved.team.id).toBe('rg')
   // New teams seed the starter USER.md instead of starting blank.
-  expect(resolved.team.userMd).toContain('About Your Human')
+  expect(resolved.team.userMd).toBe('')
   expect(resolved.skills).toEqual(['skill-a'])
 })
 

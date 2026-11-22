@@ -1,12 +1,23 @@
 # Attention and notifications
 
-**Attention** lists what needs you: lesson proposals waiting for a decision, failed or cancelled
-reviews, scheduled triggers that failed, Agent message loops that were stopped, and Agent queues
-paused after a daemon restart. It is the **Attention** page of the web UI, which says how much is
-open, filters by state, kind and severity, and links each item to where it is dealt with; and
-`bazilion attention list|summary`. Failures and loop breaks can be acknowledged
-(`bazilion attention acknowledge <key> --yes`, or `acknowledge-all`); proposals and paused queues
-leave the list when you act on them.
+**Attention** lists what needs you. First what an Agent is waiting on right now: a
+[question](questions.md) it asked (`agent_question`) and a command it wants approved
+(`command_approval`), soonest to expire first, each with the time it stops waiting. Then lesson
+proposals waiting for a decision, failed or cancelled reviews, scheduled triggers that failed,
+Agent message loops that were stopped, and Agent queues paused after a daemon restart.
+
+It is the **Attention** page of the web UI, which says how much is open, filters by state, kind
+and severity, links each item to where it is dealt with (**Answer** and **Decide** open the
+Agent's conversation) and keeps itself current; and `bazilion attention list|summary`. The top
+bar's **Attention** shows how many items are open and stays current on every page, and the
+browser tab counts the ones waiting for you. Failures and loop breaks can be acknowledged
+(`bazilion attention acknowledge <key> --yes`, or `acknowledge-all`); questions, commands,
+proposals and paused queues leave the list when you act on them, and a question or a command also
+leaves it when it stops waiting.
+
+Questions and commands live in the daemon's memory while their turn waits, so a daemon restart
+ends them; they are never acknowledged and never sent as Attention notifications (a question asked
+from Telegram is answered there).
 
 ## Telegram notifications
 

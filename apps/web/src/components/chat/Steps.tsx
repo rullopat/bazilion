@@ -77,7 +77,22 @@ export function StepsBlock({ items, dimmed = false }: { items: ToolItem[]; dimme
   )
 }
 
+/**
+ * Whether a running step is the Agent waiting on the operator: its question, or the command it
+ * needs approved. Those read "waiting for you", in the colour of everything that waits on you.
+ */
+function useWaitsOnYou(): (step: Step) => boolean {
+  const workspace = useWorkspaceOptional()
+  const activity = useActivityOptional()
+  const agentId = workspace?.agent?.agent.id
+  const blocked = agentId !== undefined && activity?.stateOf(agentId).kind === 'needs'
+  return (step) =>
+    blocked && step.status === 'running' && (step.name === 'ask_user' || step.name === 'bash')
+}
+
 function StepList({ steps }: { steps: Step[] }) {
+  const waitsOnYou = useWaitsOnYou()
+  const waiting = steps.some(waitsOnYou)
   const live = steps.some((step) => step.status === 'running')
   const failed = steps.some((step) => step.status === 'failed')
   const [open, setOpen] = useState<boolean | null>(null)
@@ -85,7 +100,7 @@ function StepList({ steps }: { steps: Step[] }) {
   const shown = open ?? (live || failed || steps.length <= OPEN_UP_TO)
   const described = steps.map((step) => describeStep(step.name, parseArgs(step.args)))
   return (
-    <div className="my-3 overflow-hidden rounded-[10px] border border-border bg-muted text-[0.86rem]">
+    <div className="my-3 overflow-hidden rounded-[10px] border border-border bg-muted text-sm">
       <button
         type="button"
         aria-expanded={shown}
@@ -98,7 +113,7 @@ function StepList({ steps }: { steps: Step[] }) {
         </span>
         <span className="min-w-0 flex-1 truncate">
           {summarizeSteps(described.map((entry) => entry.kind))}
-          {live ? ' · running' : ''}
+          {waiting ? ' · waiting for you' : live ? ' · running' : ''}
         </span>
         <span className="shrink-0 text-xs font-semibold text-accent-foreground">
           {shown ? 'Hide' : 'Show'}
@@ -108,7 +123,7 @@ function StepList({ steps }: { steps: Step[] }) {
         <ul className="m-0 list-none p-0">
           {steps.map((step, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: steps only append within a turn.
-            <StepRow key={index} step={step} />
+            <StepRow key={index} step={step} waiting={waitsOnYou(step)} />
           ))}
         </ul>
       )}
@@ -116,7 +131,7 @@ function StepList({ steps }: { steps: Step[] }) {
   )
 }
 
-function StepRow({ step }: { step: Step }) {
+function StepRow({ step, waiting }: { step: Step; waiting: boolean }) {
   const [open, setOpen] = useState(false)
   const args = parseArgs(step.args)
   const described = describeStep(step.name, args)
@@ -151,12 +166,21 @@ function StepRow({ step }: { step: Step }) {
             −{change.removed}
           </span>
         )}
-        {running && (
-          <span className="flex shrink-0 items-center gap-1.5 text-xs text-success">
-            <span className="size-[7px] animate-pulse rounded-full bg-success" aria-hidden="true" />
-            running
-          </span>
-        )}
+        {running &&
+          (waiting ? (
+            <span className="flex shrink-0 items-center gap-1.5 text-xs text-warning">
+              <span className="size-[7px] rounded-full bg-warning" aria-hidden="true" />
+              waiting for you
+            </span>
+          ) : (
+            <span className="flex shrink-0 items-center gap-1.5 text-xs text-success">
+              <span
+                className="size-[7px] animate-pulse rounded-full bg-success"
+                aria-hidden="true"
+              />
+              running
+            </span>
+          ))}
         {step.status === 'failed' && (
           <span className="shrink-0 text-xs font-semibold text-danger">failed</span>
         )}
@@ -268,7 +292,7 @@ function Handoffs({ steps }: { steps: Step[] }) {
   const workspace = useWorkspaceOptional()
   const activity = useActivityOptional()
   return (
-    <div className="my-3 overflow-hidden rounded-[10px] border border-border bg-muted text-[0.86rem]">
+    <div className="my-3 overflow-hidden rounded-[10px] border border-border bg-muted text-sm">
       <div className="flex min-h-9 items-center gap-2 px-3 py-1.5 text-mocha">
         <ArrowLeftRight className="size-[15px] shrink-0" aria-hidden="true" />
         <span className="font-semibold text-foreground">
@@ -351,7 +375,7 @@ function WrittenFiles({ paths }: { paths: string[] }) {
     </>
   )
   const frame =
-    'my-3 flex min-h-11 w-full items-center gap-2.5 rounded-[10px] border border-border bg-card px-3 py-2 text-[0.86rem]'
+    'my-3 flex min-h-11 w-full items-center gap-2.5 rounded-[10px] border border-border bg-card px-3 py-2 text-sm'
   if (!workspace?.team) return <div className={frame}>{body}</div>
   return (
     <Link

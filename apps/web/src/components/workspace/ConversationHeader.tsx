@@ -13,9 +13,10 @@ import {
   Plus,
 } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { shortTime, useActivity } from '../../lib/activity'
 import { api, errorMessage } from '../../lib/api'
+import { NEW_CONVERSATION_EVENT } from '../../lib/shortcuts'
 import { useHydrated, useResource } from '../../lib/use-resource'
 import { cn } from '../../lib/utils'
 import type { PanelTab } from '../../lib/workspace'
@@ -52,7 +53,8 @@ export function ConversationHeader({
 }) {
   const { to } = useWorkspace()
   return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-frost px-3 py-2.5 sm:px-4">
+    // One line from a tablet up: the conversation's title gives way before anything wraps.
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-frost px-3 py-2.5 sm:flex-nowrap sm:px-4">
       <Link
         to="/"
         search={{}}
@@ -62,7 +64,7 @@ export function ConversationHeader({
         <ArrowLeft className="size-4" aria-hidden="true" />
       </Link>
       <AgentAvatar identity={agent.agent.identity} size={32} />
-      <h1 className="m-0 min-w-0 truncate font-display text-[1.2rem] leading-tight text-charcoal">
+      <h1 className="m-0 min-w-0 truncate font-display text-xl leading-tight text-charcoal">
         {agent.agent.name}
       </h1>
       <Link to="/" search={to({ panel: 'team', section: undefined })} className={CHIP}>
@@ -77,7 +79,7 @@ export function ConversationHeader({
         {shortModel(agent.model)}
         <ChevronDown className="size-[11px]" aria-hidden="true" />
       </Link>
-      <div className="ml-auto flex min-w-0 items-center gap-1.5">
+      <div className="ml-auto flex min-w-16 shrink items-center justify-end gap-1.5">
         <ConversationMenu agentId={agent.agent.id} chat={chat} />
         <Link
           to="/"
@@ -139,6 +141,24 @@ function ConversationMenu({ agentId, chat }: { agentId: string; chat?: ChatContr
       setOpen(true)
     }
   }
+  // The palette's "New conversation" does what the menu's own item does, with the latest state,
+  // and not while a turn runs (the item is disabled then).
+  const ask = useRef<() => void>(() => {})
+  ask.current = () => {
+    if (chat?.agentBusy) {
+      setError('Wait for the turn to end, or stop it, before starting a new conversation.')
+      setOpen(true)
+      return
+    }
+    void startNew()
+  }
+  useEffect(() => {
+    const onAsk = (event: Event) => {
+      if ((event as CustomEvent<{ agentId: string }>).detail?.agentId === agentId) ask.current()
+    }
+    window.addEventListener(NEW_CONVERSATION_EVENT, onAsk)
+    return () => window.removeEventListener(NEW_CONVERSATION_EVENT, onAsk)
+  }, [agentId])
 
   return (
     <>
@@ -153,7 +173,7 @@ function ConversationMenu({ agentId, chat }: { agentId: string; chat?: ChatContr
           <button
             type="button"
             aria-label="Conversations"
-            className="unstyled inline-flex h-8 min-w-0 max-w-[15rem] items-center gap-1.5 rounded-[10px] border border-border bg-card px-2.5 text-[0.82rem] font-semibold text-foreground hover:border-sapphire-light"
+            className="unstyled inline-flex h-8 min-w-0 max-w-[15rem] items-center gap-1.5 rounded-[10px] border border-border bg-card px-2.5 text-sm font-semibold text-foreground hover:border-sapphire-light"
           >
             <MessageSquare className="size-[15px] shrink-0 text-mocha" aria-hidden="true" />
             <span className="min-w-0 truncate">{shown?.title ?? 'Conversations'}</span>
@@ -167,7 +187,7 @@ function ConversationMenu({ agentId, chat }: { agentId: string; chat?: ChatContr
             collisionPadding={12}
             className="z-50 max-h-[70vh] w-[min(22rem,calc(100vw-1.5rem))] overflow-y-auto rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-baziu-lg outline-none"
           >
-            <DropdownMenu.Label className="px-2.5 pb-1 pt-1.5 text-[0.7rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+            <DropdownMenu.Label className="px-2.5 pb-1 pt-1.5 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
               Conversations
             </DropdownMenu.Label>
             {list.error && (

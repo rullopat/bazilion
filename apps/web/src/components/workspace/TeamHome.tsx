@@ -23,7 +23,7 @@ const VIEWS = [
 ] as const
 
 const HEADING =
-  'm-0 mb-2 mt-7 font-body text-[0.72rem] font-bold uppercase tracking-[0.08em] text-muted-foreground'
+  'm-0 mb-2 mt-7 font-body text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground'
 
 export function TeamHome({ team }: { team: Team }) {
   const { agents, profiles, teams, search } = useWorkspace()
@@ -82,7 +82,7 @@ export function TeamHome({ team }: { team: Team }) {
                     >
                       <AgentAvatar identity={member.identity} size={40} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[0.95rem] font-semibold">
+                        <span className="block truncate text-base font-semibold">
                           {member.name}
                         </span>
                         <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-mocha">

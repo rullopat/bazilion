@@ -6,7 +6,6 @@
 import type { Team, TeamPolicyMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
-import { DEFAULT_USER_MD } from '../profile/templates.ts'
 
 interface RawTeam {
   id: string
@@ -35,10 +34,10 @@ export function insert(
   paths: Paths,
 ): Team {
   const now = Date.now()
-  // A fresh team seeds the starter USER.md by default. Callers that pass
-  // their own non-empty content (e.g. profile-team spawn) win; an absent or
-  // empty userMd falls back to DEFAULT_USER_MD so no team is born blank.
-  const userMd = g.userMd && g.userMd.length > 0 ? g.userMd : DEFAULT_USER_MD
+  // A fresh team's USER.md is empty: the operator writes it, or its Agents fill it in as they
+  // learn about the operator (the system prompt tells them how when it is empty). Callers that
+  // pass content, such as a Team template's spawn, keep it.
+  const userMd = g.userMd ?? ''
   const policyMode = g.policyMode ?? 'open'
   db.raw.run(
     'INSERT INTO teams (id, name, user_md, policy_mode, created_at) VALUES (?, ?, ?, ?, ?)',

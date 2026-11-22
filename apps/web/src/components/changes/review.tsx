@@ -180,7 +180,7 @@ const STATUS_TONE: Record<ReviewChange['status'], string> = {
 export function StatusMark({ status }: { status: ReviewChange['status'] }) {
   return (
     <span
-      className={`inline-flex size-[18px] shrink-0 items-center justify-center rounded font-mono text-[0.7rem] font-semibold ${STATUS_TONE[status]}`}
+      className={`inline-flex size-[18px] shrink-0 items-center justify-center rounded font-mono text-xs font-semibold ${STATUS_TONE[status]}`}
       aria-hidden="true"
     >
       {STATUS_LETTER[status]}

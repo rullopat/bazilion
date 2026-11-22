@@ -1,6 +1,6 @@
 // Telegram notices for new Attention items: on or off, which kinds, and quiet hours.
 
-import type { AttentionKind, NotificationSettingsResponse } from '@bazilion/api-types'
+import type { AttentionRecordedKind, NotificationSettingsResponse } from '@bazilion/api-types'
 import { BellRing } from 'lucide-react'
 import { useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
@@ -14,7 +14,7 @@ import {
 import { CheckboxRow, Problem, SaveBar, SwitchRow, saveStatus, TextField } from '../ui/form'
 import { CardBody, CardForm, Chip, Notice, SetupCard, Waiting } from '../ui/parts'
 
-const KINDS: Record<AttentionKind, string> = {
+const KINDS: Record<AttentionRecordedKind, string> = {
   lesson_proposal: 'Lesson proposals',
   review_failure: 'Review failures',
   trigger_failure: 'Scheduled trigger failures',
@@ -136,7 +136,7 @@ function NotificationsForm({
       <fieldset className="m-0 min-w-0 border-0 p-0" disabled={busy}>
         <legend className="mb-2 p-0 text-sm font-semibold text-foreground">Kinds</legend>
         <div className="grid gap-x-6 gap-y-2.5 sm:grid-cols-2">
-          {(Object.keys(KINDS) as AttentionKind[]).map((kind) => (
+          {(Object.keys(KINDS) as AttentionRecordedKind[]).map((kind) => (
             <CheckboxRow
               key={kind}
               label={KINDS[kind]}

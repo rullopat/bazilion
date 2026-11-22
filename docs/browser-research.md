@@ -85,7 +85,7 @@ What changes in this mode:
   or change settings only when you asked for exactly that. Use this mode with Agents and tasks you
   trust.
 - All Agents share one connection. Chrome shows its "controlled by automated test software" banner
-  while it is open. When the last Agent's session ends (idle timeout, **Stop session**, daemon
+  while it is open. When the last Agent's session ends (idle timeout, **Stop it**, daemon
   stop), its tabs close, the connection is dropped and your browser keeps running. The next browser
   action asks Chrome again.
 - There is no proxy between your browser and the network. Bazilion checks each request of an
@@ -124,8 +124,8 @@ starts, or when its profile is reset or the Agent is deleted.
 ## Status, stop and reset
 
 On the web, **Browser** in the Agent's side panel shows whether the browser runs, whether a
-profile exists, which browser and mode are used and the last launch error, with **Stop session** and
-**Reset profile** buttons. From the CLI:
+profile exists, which browser and mode are used and the last launch error, with **Stop it** and
+**Forget its sign-ins** buttons. From the CLI:
 
 ```sh
 bazilion agent browser status <agent>   # JSON; never starts the browser

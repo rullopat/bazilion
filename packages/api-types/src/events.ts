@@ -79,6 +79,8 @@ export interface CommandApproval {
   command: string
   risks: CommandRisk[]
   status: CommandApprovalStatus
+  /** When the Agent asked, epoch milliseconds. */
+  createdAt: number
   /** Epoch milliseconds. */
   expiresAt: number
 }

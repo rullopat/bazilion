@@ -24,6 +24,7 @@ export function ModelMenu({
   models,
   inherited,
   required,
+  disabled = false,
   kit = false,
 }: {
   label: string
@@ -34,6 +35,8 @@ export function ModelMenu({
   /** Offers "take it from there" as the first choice, naming the model that is now. */
   inherited?: { label: string; model?: string }
   required?: boolean
+  /** While a choice is being saved, say. */
+  disabled?: boolean
   /** Labelled like the fields of components/ui/form.tsx, with no margin of its own. */
   kit?: boolean
 }) {
@@ -64,7 +67,7 @@ export function ModelMenu({
         value={value === '' ? (inherited ? INHERITED : '') : value}
         onValueChange={(next) => onChange(next === INHERITED ? '' : next)}
         required={required}
-        disabled={empty}
+        disabled={empty || disabled}
       >
         <Select.Trigger
           aria-labelledby={`${id}-label ${id}-value`}
@@ -120,7 +123,7 @@ export function ModelMenu({
               )}
               {groups.map((group) => (
                 <Select.Group key={group.provider}>
-                  <Select.Label className="flex items-baseline gap-2 px-3 pb-1 pt-2.5 text-[0.68rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                  <Select.Label className="flex items-baseline gap-2 px-3 pb-1 pt-2.5 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
                     {group.name}
                     {group.trouble && (
                       <span className="font-semibold normal-case tracking-normal text-warning">

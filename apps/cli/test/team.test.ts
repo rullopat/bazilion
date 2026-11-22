@@ -58,8 +58,8 @@ test('team add --link fails when target does not exist', async () => {
 test('team user-md set + show + clear round-trip', async () => {
   let r = await server.cli(['team', 'user-md', 'show', 'default'])
   expect(r.exitCode).toBe(0)
-  // The default team ships with the starter USER.md seeded.
-  expect(r.stdout).toContain('About Your Human')
+  // A Team's USER.md starts empty: the operator or its Agents write it.
+  expect(r.stdout.trim()).toBe('')
 
   r = await server.cli(['team', 'user-md', 'set', 'default', '--text', 'call me Pat'])
   expect(r.exitCode).toBe(0)

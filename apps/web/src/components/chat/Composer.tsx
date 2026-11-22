@@ -152,6 +152,8 @@ export function Composer({
         </button>
         <textarea
           ref={inputRef}
+          // The / shortcut brings the keyboard here.
+          data-composer="true"
           rows={1}
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -194,7 +196,7 @@ export function Composer({
             </Button>
           )}
         </div>
-        <p className="col-span-full m-0 hidden text-[0.72rem] text-mocha-light sm:block">
+        <p className="col-span-full m-0 hidden text-xs text-mocha-light sm:block">
           Enter sends · Shift+Enter adds a line · /help lists commands
         </p>
       </form>

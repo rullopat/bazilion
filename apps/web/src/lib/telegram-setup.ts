@@ -2,7 +2,7 @@
 // daemon reports. Nothing here asks Telegram anything.
 
 import type {
-  AttentionKind,
+  AttentionRecordedKind,
   NotificationSettings,
   NotificationSettingsResponse,
   TelegramAllowedUser,
@@ -238,7 +238,7 @@ export function hasToken(stored: TelegramConfigState): boolean {
 
 export interface NotificationsDraft {
   enabled: boolean
-  kinds: AttentionKind[]
+  kinds: AttentionRecordedKind[]
   /** Quiet hours are kept. */
   quiet: boolean
   start: string

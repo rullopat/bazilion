@@ -312,6 +312,8 @@ export function matchesSkill(skill: SkillInfo, query: string): boolean {
 // Attention
 
 export const ATTENTION_KINDS: Record<AttentionItem['kind'], string> = {
+  agent_question: 'Questions',
+  command_approval: 'Commands to approve',
   lesson_proposal: 'Lesson proposals',
   review_failure: 'Review failures',
   trigger_failure: 'Schedule failures',
@@ -322,7 +324,7 @@ export const ATTENTION_KINDS: Record<AttentionItem['kind'], string> = {
 export function severityLabel(severity: AttentionItem['severity']): Label {
   switch (severity) {
     case 'action_required':
-      return { label: 'Needs you', tone: 'warning' }
+      return { label: 'Waiting for you', tone: 'warning' }
     case 'error':
       return { label: 'Error', tone: 'warning' }
     case 'warning':
@@ -345,15 +347,23 @@ export function attentionSummary(summary: AttentionSummary): {
     }
   }
   const decisions = bySeverity.action_required
+  const questions = summary.byKind.agent_question ?? 0
+  const commands = summary.byKind.command_approval ?? 0
+  const others = decisions - questions - commands
   const problems = bySeverity.error + bySeverity.warning
   const parts = [
-    decisions > 0 ? `${count(decisions, 'decision')} waiting for you` : null,
+    questions > 0 ? `${count(questions, 'question')} waiting for your answer` : null,
+    commands > 0 ? `${count(commands, 'command')} waiting for your approval` : null,
+    others > 0 ? `${count(others, 'decision')} waiting for you` : null,
     problems > 0 ? `${count(problems, 'error or warning', 'errors or warnings')} to look at` : null,
   ].filter(Boolean)
   return {
     tone: decisions > 0 ? 'warning' : 'neutral',
     lead: `${count(openTotal, 'open item')}.`,
-    rest: `${parts.join(', and ')}.`.replace(/^./, (first) => first.toUpperCase()),
+    rest: `${new Intl.ListFormat('en', { type: 'conjunction' }).format(parts as string[])}.`.replace(
+      /^./,
+      (first) => first.toUpperCase(),
+    ),
   }
 }
 

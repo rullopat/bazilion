@@ -24,7 +24,10 @@ export interface ResultPages {
 /** The daemon lists at most this many at once. */
 const PAGE = 100
 
-/** A Team's saved files, newest first; loaded again whenever a turn ends. */
+/**
+ * A Team's saved files, newest first; loaded again whenever a turn ends. An empty `teamId` lists
+ * every Team's.
+ */
 export function useResults(teamId: string, filter: ResultFilter, pageSize = 24): ResultPages {
   const { turnsEnded } = useActivity()
   const [wanted, setWanted] = useState(pageSize)
@@ -40,10 +43,10 @@ export function useResults(teamId: string, filter: ResultFilter, pageSize = 24):
       // Pages are fetched again from the top so a file saved meanwhile cannot shift the list.
       for (let offset = 0; offset < wanted; offset += PAGE) {
         const query = new URLSearchParams({
-          teamId,
           limit: String(Math.min(PAGE, wanted - offset)),
           offset: String(offset),
         })
+        if (teamId) query.set('teamId', teamId)
         if (filter.agentId) query.set('agentId', filter.agentId)
         if (filter.sessionId) query.set('sessionId', filter.sessionId)
         const page = await api<ResultListResponse>(`/api/results?${query}`, { signal })

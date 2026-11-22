@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { AttentionSummary } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 let home: string
@@ -167,4 +168,89 @@ test('acknowledge-all and summary use the same open projection', async () => {
   })
   const open = await app.request('/api/attention?state=open', { headers: auth })
   expect(await open.json()).toMatchObject({ items: [{ key: 'lesson_proposal:lesson' }] })
+})
+
+test('a question or a command an Agent waits on comes first, and is answered, not acknowledged', async () => {
+  const { app, auth } = await fixture()
+  const { questionRegistry } = await import('../../src/lib/questions.ts')
+  const { commandApprovalRegistry } = await import('../../src/lib/bash-approval.ts')
+  const turn = new AbortController()
+  const { question } = questionRegistry.ask(
+    { agentId: 'agent', conversationId: 'conversation' },
+    {
+      prompt: 'Which headline should the announcement use?',
+      choices: [{ label: 'A' }, { label: 'B' }],
+    },
+    turn.signal,
+  )
+  commandApprovalRegistry.begin(
+    {
+      id: 'approval',
+      turnId: 'turn',
+      toolCallId: 'call',
+      agentId: 'agent',
+      teamId: 'team',
+      command: 'rm -rf build\necho done',
+      risks: [
+        {
+          code: 'broad-destructive-operation',
+          message: 'Recursively changes or deletes a broad filesystem target.',
+          span: { start: 0, end: 12 },
+        },
+      ],
+      mode: 'interactive',
+    },
+    turn.signal,
+  )
+  try {
+    const list = (await (await app.request('/api/attention', { headers: auth })).json()) as {
+      items: { kind: string }[]
+    }
+    const [first, second] = list.items
+    // The command is refused after two minutes, the question after five: soonest first.
+    expect(second).toMatchObject({
+      key: `agent_question:${question.id}`,
+      kind: 'agent_question',
+      severity: 'action_required',
+      agentName: 'Agent',
+      teamName: 'Team',
+      title: 'Agent is waiting for your answer',
+      diagnostic: 'Which headline should the announcement use?',
+      href: '/?agent=agent',
+      acknowledgeable: false,
+      acknowledgedAt: null,
+      expiresAt: question.expiresAt,
+    })
+    expect(first).toMatchObject({
+      key: 'command_approval:approval',
+      kind: 'command_approval',
+      title: 'Agent wants to run a command that needs your approval',
+      diagnostic: 'rm -rf build: Recursively changes or deletes a broad filesystem target.',
+    })
+    expect(list.items.slice(2).map((item) => item.kind)).not.toContain('agent_question')
+
+    const summary = (await (
+      await app.request('/api/attention/summary', { headers: auth })
+    ).json()) as AttentionSummary
+    expect(summary.byKind).toMatchObject({ agent_question: 1, command_approval: 1 })
+    expect(summary.bySeverity.action_required).toBe(3)
+
+    const only = await app.request('/api/attention?kind=agent_question', { headers: auth })
+    expect(((await only.json()) as { items: unknown[] }).items).toHaveLength(1)
+    const history = await app.request('/api/attention?state=acknowledged', { headers: auth })
+    expect(((await history.json()) as { items: unknown[] }).items).toEqual([])
+
+    const key = encodeURIComponent(`agent_question:${question.id}`)
+    const refused = await app.request(`/api/attention/${key}/acknowledge`, {
+      method: 'POST',
+      headers: auth,
+    })
+    expect(refused.status).toBe(409)
+  } finally {
+    turn.abort()
+  }
+  const after = (await (
+    await app.request('/api/attention/summary', { headers: auth })
+  ).json()) as AttentionSummary
+  expect(after.byKind).toMatchObject({ agent_question: 0, command_approval: 0 })
 })

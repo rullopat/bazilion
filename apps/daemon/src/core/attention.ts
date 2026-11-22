@@ -3,6 +3,7 @@ import type {
   AttentionItem,
   AttentionKind,
   AttentionListResponse,
+  AttentionRecordedKind,
   AttentionState,
   AttentionSummary,
 } from '@bazilion/api-types'
@@ -10,16 +11,31 @@ import type { BazilionDb } from './db/client.ts'
 import { DomainError } from './errors.ts'
 import { INTERRUPTED_BY_RESTART } from './repos/user-queue.ts'
 
-export const ATTENTION_KINDS = [
+/** Kinds kept in the database until they are dealt with; Telegram can notify about these. */
+export const RECORDED_ATTENTION_KINDS = [
   'lesson_proposal',
   'review_failure',
   'trigger_failure',
   'agent_loop_break',
   'queue_interrupted',
+] as const satisfies readonly AttentionRecordedKind[]
+
+/** An Agent waiting on the operator: held in memory while its turn waits (lib/attention-waiting). */
+export const WAITING_ATTENTION_KINDS = [
+  'agent_question',
+  'command_approval',
 ] as const satisfies readonly AttentionKind[]
 
+export const ATTENTION_KINDS = [
+  ...WAITING_ATTENTION_KINDS,
+  ...RECORDED_ATTENTION_KINDS,
+] as const satisfies readonly AttentionKind[]
+
+const isWaitingKind = (kind: AttentionKind): boolean =>
+  (WAITING_ATTENTION_KINDS as readonly AttentionKind[]).includes(kind)
+
 type RawItem = Omit<AttentionItem, 'key' | 'acknowledgedAt'> & { acknowledged_at: number | null }
-type Source = { kind: AttentionKind; query: (db: BazilionDb) => RawItem[] }
+type Source = { kind: AttentionRecordedKind; query: (db: BazilionDb) => RawItem[] }
 interface BaseSourceRow {
   sourceId: string
   occurredAt: number
@@ -46,7 +62,7 @@ interface QueueInterruptedSourceRow extends BaseSourceRow {
   waiting_count: number
 }
 
-const bounded = (value: string | null, fallback: string): string =>
+export const bounded = (value: string | null, fallback: string): string =>
   (value?.trim() || fallback)
     .replace(/(authorization:\s*bearer\s+)[^\s,;]+/gi, '$1[redacted]')
     .replace(/\bsk-[a-z0-9_-]{8,}\b/gi, '[redacted]')
@@ -207,12 +223,17 @@ function parseAttentionKey(key: string): { kind: AttentionKind; sourceId: string
   return at > 0 && ATTENTION_KINDS.includes(kind) && sourceId ? { kind, sourceId } : null
 }
 
+/**
+ * Everything open or acknowledged, newest first; `waiting` (questions and command approvals, which
+ * only the daemon process knows) comes before the rest, the one that expires soonest first.
+ */
 export function projectAttention(
   db: BazilionDb,
   options: { state?: AttentionState; kind?: AttentionKind; limit?: number } = {},
+  waiting: readonly AttentionItem[] = [],
 ): AttentionListResponse {
   const degraded: AttentionDegradedSource[] = []
-  const items = sources.flatMap((source) => {
+  const recorded = sources.flatMap((source) => {
     if (options.kind && source.kind !== options.kind) return []
     try {
       return source.query(db).map(normalize)
@@ -225,21 +246,32 @@ export function projectAttention(
     }
   })
   const state = options.state ?? 'open'
+  // A waiting item is never acknowledged: it is answered, or it stops waiting.
+  const now = (state === 'acknowledged' ? [] : waiting)
+    .filter((item) => !options.kind || item.kind === options.kind)
+    .toSorted(
+      (a, b) =>
+        (a.expiresAt ?? Number.POSITIVE_INFINITY) - (b.expiresAt ?? Number.POSITIVE_INFINITY) ||
+        a.key.localeCompare(b.key),
+    )
+  const rest = recorded
+    .filter(
+      (item) =>
+        state === 'all' ||
+        (state === 'acknowledged' ? item.acknowledgedAt !== null : item.acknowledgedAt === null),
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt || a.key.localeCompare(b.key))
   return {
-    items: items
-      .filter(
-        (item) =>
-          state === 'all' ||
-          (state === 'acknowledged' ? item.acknowledgedAt !== null : item.acknowledgedAt === null),
-      )
-      .sort((a, b) => b.updatedAt - a.updatedAt || a.key.localeCompare(b.key))
-      .slice(0, Math.max(options.limit ?? 100, 1)),
+    items: [...now, ...rest].slice(0, Math.max(options.limit ?? 100, 1)),
     degraded,
   }
 }
 
-export function attentionSummary(db: BazilionDb): AttentionSummary {
-  const projected = projectAttention(db, { state: 'open', limit: 100_000 })
+export function attentionSummary(
+  db: BazilionDb,
+  waiting: readonly AttentionItem[] = [],
+): AttentionSummary {
+  const projected = projectAttention(db, { state: 'open', limit: 100_000 }, waiting)
   const bySeverity = { action_required: 0, error: 0, warning: 0 }
   const byKind = Object.fromEntries(ATTENTION_KINDS.map((kind) => [kind, 0])) as Record<
     AttentionKind,
@@ -259,6 +291,8 @@ export function acknowledgeAttention(
 ): AttentionItem {
   const parsed = parseAttentionKey(key)
   if (!parsed) throw new DomainError(400, 'invalid attention key')
+  if (isWaitingKind(parsed.kind))
+    throw new DomainError(409, 'action-required items must be resolved at their source')
   const current = projectAttention(db, {
     state: 'all',
     kind: parsed.kind,

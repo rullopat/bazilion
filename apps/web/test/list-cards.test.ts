@@ -77,7 +77,7 @@ test('the add form starts on stdio and cannot be sent empty', () => {
   }
   expect(html).not.toContain('>URL</label>')
   expect(html).toMatch(/<button type="submit"[^>]*disabled=""[^>]*>Add server<\/button>/)
-  expect(html).toMatch(/<select[^>]*>.*<option value="stdio" selected="">stdio<\/option>/)
+  expect(html).toMatch(/role="combobox"[^>]*>.*>stdio<\/span>/)
 })
 
 const now = Date.UTC(2026, 10, 22, 12, 0)

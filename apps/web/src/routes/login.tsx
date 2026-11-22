@@ -3,6 +3,7 @@ import { KeyRound, MessageSquareText, UsersRound } from 'lucide-react'
 import { BaziuLogo } from '../components/BaziuLogo'
 import { PawIcon } from '../components/PawIcon'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { usePageTitle } from '../lib/page-title'
 
 export const Route = createFileRoute('/login')({
   // Failed form submissions return to this branded page with a specific,
@@ -15,6 +16,7 @@ export const Route = createFileRoute('/login')({
 
 function LoginPage() {
   const { error } = Route.useSearch()
+  usePageTitle('Log in')
   return (
     <main className="relative flex min-h-dvh items-center overflow-hidden bg-cream px-5 py-16 sm:px-8">
       <div

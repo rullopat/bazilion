@@ -46,7 +46,7 @@ const MENU_ITEM =
 const MENU_LABEL =
   'flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground'
 
-const STATE_TEXT: Record<AgentState['kind'], string> = {
+export const STATE_TEXT: Record<AgentState['kind'], string> = {
   needs: 'text-warning',
   working: 'text-success',
   paused: 'text-warning',
@@ -428,7 +428,7 @@ function AgentRow({
             {hydrated && lastActivityAt !== null && (
               <time
                 dateTime={new Date(lastActivityAt).toISOString()}
-                className="ml-auto shrink-0 text-[0.7rem] font-normal text-muted-foreground"
+                className="ml-auto shrink-0 text-xs font-normal text-muted-foreground"
               >
                 {shortTime(lastActivityAt)}
               </time>
@@ -509,7 +509,7 @@ export function SlimRail() {
         <div key={team.id} className="flex w-full flex-col items-center gap-2">
           <div className="h-px w-8 bg-border" />
           <span
-            className={`max-w-14 truncate text-[0.65rem] font-bold uppercase tracking-[0.06em] ${
+            className={`max-w-14 truncate text-xs font-bold uppercase tracking-[0.06em] ${
               team.id === inView?.id ? 'text-accent-foreground' : 'text-muted-foreground'
             }`}
             title={team.name}

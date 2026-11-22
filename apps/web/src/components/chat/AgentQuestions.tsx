@@ -91,11 +91,11 @@ function QuestionCard({ item, agentName }: { item: AgentQuestion; agentName: str
 
   return (
     <article className="min-w-0 rounded-2xl border border-warning/35 bg-warning/[0.07] px-4 py-3.5">
-      <p className="m-0 flex items-center gap-2 text-[0.72rem] font-bold uppercase tracking-[0.08em] text-warning">
+      <p className="m-0 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-warning">
         <span className="size-[7px] shrink-0 rounded-full bg-warning" aria-hidden="true" />
         {agentName} is waiting for you
       </p>
-      <p className="m-0 mt-1.5 break-words text-[0.95rem] font-semibold text-charcoal">
+      <p className="m-0 mt-1.5 break-words text-base font-semibold text-charcoal">
         {item.question.prompt}
       </p>
       <fieldset disabled={busy} className="m-0 mt-3 min-w-0 border-0 p-0">
@@ -121,13 +121,13 @@ function QuestionCard({ item, agentName }: { item: AgentQuestion; agentName: str
                     {option.label}
                   </span>
                   {suggested && (
-                    <span className="rounded-full bg-accent px-1.5 text-[0.7rem] font-semibold">
+                    <span className="rounded-full bg-accent px-1.5 text-xs font-semibold">
                       Suggested
                     </span>
                   )}
                 </span>
                 {option.description && (
-                  <span className="mt-0.5 block break-words text-[0.8rem] text-mocha">
+                  <span className="mt-0.5 block break-words text-sm text-mocha">
                     {option.description}
                   </span>
                 )}

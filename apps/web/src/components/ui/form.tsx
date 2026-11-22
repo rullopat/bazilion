@@ -2,6 +2,8 @@
 // saved, a switch with its explanation, and the Save button with the line that says where things
 // stand. The cards themselves are in parts.tsx.
 
+import { Check, ChevronDown } from 'lucide-react'
+import { Select } from 'radix-ui'
 import { type ReactNode, useId, useState } from 'react'
 import type { Tone } from '../../lib/model-facts'
 import { cn } from '../../lib/utils'
@@ -80,6 +82,55 @@ export function TextField({
       />
       {hint && <span className={HINT}>{hint}</span>}
       {notes}
+      {problem && <Problem>{problem}</Problem>}
+    </div>
+  )
+}
+
+/** Several lines of text: a message, a note. */
+export function TextAreaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  problem,
+  rows = 4,
+  mono = false,
+  disabled,
+  required,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  hint?: ReactNode
+  problem?: string
+  rows?: number
+  /** For Markdown and code, which are read as written. */
+  mono?: boolean
+  disabled?: boolean
+  required?: boolean
+}) {
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className={LABEL}>
+        {label}
+      </label>
+      <textarea
+        id={id}
+        value={value}
+        rows={rows}
+        disabled={disabled}
+        required={required}
+        spellCheck={!mono}
+        placeholder={placeholder ?? ''}
+        aria-invalid={problem ? true : undefined}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn('mt-1.5 w-full', mono && 'font-mono text-[0.9em]')}
+      />
+      {hint && <span className={HINT}>{hint}</span>}
       {problem && <Problem>{problem}</Problem>}
     </div>
   )
@@ -176,6 +227,118 @@ export function ChoiceCards<Value extends string>({
   )
 }
 
+export interface SelectOption<Value extends string> {
+  value: Value
+  label: string
+  /** A word or two beside the label in the open list. */
+  hint?: string
+}
+
+// Radix keeps the empty string for "nothing chosen": an option whose value is '' gets this one.
+const EMPTY = ':none'
+
+const FIELD_TRIGGER =
+  'flex min-h-[2.65rem] w-full items-center justify-between gap-2 rounded-[var(--radius-md)] border border-frost bg-[color-mix(in_srgb,var(--color-snow)_82%,var(--color-ivory))] px-[0.8rem] py-[0.5rem] text-left text-[0.95em] text-chocolate transition-all focus-visible:border-sapphire focus-visible:bg-snow focus-visible:shadow-[0_0_0_3px_var(--color-sapphire-glow)] disabled:cursor-not-allowed disabled:opacity-60 data-[state=open]:border-sapphire'
+const FILTER_TRIGGER =
+  'inline-flex min-h-9 w-auto max-w-full items-center gap-2 rounded-[12px] border border-border bg-card py-1 pl-2.5 pr-2 text-left text-xs font-semibold text-foreground transition-all hover:border-sapphire-light focus-visible:border-sapphire focus-visible:shadow-[0_0_0_3px_var(--color-sapphire-glow)] disabled:opacity-60 data-[state=open]:border-sapphire'
+const ITEM =
+  'relative flex cursor-pointer select-none items-baseline gap-x-3 rounded-lg py-2 pl-8 pr-3 text-sm outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground'
+
+/**
+ * The app's one dropdown, drawn like the model menu: the choice in a field, the options in a list
+ * with a tick by the chosen one. The keyboard works as in any list (arrows, letters, Enter).
+ */
+export function SelectMenu<Value extends string>({
+  value,
+  options,
+  onChange,
+  disabled,
+  id,
+  labelledBy,
+  ariaLabel,
+  placeholder,
+  compact = false,
+  className,
+}: {
+  value: Value
+  options: readonly SelectOption<Value>[]
+  onChange: (value: Value) => void
+  disabled?: boolean
+  /** The trigger's id, for a `<label for>`. */
+  id?: string
+  /** The id of what names it; its chosen value is read after the name. */
+  labelledBy?: string
+  /** Its name, when nothing on screen says it (a toolbar filter). */
+  ariaLabel?: string
+  /** What the field says while nothing is chosen. */
+  placeholder?: string
+  /** A toolbar filter: small, as wide as its choice. */
+  compact?: boolean
+  className?: string
+}) {
+  const valueId = useId()
+  const chosen = options.find((option) => option.value === value)
+  return (
+    <Select.Root
+      value={value === '' ? (chosen ? EMPTY : '') : value}
+      onValueChange={(next) => onChange((next === EMPTY ? '' : next) as Value)}
+      disabled={disabled}
+    >
+      <Select.Trigger
+        id={id}
+        aria-label={ariaLabel}
+        aria-labelledby={labelledBy ? `${labelledBy} ${valueId}` : undefined}
+        className={cn(compact ? FILTER_TRIGGER : FIELD_TRIGGER, className)}
+        // The border and glow are the focus ring, as on the other fields.
+        style={{ outline: 'none' }}
+      >
+        <span id={valueId} className="min-w-0 flex-1 truncate">
+          {chosen ? (
+            chosen.label
+          ) : (
+            <span className="text-mocha-light">{placeholder ?? 'Choose…'}</span>
+          )}
+        </span>
+        <Select.Icon asChild>
+          <ChevronDown
+            className={cn('shrink-0 text-mocha-light', compact ? 'size-3.5' : 'size-4')}
+            aria-hidden="true"
+          />
+        </Select.Icon>
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Content
+          position="popper"
+          sideOffset={6}
+          className="z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[max(var(--radix-select-trigger-width),12rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-baziu-lg"
+        >
+          <Select.Viewport className="p-1.5">
+            {options.map((option) => (
+              <Select.Item
+                key={option.value}
+                value={option.value === '' ? EMPTY : option.value}
+                className={ITEM}
+                // The highlight is the focus mark of a list row; the app's outline would double it.
+                style={{ outline: 'none' }}
+              >
+                <Select.ItemIndicator className="absolute left-2.5 top-1/2 -translate-y-1/2">
+                  <Check className="size-4 text-primary" aria-hidden="true" />
+                </Select.ItemIndicator>
+                <Select.ItemText asChild>
+                  <span className="min-w-0 flex-1 break-words font-semibold">{option.label}</span>
+                </Select.ItemText>
+                {option.hint && (
+                  <span className="shrink-0 text-xs text-muted-foreground">{option.hint}</span>
+                )}
+              </Select.Item>
+            ))}
+          </Select.Viewport>
+        </Select.Content>
+      </Select.Portal>
+    </Select.Root>
+  )
+}
+
 /** One of a few fixed choices, where a line of radio cards would be too much. */
 export function SelectField<Value extends string>({
   label,
@@ -184,41 +347,40 @@ export function SelectField<Value extends string>({
   onChange,
   hint,
   disabled,
+  placeholder,
   className,
 }: {
   label: string
   value: Value
-  options: readonly { value: Value; label: string }[]
+  options: readonly SelectOption<Value>[]
   onChange: (value: Value) => void
   hint?: ReactNode
   disabled?: boolean
+  placeholder?: string
   className?: string
 }) {
   const id = useId()
   return (
     <div>
-      <label htmlFor={id} className={LABEL}>
+      <label id={`${id}-label`} htmlFor={id} className={LABEL}>
         {label}
       </label>
-      <select
+      <SelectMenu
         id={id}
+        labelledBy={`${id}-label`}
         value={value}
+        options={options}
+        onChange={onChange}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value as Value)}
+        placeholder={placeholder}
         className={cn('mt-1.5 max-w-xl', className)}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      />
       {hint && <span className={HINT}>{hint}</span>}
     </div>
   )
 }
 
-/** A filter in a card's toolbar: a small select named by its label, which is read, not shown. */
+/** A filter in a card's toolbar: a small dropdown named by its label, which is read, not shown. */
 export function FilterSelect<Value extends string>({
   label,
   value,
@@ -227,22 +389,11 @@ export function FilterSelect<Value extends string>({
 }: {
   label: string
   value: Value
-  options: readonly { value: Value; label: string }[]
+  options: readonly SelectOption<Value>[]
   onChange: (value: Value) => void
 }) {
   return (
-    <select
-      aria-label={label}
-      value={value}
-      onChange={(event) => onChange(event.target.value as Value)}
-      className="min-h-9 w-auto max-w-full rounded-[12px] py-1 pl-2.5 pr-8 text-xs font-semibold"
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <SelectMenu compact ariaLabel={label} value={value} options={options} onChange={onChange} />
   )
 }
 

@@ -110,6 +110,8 @@ function AgentChat({
   const elsewhere = chat.agentBusy && !chat.turnBusy
   const state = activity?.stateOf(agentId)
   const working = state?.kind === 'working' ? state.text.replace(/^Working:?\s*/, '') : ''
+  // A turn blocked on a question or a command to approve is not working: it waits for you.
+  const waiting = state?.kind === 'needs'
 
   return (
     <section
@@ -145,7 +147,7 @@ function AgentChat({
         })
       ) : (
         <div className="border-b border-frost px-4 py-2.5">
-          <h1 className="m-0 truncate font-display text-[1.2rem] text-charcoal">{agentName}</h1>
+          <h1 className="m-0 truncate font-display text-xl text-charcoal">{agentName}</h1>
         </div>
       )}
       {chat.historyUnavailable && (
@@ -217,14 +219,16 @@ function AgentChat({
           {(chat.thinking || elsewhere) && (
             <div
               role="status"
-              className="flex items-center gap-2 px-1 py-1.5 text-[0.85em] text-success"
+              className={`flex items-center gap-2 px-1 py-1.5 text-[0.85em] ${waiting ? 'text-warning' : 'text-success'}`}
             >
               <span
-                className="size-[7px] animate-pulse rounded-full bg-success"
+                className={`size-[7px] rounded-full ${waiting ? 'bg-warning' : 'animate-pulse bg-success'}`}
                 aria-hidden="true"
               />
               <span>
-                {agentName} is working{working ? `: ${working}` : ''}
+                {waiting
+                  ? `${agentName} is waiting for you`
+                  : `${agentName} is working${working ? `: ${working}` : ''}`}
               </span>
             </div>
           )}

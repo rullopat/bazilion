@@ -1,29 +1,27 @@
-import type { BrowserStatus } from '@bazilion/api-types'
+// The Agent's own browser, for pages that need a real one: whether it runs, the sign-ins it keeps,
+// and how to stop it or start it afresh.
+
+import type { BrowserMode, BrowserStatus } from '@bazilion/api-types'
+import { Globe } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { api, errorMessage } from '../lib/api'
 import { Button } from './Button'
 import { ConfirmDialog } from './ConfirmDialog'
-import { SectionCard } from './Page'
+import { CardBody, Chip, Fact, Facts, Notice, SetupCard } from './ui/parts'
 
-function StatusList({ status }: { status: BrowserStatus }) {
-  return (
-    <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
-      <dt className="font-medium text-mocha">Browser tools</dt>
-      <dd>{status.enabled ? 'Enabled' : 'Disabled'}</dd>
-      <dt className="font-medium text-mocha">Session</dt>
-      <dd>{status.running ? 'Running' : 'Stopped'}</dd>
-      <dt className="font-medium text-mocha">Profile</dt>
-      <dd>{status.profilePresent ? 'Saved (cookies and logins)' : 'None yet'}</dd>
-      <dt className="font-medium text-mocha">Browser</dt>
-      <dd className="break-words">
-        {status.browser ? `${status.browser.name} · ${status.browser.mode}` : 'None found'}
-      </dd>
-    </dl>
-  )
+const MODE: Record<BrowserMode, string> = {
+  headless: 'without a window',
+  headed: 'in a window',
+  attached: 'your own, attached',
 }
 
-/** The Agent's persistent managed browser: status, stop and profile reset. */
-export function AgentBrowserCard({ agentId }: { agentId: string }) {
+export function AgentBrowserCard({
+  agentId,
+  agentName = 'This Agent',
+}: {
+  agentId: string
+  agentName?: string
+}) {
   const path = `/api/agents/${encodeURIComponent(agentId)}/browser`
   const [status, setStatus] = useState<BrowserStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -69,27 +67,55 @@ export function AgentBrowserCard({ agentId }: { agentId: string }) {
   const busy = pending !== null || loading
 
   return (
-    <SectionCard
-      title="Managed browser"
-      description="This Agent's own persistent browser, used by its browser_* tools."
-      actions={
-        <Button variant="ghost" disabled={busy} onClick={reload}>
-          {loading ? 'Refreshing…' : 'Refresh status'}
-        </Button>
+    <SetupCard
+      labelledBy="agent-browser"
+      icon={<Globe className="size-5" />}
+      title="Browser"
+      description={`${agentName}’s own browser for pages that need one. It keeps its sign-ins between turns.`}
+      action={
+        <div className="flex items-center gap-2">
+          {status &&
+            (status.running ? (
+              <Chip tone="success">Running</Chip>
+            ) : (
+              <Chip tone="neutral">Stopped</Chip>
+            ))}
+          <Button variant="ghost" disabled={busy} onClick={reload}>
+            {loading ? 'Checking…' : 'Check again'}
+          </Button>
+        </div>
       }
     >
-      <div className="space-y-4">
-        {loading && !status && <p role="status">Loading browser status…</p>}
-        {status && <StatusList status={status} />}
-        {status?.error && (
-          <p className="whitespace-pre-wrap break-words rounded-md bg-fawn/35 p-3 text-sm text-chocolate">
-            {status.error}
+      {loading && !status && (
+        <CardBody>
+          <p role="status" className="m-0 text-sm text-muted-foreground">
+            Checking the browser…
           </p>
+        </CardBody>
+      )}
+      {status && (
+        <Facts>
+          <Fact label="Browser tools" tone={status.enabled ? undefined : 'warning'}>
+            {status.enabled ? 'On' : 'Off in Setup → Tools'}
+          </Fact>
+          <Fact label="Saved sign-ins">
+            {status.profilePresent ? 'Kept: cookies and sign-ins' : 'None yet'}
+          </Fact>
+          <Fact label="Browser" tone={status.browser ? undefined : 'warning'}>
+            {status.browser ? `${status.browser.name}, ${MODE[status.browser.mode]}` : 'None found'}
+          </Fact>
+        </Facts>
+      )}
+      <CardBody>
+        {status?.error && (
+          <Notice title="The browser cannot run.">
+            <span className="whitespace-pre-wrap">{status.error}</span>
+          </Notice>
         )}
         {error && (
-          <p role="alert" className="err break-words">
+          <Notice role="alert" title="That did not work.">
             {error}
-          </p>
+          </Notice>
         )}
         <div className="flex flex-wrap gap-2">
           <Button
@@ -97,34 +123,34 @@ export function AgentBrowserCard({ agentId }: { agentId: string }) {
             disabled={busy || !status?.running}
             onClick={() => void run('stop')}
           >
-            {pending === 'stop' ? 'Stopping…' : 'Stop session'}
+            {pending === 'stop' ? 'Stopping…' : 'Stop it'}
           </Button>
           <Button
-            variant="danger"
+            variant="ghost"
             disabled={busy || (!status?.profilePresent && !status?.running)}
             onClick={() => setConfirmReset(true)}
           >
-            Reset profile
+            Forget its sign-ins…
           </Button>
         </div>
-        <p className="text-xs leading-5 text-mocha-light">
-          Stopping, archiving and moving the Agent to another Team keep the profile; Reset and
-          deleting the Agent remove it. Browser profiles are not included in backups.
+        <p className="m-0 text-xs leading-5 text-muted-foreground">
+          Stopping it, archiving the Agent or moving it to another Team keeps the sign-ins;
+          forgetting them or deleting the Agent removes them. Backups leave them out.
         </p>
-      </div>
+      </CardBody>
       <ConfirmDialog
         open={confirmReset}
         onOpenChange={setConfirmReset}
-        title="Reset this Agent's browser profile?"
+        title={`Forget ${agentName}’s sign-ins?`}
         description={
-          <p>
-            This stops the browser and permanently deletes this Agent's profile, including cookies
-            and logins.
+          <p className="m-0">
+            The browser stops, and its cookies and sign-ins are deleted. The next page it opens
+            starts signed out.
           </p>
         }
-        confirmLabel="Delete profile"
+        confirmLabel="Forget the sign-ins"
         onConfirm={() => run('reset')}
       />
-    </SectionCard>
+    </SetupCard>
   )
 }

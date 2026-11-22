@@ -2,7 +2,6 @@ import { existsSync, lstatSync, mkdtempSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { DEFAULT_USER_MD } from '../../src/core/profile/templates.ts'
 import * as teamRepo from '../../src/core/repos/teams.ts'
 import { registerTeam } from '../../src/core/team/register.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
@@ -17,10 +16,9 @@ test('registerTeam creates a real directory under teams/<slug>/', () => {
   const g = registerTeam(env.db, { id: 'g1' }, env.paths)
   expect(g.id).toBe('g1')
   expect(g.path).toBe(env.paths.teamDir('g1'))
-  // registerTeam seeds the starter USER.md (byte-identical to the
-  // constant) by default, and it round-trips through the DB.
-  expect(g.userMd).toBe(DEFAULT_USER_MD)
-  expect(teamRepo.get(env.db, 'g1', env.paths)?.userMd).toBe(DEFAULT_USER_MD)
+  // A new Team's USER.md is empty until the operator or its Agents write it.
+  expect(g.userMd).toBe('')
+  expect(teamRepo.get(env.db, 'g1', env.paths)?.userMd).toBe('')
   expect(existsSync(g.path)).toBe(true)
   expect(lstatSync(g.path).isSymbolicLink()).toBe(false)
   expect(existsSync(join(g.path, 'memory'))).toBe(true)
