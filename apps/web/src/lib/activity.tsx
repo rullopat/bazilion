@@ -1,5 +1,6 @@
-// What every Agent is doing, for the rail, the conversation and the panels. One poll of
-// /api/activity feeds them all; "new since you last looked" is remembered in this browser.
+// What every Agent is doing, for the rail, the conversation and the panels. The live feed pushes
+// it (lib/live.tsx); while that is down, /api/activity is asked every few seconds instead. "New
+// since you last looked" is remembered in this browser.
 
 import type { ActivityResponse, AgentActivity } from '@bazilion/api-types'
 import {
@@ -13,6 +14,7 @@ import {
   useState,
 } from 'react'
 import { api } from './api'
+import { useLive } from './live'
 import { describeStep } from './tool-steps'
 
 const POLL_MS = 3_000
@@ -148,21 +150,31 @@ export function ActivityProvider({
   const [seen, setSeen] = useState<Record<string, Seen> | null>(null)
   const [turnsEnded, setTurnsEnded] = useState(0)
   const lastRef = useRef(initial)
+  const live = useLive()
+
+  const apply = useCallback((next: AgentActivity[]) => {
+    const ended = turnEnded(lastRef.current, next)
+    lastRef.current = next
+    setAgents(next)
+    if (ended) setTurnsEnded((count) => count + 1)
+  }, [])
 
   const refresh = useCallback(() => {
     api<ActivityResponse>('/api/activity')
-      .then((body) => {
-        const ended = turnEnded(lastRef.current, body.agents)
-        lastRef.current = body.agents
-        setAgents(body.agents)
-        if (ended) setTurnsEnded((count) => count + 1)
-      })
+      .then((body) => apply(body.agents))
       .catch(() => {
-        // The next poll tries again; the rail keeps what it last knew.
+        // The next try comes; the rail keeps what it last knew.
       })
-  }, [])
+  }, [apply])
 
+  useEffect(
+    () => live.subscribe('activity', (event) => apply(event.agents)),
+    [live.subscribe, apply],
+  )
+
+  // Without the live feed, ask every few seconds while the tab shows.
   useEffect(() => {
+    if (live.connected) return
     const timer = setInterval(() => {
       if (!document.hidden) refresh()
     }, POLL_MS)
@@ -174,7 +186,7 @@ export function ActivityProvider({
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [refresh])
+  }, [refresh, live.connected])
 
   // What this browser remembers is read after hydration, so the first paint matches the server.
   useEffect(() => setSeen(readSeen()), [])

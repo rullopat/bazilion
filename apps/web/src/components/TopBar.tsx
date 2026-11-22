@@ -5,6 +5,8 @@
 
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
+  Bell,
+  BellOff,
   BellRing,
   Check,
   LayoutGrid,
@@ -20,6 +22,12 @@ import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { useEffect, useState } from 'react'
 import { api, errorMessage } from '../lib/api'
 import { useAttentionCount } from '../lib/attention-count'
+import {
+  type NotificationsState,
+  turnNotificationsOff,
+  turnNotificationsOn,
+  useNotificationsState,
+} from '../lib/desktop-notifications'
 import { isTyping } from '../lib/shortcuts'
 import { setThemeMode, THEME_MODES, type ThemeMode, useThemeMode } from '../lib/theme'
 import { BaziuLogo } from './BaziuLogo'
@@ -171,9 +179,10 @@ function PlaceLink({
   )
 }
 
-/** Theme and Log out: things about this browser's session rather than places to go. */
+/** Theme, notifications and Log out: things about this browser rather than places to go. */
 function SessionMenu() {
   const mode = useThemeMode()
+  const notifications = useNotificationsState()
   const [error, setError] = useState<string | null>(null)
 
   async function logout() {
@@ -192,8 +201,8 @@ function SessionMenu() {
         <DropdownMenuPrimitive.Trigger asChild>
           <button
             type="button"
-            aria-label="Theme and log out"
-            title="Theme and log out"
+            aria-label="Theme, notifications and log out"
+            title="Theme, notifications and log out"
             className="unstyled inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-mocha transition-colors hover:border-frost hover:bg-ivory hover:text-sapphire data-[state=open]:border-sapphire-light data-[state=open]:bg-sapphire-glow data-[state=open]:text-sapphire"
           >
             <UserRound className="size-4" aria-hidden="true" />
@@ -231,6 +240,8 @@ function SessionMenu() {
               })}
             </DropdownMenuPrimitive.RadioGroup>
             <DropdownMenuPrimitive.Separator className="my-1.5 h-px bg-border" />
+            <NotificationsItem state={notifications} />
+            <DropdownMenuPrimitive.Separator className="my-1.5 h-px bg-border" />
             <DropdownMenuPrimitive.Item
               onSelect={() => void logout()}
               className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground"
@@ -250,6 +261,48 @@ function SessionMenu() {
         </p>
       )}
     </>
+  )
+}
+
+/**
+ * Desktop notifications for this browser. Turning them on asks the browser's permission; a browser
+ * that blocks them, or an address where it offers none, is said so instead.
+ */
+function NotificationsItem({ state }: { state: NotificationsState }) {
+  const itemClass =
+    'flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:cursor-default data-[disabled]:opacity-70'
+  const Icon = state === 'on' ? BellOff : Bell
+  const label =
+    state === 'on'
+      ? 'Turn off desktop notifications'
+      : state === 'off'
+        ? 'Notify me on this computer'
+        : 'Desktop notifications unavailable'
+  const detail =
+    state === 'on' || state === 'off'
+      ? 'When an Agent waits for you and Bazilion is in the background.'
+      : state === 'blocked'
+        ? 'This browser blocks them for this site; allow them in its site settings.'
+        : 'Browsers offer them on https:// addresses and on this computer only.'
+  return (
+    <DropdownMenuPrimitive.Item
+      disabled={state === 'unsupported' || state === 'blocked'}
+      onSelect={(event) => {
+        if (state === 'on') turnNotificationsOff()
+        else {
+          // The menu stays open while the browser asks, so the answer shows here.
+          event.preventDefault()
+          void turnNotificationsOn()
+        }
+      }}
+      className={itemClass}
+    >
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span>{label}</span>
+        <span className="text-xs text-muted-foreground">{detail}</span>
+      </span>
+    </DropdownMenuPrimitive.Item>
   )
 }
 

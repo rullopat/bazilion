@@ -120,11 +120,15 @@ export function JumpPalette({
   const [recent, setRecent] = useState<Recent[]>([])
   const [dark, setDark] = useState(false)
   const [spawning, setSpawning] = useState(false)
+  // The lists arrive after the palette opens; an Enter typed before then waits for them.
+  const [loaded, setLoaded] = useState(false)
+  const [enterPending, setEnterPending] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setQuery('')
     setActive(0)
+    setEnterPending(false)
     setDark(document.documentElement.classList.contains('dark'))
     const controller = new AbortController()
     const signal = controller.signal
@@ -139,6 +143,7 @@ export function JumpPalette({
         setTeams(nextTeams)
         setActivity(nextActivity.agents)
         setProfiles(nextProfiles)
+        setLoaded(true)
         const latest = nextActivity.agents
           .filter((entry) => entry.lastActivityAt !== null)
           .toSorted((a, b) => (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0))
@@ -170,6 +175,7 @@ export function JumpPalette({
       })
       .catch(() => {
         // The pages and actions stay reachable without the lists.
+        if (!signal.aborted) setLoaded(true)
       })
     return () => controller.abort()
   }, [open])
@@ -307,6 +313,13 @@ export function JumpPalette({
           ?.teamId)
       : undefined
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the lists arrive.
+  useEffect(() => {
+    if (!open || !enterPending || !loaded) return
+    setEnterPending(false)
+    go(shown[current])
+  }, [open, enterPending, loaded])
+
   function go(destination: Destination | undefined) {
     if (!destination) return
     onClose()
@@ -352,7 +365,8 @@ export function JumpPalette({
                     setActive(Math.max(current - 1, 0))
                   } else if (event.key === 'Enter') {
                     event.preventDefault()
-                    go(shown[current])
+                    if (loaded) go(shown[current])
+                    else setEnterPending(true)
                   }
                 }}
                 // The palette's frame is the focus mark; the field's own ring would sit inside it.
@@ -371,7 +385,7 @@ export function JumpPalette({
             >
               {shown.length === 0 && (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  Nothing matches “{query}”.
+                  {loaded ? `Nothing matches “${query}”.` : 'Loading…'}
                 </p>
               )}
               {shown.map((destination, index) => (

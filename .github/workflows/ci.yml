@@ -37,6 +37,22 @@ jobs:
           (cd apps/cli && pnpm pack --pack-destination "$RUNNER_TEMP")
           node scripts/pack-smoke.mjs "$RUNNER_TEMP"/bazilion-*.tgz
 
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26.12.1'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # The runner's Google Chrome drives the built web UI against a stand-in model server.
+      - run: pnpm test:e2e
+
   docker:
     name: Docker sandbox tests
     runs-on: ubuntu-latest

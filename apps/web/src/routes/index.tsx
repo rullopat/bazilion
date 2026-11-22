@@ -31,6 +31,7 @@ import { Overview } from '../components/workspace/Overview'
 import { Rail, SIDEBAR_OPEN_GROUPS_COOKIE, SlimRail } from '../components/workspace/Rail'
 import { Sheets } from '../components/workspace/Sheets'
 import { TeamHome } from '../components/workspace/TeamHome'
+import { WaitingStrip } from '../components/workspace/WaitingStrip'
 import { ActivityProvider } from '../lib/activity'
 import { daemonClient } from '../lib/daemon-client'
 import { usePageTitle } from '../lib/page-title'
@@ -293,8 +294,13 @@ function WorkspacePage() {
                 panel === 'none' ? '' : 'xl:grid-cols-[18rem_minmax(0,1fr)_minmax(22rem,27rem)]'
               }`}
             >
-              <div className={`min-h-0 ${open || team ? 'hidden lg:block' : ''}`}>
-                <Rail initialOpenGroups={data.openGroups} />
+              <div
+                className={`flex min-h-0 flex-col gap-3 ${open || team ? 'hidden lg:flex' : ''}`}
+              >
+                <WaitingStrip className="lg:hidden" />
+                <div className="min-h-0 flex-1">
+                  <Rail initialOpenGroups={data.openGroups} />
+                </div>
               </div>
               <div className={`min-h-0 min-w-0 ${open || team ? '' : 'hidden lg:block'}`}>
                 {open && selected ? (
