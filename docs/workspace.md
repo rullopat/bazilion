@@ -10,7 +10,7 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   **Attention** with the number of open items ([attention](attention-notifications.md)),
   **Manage** for Agents, Teams, templates and skills ([manage](manage.md)), and **Setup** for
   models, tools and connections. The person icon at the end holds the theme (light, dark or the
-  same as the computer) and **Log out**.
+  same as the computer), desktop notifications (see below) and **Log out**.
 - **The overview** fills the middle while nothing is open: who is waiting for you, who is
   working, every Team with its members, the latest files from every Team, and the Agents that were
   active last. A Team opened on its own shows its members with what each is doing, its views,
@@ -45,14 +45,32 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   They are built from the same cards and fields as Setup and Manage.
 
 On a narrow screen the list, the conversation and the panel take turns: pick an Agent to see its
-conversation, and open the panel from the bar. The panel's tabs scroll sideways.
+conversation, and open the panel from the bar. The panel's tabs scroll sideways. Above the list,
+**Waiting for you** names the Agents waiting on a question or a command, up to three, with a link
+to Attention for the rest.
+
+## Live
+
+The workspace, the top bar's count, the tab title and Attention update as things happen: the
+daemon pushes what every Agent is doing and what is open in Attention over one event stream
+(`GET /api/events`), so a question shows the moment it is asked. One tab per browser holds the
+stream and shares it with the others. While it cannot connect (an older proxy, a daemon
+restarting) the pages ask every few seconds instead, and the stream is tried again.
+
+**Notify me on this computer**, in the person menu, turns on desktop notifications for this
+browser, after the browser asks you. When an Agent starts waiting for you and no Bazilion tab has
+the focus, a notification names the Agent and the question or command; clicking it opens the
+conversation. Browsers offer notifications on `https://` addresses and on this computer
+(`127.0.0.1`, `localhost`) only, and a browser that blocks them for the site is said so in the
+menu.
 
 ## Jump to, and the keyboard
 
 **Jump to** lists the Agents waiting for you first, then those working, then actions (a new
 conversation with the open Agent, adding an Agent, switching the theme, the keyboard shortcuts),
 the other Agents by when they were last active, recent conversations, Teams, the open Team's
-views and the Manage and Setup pages. Type to narrow it down; Enter opens the one highlighted.
+views and the Manage and Setup pages. Type to narrow it down; Enter opens the one highlighted,
+also when you press it before the lists have arrived.
 
 | Keys | |
 | --- | --- |

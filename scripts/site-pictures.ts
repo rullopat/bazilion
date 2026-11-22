@@ -141,7 +141,8 @@ async function demoPictures(browser: Browser): Promise<void> {
 
     const phone = await session(browser, instance, { width: 390, height: 844, cookies })
     await phone.go('/', 4500)
-    await shoot(phone.page, 'phone-waiting')
+    // The strip and the top of the list.
+    await shoot(phone.page, 'phone-waiting', { x: 0, y: 0, width: 390, height: 600 })
     await phone.go(`/?agent=${ids.dev}`, 1500)
     await shoot(phone.page, 'phone-chat')
     await phone.close()

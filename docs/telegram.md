@@ -36,7 +36,7 @@ The paired owner, plus the people the owner adds: `/allow <user id>` in Telegram
 users** card on the web page, or `bazilion telegram allow <user id>`. Someone who is not on the list gets a
 reply with their user id to pass on. `/deny`, `/allowed` and `bazilion telegram deny|allowed`
 manage the list. Everyone on the list can chat with Agents, answer their questions and run the
-commands; only the owner can `/allow` and `/deny`. Removing someone also cancels the messages they
+commands; only the owner can `/allow` and `/deny` and decide on a command waiting for approval. Removing someone also cancels the messages they
 still have waiting in a queue; resetting the pairing or clearing the credentials does so for
 everyone. Anyone else in the group can still read the topics, so keep the group to people you
 trust. Messages from other bots and from anonymous admins are ignored.
@@ -74,6 +74,12 @@ adds short tool-call lines in verbose mode; those are limited to 30 a minute per
 When an Agent asks a question (see [questions](questions.md)), it appears in its topic with one
 button per choice and **Skip**. Tap a button, or reply to the question message with your own
 answer. The question can be answered on the web or in the CLI just as well; the first answer wins.
+
+A command that needs your approval in a web chat (see
+[coding environments](coding-environments.md#dangerous-command-approval)) and is still waiting
+after half a minute is posted in the topic too, with **Allow once** and **Deny**. Only the paired
+owner can use them. Once the command is decided, here, on the web or by timing out, the message
+says how.
 
 Topic names follow the Team (`bazilion team topic-format set <team> '<template>'`), and topic
 icons follow the Profile or the Agent's `--topic-icon`. On iOS, topic links open the topic list

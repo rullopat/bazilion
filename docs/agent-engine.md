@@ -139,8 +139,9 @@ The coding tools depend on `BAZILION_BASH_SANDBOX` and `BAZILION_BASH_APPROVAL`
   command's error, never a host fallback.
 - **approval**: with `BAZILION_BASH_APPROVAL=dangerous`, `bash` (host or Docker) first classifies
   the command (`runtime/shell/security.ts`). A flagged command asks the daemon, which streams a
-  `command_approval` event and waits up to two minutes for `POST /api/shell-approvals/:id`, or
-  denies at once when nobody can answer.
+  `command_approval` event and waits up to five minutes for `POST /api/shell-approvals/:id` (or a
+  tap in Telegram, see [coding environments](coding-environments.md)), or denies at once when
+  nobody can answer.
 
 ## 6. Conversation commands
 

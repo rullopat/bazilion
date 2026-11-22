@@ -207,8 +207,8 @@ test('a question or a command an Agent waits on comes first, and is answered, no
       items: { kind: string }[]
     }
     const [first, second] = list.items
-    // The command is refused after two minutes, the question after five: soonest first.
-    expect(second).toMatchObject({
+    // Both wait five minutes; the question was asked first, so it stops waiting first.
+    expect(first).toMatchObject({
       key: `agent_question:${question.id}`,
       kind: 'agent_question',
       severity: 'action_required',
@@ -221,7 +221,7 @@ test('a question or a command an Agent waits on comes first, and is answered, no
       acknowledgedAt: null,
       expiresAt: question.expiresAt,
     })
-    expect(first).toMatchObject({
+    expect(second).toMatchObject({
       key: 'command_approval:approval',
       kind: 'command_approval',
       title: 'Agent wants to run a command that needs your approval',

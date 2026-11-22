@@ -16,8 +16,11 @@ proposals and paused queues leave the list when you act on them, and a question 
 leaves it when it stops waiting.
 
 Questions and commands live in the daemon's memory while their turn waits, so a daemon restart
-ends them; they are never acknowledged and never sent as Attention notifications (a question asked
-from Telegram is answered there).
+ends them; they are never acknowledged and never sent as Attention notifications. They reach you
+in other ways: every question is posted in the Agent's Telegram topic, a command still waiting
+after half a minute too (see [questions](questions.md) and
+[coding environments](coding-environments.md)), and the web UI can show a desktop notification
+when Bazilion is in the background ([the workspace](workspace.md#live)).
 
 ## Telegram notifications
 
