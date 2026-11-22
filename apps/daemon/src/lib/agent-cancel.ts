@@ -1,4 +1,5 @@
 import { DomainError } from '../core/errors.ts'
+import { signalLiveChange } from './live-signal.ts'
 
 // In-memory registry of agents currently running a turn and their
 // AbortControllers. The chat / scheduler / inbox-wake paths register before
@@ -47,6 +48,7 @@ export function registerAgent(agentId: string, controller: AbortController): voi
     throw new AgentTurnActiveError(agentId)
   }
   registry().active.set(agentId, controller)
+  signalLiveChange()
 }
 
 export function unregisterAgent(agentId: string): void {
@@ -55,6 +57,7 @@ export function unregisterAgent(agentId: string): void {
   const waiters = state.idleWaiters.get(agentId)
   state.idleWaiters.delete(agentId)
   for (const resolve of waiters ?? []) resolve()
+  signalLiveChange()
 }
 
 /** Returns true if the agent had an active turn that was aborted, false otherwise. */

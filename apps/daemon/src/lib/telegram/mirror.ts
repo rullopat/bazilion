@@ -16,6 +16,7 @@ import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/a
 import { InputFile } from 'grammy'
 import { agentRepo } from '../../core/index.ts'
 import * as results from '../../core/repos/results.ts'
+import { scheduleApprovalPrompt } from './approvals.ts'
 import { type TelegramLive, telegramLive } from './live.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
 import {
@@ -46,6 +47,11 @@ export async function mirrorAgentTurnFrame(agentId: string, frame: ChatFrame): P
 
   if (frame.kind === 'event' && frame.event.type === 'file') {
     await mirrorFile(live, topicId, agent.id, frame.event)
+  }
+  // A command still waiting after half a minute is sent here with Allow and Deny.
+  if (frame.kind === 'event' && frame.event.type === 'command_approval') {
+    scheduleApprovalPrompt(frame.event.approval)
+    return
   }
   if (frame.kind === 'event' && frame.event.type === 'agent_question') {
     await sendQuestionPrompt(live, topicId, frame.event.question).catch(() =>
@@ -221,8 +227,7 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
     case 'tool_error':
       return mode === 'verbose' ? `✕ ${ev.name}: ${ev.error}` : null
     case 'command_approval':
-      // Telegram turns are non-interactive and auto-deny. The following bash
-      // tool error is sufficient; never mirror an unusable approval prompt.
+      // A waiting command gets its own prompt (approvals.ts); its outcome needs no line.
       return null
     case 'file':
     case 'agent_question':

@@ -4,9 +4,10 @@ import type {
   BashApprovalHandle,
   BashApprovalHost,
 } from '../runtime/worker/ipc-protocol.ts'
+import { signalLiveChange } from './live-signal.ts'
 
-/** How long a dangerous command waits for an answer before it is refused. */
-const DEFAULT_TIMEOUT_MS = 120_000
+/** How long a dangerous command waits for an answer before it is refused, as long as a question. */
+const DEFAULT_TIMEOUT_MS = 5 * 60_000
 
 type SettledStatus = Exclude<CommandApproval['status'], 'pending'>
 
@@ -17,7 +18,11 @@ type SettledStatus = Exclude<CommandApproval['status'], 'pending'>
 export class CommandApprovalRegistry implements BashApprovalHost {
   readonly #pending = new Map<
     string,
-    { approval: CommandApproval; settle: (status: SettledStatus) => CommandApproval }
+    {
+      approval: CommandApproval
+      settle: (status: SettledStatus) => CommandApproval
+      settled: Promise<CommandApproval>
+    }
   >()
   readonly #timeoutMs: number
 
@@ -47,21 +52,22 @@ export class CommandApprovalRegistry implements BashApprovalHost {
     if (this.#pending.has(approval.id))
       throw new Error(`duplicate shell approval id: ${approval.id}`)
 
-    const settled = new Promise<CommandApproval>((resolve) => {
-      const settle = (status: SettledStatus) => {
-        this.#pending.delete(approval.id)
-        clearTimeout(timer)
-        signal?.removeEventListener('abort', onAbort)
-        const result = logged({ ...approval, status })
-        resolve(result)
-        return result
-      }
-      const onAbort = () => settle('cancelled')
-      const timer = setTimeout(() => settle('expired'), this.#timeoutMs)
-      timer.unref()
-      signal?.addEventListener('abort', onAbort, { once: true })
-      this.#pending.set(approval.id, { approval, settle })
-    })
+    const { promise: settled, resolve } = Promise.withResolvers<CommandApproval>()
+    const settle = (status: SettledStatus) => {
+      this.#pending.delete(approval.id)
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      const result = logged({ ...approval, status })
+      resolve(result)
+      signalLiveChange()
+      return result
+    }
+    const onAbort = () => settle('cancelled')
+    const timer = setTimeout(() => settle('expired'), this.#timeoutMs)
+    timer.unref()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    this.#pending.set(approval.id, { approval, settle, settled })
+    signalLiveChange()
     return { approval, settled }
   }
 
@@ -69,6 +75,15 @@ export class CommandApprovalRegistry implements BashApprovalHost {
     return Array.from(this.#pending.values(), (entry) => entry.approval)
       .filter((approval) => agentId === undefined || approval.agentId === agentId)
       .sort((a, b) => a.expiresAt - b.expiresAt || a.id.localeCompare(b.id))
+  }
+
+  get(id: string): CommandApproval | undefined {
+    return this.#pending.get(id)?.approval
+  }
+
+  /** The outcome of a pending approval; undefined once it has settled. */
+  settled(id: string): Promise<CommandApproval> | undefined {
+    return this.#pending.get(id)?.settled
   }
 
   /** Answer a pending approval; undefined when there is none (unknown, or already settled). */

@@ -13,6 +13,7 @@ import * as results from '../core/repos/results.ts'
 import * as queue from '../core/repos/user-queue.ts'
 import { isActiveAgent } from './agent-cancel.ts'
 import { commandApprovalRegistry } from './bash-approval.ts'
+import { signalLiveChange } from './live-signal.ts'
 import { questionRegistry } from './questions.ts'
 
 const TARGET_CHARS = 160
@@ -55,10 +56,12 @@ export function stepTarget(rawArguments: string): string | null {
 export function noteTurnFrame(agentId: string, frame: ChatFrame): void {
   if (frame.kind !== 'event' || frame.event.type !== 'tool_call') return
   steps().set(agentId, { tool: frame.event.name, target: stepTarget(frame.event.arguments) })
+  signalLiveChange()
 }
 
 export function noteTurnEnd(agentId: string): void {
   steps().delete(agentId)
+  signalLiveChange()
 }
 
 /** When the Agent's selected conversation last changed; null before its first turn. */
