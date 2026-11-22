@@ -114,7 +114,7 @@ export function SpawnTeamModal({
                 value={userMd}
                 disabled={busy}
                 onChange={(event) => setUserMd(event.target.value)}
-                className="mt-1.5 font-mono text-[0.85rem] leading-[1.55]"
+                className="mt-1.5 font-mono text-sm leading-[1.55]"
               />
               <span className="mt-1 block text-xs text-muted-foreground">
                 What every Agent of the new Team knows about you. It starts from the template’s.

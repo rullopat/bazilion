@@ -8,10 +8,10 @@ import { jsonFlag, printJson, printRows, terminalSafe } from '../command-helpers
 /** One line for an Agent's state; what needs the operator comes first. */
 export function activityState(activity: AgentActivity): string {
   if (activity.questions > 0) {
-    return `needs you: ${activity.questions} question${activity.questions === 1 ? '' : 's'}`
+    return `waiting for you: ${activity.questions} question${activity.questions === 1 ? '' : 's'}`
   }
   if (activity.approvals > 0) {
-    return `needs you: ${activity.approvals} command${activity.approvals === 1 ? '' : 's'} to approve`
+    return `waiting for you: ${activity.approvals} command${activity.approvals === 1 ? '' : 's'} to approve`
   }
   if (activity.working) {
     if (!activity.step) return 'working'

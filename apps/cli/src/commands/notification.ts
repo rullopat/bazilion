@@ -1,4 +1,4 @@
-import type { AttentionKind, NotificationSettingsResponse } from '@bazilion/api-types'
+import type { AttentionRecordedKind, NotificationSettingsResponse } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { jsonFlag, printJson } from '../command-helpers.ts'
@@ -52,7 +52,7 @@ const configure = defineCommand({
     const updated = await api.configure({
       enabled: args.enable ? true : args.disable ? false : current.enabled,
       kinds: args.kinds
-        ? (args.kinds.split(',').map((kind) => kind.trim()) as AttentionKind[])
+        ? (args.kinds.split(',').map((kind) => kind.trim()) as AttentionRecordedKind[])
         : current.kinds,
       timezone: args.timezone ?? current.timezone,
       quietHours: args['clear-quiet-hours']

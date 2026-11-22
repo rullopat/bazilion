@@ -9,11 +9,12 @@ import type {
 } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useActivity } from '../../lib/activity'
 import { ApiError, api, errorMessage } from '../../lib/api'
 import { unavailableMessage } from '../../lib/git-review-presentation'
 import { Button } from '../Button'
+import { SelectMenu } from '../ui/form'
 import { useWorkspace } from '../workspace/context'
 import type { ReviewSessionControls } from './review'
 import { splitPath } from './review'
@@ -56,6 +57,7 @@ export function ReviewCart({
   const activity = useActivity()
   const members = agents.filter((agent) => agent.teamId === teamId)
   const [chosen, setChosen] = useState<string | null>(null)
+  const sendToId = useId()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [sent, setSent] = useState<{ agentId: string; message: string } | null>(null)
@@ -185,20 +187,25 @@ export function ReviewCart({
         />
       </label>
       <div className="mt-2.5 flex flex-wrap items-end gap-2">
-        <label className="m-0 min-w-0 flex-1 basis-40 text-xs">
-          Send to
-          <select value={agentId} onChange={(event) => setChosen(event.target.value)}>
-            {members.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name}
-                {member.id === suggested &&
+        <div className="m-0 min-w-0 flex-1 basis-40 text-xs">
+          <span id={sendToId} className="mb-1 block">
+            Send to
+          </span>
+          <SelectMenu
+            labelledBy={sendToId}
+            value={agentId}
+            options={members.map((member) => ({
+              value: member.id,
+              label: member.name,
+              hint:
+                member.id === suggested &&
                 session.comments.some((c) => authors[c.path]?.agentId === member.id)
-                  ? ' (wrote these files)'
-                  : ''}
-              </option>
-            ))}
-          </select>
-        </label>
+                  ? 'wrote these files'
+                  : undefined,
+            }))}
+            onChange={setChosen}
+          />
+        </div>
         <Button
           variant="primary"
           disabled={busy || !agentId || count > MAX_COMMENTS}

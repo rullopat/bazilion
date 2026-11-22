@@ -32,12 +32,12 @@ export function FocusFrame({
         <Link
           to="/"
           search={to({ view: undefined, result: undefined, panel: view })}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] border border-border bg-card px-2.5 text-[0.82rem] font-semibold text-foreground hover:border-sapphire-light hover:text-sapphire"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] border border-border bg-card px-2.5 text-sm font-semibold text-foreground hover:border-sapphire-light hover:text-sapphire"
         >
           <ArrowLeft className="size-3.5" aria-hidden="true" />
           {agent ? agent.agent.name : 'Back'}
         </Link>
-        <h1 className="m-0 min-w-0 truncate font-display text-[1.2rem] leading-tight text-charcoal">
+        <h1 className="m-0 min-w-0 truncate font-display text-xl leading-tight text-charcoal">
           {team?.name}
         </h1>
         <nav
@@ -53,7 +53,7 @@ export function FocusFrame({
                 to="/"
                 search={to({ view: id })}
                 aria-current={current ? 'page' : undefined}
-                className={`inline-flex h-7 items-center gap-1.5 rounded-[9px] px-2.5 text-[0.8rem] font-semibold ${
+                className={`inline-flex h-7 items-center gap-1.5 rounded-[9px] px-2.5 text-sm font-semibold ${
                   current
                     ? 'bg-accent text-accent-foreground'
                     : 'text-mocha hover:bg-muted hover:text-foreground'

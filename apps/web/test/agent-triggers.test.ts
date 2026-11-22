@@ -26,6 +26,38 @@ test('the schedules sheet shows each recent run with its status and error', () =
     }),
   )
 
-  expect(html).toContain('<code>failed</code>')
+  expect(html).toContain('Failed')
   expect(html).toContain('provider unavailable')
+  // A run of a schedule that was deleted since still says what it was.
+  expect(html).toContain('A deleted schedule')
+})
+
+test('a schedule reads as words, its message under it, and nothing internal shows', () => {
+  const html = renderToStaticMarkup(
+    createElement(SchedulesView, {
+      agentId: 'agent-1',
+      agentName: 'Mira',
+      triggers: [
+        {
+          id: 'c9ae96b1-7f0d-478c-a42e-a7f914b44899',
+          agentId: 'agent-1',
+          kind: 'cron',
+          intervalSec: null,
+          cronExpr: '0 9 * * 1-5',
+          message: 'Morning check',
+          enabled: true,
+          lastFiredAt: null,
+          createdAt: 0,
+        },
+      ],
+      dispatches: [],
+      onChanged: async () => {},
+    }),
+  )
+  expect(html).toContain('Weekdays at 09:00')
+  expect(html).toContain('Morning check')
+  expect(html).toContain('Has not run yet')
+  expect(html).toContain('role="switch"')
+  expect(html).not.toContain('c9ae96b1')
+  expect(html).not.toContain('0 9 * * 1-5')
 })

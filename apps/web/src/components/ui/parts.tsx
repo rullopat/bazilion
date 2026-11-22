@@ -153,10 +153,7 @@ export function SetupCard({
             {icon}
           </span>
           <div className="min-w-0">
-            <h2
-              id={labelledBy}
-              className="m-0 font-body text-[1.05rem] font-semibold text-foreground"
-            >
+            <h2 id={labelledBy} className="m-0 font-body text-lg font-semibold text-foreground">
               {title}
             </h2>
             <div className="text-sm text-muted-foreground">{description}</div>
@@ -207,23 +204,32 @@ export function ListRow({
   actions?: ReactNode
   children?: ReactNode
 }) {
+  // The name, its facts and its actions share one line (which an inline row never wraps); what the
+  // thing last reported goes on a line of its own under them, at the row's full width.
   return (
-    <li className={cn(CARD_ROW, 'min-h-14 py-2.5', inline && 'flex-nowrap')}>
-      {leading && <span className="flex shrink-0 self-start pt-0.5">{leading}</span>}
-      <div className={cn('min-w-0 flex-1', inline ? 'basis-0' : 'basis-64')}>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-          <span className="min-w-0 break-words text-[0.95rem] font-semibold text-foreground">
-            {title}
-          </span>
-          {chip}
-        </div>
-        {meta && (
-          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.82rem] text-muted-foreground">
-            {meta}
-          </div>
+    <li className={cn(CARD_ROW, 'min-h-14 py-2.5')}>
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 basis-full items-center gap-x-4 gap-y-1',
+          inline ? 'flex-nowrap' : 'flex-wrap',
         )}
+      >
+        {leading && <span className="flex shrink-0 self-start pt-0.5">{leading}</span>}
+        <div className={cn('min-w-0 flex-1', inline ? 'basis-0' : 'basis-64')}>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="min-w-0 break-words text-base font-semibold text-foreground">
+              {title}
+            </span>
+            {chip}
+          </div>
+          {meta && (
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted-foreground">
+              {meta}
+            </div>
+          )}
+        </div>
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       {children && <div className="min-w-0 basis-full pb-1">{children}</div>}
     </li>
   )
@@ -441,7 +447,7 @@ export function GroupHeader({
 }) {
   return (
     <div className={cn(CARD_ROW, 'min-h-10 bg-muted/50 py-2')}>
-      <h3 className="m-0 min-w-0 font-body text-[0.72rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+      <h3 className="m-0 min-w-0 font-body text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
         {title}
       </h3>
       {meta && <span className="text-xs text-muted-foreground">{meta}</span>}
@@ -472,7 +478,7 @@ export function CardEmpty({
           {icon}
         </span>
       )}
-      <p className="m-0 text-[0.95rem] font-semibold text-foreground">{title}</p>
+      <p className="m-0 text-base font-semibold text-foreground">{title}</p>
       {children && <p className="m-0 max-w-md text-sm text-muted-foreground">{children}</p>}
       {action && <div className="mt-2 flex flex-wrap justify-center gap-2">{action}</div>}
     </div>

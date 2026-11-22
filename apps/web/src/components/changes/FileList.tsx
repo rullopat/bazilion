@@ -9,7 +9,7 @@ function counts(change: ReviewChange) {
   if (change.excludedReason) return <span className="text-xs text-mocha">withheld</span>
   if (change.binary) return <span className="text-xs text-mocha">binary</span>
   return (
-    <span className="flex shrink-0 gap-1.5 font-mono text-[0.7rem] font-medium">
+    <span className="flex shrink-0 gap-1.5 font-mono text-xs font-medium">
       {change.addedLines ? <span className="text-success">+{change.addedLines}</span> : null}
       {change.deletedLines ? <span className="text-danger">−{change.deletedLines}</span> : null}
     </span>

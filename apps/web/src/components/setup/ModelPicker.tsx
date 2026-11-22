@@ -181,7 +181,7 @@ export function ModelPicker({
           return (
             <section key={provider.id} aria-label={provider.displayName}>
               <div className="flex flex-wrap items-baseline gap-x-2 border-b border-border bg-muted/50 px-4 py-2">
-                <h3 className="m-0 font-body text-[0.72rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                <h3 className="m-0 font-body text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
                   {provider.displayName}
                 </h3>
                 <span className="text-xs text-muted-foreground">

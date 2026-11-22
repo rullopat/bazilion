@@ -1,61 +1,85 @@
-// The Team's shared memory: BM25-indexed markdown notes every member reads and writes (stored in
-// <team>/memory/). List, search, open, edit, create and delete entries.
+// The Team's shared memory: Markdown notes every member reads, writes and searches (stored in
+// <team>/memory/). Notes are listed by their title and read formatted; Edit opens the text.
 
 import type { MemoryEntry, MemoryHit, Team } from '@bazilion/api-types'
-import { type ReactNode, useEffect, useState } from 'react'
+import { NotebookText, Plus } from 'lucide-react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
+import { markdownPreview, markdownTitle } from '../../lib/markdown-text'
+import { renderMd } from '../../lib/md'
+import { useHydrated } from '../../lib/use-resource'
+import { cn } from '../../lib/utils'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { UnsavedChangesGuard } from '../UnsavedChangesGuard'
+import { SaveBar, saveStatus, TextAreaField, TextField } from '../ui/form'
+import {
+  CARD_ROW,
+  CardEmpty,
+  CardForm,
+  CardToolbar,
+  Notice,
+  RowMenu,
+  SearchField,
+  SetupCard,
+} from '../ui/parts'
 
-interface ListRow {
+interface NoteRow {
   key: string
-  preview: string
-  score?: number
-}
-
-const toRow = (entry: MemoryEntry): ListRow => ({
-  key: entry.key,
-  preview: entry.content.slice(0, 80),
-})
-
-type Mode = 'none' | 'edit' | 'new'
-
-interface Confirmation {
   title: string
-  description: ReactNode
-  confirmLabel: string
-  onConfirm: () => void | Promise<void>
+  preview: string
 }
+
+/** A note's name in the list: its first heading, else the last part of its path. */
+function noteRow(key: string, text: string): NoteRow {
+  return {
+    key,
+    title: markdownTitle(text) ?? key.split('/').pop()?.replace(/\.md$/, '') ?? key,
+    preview: markdownPreview(text, 110),
+  }
+}
+
+type Open =
+  | { mode: 'none' }
+  | { mode: 'read'; key: string; content: string }
+  | { mode: 'edit'; key: string; content: string; draft: string }
+  | { mode: 'new'; key: string; draft: string }
 
 export function TeamMemory({ team, openKey }: { team: Team; openKey?: string }) {
   const base = `/api/teams/${encodeURIComponent(team.id)}/memory`
   const entryPath = (key: string) => `${base}/${key.split('/').map(encodeURIComponent).join('/')}`
+  const hydrated = useHydrated()
 
-  const [rows, setRows] = useState<ListRow[]>([])
+  const [rows, setRows] = useState<NoteRow[]>([])
+  const [total, setTotal] = useState(0)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
-  const [mode, setMode] = useState<Mode>('none')
-  const [keyInput, setKeyInput] = useState('')
-  const [content, setContent] = useState('')
-  const [saved, setSaved] = useState({ key: '', content: '' })
-  const [status, setStatus] = useState<{ message: string; error: boolean } | null>(null)
-  const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
-  const dirty = mode !== 'none' && (keyInput !== saved.key || content !== saved.content)
+  const [open, setOpen] = useState<Open>({ mode: 'none' })
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState<(() => void) | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
+  const [loading, setLoading] = useState<string | null>(null)
+  const dirty =
+    (open.mode === 'edit' && open.draft !== open.content) ||
+    (open.mode === 'new' && (open.key.trim() !== '' || open.draft !== ''))
+  const selectedKey = open.mode === 'read' || open.mode === 'edit' ? open.key : null
 
   async function loadList(text: string) {
     try {
       if (text.trim()) {
         const hits = await api<MemoryHit[]>(`${base}/search?q=${encodeURIComponent(text)}&limit=50`)
-        setRows(hits.map((hit) => ({ key: hit.key, preview: hit.snippet, score: hit.score })))
+        setRows(hits.map((hit) => noteRow(hit.key, hit.snippet)))
         setSearching(true)
       } else {
-        setRows((await api<MemoryEntry[]>(base)).map(toRow))
+        const entries = await api<MemoryEntry[]>(base)
+        setRows(entries.map((entry) => noteRow(entry.key, entry.content)))
+        setTotal(entries.length)
         setSearching(false)
       }
     } catch (cause) {
-      setStatus({ message: errorMessage(cause), error: true })
+      setError(errorMessage(cause))
     }
   }
 
@@ -68,204 +92,265 @@ export function TeamMemory({ team, openKey }: { team: Team; openKey?: string }) 
   // A note picked in the Team tab opens with the sheet.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, for the note asked for.
   useEffect(() => {
-    if (openKey) void open(openKey)
+    if (openKey) void read(openKey)
   }, [openKey])
 
-  function show(nextMode: Mode, key: string, text: string) {
-    setMode(nextMode)
-    setSelectedKey(nextMode === 'edit' ? key : null)
-    setKeyInput(key)
-    setContent(text)
-    setSaved({ key, content: text })
+  /** Do `action`, first asking whether to drop an unsaved edit. */
+  function leave(action: () => void) {
+    if (dirty) setPending(() => action)
+    else action()
   }
 
-  async function open(key: string) {
-    setStatus({ message: 'Loading…', error: false })
+  async function read(key: string) {
+    setError(null)
+    setSaved(false)
+    setLoading(key)
     try {
       const entry = await api<MemoryEntry>(entryPath(key))
-      show('edit', entry.key, entry.content ?? '')
-      setStatus(null)
+      setOpen({ mode: 'read', key: entry.key, content: entry.content ?? '' })
     } catch (cause) {
-      setStatus({ message: errorMessage(cause), error: true })
+      setError(errorMessage(cause))
+    } finally {
+      setLoading(null)
     }
   }
 
-  /** Run `action`, first asking to discard unsaved changes. */
-  function leaveDraft(action: () => void | Promise<void>, label: string) {
-    if (!dirty) {
-      void action()
-      return
-    }
-    setConfirmation({
-      title: 'Discard unsaved memory changes?',
-      description: (
-        <p>
-          Your changes to{' '}
-          <code className="font-mono">{selectedKey ?? (keyInput || 'the new entry')}</code> will be
-          lost.
-        </p>
-      ),
-      confirmLabel: label,
-      onConfirm: action,
-    })
-  }
-
-  async function save() {
-    const key = keyInput.trim()
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    if (open.mode !== 'edit' && open.mode !== 'new') return
+    const key = open.key.trim()
+    if (!key) return
+    setBusy(true)
+    setError(null)
     try {
-      await api(entryPath(key), { method: 'PUT', body: { content } })
-      show('edit', key, content)
-      setStatus({ message: 'Saved', error: false })
+      await api(entryPath(key), { method: 'PUT', body: { content: open.draft } })
+      setOpen({ mode: 'read', key, content: open.draft })
+      setSaved(true)
       await loadList(query)
     } catch (cause) {
-      setStatus({ message: errorMessage(cause), error: true })
+      setError(errorMessage(cause))
+    } finally {
+      setBusy(false)
     }
   }
 
-  async function remove(key: string) {
-    await api(entryPath(key), { method: 'DELETE' })
-    show('none', '', '')
-    setStatus({ message: `${key} deleted`, error: false })
-    await loadList(query)
-  }
+  const current = open.mode === 'none' ? null : open
+  const heading =
+    current === null
+      ? ''
+      : current.mode === 'new'
+        ? 'A new note'
+        : noteRow(current.key, current.mode === 'edit' ? current.draft : current.content).title
 
   return (
-    <div className="space-y-4">
-      <UnsavedChangesGuard when={dirty} subject="Team memory draft" />
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)]">
+      <UnsavedChangesGuard when={dirty} subject="note" />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
-        <div>
-          <div className="overflow-hidden rounded-[16px] border border-frost bg-snow">
-            <div className="border-b border-frost p-2">
-              <input
-                aria-label="Search Team memory"
-                type="search"
-                placeholder="Search the notes"
-                autoComplete="off"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </div>
-            <div className="max-h-[46dvh] overflow-y-auto">
-              {rows.length === 0 ? (
-                <div className="p-8 text-center text-mocha-light">
-                  {searching ? 'No note matches.' : 'No notes yet.'}
-                </div>
-              ) : (
-                rows.map((row) => (
-                  <button
-                    key={row.key}
-                    type="button"
-                    onClick={() => {
-                      if (mode !== 'edit' || row.key !== selectedKey) {
-                        leaveDraft(() => open(row.key), 'Discard and open')
-                      }
-                    }}
-                    className={`unstyled block w-full cursor-pointer border-b border-frost/50 px-3.5 py-2 text-left font-mono text-[0.84em] transition-colors last:border-b-0 hover:bg-sapphire-glow ${
-                      row.key === selectedKey
-                        ? 'bg-sapphire-glow font-medium text-sapphire-deep'
-                        : ''
-                    }`}
-                  >
-                    {searching && row.score !== undefined && (
-                      <span className="float-right text-[0.75em] text-sapphire">
-                        {row.score.toFixed(2)}
-                      </span>
-                    )}
-                    {row.key}
-                    {row.preview && (
-                      <span className="mt-1 block text-[0.9em] font-normal text-mocha-light">
-                        {row.preview}
-                      </span>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+      <SetupCard
+        labelledBy="team-notes"
+        icon={<NotebookText className="size-5" />}
+        title="Notes"
+        description={total === 1 ? '1 note' : `${total} notes`}
+        action={
           <Button
             variant="ghost"
-            className="mt-3 w-full"
             onClick={() =>
-              leaveDraft(() => {
-                show('new', '', '')
-                setStatus({
-                  message: 'New entry: type a key and content, then save.',
-                  error: false,
-                })
-              }, 'Discard and create new')
+              leave(() => {
+                setSaved(false)
+                setOpen({ mode: 'new', key: '', draft: '' })
+              })
             }
           >
+            <Plus className="size-4" aria-hidden="true" />
             New note
           </Button>
-        </div>
+        }
+      >
+        <CardToolbar>
+          <SearchField
+            label="Search the notes"
+            placeholder="Search the notes"
+            value={query}
+            onChange={setQuery}
+            className="flex-1"
+          />
+        </CardToolbar>
+        {rows.length === 0 ? (
+          <CardEmpty title={searching ? 'No note matches' : 'No notes yet'}>
+            {searching
+              ? 'Try another word.'
+              : 'Agents keep here what the whole Team should remember; you can write notes too.'}
+          </CardEmpty>
+        ) : (
+          <ul className="m-0 max-h-[56dvh] list-none overflow-y-auto p-0">
+            {rows.map((row) => (
+              <li key={row.key}>
+                <button
+                  type="button"
+                  aria-current={row.key === selectedKey ? 'true' : undefined}
+                  onClick={() => {
+                    if (row.key !== selectedKey) leave(() => void read(row.key))
+                  }}
+                  className={cn(
+                    CARD_ROW,
+                    'unstyled block w-full py-2.5 text-left transition-colors hover:bg-accent/30',
+                    row.key === selectedKey && 'bg-accent/50',
+                  )}
+                >
+                  <span className="block w-full truncate text-sm font-semibold text-foreground">
+                    {row.title}
+                  </span>
+                  <span className="block w-full truncate font-mono text-xs text-muted-foreground">
+                    {row.key}
+                  </span>
+                  {row.preview && (
+                    <span className="mt-0.5 line-clamp-2 block w-full text-sm text-muted-foreground">
+                      {row.preview}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SetupCard>
 
-        <div>
-          <input
-            aria-label="Memory entry key"
-            type="text"
-            placeholder="key (e.g. prefs/hiking.md)"
-            value={keyInput}
-            onChange={(event) => setKeyInput(event.target.value)}
-            disabled={mode !== 'new'}
-            className="mb-3 font-mono"
-          />
-          <textarea
-            aria-label="Memory entry content"
-            placeholder="Select an entry on the left, or create a new one."
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            disabled={mode === 'none'}
-            className="min-h-[40dvh] font-mono text-[0.9em] leading-[1.55]"
-          />
-          <div className="mt-3 flex gap-2">
-            <Button
-              variant="primary"
-              onClick={() => void save()}
-              disabled={mode === 'none' || !keyInput.trim() || !dirty}
-            >
-              Save
-            </Button>
-            <Button
-              variant="danger"
-              disabled={mode !== 'edit' || selectedKey === null}
-              onClick={() => {
-                const key = selectedKey
-                if (!key) return
-                setConfirmation({
-                  title: `Delete ${key}?`,
-                  description: (
-                    <p>
-                      This permanently deletes <code className="font-mono">{key}</code> from the
-                      Team's shared memory and its search results.
-                    </p>
-                  ),
-                  confirmLabel: 'Delete memory entry',
-                  onConfirm: () => remove(key),
-                })
-              }}
-            >
-              Delete
-            </Button>
+      <section
+        aria-label={heading || 'Note'}
+        className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-baziu-sm"
+      >
+        {error && (
+          <div className="px-4 pt-4 sm:px-5">
+            <Notice role="alert" title="That did not work.">
+              {error}
+            </Notice>
           </div>
-          {status && (
-            <p
-              role={status.error ? 'alert' : 'status'}
-              className={`mt-2 text-[0.9em] ${status.error ? 'text-danger' : 'text-mocha-light'}`}
-            >
-              {status.message}
-            </p>
-          )}
-        </div>
-      </div>
+        )}
+        {loading !== null ? (
+          <p role="status" className="m-0 px-4 py-6 text-sm text-muted-foreground sm:px-5">
+            Opening {loading}…
+          </p>
+        ) : current === null ? (
+          <CardEmpty icon={<NotebookText className="size-5" />} title="Pick a note to read it">
+            Or write a new one with New note.
+          </CardEmpty>
+        ) : current.mode === 'read' ? (
+          <>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 sm:px-5">
+              <div className="min-w-0 flex-1">
+                <h3 className="m-0 font-body text-lg font-semibold text-foreground">{heading}</h3>
+                <span className="font-mono text-xs text-muted-foreground">{current.key}</span>
+              </div>
+              {saved && (
+                <span role="status" className="text-sm font-medium text-success">
+                  Saved.
+                </span>
+              )}
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSaved(false)
+                  setOpen({ ...current, mode: 'edit', draft: current.content })
+                }}
+              >
+                Edit
+              </Button>
+              <RowMenu
+                label={`More for ${heading}`}
+                items={[
+                  { label: 'Delete…', danger: true, onSelect: () => setRemoving(current.key) },
+                ]}
+              />
+            </div>
+            <div
+              className="md-content max-h-[60dvh] overflow-y-auto border-t border-border px-4 py-4 text-base leading-[1.6] text-chocolate sm:px-5"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: marked output sanitized by DOMPurify.
+              dangerouslySetInnerHTML={{ __html: renderMd(current.content, hydrated) }}
+            />
+          </>
+        ) : (
+          <CardForm onSubmit={(event) => void save(event)} className="border-t-0">
+            {current.mode === 'new' ? (
+              <TextField
+                label="Name"
+                value={current.key}
+                mono
+                disabled={busy}
+                placeholder="decisions/launch-date.md"
+                hint="A path: folders group notes, such as people/sam.md."
+                onChange={(value) => setOpen({ ...current, key: value })}
+              />
+            ) : (
+              <div>
+                <h3 className="m-0 font-body text-lg font-semibold text-foreground">{heading}</h3>
+                <span className="font-mono text-xs text-muted-foreground">{current.key}</span>
+              </div>
+            )}
+            <TextAreaField
+              label="Text"
+              value={current.draft}
+              rows={14}
+              mono
+              disabled={busy}
+              hint="Markdown. A first line such as “# Launch date” names the note."
+              onChange={(value) => setOpen({ ...current, draft: value })}
+            />
+            <SaveBar
+              busy={busy}
+              disabled={!dirty || !current.key.trim()}
+              status={saveStatus({ dirty, saved: false })}
+              extra={
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() =>
+                    leave(() =>
+                      current.mode === 'edit'
+                        ? setOpen({ mode: 'read', key: current.key, content: current.content })
+                        : setOpen({ mode: 'none' }),
+                    )
+                  }
+                >
+                  Cancel
+                </Button>
+              }
+            />
+          </CardForm>
+        )}
+      </section>
+
       <ConfirmDialog
-        open={confirmation !== null}
-        title={confirmation?.title ?? ''}
-        description={confirmation?.description ?? null}
-        confirmLabel={confirmation?.confirmLabel ?? 'Continue'}
-        onConfirm={() => confirmation?.onConfirm()}
-        onOpenChange={(open) => {
-          if (!open) setConfirmation(null)
+        open={pending !== null}
+        title="Drop your unsaved edit?"
+        description={<p className="m-0">What you changed in this note is lost.</p>}
+        confirmLabel="Drop the edit"
+        onConfirm={() => {
+          const action = pending
+          setPending(null)
+          action?.()
+        }}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setPending(null)
+        }}
+      />
+      <ConfirmDialog
+        open={removing !== null}
+        title="Delete this note?"
+        description={
+          <p className="m-0">
+            <code className="font-mono">{removing}</code> leaves the Team’s shared memory, and
+            searches no longer find it.
+          </p>
+        }
+        confirmLabel="Delete the note"
+        onConfirm={async () => {
+          if (!removing) return
+          await api(entryPath(removing), { method: 'DELETE' })
+          setOpen({ mode: 'none' })
+          await loadList(query)
+        }}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setRemoving(null)
         }}
       />
     </div>

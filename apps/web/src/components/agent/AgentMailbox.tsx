@@ -1,5 +1,5 @@
-// One Agent's mailbox: the messages other Agents sent it, a way to send it one on another
-// Agent's behalf, and the message chains the loop limit stopped.
+// One Agent's mailbox: the messages other Agents sent it, a way to write to it as one of them,
+// and the message chains that were stopped for going round in circles.
 
 import type {
   Agent,
@@ -9,40 +9,86 @@ import type {
   Message,
   SendMessageRequest,
 } from '@bazilion/api-types'
-import { useState } from 'react'
+import { Inbox, OctagonX, Send } from 'lucide-react'
+import { type FormEvent, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import { messageText as decodeText } from '../../lib/messages'
-import { useResource } from '../../lib/use-resource'
+import { useHydrated, useResource } from '../../lib/use-resource'
+import { AgentAvatar } from '../AgentAvatar'
 import { Button } from '../Button'
+import { Segmented } from '../Segmented'
+import { SelectField, TextAreaField } from '../ui/form'
+import {
+  CardEmpty,
+  CardForm,
+  CardList,
+  CardToolbar,
+  Chip,
+  ListRow,
+  Notice,
+  SetupCard,
+} from '../ui/parts'
 
 export function AgentMailbox({ agent, agents }: { agent: Agent; agents: Agent[] }) {
   const base = `/api/agents/${encodeURIComponent(agent.id)}`
   const data = useResource(
     async (signal) => {
-      const [inbox, loopBreaks] = await Promise.all([
+      const [inbox, loopBreaks, everyone] = await Promise.all([
         api<ListInboxResponse>(`${base}/messages`, { signal }),
         api<ListAgentLoopBreaksResponse>(`${base}/loop-breaks?limit=10`, { signal }),
+        // Archived Agents too: mail they sent still says who they are.
+        api<Agent[]>('/api/agents?includeArchived=true', { signal }).catch(() => agents),
       ])
       // The daemon lists oldest first; the mailbox shows the newest on top.
-      return { messages: [...inbox.messages].reverse(), loopBreaks: loopBreaks.events }
+      return {
+        messages: [...inbox.messages].reverse(),
+        loopBreaks: loopBreaks.events,
+        agents: everyone,
+      }
     },
     [base],
   )
   if (!data.data) {
     return data.error ? (
-      <p role="alert" className="err">
+      <Notice role="alert" title="The mailbox could not be loaded.">
         {data.error}
-      </p>
+      </Notice>
     ) : (
-      <p role="status" className="muted">
+      <p role="status" className="m-0 text-sm text-muted-foreground">
         Loading the mailbox…
       </p>
     )
   }
-  return <MailboxView agent={agent} agents={agents} {...data.data} onChanged={data.reload} />
+  return <MailboxView agent={agent} {...data.data} onChanged={data.reload} />
 }
 
-/** The mailbox as loaded: the list, the open message, the send form and the stopped chains. */
+type Known = Pick<Agent, 'id' | 'name' | 'status'> & Partial<Pick<Agent, 'identity'>>
+
+/** An Agent's name; two Agents with one name get the start of their id as well. */
+export function agentNamer(agents: readonly Known[]): (id: string) => string {
+  const byId = new Map(agents.map((entry) => [entry.id, entry]))
+  const count = new Map<string, number>()
+  for (const entry of agents) count.set(entry.name, (count.get(entry.name) ?? 0) + 1)
+  return (id) => {
+    const known = byId.get(id)
+    if (!known) return 'A deleted Agent'
+    const name = (count.get(known.name) ?? 0) > 1 ? `${known.name} (${id.slice(0, 8)})` : known.name
+    return known.status === 'archived' ? `${name} (archived)` : name
+  }
+}
+
+/** Who a message can be written as: the other Agents that are not archived. */
+export function mailSenders(
+  agentId: string,
+  agents: readonly Known[],
+): { value: string; label: string }[] {
+  const nameOf = agentNamer(agents)
+  return agents
+    .filter((entry) => entry.status !== 'archived' && entry.id !== agentId)
+    .map((entry) => ({ value: entry.id, label: nameOf(entry.id) }))
+}
+
+/** The mailbox as loaded: the messages, the form to write one, the stopped chains. */
 export function MailboxView({
   agent,
   agents,
@@ -51,198 +97,183 @@ export function MailboxView({
   onChanged,
 }: {
   agent: Pick<Agent, 'id' | 'name'>
-  agents: Array<Pick<Agent, 'id' | 'name' | 'status'>>
+  agents: Known[]
   /** Newest first. */
   messages: Message[]
   loopBreaks: AgentLoopBreakEvent[]
   onChanged: () => Promise<void>
 }) {
-  const [unreadOnly, setUnreadOnly] = useState(false)
-  // The newest unread message is open when the mailbox opens.
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => all.find((message) => message.readAt === null)?.id ?? null,
-  )
+  const [show, setShow] = useState<'all' | 'unread'>('all')
+  const [busyId, setBusyId] = useState<string | null>(null)
   const [markError, setMarkError] = useState<string | null>(null)
-  const unreadCount = all.filter((message) => message.readAt === null).length
-  const messages = unreadOnly ? all.filter((message) => message.readAt === null) : all
-  const selected: Message | null = all.find((message) => message.id === selectedId) ?? null
-  const agentNames = Object.fromEntries(agents.map((entry) => [entry.id, entry.name]))
-  const senders = agents
-    .filter((entry) => entry.status !== 'archived' && entry.id !== agent.id)
-    .map((entry) => ({ id: entry.id, name: entry.name }))
-  const label = (id: string) =>
-    agentNames[id] ? `${agentNames[id]} (${id.slice(0, 8)})` : id.slice(0, 8)
-  const filterClass = (active: boolean) =>
-    `unstyled -mb-px border-b-2 px-3 py-1.5 text-sm ${active ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground'}`
+  const hydrated = useHydrated()
+  const when = (at: number) => (hydrated ? new Date(at).toLocaleString() : '')
+  const unread = all.filter((message) => message.readAt === null)
+  const messages = show === 'unread' ? unread : all
+  const byId = new Map(agents.map((entry) => [entry.id, entry]))
+  const nameOf = agentNamer(agents)
+  const senders = mailSenders(agent.id, agents)
+
+  async function markRead(message: Message) {
+    setBusyId(message.id)
+    setMarkError(null)
+    try {
+      await api(`/api/messages/${encodeURIComponent(message.id)}`, {
+        method: 'PATCH',
+        body: { read: true },
+      })
+      await onChanged()
+    } catch (cause) {
+      setMarkError(errorMessage(cause))
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-[360px_1fr]">
-      <div>
-        <div className="mb-3 flex items-center gap-1 border-b">
-          <button
-            type="button"
-            aria-pressed={!unreadOnly}
-            onClick={() => setUnreadOnly(false)}
-            className={filterClass(!unreadOnly)}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            aria-pressed={unreadOnly}
-            onClick={() => setUnreadOnly(true)}
-            className={filterClass(unreadOnly)}
-          >
-            Unread
-          </button>
-          <span className="ml-auto text-xs text-muted-foreground">{unreadCount} unread</span>
-        </div>
-        <div className="max-h-[60dvh] overflow-y-auto rounded-lg border bg-card">
-          {messages.length === 0 ? (
-            <div className="p-6 text-center italic text-muted-foreground">
-              {unreadOnly ? 'Nothing unread.' : 'No messages yet.'}
-            </div>
+    <div className="grid gap-5">
+      <SetupCard
+        labelledBy="agent-mailbox"
+        icon={<Inbox className="size-5" />}
+        title="Messages"
+        description={`What other Agents sent ${agent.name}. It reads the unread ones when it is next free.`}
+        action={
+          unread.length > 0 ? (
+            <Chip tone="warning">{unread.length} unread</Chip>
           ) : (
-            messages.map((message) => {
-              const text = decodeText(message.payload)
-              const unread = message.readAt === null
-              return (
-                <button
-                  type="button"
-                  key={message.id}
-                  onClick={() => {
-                    setMarkError(null)
-                    setSelectedId(message.id)
-                  }}
-                  className={`unstyled block w-full border-b px-3 py-2 text-left text-sm last:border-0 hover:bg-accent/30 ${
-                    selected?.id === message.id ? 'bg-accent/40' : ''
-                  } ${unread ? 'font-medium' : ''}`}
-                >
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span className="font-mono">
-                      {unread && (
-                        <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-primary align-middle" />
-                      )}
-                      from {label(message.fromAgentId)}
-                    </span>
-                    <span className="font-mono">
-                      {new Date(message.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 truncate text-foreground">
-                    {text.length > 80 ? `${text.slice(0, 80)}…` : text}
-                  </div>
-                </button>
-              )
-            })
-          )}
-        </div>
-      </div>
-
-      <div>
-        {selected && (
-          <div className="mb-4 rounded-lg border bg-card p-5">
-            <div className="mb-2 space-y-0.5 font-mono text-xs text-muted-foreground">
-              <div>
-                id: <code>{selected.id}</code>
-              </div>
-              <div>
-                from: <code>{label(selected.fromAgentId)}</code>
-              </div>
-              <div>received: {new Date(selected.createdAt).toLocaleString()}</div>
-              <div>
-                read: {selected.readAt ? new Date(selected.readAt).toLocaleString() : '(unread)'}
-                {!selected.readAt && (
-                  <Button
-                    variant="ghost"
-                    className="ml-2"
-                    onClick={async () => {
-                      setMarkError(null)
-                      try {
-                        await api(`/api/messages/${encodeURIComponent(selected.id)}`, {
-                          method: 'PATCH',
-                          body: { read: true },
-                        })
-                        await onChanged()
-                      } catch (cause) {
-                        setMarkError(errorMessage(cause))
-                      }
-                    }}
-                  >
-                    Mark read
-                  </Button>
-                )}
-                {markError && (
-                  <span role="alert" className="ml-2 text-danger">
-                    {markError}
-                  </span>
-                )}
-              </div>
-              {selected.replyTo && (
-                <div>
-                  reply to: <code>{selected.replyTo}</code>
-                </div>
-              )}
-            </div>
-            <div className="whitespace-pre-wrap break-words border-t pt-3 font-mono text-sm">
-              {decodeText(selected.payload)}
-            </div>
+            <Chip tone="neutral">0 unread</Chip>
+          )
+        }
+      >
+        {all.length > 0 && (
+          <CardToolbar>
+            <Segmented
+              label="Which messages"
+              value={show}
+              onChange={setShow}
+              options={[
+                { id: 'all', label: `All ${all.length}` },
+                { id: 'unread', label: `Unread ${unread.length}` },
+              ]}
+            />
+          </CardToolbar>
+        )}
+        {markError && (
+          <div className="border-t border-border px-4 py-3 sm:px-5">
+            <Notice role="alert" title="It could not be marked read.">
+              {markError}
+            </Notice>
           </div>
         )}
-        <p className="text-xs text-muted-foreground">
-          Agents exchange messages with their <code className="font-mono">send_message</code> tool;
-          an idle recipient picks up unread mail on the next scheduler tick.
-        </p>
-        <SendMessageForm agentId={agent.id} senders={senders} onSent={() => void onChanged()} />
-        <div className="mt-6 rounded-lg border bg-card p-4">
-          <h2 className="mb-2 font-serif text-lg text-foreground">Loop circuit breaker</h2>
-          {loopBreaks.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No agent-message chains stopped.</p>
-          ) : (
-            <div className="space-y-3">
-              {loopBreaks.map((event) => (
-                <div key={event.id} className="border-t pt-3 text-xs first:border-0 first:pt-0">
-                  <div className="font-mono text-foreground">
-                    {label(event.fromAgentId)} → {label(event.toAgentId)}
-                  </div>
-                  <div className="mt-1 text-muted-foreground">
-                    stopped hop {event.attemptedHop} at limit {event.maxHops} · chain{' '}
-                    <code>{event.causalChainId.slice(0, 8)}</code> ·{' '}
-                    {new Date(event.createdAt).toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+        {messages.length === 0 ? (
+          <CardEmpty
+            icon={<Inbox className="size-5" />}
+            title={all.length === 0 ? 'No messages yet' : 'Nothing unread'}
+          >
+            {all.length === 0 && 'Teammates write here with their messaging tool.'}
+          </CardEmpty>
+        ) : (
+          <CardList>
+            {messages.map((message) => {
+              const from = byId.get(message.fromAgentId)
+              const isUnread = message.readAt === null
+              return (
+                <ListRow
+                  key={message.id}
+                  inline
+                  leading={<AgentAvatar identity={from?.identity} size={32} />}
+                  title={`From ${nameOf(message.fromAgentId)}`}
+                  chip={isUnread && <Chip tone="warning">Unread</Chip>}
+                  meta={
+                    <>
+                      <span>{when(message.createdAt)}</span>
+                      {message.replyTo && <span>A reply</span>}
+                    </>
+                  }
+                  actions={
+                    isUnread && (
+                      <Button
+                        variant="ghost"
+                        disabled={busyId === message.id}
+                        aria-label={`Mark the message from ${nameOf(message.fromAgentId)} read`}
+                        onClick={() => void markRead(message)}
+                      >
+                        Mark read
+                      </Button>
+                    )
+                  }
+                >
+                  <p className="m-0 whitespace-pre-wrap break-words rounded-xl bg-muted/50 px-3 py-2 text-sm text-foreground">
+                    {decodeText(message.payload)}
+                  </p>
+                </ListRow>
+              )
+            })}
+          </CardList>
+        )}
+      </SetupCard>
+
+      {senders.length > 0 && (
+        <SendMessage agent={agent} senders={senders} onSent={() => void onChanged()} />
+      )}
+
+      <SetupCard
+        labelledBy="agent-loop-breaks"
+        icon={<OctagonX className="size-5" />}
+        title="Stopped chains"
+        description="When Agents keep answering each other past the limit, the chain stops and shows here."
+      >
+        {loopBreaks.length === 0 ? (
+          <CardEmpty title="No chain has been stopped" />
+        ) : (
+          <CardList>
+            {loopBreaks.map((event) => (
+              <ListRow
+                key={event.id}
+                inline
+                title={`${nameOf(event.fromAgentId)} → ${nameOf(event.toAgentId)}`}
+                meta={
+                  <>
+                    <span>
+                      Stopped at message {event.attemptedHop}; the limit is {event.maxHops}
+                    </span>
+                    <span>{when(event.createdAt)}</span>
+                  </>
+                }
+              />
+            ))}
+          </CardList>
+        )}
+      </SetupCard>
     </div>
   )
 }
 
-function SendMessageForm({
-  agentId,
+function SendMessage({
+  agent,
   senders,
   onSent,
 }: {
-  agentId: string
-  senders: { id: string; name: string }[]
+  agent: Pick<Agent, 'id' | 'name'>
+  senders: { value: string; label: string }[]
   onSent: () => void
 }) {
-  const [from, setFrom] = useState(senders[0]?.id ?? '')
+  const [from, setFrom] = useState(senders[0]?.value ?? '')
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [sent, setSent] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  if (senders.length === 0) return null
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault()
+    if (!text.trim()) return
     setError(null)
     setSubmitting(true)
     try {
       const body: SendMessageRequest = { from, payload: { text } }
-      await api(`/api/agents/${encodeURIComponent(agentId)}/messages`, { body })
+      await api(`/api/agents/${encodeURIComponent(agent.id)}/messages`, { body })
       setText('')
+      setSent(true)
       onSent()
     } catch (cause) {
       setError(errorMessage(cause))
@@ -252,37 +283,46 @@ function SendMessageForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="mt-6 rounded-lg border bg-card p-4">
-      <h2 className="mb-2 font-serif text-lg text-foreground">Send a message to this Agent</h2>
-      <label>
-        From
-        <select value={from} onChange={(event) => setFrom(event.target.value)}>
-          {senders.map((sender) => (
-            <option key={sender.id} value={sender.id}>
-              {sender.name} ({sender.id.slice(0, 8)})
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Message
-        <textarea
-          required
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          className="min-h-[80px] font-mono text-[0.9em]"
+    <SetupCard
+      labelledBy="agent-mailbox-send"
+      icon={<Send className="size-5" />}
+      title="Send a message to this Agent"
+      description={`Write to ${agent.name} as one of its teammates, to see how it handles mail.`}
+    >
+      <CardForm onSubmit={(event) => void submit(event)}>
+        <SelectField
+          label="From"
+          value={from}
+          options={senders}
+          disabled={submitting}
+          onChange={setFrom}
         />
-      </label>
-      <div className="mt-3 flex items-center gap-3">
-        <Button variant="primary" type="submit" disabled={submitting}>
-          {submitting ? 'Sending…' : 'Send'}
-        </Button>
-        {error && (
-          <span role="alert" className="text-[0.85em] text-danger">
-            {error}
-          </span>
-        )}
-      </div>
-    </form>
+        <TextAreaField
+          label="Message"
+          value={text}
+          rows={3}
+          disabled={submitting}
+          onChange={(value) => {
+            setText(value)
+            setSent(false)
+          }}
+        />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Button variant="primary" type="submit" disabled={submitting || !text.trim()}>
+            {submitting ? 'Sending…' : 'Send'}
+          </Button>
+          <p
+            role="status"
+            className={`m-0 text-sm font-medium ${error ? 'text-warning' : 'text-success'}`}
+          >
+            {error
+              ? `Not sent: ${error}`
+              : sent
+                ? `Sent. ${agent.name} reads it when it is free.`
+                : ''}
+          </p>
+        </div>
+      </CardForm>
+    </SetupCard>
   )
 }

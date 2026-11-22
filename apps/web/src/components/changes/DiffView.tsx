@@ -18,8 +18,7 @@ export interface DiffProps {
   onRemoveComment?: (id: number) => void
 }
 
-const NUMBER =
-  'select-none px-2 text-right text-[0.7rem] leading-[1.6] text-mocha-light tabular-nums'
+const NUMBER = 'select-none px-2 text-right text-xs leading-[1.6] text-mocha-light tabular-nums'
 const TEXT = 'whitespace-pre-wrap px-2 leading-[1.6] [overflow-wrap:anywhere]'
 
 /** The line number of a commentable line: click to comment on it. */
@@ -180,8 +179,8 @@ function Rest({ hidden, onShow }: { hidden: number; onShow: () => void }) {
   )
 }
 
-const HUNK = 'col-span-full bg-accent/50 px-3 py-0.5 text-[0.7rem] text-accent-foreground'
-const NOTE = 'col-span-full px-3 py-0.5 font-body text-[0.7rem] italic text-mocha-light'
+const HUNK = 'col-span-full bg-accent/50 px-3 py-0.5 text-xs text-accent-foreground'
+const NOTE = 'col-span-full px-3 py-0.5 font-body text-xs italic text-mocha-light'
 
 /** One column: removed lines above the lines that replace them. */
 export function UnifiedDiff(props: DiffProps) {

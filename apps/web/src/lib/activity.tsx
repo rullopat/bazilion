@@ -44,11 +44,18 @@ export function agentState(
   nameOf: (agentId: string) => string | undefined = () => undefined,
 ): AgentState {
   if (!activity) return { kind: 'idle', text: 'Idle' }
+  // One phrase wherever an Agent is blocked on the operator: "Waiting for you".
   if (activity.questions > 0) {
-    return { kind: 'needs', text: `Needs you: ${plural(activity.questions, 'question')}` }
+    return {
+      kind: 'needs',
+      text: `Waiting for you: ${activity.questions === 1 ? 'a question' : plural(activity.questions, 'question')}`,
+    }
   }
   if (activity.approvals > 0) {
-    return { kind: 'needs', text: `Needs you: ${plural(activity.approvals, 'command')} to approve` }
+    return {
+      kind: 'needs',
+      text: `Waiting for you: ${activity.approvals === 1 ? 'a command' : plural(activity.approvals, 'command')} to approve`,
+    }
   }
   if (activity.working) {
     const step = activity.step

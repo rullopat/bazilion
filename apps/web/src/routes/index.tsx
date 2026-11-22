@@ -27,13 +27,17 @@ import { ConversationHeader } from '../components/workspace/ConversationHeader'
 import { WorkspaceProvider } from '../components/workspace/context'
 import { EarlierConversation } from '../components/workspace/EarlierConversation'
 import { FocusFrame } from '../components/workspace/FocusFrame'
+import { Overview } from '../components/workspace/Overview'
 import { Rail, SIDEBAR_OPEN_GROUPS_COOKIE, SlimRail } from '../components/workspace/Rail'
 import { Sheets } from '../components/workspace/Sheets'
 import { TeamHome } from '../components/workspace/TeamHome'
 import { ActivityProvider } from '../lib/activity'
 import { daemonClient } from '../lib/daemon-client'
+import { usePageTitle } from '../lib/page-title'
+import { isTyping, neighbour } from '../lib/shortcuts'
 import {
   PANEL_COOKIE,
+  PANEL_LABELS,
   type PanelMemory,
   type PanelTab,
   parsePanelCookie,
@@ -125,6 +129,15 @@ function WorkspacePage() {
   // A full-width view is about a Team: without one there is nothing to show.
   const view = team ? search.view : undefined
   const names = useMemo(() => new Map(agents.map((agent) => [agent.id, agent.name])), [agents])
+  usePageTitle(
+    view && team
+      ? `${PANEL_LABELS[view]} · ${team.name}`
+      : open
+        ? [open.agent.name, team?.name].filter(Boolean).join(' · ')
+        : team
+          ? team.name
+          : 'Overview',
+  )
 
   // The side panel opens on the tab it was last on; the address, when it says, wins.
   const [memory, setMemory] = useState<PanelMemory>(data.panel)
@@ -140,7 +153,52 @@ function WorkspacePage() {
       return next
     })
   }, [search.panel])
-  const panel: PanelTab | 'none' = search.panel ?? (memory.open ? memory.tab : 'none')
+  // With nothing chosen the overview takes the room: the panel opens only when asked.
+  const panel: PanelTab | 'none' =
+    search.panel ?? (memory.open && (open || team) ? memory.tab : 'none')
+  // The keyboard: / writes to the open Agent, Alt+↓ and Alt+↑ open the next or previous Agent in
+  // the list, ⌘. or Ctrl+. shows or hides the side panel. Not while a dialog is open.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      // A control that handled the key itself (an open list, a menu) keeps it.
+      if (event.defaultPrevented || document.querySelector('[role="dialog"]')) return
+      const mod = event.metaKey || event.ctrlKey
+      if (mod && event.key === '.') {
+        event.preventDefault()
+        // Below the widest layout a remembered panel is hidden until asked for: it counts as shut.
+        const shown =
+          panel !== 'none' && (asked || window.matchMedia('(min-width: 1280px)').matches)
+        void router.navigate({
+          to: '/',
+          search: { ...search, panel: shown ? 'none' : memory.tab, section: undefined },
+        })
+        return
+      }
+      if (isTyping(event.target) || mod) return
+      if (event.key === '/' && !event.altKey) {
+        const composer = document.querySelector<HTMLTextAreaElement>('[data-composer]')
+        if (!composer) return
+        event.preventDefault()
+        composer.focus()
+        return
+      }
+      if (event.altKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+        const ordered = teams.flatMap((entry) =>
+          agents.filter((agent) => agent.teamId === entry.id),
+        )
+        const next = neighbour(ordered, open?.agent.id, event.key === 'ArrowDown' ? 1 : -1)
+        if (!next) return
+        event.preventDefault()
+        void router.navigate({
+          to: '/',
+          search: { agent: next.id, ...(search.panel ? { panel: search.panel } : {}) },
+        })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   // Below the widest layout the panel covers the conversation, so there it opens only when asked.
   const asked = search.panel !== undefined && search.panel !== 'none'
 
@@ -266,18 +324,7 @@ function WorkspacePage() {
                 ) : team ? (
                   <TeamHome team={team} />
                 ) : (
-                  <div className="flex h-full items-center justify-center rounded-2xl border border-dashed bg-card px-6 text-center text-muted-foreground">
-                    <div className="max-w-sm">
-                      <h1 className="m-0 font-body text-lg font-semibold text-foreground">
-                        {agents.length === 0 ? 'Start your first conversation' : 'Choose an agent'}
-                      </h1>
-                      <p className="mt-2 text-sm leading-6">
-                        {agents.length === 0
-                          ? 'Your default Team and Agent template are ready. Use “Spawn first agent” on the left to create a working member.'
-                          : 'Pick an agent on the left to open its conversation. “Jump to” at the top finds any Agent or Team by name.'}
-                      </p>
-                    </div>
-                  </div>
+                  <Overview />
                 )}
               </div>
               {panel !== 'none' && (

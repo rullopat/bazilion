@@ -195,26 +195,30 @@
     background-repeat: repeat;
     background-size: 256px;
   }
-  h1,
-  h2,
-  h3 {
+  /* The serif display face is for page titles (h1) and the open Agent's name, which set it
+     themselves; every other heading is the text face, so a card title reads the same everywhere. */
+  h1 {
     font-family: var(--font-display);
     color: var(--color-charcoal);
     font-weight: 400;
     letter-spacing: -0.01em;
-  }
-  h1 {
     font-size: clamp(2rem, 3vw, 2.65rem);
     line-height: 1.05;
   }
+  h2,
+  h3 {
+    font-family: var(--font-body);
+    color: var(--color-charcoal);
+    font-weight: 600;
+    letter-spacing: 0;
+  }
   h2 {
-    font-size: clamp(1.4rem, 2vw, 1.75rem);
-    line-height: 1.15;
+    font-size: 1.25rem;
+    line-height: 1.3;
   }
   h3 {
-    font-size: 1.12rem;
-    line-height: 1.25;
-    color: var(--color-mocha);
+    font-size: 1.067rem;
+    line-height: 1.35;
   }
   code {
     font-family: var(--font-mono);
@@ -479,20 +483,20 @@
   .md-content h4,
   .md-content h5,
   .md-content h6 {
-    font-family: var(--font-serif);
-    font-weight: 600;
+    font-family: var(--font-body);
+    font-weight: 650;
     color: var(--color-chocolate);
     line-height: 1.3;
     margin-top: 1.1em;
   }
   .md-content h1 {
-    font-size: 1.45em;
+    font-size: 1.3em;
   }
   .md-content h2 {
-    font-size: 1.25em;
+    font-size: 1.15em;
   }
   .md-content h3 {
-    font-size: 1.1em;
+    font-size: 1.05em;
   }
   .md-content h4,
   .md-content h5,

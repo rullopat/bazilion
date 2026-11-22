@@ -13,4 +13,9 @@ export interface RegisterTeamRequest {
 /** Body for `PUT /api/teams/:id/user-md`. */
 export interface SetTeamUserMdRequest {
   userMd: string
+  /**
+   * The text the editor started from. When given, the save is refused (409, code
+   * `user_md_changed`) if USER.md no longer reads so: an Agent wrote to it meanwhile.
+   */
+  expected?: string
 }

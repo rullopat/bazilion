@@ -38,7 +38,6 @@ export interface ProfileTemplates {
   bootstrap: string
   agents: string
   tools: string
-  userMd: string
 }
 
 export type ProfileFileName = 'SOUL.md' | 'IDENTITY.md' | 'BOOTSTRAP.md' | 'AGENTS.md' | 'TOOLS.md'

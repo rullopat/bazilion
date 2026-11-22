@@ -16,7 +16,7 @@ export function AvatarStack({ agents, max = 4 }: { agents: Agent[]; max?: number
         </span>
       ))}
       {more > 0 && (
-        <span className="-ml-2 flex size-7 items-center justify-center rounded-full bg-muted text-[0.7rem] font-bold text-muted-foreground ring-2 ring-card">
+        <span className="-ml-2 flex size-7 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground ring-2 ring-card">
           +{more}
         </span>
       )}

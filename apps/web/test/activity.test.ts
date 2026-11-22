@@ -21,10 +21,10 @@ test("an Agent's line says what needs the operator first, then the work, then wh
   expect(agentState({ ...idle, lastActivityAt: null }, undefined).text).toBe('No conversation yet')
   expect(agentState({ ...idle, working: true, questions: 1 }, undefined)).toEqual({
     kind: 'needs',
-    text: 'Needs you: 1 question',
+    text: 'Waiting for you: a question',
   })
   expect(agentState({ ...idle, working: true, approvals: 2 }, undefined).text).toBe(
-    'Needs you: 2 commands to approve',
+    'Waiting for you: 2 commands to approve',
   )
   expect(
     agentState(

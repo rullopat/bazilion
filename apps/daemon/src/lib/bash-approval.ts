@@ -35,6 +35,7 @@ export class CommandApprovalRegistry implements BashApprovalHost {
       command: input.command,
       risks: input.risks,
       status: 'pending',
+      createdAt: Date.now(),
       expiresAt: Date.now() + this.#timeoutMs,
     }
     const immediate =

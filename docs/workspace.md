@@ -6,8 +6,17 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
 
 ## What is where
 
+- **The top bar** has **Jump to** (⌘K on a Mac, Ctrl+K elsewhere), then three places:
+  **Attention** with the number of open items ([attention](attention-notifications.md)),
+  **Manage** for Agents, Teams, templates and skills ([manage](manage.md)), and **Setup** for
+  models, tools and connections. The person icon at the end holds the theme (light, dark or the
+  same as the computer) and **Log out**.
+- **The overview** fills the middle while nothing is open: who is waiting for you, who is
+  working, every Team with its members, the latest files from every Team, and the Agents that were
+  active last. A Team opened on its own shows its members with what each is doing, its views,
+  its latest files and what its Agents said to each other lately.
 - **The list on the left** shows every Team with its Agents. Each Agent has one line that says
-  what it is doing: `Needs you: 1 question`, `Needs you: 1 command to approve`,
+  what it is doing: `Waiting for you: a question`, `Waiting for you: a command to approve`,
   `Working: writing theme.js`, `Follow-ups paused`, `2 new files`, `New activity` or `Idle`. A
   Team's header sums its Agents up (`1 waiting · 2 working`). **New** spawns an Agent or a Team
   template, or registers a Team; the menu beside an Agent renames or archives it.
@@ -15,25 +24,51 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   `Wrote` with the lines added and removed); click one for its input and output. A message to a
   teammate is a hand-off card with what that teammate is doing now. Files an Agent delivers show
   where they were delivered, pictures as pictures. When a turn wrote files, **Review changes**
-  opens their diff. A question from the Agent has one button per choice.
+  opens their diff. A question from the Agent has one button per choice. While an Agent waits on
+  you, its step and the line under the conversation say `waiting for you` in amber, as the list
+  does; green and `working` mean it is working. **Edit**, under your last message, appears on
+  hover and replaces that turn.
 - **The bar above it** names the Agent, its Team and its model, and holds the conversation menu:
   read an earlier conversation, continue it, start a new one, rename one.
-- **The side panel** has five tabs. **Agent**: model and reasoning, the Team it belongs to, and
-  the ways into its schedules, learning, mailbox, skills, Telegram topic and browser. **Team**:
-  members, USER.md, shared memory, settings. **Connections**: who may message whom and what they
-  said lately. **Changes**: what the Team's workspace changed since a commit. **Files**: what its
-  Agents delivered. The panel remembers its last tab; the button at the right of the bar hides it.
+- **The side panel** has five tabs. **Agent**: model and reasoning, saved as soon as you pick
+  them with an **Undo**; the Team it belongs to; the ways into its schedules, learning, mailbox,
+  skills, Telegram topic and browser. **Team**: members (left out beside a Team's own overview),
+  About you (USER.md), shared memory, settings. **Connections**: who may message whom and what
+  they said lately. **Changes**: what the Team's workspace changed since a commit. **Files**: what
+  its Agents delivered, by kind and by whom, with the same filters as the gallery. The panel
+  remembers its last tab; the button at the right of the bar hides it.
 - **Three full-width views** take the place of the conversation, with the list folded to avatars:
-  the Connections map ([Team Policy](team-policy.md)), Changes side by side
-  ([change review](change-review.md)) and the Files gallery ([results](results.md)).
+  the Connections map ([Team Policy](team-policy.md)), Changes ([change review](change-review.md))
+  and the Files gallery ([results](results.md)).
 - **Sheets** open over the workspace for the deeper pages: an Agent's schedules, learning,
-  mailbox, skills, Telegram and browser; a Team's USER.md, memory and settings.
-- **Jump to** in the top bar (Ctrl+K, or ⌘K on a Mac) opens any Agent, Team, view or page by
-  name. **Manage** holds the housekeeping pages: Agents, Teams, Agent templates, Team
-  templates and Skills ([manage](manage.md)), and Setup.
+  mailbox, skills, Telegram topic and browser; a Team's About you (USER.md), memory and settings.
+  They are built from the same cards and fields as Setup and Manage.
 
 On a narrow screen the list, the conversation and the panel take turns: pick an Agent to see its
-conversation, and open the panel from the bar.
+conversation, and open the panel from the bar. The panel's tabs scroll sideways.
+
+## Jump to, and the keyboard
+
+**Jump to** lists the Agents waiting for you first, then those working, then actions (a new
+conversation with the open Agent, adding an Agent, switching the theme, the keyboard shortcuts),
+the other Agents by when they were last active, recent conversations, Teams, the open Team's
+views and the Manage and Setup pages. Type to narrow it down; Enter opens the one highlighted.
+
+| Keys | |
+| --- | --- |
+| ⌘K or Ctrl+K | Jump to |
+| `?` | The list of shortcuts |
+| `/` | Write to the open Agent |
+| ⌥↓ ⌥↑, or Alt+↓ Alt+↑ | The next or previous Agent in the list |
+| ⌘. or Ctrl+. | Show or hide the side panel |
+
+The keys without ⌘ or Ctrl wait while you type in a field.
+
+## The browser tab
+
+The tab names the page, most specific first (`Mira · Launch — bazilion`, `Models · Setup —
+bazilion`), and puts the number of things waiting for you in front (`(1) Quill · Launch —
+bazilion`), so another tab tells you an Agent needs you.
 
 ## The address
 

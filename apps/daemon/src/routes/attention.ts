@@ -1,5 +1,6 @@
-// /api/attention: what needs the operator's attention (failed reviews and triggers, lesson
-// proposals, stopped message chains, interrupted follow-ups), and acknowledging it.
+// /api/attention: what needs the operator's attention (questions and commands Agents are waiting
+// on, failed reviews and triggers, lesson proposals, stopped message chains, interrupted
+// follow-ups), and acknowledging what only informs.
 
 import type { AttentionKind, AttentionState } from '@bazilion/api-types'
 import {
@@ -9,6 +10,7 @@ import {
   attentionSummary,
   projectAttention,
 } from '../core/index.ts'
+import { waitingAttention } from '../lib/attention-waiting.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { newRouter } from './http.ts'
 
@@ -25,10 +27,14 @@ attentionRouter.get('/', (c) => {
   const limit = rawLimit === undefined ? 100 : Number(rawLimit)
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200)
     return c.json({ error: 'attention limit must be between 1 and 200' }, 400)
-  return c.json(projectAttention(getCtx().db, { state, kind, limit }))
+  const db = getCtx().db
+  return c.json(projectAttention(db, { state, kind, limit }, waitingAttention(db)))
 })
 
-attentionRouter.get('/summary', (c) => c.json(attentionSummary(getCtx().db)))
+attentionRouter.get('/summary', (c) => {
+  const db = getCtx().db
+  return c.json(attentionSummary(db, waitingAttention(db)))
+})
 
 attentionRouter.post('/acknowledge-all', (c) =>
   c.json({ acknowledged: acknowledgeAllAttention(getCtx().db) }),

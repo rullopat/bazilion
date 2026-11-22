@@ -107,7 +107,7 @@ export function ResultTile({
     ) : (
       <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 bg-card text-mocha">
         <FileText className="size-7" aria-hidden="true" />
-        <span className="max-w-full truncate px-2 font-mono text-[0.7rem] font-medium uppercase tracking-wide">
+        <span className="max-w-full truncate px-2 font-mono text-xs font-medium uppercase tracking-wide">
           {kindLabel(result.mimeType, result.name)}
         </span>
       </span>
@@ -140,12 +140,12 @@ export function ResultTile({
         <figcaption className="flex items-center gap-1.5 py-1.5 pl-2.5 pr-1.5">
           <span className="min-w-0 flex-1">
             <span
-              className="block truncate text-[0.8rem] font-semibold text-foreground"
+              className="block truncate text-sm font-semibold text-foreground"
               title={result.name}
             >
               {result.name}
             </span>
-            <span className="block truncate text-[0.7rem] text-mocha">{detail ?? meta}</span>
+            <span className="block truncate text-xs text-mocha">{detail ?? meta}</span>
           </span>
           {download}
         </figcaption>
@@ -173,10 +173,10 @@ export function ResultTile({
         )}
         <figcaption className="flex items-center gap-2 py-1.5 pl-2.5 pr-1.5">
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[0.82rem] font-semibold text-foreground">
+            <span className="block truncate text-sm font-semibold text-foreground">
               {result.name}
             </span>
-            <span className="block truncate text-[0.72rem] text-mocha">{detail ?? meta}</span>
+            <span className="block truncate text-xs text-mocha">{detail ?? meta}</span>
           </span>
           {download}
         </figcaption>
@@ -193,16 +193,16 @@ export function ResultTile({
             <Link
               to="/"
               search={open}
-              className="block truncate text-[0.82rem] font-semibold text-foreground hover:text-sapphire"
+              className="block truncate text-sm font-semibold text-foreground hover:text-sapphire"
             >
               {result.name}
             </Link>
           ) : (
-            <span className="block truncate text-[0.82rem] font-semibold text-foreground">
+            <span className="block truncate text-sm font-semibold text-foreground">
               {result.name}
             </span>
           )}
-          <span className="block truncate text-[0.72rem] text-mocha">{detail ?? meta}</span>
+          <span className="block truncate text-xs text-mocha">{detail ?? meta}</span>
         </span>
         {isPreviewText(result) && (
           <Button

@@ -1,109 +1,79 @@
-// The bar above every page: home, "Jump to", what needs attention, and the management pages.
-// Agents and Teams are reached through the workspace's rail, not from here.
+// The bar above every page: home, "Jump to", and three places: Attention (what needs you, with a
+// live count), Manage (Agents, Teams, templates, skills) and Setup (models, tools, connections).
+// Theme and Log out are in the session menu at the end. Agents and Teams themselves are reached
+// through the workspace's list, not from here.
 
-import type { AttentionSummary } from '@bazilion/api-types'
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
   BellRing,
-  Bot,
-  ChevronDown,
-  LayoutTemplate,
+  Check,
+  LayoutGrid,
   LogOut,
+  Monitor,
+  Moon,
   Search,
   Settings2,
-  SlidersHorizontal,
-  Sparkles,
-  UsersRound,
+  Sun,
+  UserRound,
 } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { useEffect, useState } from 'react'
 import { api, errorMessage } from '../lib/api'
+import { useAttentionCount } from '../lib/attention-count'
+import { isTyping } from '../lib/shortcuts'
+import { setThemeMode, THEME_MODES, type ThemeMode, useThemeMode } from '../lib/theme'
 import { BaziuLogo } from './BaziuLogo'
 import { JumpPalette } from './JumpPalette'
-import { ThemeToggle } from './ThemeToggle'
+import { ShortcutsDialog } from './ShortcutsDialog'
 
-const MANAGE_LINKS = [
-  {
-    href: '/agents',
-    label: 'Agents',
-    description: 'Every Agent by Team: archive, move, delete.',
-    icon: Bot,
-  },
-  {
-    href: '/teams',
-    label: 'Teams',
-    description: 'Create a Team, or remove an empty one.',
-    icon: UsersRound,
-  },
-  {
-    href: '/templates',
-    label: 'Templates',
-    description: 'What new Agents start with, and Team rosters.',
-    icon: LayoutTemplate,
-  },
-  {
-    href: '/skills',
-    label: 'Skills',
-    description: 'Import, review and remove prompt skills.',
-    icon: Sparkles,
-  },
-  {
-    href: '/config',
-    label: 'Setup',
-    description: 'Models, tools, MCP, Telegram, access, system.',
-    icon: Settings2,
-  },
-] as const
+/** The pages each place covers, for marking it as the current one. */
+const MANAGE_PATHS = ['/agents', '/teams', '/templates', '/skills']
+const SETUP_PATHS = ['/config']
+
+const under = (pathname: string, roots: readonly string[]) =>
+  roots.some((root) => pathname === root || pathname.startsWith(`${root}/`))
+
+const THEME_LABELS: Record<ThemeMode, { label: string; icon: typeof Sun }> = {
+  system: { label: 'Same as this computer', icon: Monitor },
+  light: { label: 'Light', icon: Sun },
+  dark: { label: 'Dark', icon: Moon },
+}
 
 export function TopBar() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const [attention, setAttention] = useState<AttentionSummary | null>(null)
-  const [logoutError, setLogoutError] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   // The shortcut is written as this machine's keyboard has it; known once the page runs.
   const [mac, setMac] = useState(false)
   useEffect(() => setMac(/Mac|iPhone|iPad/.test(navigator.userAgent)), [])
   const setupOnly = pathname === '/welcome'
+  const { open: openAttention } = useAttentionCount()
 
-  useEffect(() => {
-    if (pathname === '/login' || pathname === '/welcome') return
-    const controller = new AbortController()
-    api<AttentionSummary>('/api/attention/summary', { signal: controller.signal })
-      .then(setAttention)
-      .catch(() => {
-        // The badge keeps its last count; the Attention page shows the error.
-      })
-    return () => controller.abort()
-  }, [pathname])
-
-  // ⌘K on macOS, Ctrl+K elsewhere.
+  // ⌘K on macOS, Ctrl+K elsewhere; ? lists the shortcuts.
   useEffect(() => {
     if (setupOnly) return
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setPaletteOpen((open) => !open)
+      } else if (
+        !event.defaultPrevented &&
+        event.key === '?' &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !isTyping(event.target) &&
+        !document.querySelector('[role="dialog"]')
+      ) {
+        event.preventDefault()
+        setShortcutsOpen(true)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [setupOnly])
 
-  const attentionActive = pathname === '/attention' || pathname.startsWith('/attention/')
-  const openAttention = attention?.openTotal ?? 0
-  const manageActive = MANAGE_LINKS.some(
-    (link) => pathname === link.href || pathname.startsWith(`${link.href}/`),
-  )
-
-  async function logout() {
-    setLogoutError(null)
-    try {
-      await api('/api/logout', { method: 'POST' })
-      window.location.assign('/login')
-    } catch (error) {
-      setLogoutError(errorMessage(error))
-    }
-  }
+  const attentionActive = under(pathname, ['/attention'])
 
   return (
     <nav
@@ -123,102 +93,163 @@ export function TopBar() {
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
-          aria-label="Jump to an agent, team or page"
+          aria-label="Jump to an agent, team or page, or run an action"
+          aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'}
           className="unstyled order-last flex h-9 min-w-0 basis-full items-center gap-2 rounded-[10px] border border-border bg-muted px-2.5 text-left text-sm text-mocha transition-colors hover:border-sapphire-light sm:order-none sm:ml-3 sm:max-w-sm sm:flex-1 sm:basis-60"
         >
           <Search className="size-4 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">Jump to an agent, team or page</span>
-          <kbd className="hidden rounded-md border border-border bg-card px-1.5 py-px font-mono text-[0.7rem] sm:inline">
+          <span className="min-w-0 flex-1 truncate">Jump to or do anything</span>
+          <kbd className="hidden rounded-md border border-border bg-card px-1.5 py-px font-mono text-xs sm:inline">
             {mac ? '⌘K' : 'Ctrl K'}
           </kbd>
         </button>
       )}
 
       <div className="ml-auto flex items-center gap-1">
-        <Link
-          to="/attention"
-          aria-current={attentionActive ? 'page' : undefined}
-          className={navButtonClass(attentionActive)}
-        >
-          <BellRing className="size-4 shrink-0" aria-hidden="true" />
-          <span className="hidden sm:inline">Attention</span>
-          {openAttention > 0 && (
-            <>
-              <span
-                className="inline-flex min-w-5 items-center justify-center rounded-full bg-danger px-1.5 py-0.5 text-xs font-semibold leading-4 text-primary-foreground"
-                aria-hidden="true"
-              >
-                {openAttention > 99 ? '99+' : openAttention}
-              </span>
-              <span className="sr-only">, {openAttention} open items</span>
-            </>
-          )}
-        </Link>
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <button type="button" className={navButtonClass(manageActive)} aria-label="Manage menu">
-              <SlidersHorizontal className="size-4 shrink-0" aria-hidden="true" />
-              <span className="hidden sm:inline">Manage</span>
-              <ChevronDown className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-            </button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              sideOffset={8}
-              collisionPadding={12}
-              className="z-50 w-[min(21rem,calc(100vw-1.5rem))] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-baziu-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+        {!setupOnly && (
+          <>
+            <Link
+              to="/attention"
+              aria-current={attentionActive ? 'page' : undefined}
+              className={navButtonClass(attentionActive)}
             >
-              {MANAGE_LINKS.map((link) => {
-                const ItemIcon = link.icon
-                const itemActive = pathname === link.href || pathname.startsWith(`${link.href}/`)
-                return (
-                  <DropdownMenuPrimitive.Item key={link.href} asChild>
-                    <a
-                      href={link.href}
-                      aria-current={itemActive ? 'page' : undefined}
-                      className={`flex cursor-pointer items-start gap-3 rounded-lg px-2.5 py-2.5 outline-none transition-colors focus:bg-accent focus:text-accent-foreground ${
-                        itemActive ? 'bg-accent/70 text-accent-foreground' : 'text-foreground'
-                      }`}
-                    >
-                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                        <ItemIcon className="size-3.5" aria-hidden="true" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold">{link.label}</span>
-                        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                          {link.description}
-                        </span>
-                      </span>
-                    </a>
-                  </DropdownMenuPrimitive.Item>
-                )
-              })}
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-        <ThemeToggle />
-        <button
-          type="button"
-          onClick={() => void logout()}
-          aria-label="Log out"
-          title="Log out"
-          className="unstyled inline-flex h-9 w-9 items-center justify-center rounded-lg text-mocha hover:bg-ivory hover:text-sapphire"
-        >
-          <LogOut className="h-4 w-4" aria-hidden="true" />
-        </button>
+              <BellRing className="size-4 shrink-0" aria-hidden="true" />
+              <span className="hidden sm:inline">Attention</span>
+              {openAttention > 0 && (
+                <>
+                  <span
+                    className="inline-flex min-w-5 items-center justify-center rounded-full bg-danger px-1.5 py-0.5 text-xs font-semibold leading-4 text-primary-foreground"
+                    aria-hidden="true"
+                  >
+                    {openAttention > 99 ? '99+' : openAttention}
+                  </span>
+                  <span className="sr-only">, {openAttention} open items</span>
+                </>
+              )}
+            </Link>
+            <PlaceLink to="/agents" label="Manage" icon={LayoutGrid} roots={MANAGE_PATHS} />
+          </>
+        )}
+        {/* Setup stays reachable from the first run, which only it can finish. */}
+        <PlaceLink to="/config" label="Setup" icon={Settings2} roots={SETUP_PATHS} />
+        <SessionMenu />
       </div>
 
-      {logoutError && (
+      <JumpPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onShowShortcuts={() => setShortcutsOpen(true)}
+      />
+      {shortcutsOpen && <ShortcutsDialog mac={mac} onClose={() => setShortcutsOpen(false)} />}
+    </nav>
+  )
+}
+
+function PlaceLink({
+  to,
+  label,
+  icon: Icon,
+  roots,
+}: {
+  to: '/agents' | '/config'
+  label: string
+  icon: typeof Sun
+  roots: readonly string[]
+}) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const active = under(pathname, roots)
+  return (
+    <Link
+      to={to}
+      aria-current={active ? 'page' : undefined}
+      aria-label={label}
+      className={navButtonClass(active)}
+    >
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <span className="hidden sm:inline">{label}</span>
+    </Link>
+  )
+}
+
+/** Theme and Log out: things about this browser's session rather than places to go. */
+function SessionMenu() {
+  const mode = useThemeMode()
+  const [error, setError] = useState<string | null>(null)
+
+  async function logout() {
+    setError(null)
+    try {
+      await api('/api/logout', { method: 'POST' })
+      window.location.assign('/login')
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  return (
+    <>
+      <DropdownMenuPrimitive.Root>
+        <DropdownMenuPrimitive.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Theme and log out"
+            title="Theme and log out"
+            className="unstyled inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-mocha transition-colors hover:border-frost hover:bg-ivory hover:text-sapphire data-[state=open]:border-sapphire-light data-[state=open]:bg-sapphire-glow data-[state=open]:text-sapphire"
+          >
+            <UserRound className="size-4" aria-hidden="true" />
+          </button>
+        </DropdownMenuPrimitive.Trigger>
+        <DropdownMenuPrimitive.Portal>
+          <DropdownMenuPrimitive.Content
+            align="end"
+            sideOffset={8}
+            collisionPadding={12}
+            className="z-50 w-64 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-baziu-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+          >
+            <DropdownMenuPrimitive.Label className="px-2.5 pt-1.5 pb-1 text-xs font-semibold text-muted-foreground">
+              Theme
+            </DropdownMenuPrimitive.Label>
+            <DropdownMenuPrimitive.RadioGroup
+              value={mode}
+              onValueChange={(value) => setThemeMode(value as ThemeMode)}
+            >
+              {THEME_MODES.map((option) => {
+                const { label, icon: Icon } = THEME_LABELS[option]
+                return (
+                  <DropdownMenuPrimitive.RadioItem
+                    key={option}
+                    value={option}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground"
+                  >
+                    <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                    <span className="flex-1">{label}</span>
+                    <DropdownMenuPrimitive.ItemIndicator>
+                      <Check className="size-4 text-sapphire" aria-hidden="true" />
+                    </DropdownMenuPrimitive.ItemIndicator>
+                  </DropdownMenuPrimitive.RadioItem>
+                )
+              })}
+            </DropdownMenuPrimitive.RadioGroup>
+            <DropdownMenuPrimitive.Separator className="my-1.5 h-px bg-border" />
+            <DropdownMenuPrimitive.Item
+              onSelect={() => void logout()}
+              className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground"
+            >
+              <LogOut className="size-4 text-muted-foreground" aria-hidden="true" />
+              Log out
+            </DropdownMenuPrimitive.Item>
+          </DropdownMenuPrimitive.Content>
+        </DropdownMenuPrimitive.Portal>
+      </DropdownMenuPrimitive.Root>
+      {error && (
         <p
           role="alert"
-          className="m-0 basis-full rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger"
+          className="absolute top-full right-0 z-40 m-0 mt-1 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger"
         >
-          {logoutError}
+          Could not log out: {error}
         </p>
       )}
-      <JumpPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-    </nav>
+    </>
   )
 }
 

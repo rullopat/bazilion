@@ -1,5 +1,5 @@
 import type { NotificationSettings, NotificationSettingsResponse } from '@bazilion/api-types'
-import { ATTENTION_KINDS, projectAttention } from '../core/attention.ts'
+import { projectAttention, RECORDED_ATTENTION_KINDS } from '../core/attention.ts'
 import type { BazilionDb } from '../core/db/client.ts'
 import * as repo from '../core/repos/notifications.ts'
 import { attentionNotificationMessage } from './notification-message.ts'
@@ -36,12 +36,12 @@ export function saveNotificationSettings(
   if (
     !Array.isArray(kinds) ||
     kinds.length === 0 ||
-    kinds.some((kind) => !(ATTENTION_KINDS as readonly unknown[]).includes(kind))
+    kinds.some((kind) => !(RECORDED_ATTENTION_KINDS as readonly unknown[]).includes(kind))
   )
-    throw new Error(`kinds must list one or more of: ${ATTENTION_KINDS.join(', ')}`)
+    throw new Error(`kinds must list one or more of: ${RECORDED_ATTENTION_KINDS.join(', ')}`)
   const settings: NotificationSettings = {
     enabled: input.enabled,
-    kinds: ATTENTION_KINDS.filter((kind) => kinds.includes(kind)),
+    kinds: RECORDED_ATTENTION_KINDS.filter((kind) => kinds.includes(kind)),
     timezone: notificationTimezone(input.timezone),
     quietHours: notificationQuietHours(input.quietHours ?? null),
   }
@@ -68,7 +68,7 @@ export async function sendAttentionNotifications(db: BazilionDb, now = Date.now(
   const due = projection.items
     .filter(
       (item) =>
-        settings.kinds.includes(item.kind) &&
+        (settings.kinds as readonly string[]).includes(item.kind) &&
         item.updatedAt >= (settings.enabledAt ?? now) &&
         !sent.has(item.key),
     )

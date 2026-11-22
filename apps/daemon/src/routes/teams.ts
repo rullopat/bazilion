@@ -38,7 +38,11 @@ teamsRouter.put('/:id/user-md', async (c) => {
     return c.json({ error: `userMd exceeds ${USER_MD_MAX_BYTES}-byte cap` }, 413)
   }
   const { db, paths } = getCtx()
-  const { id } = routeTeam(c)
-  teamRepo.setUserMd(db, id, body.userMd)
-  return c.json(teamRepo.get(db, id, paths))
+  const team = routeTeam(c)
+  // The web editor says what it started from, so an Agent's write meanwhile is not lost.
+  if (typeof body.expected === 'string' && team.userMd !== body.expected) {
+    return c.json({ error: 'USER.md changed since you opened it', code: 'user_md_changed' }, 409)
+  }
+  teamRepo.setUserMd(db, team.id, body.userMd)
+  return c.json(teamRepo.get(db, team.id, paths))
 })

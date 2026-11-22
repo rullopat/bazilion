@@ -103,28 +103,6 @@ start from IDENTITY.md + USER.md directly.
 - One question per turn. Wait for the human to answer.
 `
 
-export const DEFAULT_USER_MD = `# USER.md — About Your Human
-
-_Learn about the person you're helping. Update via \`user_md_write\` as you go
-(read with \`user_md_get\` first for the etag)._
-
-- **Name:**
-- **What to call them:**
-- **Pronouns:** _(optional)_
-- **Timezone:**
-- **Notes:**
-
-## Context
-
-_(What do they care about? What projects are they working on? What's their
-working style? Build this picture over time, a little each session.)_
-
----
-
-The more you know, the better you can help. But remember — you're learning
-about a person, not building a dossier. Respect the difference.
-`
-
 export const DEFAULT_AGENTS = `# AGENTS.md — How You Work
 
 Your operating manual for this workspace. SOUL.md is *who you are*; this is

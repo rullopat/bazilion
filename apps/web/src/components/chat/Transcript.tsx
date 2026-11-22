@@ -97,13 +97,15 @@ export function Bubble({
           )}
           {entry.content && <UserText content={entry.content} />}
           {onEdit && (
+            // Under the message it changes; shown on hover and keyboard focus, and always on a
+            // touch screen, which has no hover.
             <button
               type="button"
               onClick={onEdit}
               title="Edit and resend: replaces the last turn"
-              className="absolute left-1 top-1 rounded-sm border border-fawn bg-ivory px-2 py-0.5 text-[0.78em] font-medium text-mocha opacity-65 transition hover:border-sapphire hover:bg-sapphire-glow hover:text-sapphire hover:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+              className="mt-1 rounded-md px-2 py-0.5 text-xs font-semibold text-mocha opacity-0 transition hover:bg-sapphire-glow hover:text-sapphire focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
             >
-              edit
+              Edit
             </button>
           )}
         </div>

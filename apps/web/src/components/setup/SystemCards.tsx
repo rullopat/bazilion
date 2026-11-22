@@ -83,7 +83,7 @@ export function RuntimeCard({
           </Notice>
         </CardBody>
       )}
-      <CardRow className="bg-muted/50 py-3 text-[0.82rem] text-muted-foreground">
+      <CardRow className="bg-muted/50 py-3 text-sm text-muted-foreground">
         <span>
           These are set on the Commands card under{' '}
           <a href="/config/tools#tool-commands" className="font-semibold">

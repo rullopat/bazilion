@@ -22,7 +22,6 @@ import {
   DEFAULT_IDENTITY,
   DEFAULT_SOUL,
   DEFAULT_TOOLS,
-  DEFAULT_USER_MD,
   deleteProfile,
   loadProfile,
   profileRepo,
@@ -56,7 +55,6 @@ profilesRouter.get('/_/templates', (c) =>
     bootstrap: DEFAULT_BOOTSTRAP,
     agents: DEFAULT_AGENTS,
     tools: DEFAULT_TOOLS,
-    userMd: DEFAULT_USER_MD,
   } satisfies ProfileTemplates),
 )
 

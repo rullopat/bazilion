@@ -165,7 +165,7 @@ export function ChatModelsCard({
       {chat.length > 0 && (
         <div
           aria-hidden="true"
-          className={`${ROW} hidden bg-muted/50 py-2 text-[0.7rem] font-bold uppercase tracking-[0.08em] text-muted-foreground lg:flex`}
+          className={`${ROW} hidden bg-muted/50 py-2 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground lg:flex`}
         >
           <span className="min-w-0 flex-[2.2] basis-52">Model</span>
           <span className="w-28 shrink-0">Provider</span>
@@ -180,25 +180,21 @@ export function ChatModelsCard({
         return (
           <div key={model.value} className={`${ROW} min-h-16 py-2.5`}>
             <div className="min-w-0 flex-[2.2] basis-52">
-              <div className="text-[0.95rem] font-semibold text-foreground">{modelName(model)}</div>
+              <div className="text-base font-semibold text-foreground">{modelName(model)}</div>
               {model.name && (
-                <div className="break-all font-mono text-[0.72rem] text-muted-foreground">
-                  {model.id}
-                </div>
+                <div className="break-all font-mono text-xs text-muted-foreground">{model.id}</div>
               )}
             </div>
             <div className="w-28 shrink-0 text-sm">{model.providerName}</div>
             <div
-              className={`min-w-0 flex-[2] basis-48 text-[0.82rem] ${down ? 'font-semibold text-warning' : 'text-muted-foreground'}`}
+              className={`min-w-0 flex-[2] basis-48 text-sm ${down ? 'font-semibold text-warning' : 'text-muted-foreground'}`}
             >
               {down
                 ? `${model.providerName} is not working`
                 : factsLine(model, model.providerConnect)}
             </div>
-            <div className="w-40 shrink-0 text-[0.82rem]">
-              {priceLine(model, model.providerConnect)}
-            </div>
-            <div className="min-w-0 flex-[1.4] basis-36 text-[0.82rem] text-muted-foreground">
+            <div className="w-40 shrink-0 text-sm">{priceLine(model, model.providerConnect)}</div>
+            <div className="min-w-0 flex-[1.4] basis-36 text-sm text-muted-foreground">
               {usedByLine(model.usedBy)}
             </div>
             <button
@@ -314,7 +310,7 @@ export function ImagesCard({
         row(
           route.id,
           <>
-            <span className="min-w-0 flex-[1.6] basis-60 text-[0.95rem]">
+            <span className="min-w-0 flex-[1.6] basis-60 text-base">
               <span
                 className={`font-semibold ${route.ready ? 'text-foreground' : 'text-muted-foreground'}`}
               >
@@ -322,13 +318,13 @@ export function ImagesCard({
               </span>{' '}
               <span className="text-muted-foreground">through {route.providerName}</span>
             </span>
-            <span className="min-w-0 flex-1 basis-44 text-[0.82rem] text-muted-foreground">
+            <span className="min-w-0 flex-1 basis-44 text-sm text-muted-foreground">
               {route.billing}
             </span>
           </>,
           route.ready,
           route.ready ? (
-            <span className="text-[0.82rem] font-semibold text-success">Ready</span>
+            <span className="text-sm font-semibold text-success">Ready</span>
           ) : (
             <Button variant="ghost" onClick={() => onConnect(route.provider)}>
               {route.provider === 'openai-codex' ? 'Sign in' : `Connect ${route.providerName}`}
@@ -339,10 +335,10 @@ export function ImagesCard({
       {row(
         'off',
         <>
-          <span className="min-w-0 flex-[1.6] basis-60 text-[0.95rem] font-semibold text-foreground">
+          <span className="min-w-0 flex-[1.6] basis-60 text-base font-semibold text-foreground">
             Off
           </span>
-          <span className="min-w-0 flex-1 basis-44 text-[0.82rem] text-muted-foreground">
+          <span className="min-w-0 flex-1 basis-44 text-sm text-muted-foreground">
             Agents have no image tool
           </span>
         </>,
@@ -412,14 +408,14 @@ export function ProvidersCard({
           >
             <ProviderAvatar name={provider.displayName} tone={status.tone} />
             <span className="min-w-0 flex-[1.6] basis-56">
-              <span className="block text-[0.95rem] font-semibold text-foreground">
+              <span className="block text-base font-semibold text-foreground">
                 {provider.displayName}
               </span>
-              <span className="block truncate text-[0.82rem] text-muted-foreground">
+              <span className="block truncate text-sm text-muted-foreground">
                 {credentialLine(provider)}
               </span>
             </span>
-            <span className="min-w-0 flex-1 basis-40 text-[0.82rem] text-muted-foreground">
+            <span className="min-w-0 flex-1 basis-40 text-sm text-muted-foreground">
               {uses.length > 0 ? uses.join(' · ') : 'Not used yet'}
             </span>
             <StateChip provider={provider} now={now} />
@@ -432,7 +428,7 @@ export function ProvidersCard({
           No provider yet. Add one to give your Agents a model.
         </div>
       )}
-      <div className={`${ROW} bg-muted/50 py-3 text-[0.82rem] text-muted-foreground`}>
+      <div className={`${ROW} bg-muted/50 py-3 text-sm text-muted-foreground`}>
         {total - providers.length} more can be added: a ChatGPT plan, API keys from OpenAI,
         Anthropic, Google and many others, or a model server on this computer.
       </div>

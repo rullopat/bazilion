@@ -1,19 +1,58 @@
+// One Agent's skills: which installed skills it follows. A skill the scan found something in is
+// switched on only after its findings were read.
+
 import type { SkillInfo } from '@bazilion/api-types'
 import { useRouter } from '@tanstack/react-router'
+import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { api, errorMessage } from '../lib/api'
-import { Button } from './Button'
+import { skillState } from '../lib/manage'
+import { useResource } from '../lib/use-resource'
 import { ConfirmDialog } from './ConfirmDialog'
-import { ItemList, ItemRow, StatusBadge } from './Page'
-import { FindingList, FindingSummary } from './SkillFindings'
+import { FindingLines, FindingsNotice } from './manage/SkillsParts'
+import { CardEmpty, CardList, Chip, ListRow, Notice, SetupCard, Switch } from './ui/parts'
+
+/** The sheet: the installed skills, loaded here, with this Agent's on or off. */
+export function AgentSkillsSheet({
+  agentId,
+  agentName,
+  attached,
+}: {
+  agentId: string
+  agentName: string
+  attached: string[]
+}) {
+  const skills = useResource((signal) => api<SkillInfo[]>('/api/skills', { signal }), [])
+  if (!skills.data) {
+    return skills.error ? (
+      <Notice role="alert" title="The skills could not be loaded.">
+        {skills.error}
+      </Notice>
+    ) : (
+      <p role="status" className="m-0 text-sm text-muted-foreground">
+        Loading the skills…
+      </p>
+    )
+  }
+  return (
+    <AgentSkills
+      agentId={agentId}
+      agentName={agentName}
+      attached={new Set(attached)}
+      all={skills.data}
+    />
+  )
+}
 
 /** Attach and detach installed skills for one Agent; scan findings need confirmation. */
 export function AgentSkills({
   agentId,
+  agentName = 'this Agent',
   attached,
   all,
 }: {
   agentId: string
+  agentName?: string
   attached: Set<string>
   all: SkillInfo[]
 }) {
@@ -23,6 +62,7 @@ export function AgentSkills({
   const [risky, setRisky] = useState<SkillInfo | null>(null)
   const [detaching, setDetaching] = useState<string | null>(null)
   const base = `/api/agents/${encodeURIComponent(agentId)}/skills`
+  const on = all.filter((skill) => attached.has(skill.name)).length
 
   async function change(name: string, request: () => Promise<unknown>) {
     setPending(name)
@@ -47,70 +87,82 @@ export function AgentSkills({
   const detach = (name: string) =>
     change(name, () => api(`${base}/${encodeURIComponent(name)}`, { method: 'DELETE' }))
 
-  if (all.length === 0) return <p className="text-[0.9em] text-mocha-light">No skills installed.</p>
   return (
-    <>
+    <SetupCard
+      labelledBy="agent-skills"
+      icon={<Sparkles className="size-5" />}
+      title="Skills"
+      description={
+        <>
+          Instructions {agentName} follows on every turn. Install and remove skills under{' '}
+          <a href="/skills">Manage → Skills</a>.
+        </>
+      }
+      action={<Chip tone={on > 0 ? 'success' : 'neutral'}>{on} on</Chip>}
+    >
       {error && (
-        <p role="alert" className="mb-2 text-[0.85em] text-danger">
-          {error}
-        </p>
+        <div className="border-t border-border px-4 py-3 sm:px-5">
+          <Notice role="alert" title="That did not work.">
+            {error}
+          </Notice>
+        </div>
       )}
-      <ItemList>
-        {all.map((skill) => {
-          const isAttached = attached.has(skill.name)
-          const busy = pending === skill.name
-          const findings = skill.scanFindings ?? []
-          return (
-            <ItemRow
-              key={skill.name}
-              title={<code>{skill.name}</code>}
-              meta={
-                <>
-                  <StatusBadge variant={isAttached ? 'success' : 'neutral'}>
-                    {isAttached ? 'Attached' : 'Available'}
-                  </StatusBadge>
-                  <span>{skill.description || 'No description.'}</span>
-                  <FindingSummary findings={findings} />
-                </>
-              }
-              actions={
-                isAttached ? (
-                  <Button variant="ghost" disabled={busy} onClick={() => setDetaching(skill.name)}>
-                    {busy ? 'Detaching…' : 'Detach'}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() =>
-                      findings.length > 0 ? setRisky(skill) : void attach(skill).catch(() => {})
-                    }
-                  >
-                    {busy ? 'Attaching…' : 'Attach'}
-                  </Button>
-                )
-              }
-            />
-          )
-        })}
-      </ItemList>
+      {all.length === 0 ? (
+        <CardEmpty icon={<Sparkles className="size-5" />} title="No skills are installed">
+          Import some under Manage → Skills, then switch them on here.
+        </CardEmpty>
+      ) : (
+        <CardList>
+          {all.map((skill) => {
+            const isAttached = attached.has(skill.name)
+            const findings = skill.scanFindings ?? []
+            const state = skillState(skill)
+            return (
+              <ListRow
+                key={skill.name}
+                inline
+                title={<span className="font-mono text-[0.92em]">{skill.name}</span>}
+                chip={state && <Chip tone={state.tone}>{state.label}</Chip>}
+                meta={<span>{skill.description || 'No description.'}</span>}
+                actions={
+                  <Switch
+                    label={`${skill.name}: ${isAttached ? 'on' : 'off'}`}
+                    checked={isAttached}
+                    // An unreadable skill cannot be switched on, but one that broke after it
+                    // was attached can still be switched off.
+                    disabled={pending === skill.name || (Boolean(skill.parseError) && !isAttached)}
+                    onChange={() => {
+                      if (isAttached) setDetaching(skill.name)
+                      else if (findings.length > 0) setRisky(skill)
+                      else void attach(skill).catch(() => {})
+                    }}
+                  />
+                }
+              >
+                {findings.length > 0 && <FindingsNotice findings={findings} />}
+              </ListRow>
+            )
+          })}
+        </CardList>
+      )}
       <ConfirmDialog
         open={risky !== null}
         onOpenChange={(open) => {
           if (!open) setRisky(null)
         }}
-        title={`Attach ${risky?.name ?? 'skill'} despite scan findings?`}
+        title={`Switch on ${risky?.name ?? 'the skill'}?`}
         description={
-          <div className="space-y-2">
-            <p>
-              Static scanning found {risky?.scanFindings?.length ?? 0} potentially unsafe
-              instruction{risky?.scanFindings?.length === 1 ? '' : 's'}. Review them before allowing
-              this skill into the Agent's prompt.
+          <div className="grid gap-2">
+            <p className="m-0">
+              The scan found something in it. Its text goes into {agentName}’s instructions, so read
+              what was found first.
             </p>
-            <FindingList findings={risky?.scanFindings ?? []} />
+            <div className="text-sm">
+              <FindingLines findings={risky?.scanFindings ?? []} />
+            </div>
           </div>
         }
-        confirmLabel="Attach despite findings"
+        confirmLabel="Switch it on anyway"
         onConfirm={async () => {
           if (risky) await attach(risky)
         }}
@@ -120,18 +172,19 @@ export function AgentSkills({
         onOpenChange={(open) => {
           if (!open) setDetaching(null)
         }}
-        title={`Detach ${detaching ?? 'skill'}?`}
+        title={`Switch off ${detaching ?? 'the skill'}?`}
         description={
-          <p>
-            This removes the skill's instructions from this Agent's future turns. It does not
-            uninstall the skill, and you can attach it again later.
+          <p className="m-0">
+            {agentName} stops following it from the next turn. The skill stays installed, and you
+            can switch it on again.
           </p>
         }
-        confirmLabel="Detach skill"
+        confirmVariant="primary"
+        confirmLabel="Switch it off"
         onConfirm={async () => {
           if (detaching) await detach(detaching)
         }}
       />
-    </>
+    </SetupCard>
   )
 }

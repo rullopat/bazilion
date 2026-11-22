@@ -16,8 +16,7 @@ import { FieldRow } from '../FieldRow'
 import { Switch, Waiting } from '../ui/parts'
 import { FailureBox } from './provider-parts'
 
-const HEADING =
-  'm-0 font-body text-[0.72rem] font-bold uppercase tracking-[0.08em] text-muted-foreground'
+const HEADING = 'm-0 font-body text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground'
 
 /**
  * One provider: whether it answers, its credentials, its models in Chat, and the rarer settings.

@@ -1,5 +1,5 @@
 import type { NotificationSettings } from '@bazilion/api-types'
-import { ATTENTION_KINDS } from '../attention.ts'
+import { RECORDED_ATTENTION_KINDS } from '../attention.ts'
 import type { BazilionDb } from '../db/client.ts'
 
 export interface StoredNotificationSettings extends NotificationSettings {
@@ -24,7 +24,7 @@ export function settings(db: BazilionDb): StoredNotificationSettings {
   if (!row)
     return {
       enabled: false,
-      kinds: [...ATTENTION_KINDS],
+      kinds: [...RECORDED_ATTENTION_KINDS],
       timezone: 'UTC',
       quietHours: null,
       enabledAt: null,

@@ -12,9 +12,9 @@ import { AgentAvatar } from '../AgentAvatar'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { CopyButton } from '../CopyButton'
-import { Segmented } from '../Segmented'
 import { useWorkspace } from '../workspace/context'
 import { FocusFrame } from '../workspace/FocusFrame'
+import { FileFilters, useFileFilters } from './FileFilters'
 import { ResultTile } from './ResultTile'
 import {
   archivePath,
@@ -26,30 +26,16 @@ import {
 } from './result-utils'
 import { useResults } from './use-results'
 
-type Kind = 'all' | 'pictures' | 'documents'
-
-const KINDS: Array<{ id: Kind; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'pictures', label: 'Pictures' },
-  { id: 'documents', label: 'Documents' },
-]
-
-const isPicture = (result: AgentResult) => result.mimeType.startsWith('image/')
-
 export function FilesView({ team }: { team: Team }) {
-  const { agents, agentById, search, to } = useWorkspace()
+  const { agentById, search, to } = useWorkspace()
   const router = useRouter()
   const hydrated = useHydrated()
-  const [agentId, setAgentId] = useState('')
-  const [kind, setKind] = useState<Kind>('all')
+  const filters = useFileFilters(team)
   const [comparing, setComparing] = useState(false)
   const [otherId, setOtherId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<AgentResult | null>(null)
-  const members = agents.filter((agent) => agent.teamId === team.id)
-  const files = useResults(team.id, agentId ? { agentId } : {}, 48)
-  const shown = files.results.filter(
-    (result) => kind === 'all' || (kind === 'pictures') === isPicture(result),
-  )
+  const files = useResults(team.id, filters.filter, 48)
+  const shown = files.results.filter(filters.matches)
   const selectedId = search.result ?? null
 
   // The file in the address may be older than the pages loaded: fetch it on its own.
@@ -80,20 +66,21 @@ export function FilesView({ team }: { team: Team }) {
   useEffect(stopComparing, [selectedId])
 
   const by = (result: AgentResult) => agentById(result.agentId)?.name
-  const filter = agentId ? { agentId } : {}
+  const filter = filters.filter
 
   return (
     <FocusFrame
       view="files"
       actions={
-        files.total > 0 && (
+        files.total > 0 &&
+        filters.kind === 'all' && (
           <a
             href={archivePath({ teamId: team.id, ...filter })}
             download
             className="ghost-btn min-h-8 px-3 py-1 text-xs"
           >
             <Download className="size-3.5" aria-hidden="true" />
-            Download {agentId ? 'these' : 'all'} {files.total} (.zip)
+            Download {filters.narrowed ? 'these' : 'all'} {files.total} (.zip)
           </a>
         )
       }
@@ -141,24 +128,11 @@ export function FilesView({ team }: { team: Team }) {
             className={`min-h-0 overflow-y-auto p-3 sm:p-4 ${selected ? 'hidden lg:block' : ''}`}
           >
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Segmented label="Kind of file" value={kind} options={KINDS} onChange={setKind} />
-              <select
-                aria-label="Delivered by"
-                value={agentId}
-                onChange={(event) => setAgentId(event.target.value)}
-                className="min-h-8 w-auto min-w-40 py-1 text-xs"
-              >
-                <option value="">Everyone in {team.name}</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
+              <FileFilters state={filters} />
               <span className="text-xs text-muted-foreground">
                 {files.loading && files.results.length === 0
                   ? 'Loading…'
-                  : kind === 'all'
+                  : filters.kind === 'all'
                     ? `${files.total} file${files.total === 1 ? '' : 's'}`
                     : `${shown.length} of the ${files.results.length} loaded`}
               </span>

@@ -2,7 +2,7 @@ import type { Message } from '@bazilion/api-types'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
-import { MailboxView } from '../src/components/agent/AgentMailbox.tsx'
+import { MailboxView, mailSenders } from '../src/components/agent/AgentMailbox.tsx'
 
 const unread: Message = {
   id: 'message-1',
@@ -16,7 +16,7 @@ const unread: Message = {
   readAt: null,
 }
 
-test('the mailbox opens the newest unread message, can mark it read and send as another Agent', () => {
+test('the mailbox lists messages by who sent them, can mark them read and send as another Agent', () => {
   const html = renderToStaticMarkup(
     createElement(MailboxView, {
       agent: { id: 'agent-1', name: 'Ann' },
@@ -33,11 +33,19 @@ test('the mailbox opens the newest unread message, can mark it read and send as 
 
   expect(html).toContain('Mark read')
   expect(html).toContain('hello')
+  expect(html).toContain('From Bob')
   expect(html).toContain('Send a message to this Agent')
-  expect(html).toContain('Bob (agent-2)')
+  // Senders are named, not numbered; the first one is chosen.
+  expect(html).toMatch(/role="combobox"[^>]*>.*>Bob<\/span>/)
+  expect(html).not.toContain('agent-2)')
   // An archived Agent cannot send, and the Agent does not write to itself.
-  expect(html).not.toContain('Cyd (agent-3)')
-  expect(html).not.toContain('Ann (agent-1)')
+  expect(
+    mailSenders('agent-1', [
+      { id: 'agent-1', name: 'Ann', status: 'idle' },
+      { id: 'agent-2', name: 'Bob', status: 'idle' },
+      { id: 'agent-3', name: 'Cyd', status: 'archived' },
+    ]),
+  ).toEqual([{ value: 'agent-2', label: 'Bob' }])
 })
 
 test('a mailbox with nothing unread opens no message', () => {
@@ -53,4 +61,26 @@ test('a mailbox with nothing unread opens no message', () => {
 
   expect(html).not.toContain('Mark read')
   expect(html).toContain('0 unread')
+})
+
+test('two Agents with one name are told apart by the start of their id', () => {
+  const html = renderToStaticMarkup(
+    createElement(MailboxView, {
+      agent: { id: 'agent-1', name: 'Ann' },
+      agents: [
+        { id: 'agent-2aaaaaaa', name: 'Bob', status: 'idle' },
+        { id: 'agent-3bbbbbbb', name: 'Bob', status: 'idle' },
+      ],
+      messages: [{ ...unread, fromAgentId: 'agent-2aaaaaaa' }],
+      loopBreaks: [],
+      onChanged: async () => {},
+    }),
+  )
+  expect(html).toContain('From Bob (agent-2a)')
+  expect(
+    mailSenders('agent-1', [
+      { id: 'agent-2aaaaaaa', name: 'Bob', status: 'idle' },
+      { id: 'agent-3bbbbbbb', name: 'Bob', status: 'idle' },
+    ]).map((sender) => sender.label),
+  ).toEqual(['Bob (agent-2a)', 'Bob (agent-3b)'])
 })

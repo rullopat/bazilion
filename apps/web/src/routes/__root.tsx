@@ -16,7 +16,9 @@ import '@fontsource/jetbrains-mono/latin-400.css'
 import '@fontsource/jetbrains-mono/latin-500.css'
 import { Footer } from '../components/Footer'
 import { TopBar } from '../components/TopBar'
+import { AttentionCountProvider } from '../lib/attention-count'
 import { fetchAuthState, isSetupOpen, PUBLIC_PATHS } from '../lib/auth'
+import { PageTitleProvider } from '../lib/page-title'
 import appCss from '../styles.css?url'
 
 // Sync, runs in <head> before paint. Reads 'baziu-theme' from localStorage
@@ -106,38 +108,42 @@ function RootComponent() {
             Skip to main content
           </a>
         )}
-        {isLogin ? (
-          <Outlet />
-        ) : isWorkspace ? (
-          <div className="flex h-dvh flex-col">
-            <div className="px-3 sm:px-5">
-              <TopBar />
-            </div>
-            <main
-              id="main-content"
-              tabIndex={-1}
-              className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-clip px-3 pb-3 sm:px-5 sm:pb-5"
-            >
+        <AttentionCountProvider enabled={!isLogin && pathname !== '/welcome'}>
+          <PageTitleProvider>
+            {isLogin ? (
               <Outlet />
-            </main>
-          </div>
-        ) : (
-          <div className="flex min-h-dvh flex-col">
-            <div className="px-3 sm:px-5">
-              <TopBar />
-            </div>
-            <main
-              id="main-content"
-              tabIndex={-1}
-              className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-9 sm:px-6 sm:py-12"
-            >
-              <Outlet />
-            </main>
-            <div className="px-4 sm:px-6">
-              <Footer />
-            </div>
-          </div>
-        )}
+            ) : isWorkspace ? (
+              <div className="flex h-dvh flex-col">
+                <div className="px-3 sm:px-5">
+                  <TopBar />
+                </div>
+                <main
+                  id="main-content"
+                  tabIndex={-1}
+                  className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-clip px-3 pb-3 sm:px-5 sm:pb-5"
+                >
+                  <Outlet />
+                </main>
+              </div>
+            ) : (
+              <div className="flex min-h-dvh flex-col">
+                <div className="px-3 sm:px-5">
+                  <TopBar />
+                </div>
+                <main
+                  id="main-content"
+                  tabIndex={-1}
+                  className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-9 sm:px-6 sm:py-12"
+                >
+                  <Outlet />
+                </main>
+                <div className="px-4 sm:px-6">
+                  <Footer />
+                </div>
+              </div>
+            )}
+          </PageTitleProvider>
+        </AttentionCountProvider>
         <Scripts />
       </body>
     </html>

@@ -5,7 +5,6 @@ import {
   DEFAULT_IDENTITY,
   DEFAULT_SOUL,
   DEFAULT_TOOLS,
-  DEFAULT_USER_MD,
 } from '../../src/core/profile/templates.ts'
 
 // Cheap regression guard: assert the key markers each template promises are
@@ -25,12 +24,6 @@ test('DEFAULT_BOOTSTRAP runs a two-phase ritual (identity + user profile)', () =
   expect(DEFAULT_BOOTSTRAP).toContain('bootstrap_done')
   // The etag read-before-write contract must be spelled out.
   expect(DEFAULT_BOOTSTRAP).toMatch(/etag/i)
-})
-
-test('DEFAULT_USER_MD has the human-profile fields', () => {
-  expect(DEFAULT_USER_MD).toContain('About Your Human')
-  expect(DEFAULT_USER_MD).toContain('Pronouns:')
-  expect(DEFAULT_USER_MD).toContain('Timezone:')
 })
 
 test('DEFAULT_AGENTS is the workspace operating manual', () => {

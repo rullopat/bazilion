@@ -83,7 +83,7 @@ function MemberNodeView({ data, selected }: NodeProps<MemberNode>) {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-chocolate">{member.name}</span>
           <span
-            className={`mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.7rem] ${
+            className={`mt-0.5 flex min-w-0 items-center gap-1.5 text-xs ${
               member.isolated ? 'font-semibold text-warning' : 'text-mocha'
             }`}
           >

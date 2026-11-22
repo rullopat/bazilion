@@ -104,7 +104,7 @@ export function ProviderChooser({
   const section = (title: string, entries: ProviderConfigEntry[]) =>
     entries.length > 0 && (
       <div>
-        <h3 className="m-0 mb-2 font-body text-[0.72rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+        <h3 className="m-0 mb-2 font-body text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
           {title}
         </h3>
         <div className="grid gap-2 sm:grid-cols-2">{entries.map(tile)}</div>

@@ -6,7 +6,9 @@ import type { Team } from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { shortTime } from '../../lib/activity'
+import { parsePatch } from '../../lib/diff'
 import { changeSummary, unavailableMessage } from '../../lib/git-review-presentation'
+import { renderMd } from '../../lib/md'
 import { useHydrated, useMediaQuery } from '../../lib/use-resource'
 import { AgentAvatar } from '../AgentAvatar'
 import { FileComment } from '../panel/ChangesPanel'
@@ -56,9 +58,27 @@ export function ChangesView({ team }: { team: Team }) {
   }
   const select = (path: string) =>
     void router.navigate({ to: '/', search: to({ file: path }), replace: true })
-  // Two columns of code need room: a narrow screen always gets one.
+  // Two columns of code need room: a narrow screen always gets one. So does a file that is only
+  // on one side (new or deleted), where the other column would be empty.
   const roomy = useMediaQuery('(min-width: 768px)')
-  const Diff = layout === 'split' && roomy ? SplitDiff : UnifiedDiff
+  const oneSided = change !== null && ['added', 'deleted', 'untracked'].includes(change.status)
+  const Diff = layout === 'split' && roomy && !oneSided ? SplitDiff : UnifiedDiff
+  // A new Markdown file can be read as it will look, from the lines the diff adds.
+  const [reading, setReading] = useState(false)
+  // Another file opens as text.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the file matters.
+  useEffect(() => setReading(false), [selected])
+  const markdown =
+    change?.status === 'added' || change?.status === 'untracked'
+      ? /\.(md|markdown)$/i.test(change.path)
+      : false
+  const added =
+    markdown && diff.data?.patch
+      ? parsePatch(diff.data.patch)
+          .lines.filter((line) => line.kind === 'add')
+          .map((line) => line.text)
+          .join('\n')
+      : null
 
   return (
     <FocusFrame
@@ -130,7 +150,7 @@ export function ChangesView({ team }: { team: Team }) {
             <>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2">
                 <StatusMark status={change.status} />
-                <h2 className="m-0 min-w-0 flex-1 basis-48 break-all font-mono text-[0.82rem] font-medium leading-snug text-foreground">
+                <h2 className="m-0 min-w-0 flex-1 basis-48 break-all font-mono text-sm font-medium leading-snug text-foreground">
                   {change.previousPath ? `${change.previousPath} → ` : ''}
                   {change.path}
                 </h2>
@@ -156,6 +176,17 @@ export function ChangesView({ team }: { team: Team }) {
                     )}
                   </Link>
                 )}
+                {added !== null && (
+                  <Segmented
+                    label="Show the file as"
+                    value={reading ? 'preview' : 'text'}
+                    options={[
+                      { id: 'text', label: 'Text' },
+                      { id: 'preview', label: 'Preview' },
+                    ]}
+                    onChange={(next) => setReading(next === 'preview')}
+                  />
+                )}
                 <FileComment onAdd={(note) => session.addComment({ path: selected, note })} />
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
@@ -173,6 +204,12 @@ export function ChangesView({ team }: { team: Team }) {
                     {diff.data.omitted ? ` (${diff.data.omitted.replaceAll('_', ' ')})` : ''}. A
                     comment on the file still reaches the Agent.
                   </p>
+                ) : reading && added !== null ? (
+                  <div
+                    className="md-content mx-auto max-w-[50rem] px-5 py-4 leading-[1.6] text-chocolate"
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: marked output sanitized by DOMPurify.
+                    dangerouslySetInnerHTML={{ __html: renderMd(added, hydrated) }}
+                  />
                 ) : (
                   <Diff
                     patch={diff.data.patch}

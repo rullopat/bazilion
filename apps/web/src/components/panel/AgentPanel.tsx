@@ -30,6 +30,7 @@ import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { CopyButton } from '../CopyButton'
 import { StatusBadge } from '../Page'
+import { SelectMenu } from '../ui/form'
 import { useWorkspace } from '../workspace/context'
 import { RenameAgentDialog, STATE_DOT } from '../workspace/Rail'
 import { PanelGroup, PanelHeading } from './SidePanel'
@@ -326,18 +327,17 @@ function MoveTeam({
   return (
     <form onSubmit={(event) => void move(event)}>
       <div className="flex items-center gap-2">
-        <select
-          aria-label="Team"
+        <SelectMenu
+          ariaLabel="Team"
           value={teamId}
-          onChange={(event) => setTeamId(event.target.value)}
+          options={teams.map((team) => ({
+            value: team.id,
+            label: team.name,
+            hint: team.id === currentTeamId ? 'now' : undefined,
+          }))}
+          onChange={setTeamId}
           className="min-w-0 flex-1"
-        >
-          {teams.map((team) => (
-            <option key={team.id} value={team.id}>
-              {team.name}
-            </option>
-          ))}
-        </select>
+        />
         <Button variant="primary" type="submit" disabled={moving || teamId === currentTeamId}>
           {moving ? 'Moving…' : 'Move'}
         </Button>
