@@ -26,7 +26,7 @@ export interface Script {
 export interface ModelServer {
   /** The OpenAI-compatible base URL, ending in /v1. */
   url: string
-  /** The model id it lists. */
+  /** The model id it is chosen by default; it lists `models`. */
   model: string
   close(): Promise<void>
 }
@@ -61,7 +61,11 @@ export function answer(
 
 export async function startModelServer(
   scripts: readonly Script[],
-  { port = 0, model = 'paper-coder-32b' }: { port?: number; model?: string } = {},
+  {
+    port = 0,
+    model = 'paper-coder-32b',
+    models = [model],
+  }: { port?: number; model?: string; models?: string[] } = {},
 ): Promise<ModelServer> {
   const wakes = { count: 0 }
   const held = new Set<NodeJS.Timeout>()
@@ -75,7 +79,7 @@ export async function startModelServer(
         response.writeHead(request.url?.endsWith('/models') ? 200 : 404, {
           'content-type': 'application/json',
         })
-        response.end(JSON.stringify({ data: [{ id: model }] }))
+        response.end(JSON.stringify({ data: models.map((id) => ({ id })) }))
         return
       }
       const body = JSON.parse(raw) as { model: string; messages?: { role: string }[] }
