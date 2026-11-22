@@ -94,7 +94,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     // Credentials come from the OAuth flow (/api/auth/openai), not from fields.
     fields: [],
     popular: true,
-    suggested: ['gpt-6.1-sol', 'gpt-6-luna'],
+    suggested: ['gpt-6.2-sol', 'gpt-6-luna'],
   },
   {
     ...apiKey('openai', 'OpenAI', 'OPENAI_API_KEY', {
@@ -102,7 +102,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
       placeholder: 'sk-...',
     }),
     popular: true,
-    suggested: ['gpt-6.1-sol', 'gpt-6-luna'],
+    suggested: ['gpt-6.2-sol', 'gpt-6-luna'],
   },
   {
     id: 'anthropic',
@@ -243,20 +243,24 @@ export const PROVIDERS: readonly ProviderDef[] = [
   apiKey('minimax-cn', 'MiniMax (CN)', 'MINIMAX_CN_API_KEY', {
     hint: 'MiniMax M2/M3 family via the China endpoint',
   }),
-  apiKey('qwen-token-plan', 'Qwen Token Plan', 'QWEN_TOKEN_PLAN_API_KEY', {
-    hint: 'Coding-model subscription endpoint in Singapore',
+  // Each plan has its own key; Pi also reads the older shared QWEN_TOKEN_PLAN_API_KEY.
+  apiKey('qwen-token-plan', 'Qwen Token Plan Team', 'QWEN_TOKEN_PLAN_TEAM_API_KEY', {
+    hint: 'Team coding-model subscription · international endpoint',
   }),
-  apiKey('qwen-token-plan-cn', 'Qwen Token Plan (CN)', 'QWEN_TOKEN_PLAN_CN_API_KEY', {
-    hint: 'Coding-model subscription endpoint in China',
-  }),
-  apiKey('qwen-token-plan-individual', 'Qwen Token Plan (Individual)', 'QWEN_TOKEN_PLAN_API_KEY', {
-    hint: 'Individual subscription models via the international endpoint',
+  apiKey('qwen-token-plan-cn', 'Qwen Token Plan Team (CN)', 'QWEN_TOKEN_PLAN_TEAM_CN_API_KEY', {
+    hint: 'Team coding-model subscription · China endpoint',
   }),
   apiKey(
+    'qwen-token-plan-individual',
+    'Qwen Token Plan Individual',
+    'QWEN_TOKEN_PLAN_INDIVIDUAL_API_KEY',
+    { hint: 'Individual subscription · international endpoint' },
+  ),
+  apiKey(
     'qwen-token-plan-individual-cn',
-    'Qwen Token Plan (Individual, CN)',
-    'QWEN_TOKEN_PLAN_CN_API_KEY',
-    { hint: 'Individual subscription models via the China endpoint' },
+    'Qwen Token Plan Individual (CN)',
+    'QWEN_TOKEN_PLAN_INDIVIDUAL_CN_API_KEY',
+    { hint: 'Individual subscription · China endpoint' },
   ),
   apiKey('xiaomi', 'Xiaomi MiMo', 'XIAOMI_API_KEY', {
     hint: 'API billing endpoint · platform.xiaomimimo.com',
@@ -377,7 +381,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     displayName: 'llama.cpp',
     hint: 'Local inference · llama.cpp llama-server (OpenAI-compat /v1 endpoint)',
     urlEnv: 'LLAMACPP_URL',
-    url: 'http://127.0.0.1:8080/v1',
+    url: 'http://127.0.0.1:9931/v1',
     keyEnv: 'LLAMACPP_API_KEY',
     local: { key: 'no-key', authHeader: true },
     keyField: {
