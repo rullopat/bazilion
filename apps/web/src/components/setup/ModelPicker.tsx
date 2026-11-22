@@ -12,7 +12,8 @@ import { useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
 import { Dialog } from '../Dialog'
 import { Segmented } from '../Segmented'
-import { ModelRow, SearchField } from './parts'
+import { SearchField } from '../ui/parts'
+import { ModelRow } from './provider-parts'
 
 type Filter = 'all' | 'images' | 'reasoning'
 

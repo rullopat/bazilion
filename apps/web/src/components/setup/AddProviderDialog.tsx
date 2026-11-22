@@ -10,8 +10,9 @@ import { providerStatus } from '../../lib/model-facts'
 import { useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
 import { Dialog, DialogActions } from '../Dialog'
+import { SearchField } from '../ui/parts'
 import { type Connected, ProviderConnect } from './ProviderConnect'
-import { ProviderAvatar, SearchField } from './parts'
+import { ProviderAvatar } from './provider-parts'
 
 type LocalServers = LocalProvidersResponse['servers']
 

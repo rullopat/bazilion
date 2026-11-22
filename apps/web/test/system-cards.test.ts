@@ -2,7 +2,7 @@ import type { HealthReport } from '@bazilion/api-types'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
-import { RuntimeCard } from '../src/components/RuntimeCard.tsx'
+import { BackupCard, HealthCard, RuntimeCard } from '../src/components/setup/SystemCards.tsx'
 
 const host = {
   ok: true,
@@ -74,4 +74,38 @@ test('an invalid shell-security configuration is reported, not hidden', () => {
   expect(html).toContain('role="alert"')
   expect(html).toContain('unknown sandbox mode: podman')
   expect(html).not.toContain('<dl')
+})
+
+test('the runtime card repeats what the Commands card says is in effect, and points to it', () => {
+  const html = renderToStaticMarkup(
+    createElement(RuntimeCard, {
+      shell: host,
+      state: { label: 'Runs on this computer, asks first', tone: 'on' },
+    }),
+  )
+  expect(html).toContain('Runs on this computer, asks first')
+  expect(html).toContain('href="/config/tools#tool-commands"')
+  // Without that state the card still stands, without a chip.
+  expect(render(host)).not.toContain('Runs on this computer')
+  expect(render(host)).toContain('href="/config/tools#tool-commands"')
+})
+
+test('the health card says whether the installation is in order and where the report is', () => {
+  const healthy = renderToStaticMarkup(createElement(HealthCard, { ok: true }))
+  expect(healthy).toContain('Healthy')
+  expect(healthy).toContain('<code>bazilion doctor</code>')
+  expect(healthy).not.toContain('role="status"')
+
+  const broken = renderToStaticMarkup(createElement(HealthCard, { ok: false }))
+  expect(broken).toContain('Issues found')
+  expect(broken).not.toContain('Healthy')
+  expect(broken).toContain('role="status"')
+  expect(broken).toContain('<code>bazilion doctor</code>')
+})
+
+test('the backup card downloads the daemon archive and says what the archive holds', () => {
+  const html = renderToStaticMarkup(createElement(BackupCard))
+  expect(html).toContain('href="/api/backup"')
+  expect(html).toContain('download=""')
+  expect(html).toContain('not encrypted and holds every stored credential')
 })

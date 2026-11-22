@@ -1,6 +1,6 @@
 import type { Profile, TeamPolicyMode, TeamTemplate } from '@bazilion/api-types'
-import { ListTree, Plus, Save, TableProperties, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import {
   defaultPosition,
@@ -17,31 +17,41 @@ import {
 } from '../../lib/team-policy'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { Segmented } from '../Segmented'
 import { UnsavedChangesGuard } from '../UnsavedChangesGuard'
+import { SelectField, SwitchRow, TextField } from '../ui/form'
+import { Notice } from '../ui/parts'
 import { TeamPolicyFlow } from './TeamPolicyFlow'
 import { TeamPolicyMatrix } from './TeamPolicyMatrix'
 
 const MODE_HELP: Record<TeamPolicyMode, string> = {
-  open: 'Members message each other freely; edges only matter for messages to and from other teams.',
-  restricted: 'Members message each other only along allow edges.',
+  open: 'Members message each other freely; connections only matter for messages to and from other Teams.',
+  restricted: 'Members message each other only along connections.',
 }
 
-/** A Team template's roster and allow edges, as a flow or a matrix. */
+/** A Team template's roster and connections, as a flow or a matrix. */
 export function TeamPolicyEditor({
   template,
   profiles,
+  onSaved,
+  onDirtyChange,
 }: {
   template: TeamTemplate
   profiles: Profile[]
+  /** Called after a save, so that the page around it shows the saved roster. */
+  onSaved?: () => Promise<void>
+  /** Told whether there are unsaved changes, so the page does not act on the saved roster. */
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const [server, setServer] = useState(() => templateDocument(template))
   const [draft, setDraft] = useState(server)
   const [view, setView] = useState<'flow' | 'matrix'>('flow')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const dirty = !sameDocument(server, draft)
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
   const incomplete = useMemo(
     () =>
       new Set(
@@ -50,6 +60,14 @@ export function TeamPolicyEditor({
           .map((member) => member.key),
       ),
     [draft.members, profiles],
+  )
+
+  const templateNames = useMemo(
+    () =>
+      Object.fromEntries(
+        profiles.map((profile) => [profile.id, `${profile.name || profile.id} template`]),
+      ),
+    [profiles],
   )
 
   const toggle = (from: string, to: string, allowed: boolean) =>
@@ -68,9 +86,10 @@ export function TeamPolicyEditor({
       setServer(saved)
       setDraft(saved)
       setSelectedId(null)
-      setNotice('Saved.')
+      setNotice({ text: 'Saved.', ok: true })
+      await onSaved?.()
     } catch (error) {
-      setNotice(errorMessage(error))
+      setNotice({ text: errorMessage(error), ok: false })
     } finally {
       setSaving(false)
     }
@@ -80,74 +99,51 @@ export function TeamPolicyEditor({
     <>
       <UnsavedChangesGuard when={dirty} subject="Team template draft" />
       <section
-        className="overflow-hidden rounded-lg border border-frost bg-snow"
-        aria-label="Team policy editor"
+        className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-baziu-sm"
+        aria-label="Roster and connections"
       >
-        <header className="flex flex-wrap items-center gap-2 border-b border-frost bg-cream p-3">
-          <div className="mr-auto min-w-0">
-            <label className="m-0 text-xs">
-              Template name
-              <input
-                value={draft.name}
-                onChange={(event) => {
-                  const name = event.target.value
-                  setDraft((current) => ({ ...current, name }))
-                }}
-              />
-            </label>
-            <p className="muted m-0 text-xs">{MODE_HELP[draft.mode]}</p>
+        <header className="flex flex-wrap items-end gap-x-3 gap-y-3 border-b border-border px-4 py-4 sm:px-5">
+          <div className="min-w-0 flex-1 basis-60">
+            <TextField
+              label="Name"
+              value={draft.name}
+              disabled={saving}
+              className="max-w-none"
+              onChange={(name) => setDraft((current) => ({ ...current, name }))}
+            />
           </div>
-          <fieldset
-            className="m-0 flex min-w-0 rounded-md border border-frost bg-ivory p-0.5"
-            aria-label="Policy mode"
-          >
-            {(['open', 'restricted'] as const).map((mode) => (
-              <Toggle
-                key={mode}
-                active={draft.mode === mode}
-                label={mode === 'open' ? 'Open' : 'Restricted'}
-                onClick={() => setDraft((current) => ({ ...current, mode }))}
-              />
-            ))}
-          </fieldset>
-          <fieldset
-            className="m-0 flex min-w-0 rounded-md border border-frost bg-ivory p-0.5"
-            aria-label="Editor view"
-          >
-            <Toggle
-              active={view === 'flow'}
-              label="Flow"
-              icon={<ListTree className="h-4 w-4" />}
-              onClick={() => setView('flow')}
+          <div className="grid gap-1.5">
+            <span className="text-sm font-semibold text-foreground">Messaging</span>
+            <Segmented
+              label="Messaging"
+              value={draft.mode}
+              onChange={(mode) => setDraft((current) => ({ ...current, mode }))}
+              options={[
+                { id: 'open', label: 'Open' },
+                { id: 'restricted', label: 'Restricted' },
+              ]}
             />
-            <Toggle
-              active={view === 'matrix'}
-              label="Matrix"
-              icon={<TableProperties className="h-4 w-4" />}
-              onClick={() => setView('matrix')}
+          </div>
+          <div className="grid gap-1.5">
+            <span className="text-sm font-semibold text-foreground">View</span>
+            <Segmented
+              label="View"
+              value={view}
+              onChange={setView}
+              options={[
+                { id: 'flow', label: 'Flow' },
+                { id: 'matrix', label: 'Matrix' },
+              ]}
             />
-          </fieldset>
-          <Button
-            variant="ghost"
-            disabled={!dirty || saving}
-            onClick={() => setConfirmDiscard(true)}
-          >
-            Discard
-          </Button>
-          <Button variant="primary" disabled={!dirty || saving} onClick={save}>
-            <Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save'}
-          </Button>
+          </div>
+          <p className="m-0 basis-full text-sm text-muted-foreground">{MODE_HELP[draft.mode]}</p>
         </header>
-        {notice && (
-          <div role="status" className="border-b border-frost bg-ivory px-4 py-2 text-sm">
-            {notice}
-          </div>
-        )}
         <div className="grid min-h-[620px] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="min-h-[480px] overflow-hidden">
             {view === 'flow' ? (
               <TeamPolicyFlow
                 document={draft}
+                templateNames={templateNames}
                 selectedId={selectedId}
                 incompleteKeys={incomplete}
                 onSelect={setSelectedId}
@@ -172,7 +168,7 @@ export function TeamPolicyEditor({
               />
             )}
           </div>
-          <aside className="border-t border-frost p-4 lg:border-l lg:border-t-0">
+          <aside className="border-t border-border p-4 lg:border-l lg:border-t-0">
             <Inspector
               document={draft}
               selectedId={selectedId}
@@ -183,12 +179,42 @@ export function TeamPolicyEditor({
             />
           </aside>
         </div>
+        <footer className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-4 sm:px-5">
+          <Button variant="primary" disabled={!dirty || saving} onClick={() => void save()}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+          {dirty && (
+            <Button variant="ghost" disabled={saving} onClick={() => setConfirmDiscard(true)}>
+              Discard changes
+            </Button>
+          )}
+          <p
+            role="status"
+            className={`m-0 min-w-0 flex-1 basis-56 text-sm font-medium ${
+              notice && !notice.ok
+                ? 'text-warning'
+                : dirty
+                  ? 'text-warning'
+                  : notice
+                    ? 'text-success'
+                    : 'text-muted-foreground'
+            }`}
+          >
+            {notice && !notice.ok
+              ? `Nothing was saved: ${notice.text}`
+              : dirty
+                ? 'Not saved yet.'
+                : notice
+                  ? 'Saved. Teams spawned from now on get this roster.'
+                  : 'Teams already spawned keep their own Agents and connections.'}
+          </p>
+        </footer>
       </section>
       <ConfirmDialog
         open={confirmDiscard}
-        title="Discard this Team template draft?"
-        description={<p>This discards every unsaved change. The saved template stays as it is.</p>}
-        confirmLabel="discard draft"
+        title="Discard your changes to this template?"
+        description={<p>The saved roster and connections stay as they are.</p>}
+        confirmLabel="Discard changes"
         onConfirm={() => {
           setDraft(server)
           setSelectedId(null)
@@ -197,30 +223,6 @@ export function TeamPolicyEditor({
         onOpenChange={setConfirmDiscard}
       />
     </>
-  )
-}
-
-function Toggle({
-  active,
-  label,
-  icon,
-  onClick,
-}: {
-  active: boolean
-  label: string
-  icon?: React.ReactNode
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${active ? 'bg-snow text-sapphire shadow-sm' : 'text-mocha'}`}
-    >
-      {icon}
-      {label}
-    </button>
   )
 }
 
@@ -253,144 +255,153 @@ function Inspector({
 
   if (edge) {
     return (
-      <div className="space-y-3">
-        <p className="text-xs font-semibold uppercase text-mocha-light">Allow edge</p>
-        <p className="text-sm">
-          {endpointLabel(document, edge.from)} → {endpointLabel(document, edge.to)}
+      <div className="grid gap-3">
+        <h3 className="m-0 font-body text-sm font-semibold text-foreground">Connection</h3>
+        <p className="m-0 text-sm">
+          {endpointLabel(document, edge.from)} may message {endpointLabel(document, edge.to)}.
         </p>
-        <Button
-          variant="danger"
-          onClick={() => {
-            onToggle(edge.from, edge.to, false)
-            onSelect(null)
-          }}
-        >
-          <X className="h-4 w-4" /> Remove edge
-        </Button>
+        <div>
+          <Button
+            variant="danger"
+            onClick={() => {
+              onToggle(edge.from, edge.to, false)
+              onSelect(null)
+            }}
+          >
+            Remove connection
+          </Button>
+        </div>
       </div>
     )
   }
 
   if (!selected) {
     return (
-      <div className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase text-mocha-light">Summary</p>
-          <p className="muted text-xs">
-            {document.members.length} slots · {document.edges.length} allow edges
-          </p>
-          <p className="muted mt-2 text-xs">
-            Select a node to edit who it may message. Drag from one node's handle to another to add
-            an edge. Other teams need an edge to Other teams in the sender's Team and one from Other
-            teams in the recipient's Team.
+      <div className="grid gap-4">
+        <div className="grid gap-1">
+          <h3 className="m-0 font-body text-sm font-semibold text-foreground">
+            {document.members.length === 1 ? '1 Agent' : `${document.members.length} Agents`} ·{' '}
+            {document.edges.length === 1 ? '1 connection' : `${document.edges.length} connections`}
+          </h3>
+          <p className="m-0 text-sm text-muted-foreground">
+            Select an Agent to choose who it may message, or drag from one Agent's dot to another. A
+            message to another Team needs a connection to Other teams here, and one from Other teams
+            in that Team.
           </p>
         </div>
-        <label className="text-xs">
-          USER.md for spawned Teams
+        <div>
+          <label
+            htmlFor="team-template-user-md"
+            className="m-0 text-sm font-semibold text-foreground"
+          >
+            USER.md
+          </label>
           <textarea
+            id="team-template-user-md"
             rows={6}
             value={document.userMd ?? ''}
             onChange={(event) => {
               const userMd = event.target.value
               onDraft((current) => ({ ...current, userMd: userMd || null }))
             }}
-            className="font-mono text-[0.85em]"
+            className="mt-1.5 font-mono text-[0.85em]"
           />
-        </label>
-        <Button
-          variant="ghost"
-          onClick={() =>
-            onDraft((current) => ({
-              ...current,
-              members: [
-                ...current.members,
-                {
-                  key: `draft:${crypto.randomUUID()}`,
-                  profileId: profiles[0]?.id ?? '',
-                  name: `Agent ${current.members.length + 1}`,
-                  position: defaultPosition(current.members.length),
-                },
-              ],
-            }))
-          }
-        >
-          <Plus className="h-4 w-4" /> Add slot
-        </Button>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            What every Agent of a Team spawned from it knows about you.
+          </span>
+        </div>
+        <div>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              onDraft((current) => ({
+                ...current,
+                members: [
+                  ...current.members,
+                  {
+                    key: `draft:${crypto.randomUUID()}`,
+                    profileId: profiles[0]?.id ?? '',
+                    name: `Agent ${current.members.length + 1}`,
+                    position: defaultPosition(current.members.length),
+                  },
+                ],
+              }))
+            }
+          >
+            <Plus className="size-4" aria-hidden="true" /> Add an Agent
+          </Button>
+        </div>
       </div>
     )
   }
 
+  const known = member && profiles.some((profile) => profile.id === member.profileId)
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-xs font-semibold uppercase text-mocha-light">
-          {member ? 'Slot' : 'Boundary'}
-        </p>
-        <h3 className="mt-1 text-base">{endpointLabel(document, selected)}</h3>
-      </div>
+    <div className="grid gap-4">
+      <h3 className="m-0 font-body text-sm font-semibold text-foreground">
+        {member ? member.name || 'Agent' : 'Other teams'}
+      </h3>
       {member && (
-        <div className="space-y-2">
-          <label className="text-xs">
-            Agent name
-            <input
-              value={member.name}
-              onChange={(event) => updateMember({ name: event.target.value })}
-            />
-          </label>
-          <label className="text-xs">
-            Agent template
-            <select
-              value={member.profileId}
-              onChange={(event) => updateMember({ profileId: event.target.value })}
-            >
-              {!profiles.some((profile) => profile.id === member.profileId) && (
-                <option value={member.profileId}>{member.profileId || 'Select a template'}</option>
-              )}
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <>
+          <TextField
+            label="Name"
+            value={member.name}
+            className="max-w-none"
+            onChange={(name) => updateMember({ name })}
+          />
+          <SelectField
+            label="Template"
+            value={member.profileId}
+            className="max-w-none"
+            options={[
+              ...(known
+                ? []
+                : [{ value: member.profileId, label: member.profileId || 'Choose a template' }]),
+              ...profiles.map((profile) => ({
+                value: profile.id,
+                label: profile.name || profile.id,
+              })),
+            ]}
+            onChange={(profileId) => updateMember({ profileId })}
+          />
+          {!known && (
+            <Notice tone="warning">
+              Choose a template: an Agent cannot be spawned without one.
+            </Notice>
+          )}
+        </>
       )}
-      <div className="space-y-2">
-        <p className="text-xs font-semibold">May send to</p>
+      <fieldset className="m-0 grid min-w-0 gap-3 border-0 p-0">
+        <legend className="mb-2 p-0 text-sm font-semibold text-foreground">May message</legend>
         {actors
           .filter((target) => target !== selected)
-          .map((target) => {
-            const allowed = hasEdge(document, selected, target)
-            return (
-              <button
-                key={target}
-                type="button"
-                aria-pressed={allowed}
-                onClick={() => onToggle(selected, target, !allowed)}
-                className="flex w-full items-center justify-between rounded border border-frost p-2 text-xs"
-              >
-                <span>{endpointLabel(document, target)}</span>
-                {allowed ? 'Allowed' : 'Not allowed'}
-              </button>
-            )
-          })}
-      </div>
+          .map((target) => (
+            <SwitchRow
+              key={target}
+              label={endpointLabel(document, target)}
+              checked={hasEdge(document, selected, target)}
+              onChange={(allowed) => onToggle(selected, target, allowed)}
+            />
+          ))}
+      </fieldset>
       {member && (
-        <Button
-          variant="danger"
-          onClick={() => {
-            onDraft((current) => ({
-              ...current,
-              members: current.members.filter((item) => item.key !== member.key),
-              edges: current.edges.filter(
-                (item) => item.from !== member.key && item.to !== member.key,
-              ),
-            }))
-            onSelect(null)
-          }}
-        >
-          <X className="h-4 w-4" /> Remove slot and its edges
-        </Button>
+        <div>
+          <Button
+            variant="danger"
+            onClick={() => {
+              onDraft((current) => ({
+                ...current,
+                members: current.members.filter((item) => item.key !== member.key),
+                edges: current.edges.filter(
+                  (item) => item.from !== member.key && item.to !== member.key,
+                ),
+              }))
+              onSelect(null)
+            }}
+          >
+            Remove this Agent
+          </Button>
+        </div>
       )}
     </div>
   )

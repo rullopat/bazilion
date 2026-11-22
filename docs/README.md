@@ -21,6 +21,7 @@ Start with the [README](../README.md): install, first run and the CLI.
 ## Working with Agents
 
 - [The web workspace](workspace.md): what is where on the home screen, and its address
+- [Manage](manage.md): the pages for Agents, Teams, Agent and Team templates, and skills
 - [Conversations](conversations.md), the [follow-up queue](follow-up-queue.md) and
   [questions](questions.md)
 - [Reviewed learning](backlog/done/BAZ-003-reviewed-learning.md): lessons an Agent proposes from

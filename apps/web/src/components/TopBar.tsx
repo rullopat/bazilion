@@ -26,31 +26,31 @@ const MANAGE_LINKS = [
   {
     href: '/agents',
     label: 'Agents',
-    description: 'Every Agent: archive, restore, delete.',
+    description: 'Every Agent by Team: archive, move, delete.',
     icon: Bot,
   },
   {
     href: '/teams',
     label: 'Teams',
-    description: 'Register a Team or remove an empty one.',
+    description: 'Create a Team, or remove an empty one.',
     icon: UsersRound,
   },
   {
     href: '/templates',
     label: 'Templates',
-    description: 'Reusable Agent behavior and Team rosters.',
+    description: 'What new Agents start with, and Team rosters.',
     icon: LayoutTemplate,
   },
   {
     href: '/skills',
     label: 'Skills',
-    description: 'Prompt skills available to your agents.',
+    description: 'Import, review and remove prompt skills.',
     icon: Sparkles,
   },
   {
     href: '/config',
     label: 'Setup',
-    description: 'Models and providers, services, integrations, access.',
+    description: 'Models, tools, MCP, Telegram, access, system.',
     icon: Settings2,
   },
 ] as const

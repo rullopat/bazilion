@@ -5,6 +5,27 @@ Hand-written highlights per release. The full notes for every version are genera
 [`apps/cli/CHANGELOG.md`](apps/cli/CHANGELOG.md) (the `bazilion` package) and published as
 [GitHub releases](https://github.com/rullopat/bazilion/releases).
 
+## 0.53.0 — 2026-11-22
+
+A 0.52.x home opens as it is.
+
+- **Manage, redone:** Agents, Teams, Agent templates, Team templates and Skills are one section
+  with one tab bar. Each page shows its list first and creates in a dialog; rows say what is
+  worth knowing (a model not in Chat, who uses a template, a skill's risky finding) and keep the
+  rarer actions behind **⋯**. An action the daemon would refuse is disabled, with the reason.
+  See [manage](docs/manage.md).
+- **Agents** are grouped by Team, can be found by name and filtered to current, archived or all,
+  and can be moved to another Team from the list.
+- **An Agent template's page** has a Settings card and a Files card, one file at a time, each
+  saved with one Save; it warns when the template's model is not in Chat, and spawns an Agent.
+- **Team templates** spawn from the list and from their page; the roster editor speaks of Agents
+  and connections.
+- **Setup** is one look: Telegram, System, MCP and Access use the same cards as Models and Tools.
+  Telegram's forms say what they need before they are saved, and its Bot card says whether the
+  bot runs.
+- **Fixed:** Skills and Attention no longer fail to hydrate where the server and the browser
+  format dates differently; deleting a template that a Team template uses is no longer offered.
+
 ## 0.52.0 — 2026-11-21
 
 A 0.51.x home opens as it is.

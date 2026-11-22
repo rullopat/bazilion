@@ -14,7 +14,8 @@ import { api, errorMessage } from '../../lib/api'
 import { cheapest, initialPicks, matchesModel, modelName } from '../../lib/model-facts'
 import { useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
-import { FailureBox, ModelRow, SearchField, Waiting } from './parts'
+import { SearchField, Waiting } from '../ui/parts'
+import { FailureBox, ModelRow } from './provider-parts'
 
 export type Connected = Extract<ConnectProviderResponse, { connected: true }>
 

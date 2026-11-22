@@ -95,8 +95,8 @@ workspace (**Changes**) and what was delivered (**Files**). Connections, Changes
 open across the whole width, as a map, a side-by-side diff and a gallery. **Jump to** (Ctrl+K)
 opens any Agent, Team or page by name.
 
-**Manage** holds the list pages: Agents, Teams, **Templates** (Agent and Team templates),
-**Skills** and **Setup** (`/config`). Setup opens on **Models**: the chat models your Agents
+**Manage** holds the housekeeping pages, under one tab bar: Agents (grouped by Team), Teams,
+Agent templates, Team templates and Skills ([manage](docs/manage.md)), and **Setup** (`/config`). Setup opens on **Models**: the chat models your Agents
 think with, the image model they draw with, and the providers behind them, each with whether it
 answers ([models and providers](docs/models-and-providers.md)). **Tools** holds web search, the
 browser and how commands run, one card each ([tools](docs/tools.md)); the other tabs are MCP,

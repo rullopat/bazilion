@@ -23,7 +23,7 @@ export function TeamPolicyMatrix({
           Communication matrix
         </h2>
         <p className="mt-1 text-xs text-mocha-light">
-          Rows send; columns receive. Every cell edits the same allow edges as Flow.
+          Rows send; columns receive. Every cell edits the same connections as Flow.
         </p>
       </div>
       <table className="m-0 min-w-[620px] table-fixed overflow-visible rounded-md text-xs">

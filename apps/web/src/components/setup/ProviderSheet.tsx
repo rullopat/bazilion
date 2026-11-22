@@ -13,7 +13,8 @@ import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { Dialog } from '../Dialog'
 import { FieldRow } from '../FieldRow'
-import { FailureBox, Switch, Waiting } from './parts'
+import { Switch, Waiting } from '../ui/parts'
+import { FailureBox } from './provider-parts'
 
 const HEADING =
   'm-0 font-body text-[0.72rem] font-bold uppercase tracking-[0.08em] text-muted-foreground'

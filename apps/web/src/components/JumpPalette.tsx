@@ -24,11 +24,12 @@ interface Destination {
 
 const PAGES: Array<[label: string, hint: string, path: string]> = [
   ['Attention', 'Decisions and failures waiting for you', '/attention'],
-  ['Agents', 'Every Agent, archived ones too', '/agents'],
-  ['Teams', 'Register and remove Teams', '/teams'],
-  ['Templates', 'Agent and Team templates', '/templates'],
-  ['Skills', 'Prompt skills', '/skills'],
-  ['Setup', 'Models, tools, Telegram, access', '/config'],
+  ['Agents', 'Every Agent by Team: archive, move, delete', '/agents'],
+  ['Teams', 'Create and remove Teams', '/teams'],
+  ['Agent templates', 'What a new Agent starts with', '/templates/agents'],
+  ['Team templates', 'Rosters that spawn a whole Team', '/templates/teams'],
+  ['Skills', 'Import, review and remove prompt skills', '/skills'],
+  ['Setup', 'Models, tools, MCP, Telegram, access, system', '/config'],
 ]
 
 /** Destinations whose label or hint holds every word of the query. */
