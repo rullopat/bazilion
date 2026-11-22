@@ -12,4 +12,6 @@ Manage is redone on the shared parts: Agents, Teams, Agent templates, Team templ
 - **Skills:** **Import skills** opens a dialog (OpenClaw, a folder, a ZIP file); a risky finding or an unreadable SKILL.md is shown under the skill and in a banner; rows say which templates chose the skill.
 - **Attention:** a summary line and one row of filters (state, kind, severity); times are relative.
 - **Shared parts:** `components/ui/` (moved from `components/setup/`) gains a row menu, empty states, group headers, choice cards and a filter select. The spawn dialogs and the Team form use them, in the workspace too.
+- **Telegram pairing** is noticed by itself: while a code waits, the Owner pairing card checks every few seconds, and the allowed users can be added as soon as the owner is paired.
+- **Keyboard:** row menus, the template's file tabs (arrow keys, Home, End) and the controls that replace each other keep focus where it belongs; a menu item that cannot be used is still reached, so its reason is read.
 - **Fixed:** Skills and Attention threw a hydration error (React #418) because dates were formatted in the server's and then the browser's locale.
