@@ -75,7 +75,7 @@ When an Agent asks a question (see [questions](questions.md)), it appears in its
 button per choice and **Skip**. Tap a button, or reply to the question message with your own
 answer. The question can be answered on the web or in the CLI just as well; the first answer wins.
 
-A command that needs your approval in a web chat (see
+A command that needs your approval in a chat you are watching, on the web or in a terminal (see
 [coding environments](coding-environments.md#dangerous-command-approval)) and is still waiting
 after half a minute is posted in the topic too, with **Allow once** and **Deny**. Only the paired
 owner can use them. Once the command is decided, here, on the web or by timing out, the message

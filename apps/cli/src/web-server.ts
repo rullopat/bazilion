@@ -39,7 +39,10 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   console.log(`bazilion web UI listening at http://${info.address}:${info.port}`)
 })
 
+let stopping = false
 const shutdown = (signal: NodeJS.Signals): void => {
+  if (stopping) return
+  stopping = true
   console.log(`\nbazilion web UI caught ${signal}, shutting down...`)
   server.close((err) => {
     if (err) {
@@ -48,6 +51,9 @@ const shutdown = (signal: NodeJS.Signals): void => {
     }
     process.exit(0)
   })
+  // An open tab holds the live event stream, which never ends by itself: close it, and any other
+  // open request, so the server can stop.
+  if ('closeAllConnections' in server) server.closeAllConnections()
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'))

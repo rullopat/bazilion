@@ -83,6 +83,7 @@ export function readActivity(db: BazilionDb, paths: Paths): AgentActivity[] {
   const approvals = commandApprovalRegistry.list()
   return agentRepo.list(db).map((agent) => {
     const working = isActiveAgent(agent.id)
+    const pending = queue.pendingCount(db, agent.id)
     const produced = saved.get(agent.id)
     return {
       agentId: agent.id,
@@ -91,7 +92,8 @@ export function readActivity(db: BazilionDb, paths: Paths): AgentActivity[] {
       step: working ? (steps().get(agent.id) ?? null) : null,
       questions: questions.filter((question) => question.agentId === agent.id).length,
       approvals: approvals.filter((approval) => approval.agentId === agent.id).length,
-      queuePaused: queue.isPaused(db, agent.id) && queue.pendingCount(db, agent.id) > 0,
+      queuePaused: queue.isPaused(db, agent.id) && pending > 0,
+      followUps: pending,
       lastActivityAt: lastActivityAt(db, paths, agent.id),
       results: produced?.count ?? 0,
       lastResultAt: produced?.lastAt ?? null,

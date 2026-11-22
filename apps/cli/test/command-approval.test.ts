@@ -128,6 +128,22 @@ describe('CLI shell-command approval', () => {
     expect(output).toContain('  [approval input unavailable; denying]')
   })
 
+  test('a command decided elsewhere meanwhile does not end the chat', async () => {
+    const post = vi.fn(async () => {
+      throw Object.assign(new Error('404: no pending shell approval with this id'), { status: 404 })
+    })
+    const logs: string[] = []
+    const log = vi.spyOn(console, 'log').mockImplementation((line: string) => {
+      logs.push(line)
+    })
+    try {
+      await expect(respondToCommandApproval({ post }, pendingApproval())).resolves.toBe('deny')
+    } finally {
+      log.mockRestore()
+    }
+    expect(logs).toContain('  [this command was already decided elsewhere]')
+  })
+
   test('a caller without a terminal prompt denies without reading stdin', async () => {
     const post = vi.fn(async () => ({}))
 

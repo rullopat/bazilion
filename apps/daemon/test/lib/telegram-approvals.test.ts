@@ -155,16 +155,16 @@ test('a command decided in the web UI before the delay never reaches Telegram', 
 test('an Agent without a topic, or Telegram off, gets no prompt', async () => {
   const { approval } = begin()
   setTelegramTopicId(env.db, agentId, null)
-  expect(await sendApprovalPrompt(approval.id)).toBe(false)
+  expect(await sendApprovalPrompt(approval)).toBe(false)
   setTelegramTopicId(env.db, agentId, 42)
   setTelegramLive(null)
-  expect(await sendApprovalPrompt(approval.id)).toBe(false)
+  expect(await sendApprovalPrompt(approval)).toBe(false)
   expect(sendMessage).not.toHaveBeenCalled()
 })
 
 test('a prompt whose command expires says so', async () => {
   const { approval, settled } = begin()
-  expect(await sendApprovalPrompt(approval.id)).toBe(true)
+  expect(await sendApprovalPrompt(approval)).toBe(true)
   turn.abort()
   expect((await settled).status).toBe('cancelled')
   await vi.waitFor(() => expect(editMessageText).toHaveBeenCalledOnce())

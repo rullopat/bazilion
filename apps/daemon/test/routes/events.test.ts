@@ -132,3 +132,24 @@ test('the event stream sends the current state, then a question the moment it is
   controller.abort()
   await vi.waitFor(() => expect(liveFeed().listeners).toBe(0))
 })
+
+test('a revoked token ends the stream', async () => {
+  const { app } = await fixture()
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const { webTokenRepo } = await import('../../src/core/index.ts')
+  const { _setKeepaliveForTest } = await import('../../src/routes/events.ts')
+  _setKeepaliveForTest(50)
+  const device = webTokenRepo.create(getCtx().db, 'laptop')
+  const response = await app.request('/api/events', {
+    headers: { authorization: `Bearer ${device.token}` },
+  })
+  expect(response.status).toBe(200)
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('no body')
+  await reader.read()
+  webTokenRepo.revoke(getCtx().db, device.meta.id)
+  const ended = (async () => {
+    for (;;) if ((await reader.read()).done) return true
+  })()
+  await expect(ended).resolves.toBe(true)
+})

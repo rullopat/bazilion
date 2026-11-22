@@ -99,7 +99,14 @@ export async function respondToCommandApproval(
   prompt?: CommandApprovalPrompt,
 ): Promise<CommandApprovalDecision> {
   const decision = prompt ? await promptForCommandApproval(approval, prompt) : 'deny'
-  await client.post(apiPath('shell-approvals', approval.id), { decision })
+  try {
+    await client.post(apiPath('shell-approvals', approval.id), { decision })
+  } catch (error) {
+    // Decided meanwhile in the web UI or Telegram, or timed out: the turn goes on, and its next
+    // frame says how the command was decided.
+    if ((error as { status?: number }).status !== 404) throw error
+    console.log('  [this command was already decided elsewhere]')
+  }
   return decision
 }
 

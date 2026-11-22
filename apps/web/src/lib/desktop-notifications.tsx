@@ -98,11 +98,17 @@ export function DesktopNotifier() {
         // One tab notifies, and only when the operator is not looking at Bazilion.
         if (!live.isLeader() || live.anyTabFocused()) return
         for (const item of fresh) {
-          const notification = new Notification(item.title, {
-            body: item.diagnostic,
-            tag: item.key,
-            icon: '/baziu.svg',
-          })
+          let notification: Notification
+          try {
+            notification = new Notification(item.title, {
+              body: item.diagnostic,
+              tag: item.key,
+              icon: '/baziu.svg',
+            })
+          } catch {
+            // Some browsers (Chrome on Android) show notifications only from a service worker.
+            return
+          }
           notification.onclick = () => {
             window.focus()
             notification.close()

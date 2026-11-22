@@ -57,6 +57,7 @@ test('an idle Agent with nothing produced reads as such; archived Agents are lef
       questions: 0,
       approvals: 0,
       queuePaused: false,
+      followUps: 0,
       lastActivityAt: null,
       results: 0,
       lastResultAt: null,
@@ -109,7 +110,13 @@ test('questions, a paused queue, results and the last conversation change are co
   })
   try {
     const [entry] = await activity()
-    expect(entry).toMatchObject({ questions: 1, approvals: 0, queuePaused: true, results: 1 })
+    expect(entry).toMatchObject({
+      questions: 1,
+      approvals: 0,
+      queuePaused: true,
+      followUps: 1,
+      results: 1,
+    })
     expect(entry?.lastResultAt).toBeGreaterThanOrEqual(before)
     // File times have a coarser clock than Date.now().
     expect(entry?.lastActivityAt).toBeGreaterThanOrEqual(before - 2_000)

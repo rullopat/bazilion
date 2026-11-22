@@ -112,13 +112,13 @@ function AttentionCenter() {
     setNow(Date.now())
   }
 
-  // The live feed says when anything in the list changed; the first event is the state the page
-  // was loaded with, or close to it, and only sets the mark.
+  // The live feed says when anything in the list changed. The first event is read too: something
+  // may have changed between loading the page and connecting.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh only sets state.
   useEffect(
     () =>
       live.subscribe('attention', (event) => {
-        const changed = revision.current !== null && revision.current !== event.revision
+        const changed = revision.current !== event.revision
         revision.current = event.revision
         if (changed) void refresh().catch(() => {})
       }),

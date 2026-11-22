@@ -62,7 +62,12 @@ browser, after the browser asks you. When an Agent starts waiting for you and no
 the focus, a notification names the Agent and the question or command; clicking it opens the
 conversation. Browsers offer notifications on `https://` addresses and on this computer
 (`127.0.0.1`, `localhost`) only, and a browser that blocks them for the site is said so in the
-menu.
+menu. They come with the live updates: while the stream is down, none are shown.
+
+Where the browser has no Web Locks (an `http://` address other than this computer), each tab has
+its own stream while it is visible and lets go of it when hidden, so hidden tabs do not take up
+the browser's few connections to the server. A stream ends within 20 seconds of its session being
+signed out or expiring.
 
 ## Jump to, and the keyboard
 
@@ -119,7 +124,8 @@ bazilion team messages <team> [--limit 50]     # what a Team's Agents said to ea
 ```
 
 `GET /api/activity` returns one entry per Agent that is not archived: whether a turn runs and its
-latest tool call, how many questions and shell approvals wait, whether its follow-up queue is
-paused, when its conversation last changed and how many files it has saved. The web UI reads it
-every three seconds while the tab is visible. `GET /api/teams/:id/messages?limit=100` lists the
+latest tool call, how many questions and shell approvals wait, how many follow-ups wait and
+whether its queue is paused, when its conversation last changed and how many files it has saved.
+The web UI gets the same entries pushed over `GET /api/events` (see [Live](#live)) and reads
+this route every three seconds only while that stream is down. `GET /api/teams/:id/messages?limit=100` lists the
 messages a Team's Agents sent and received, newest first, and marks nothing read.

@@ -1,7 +1,10 @@
 // The live feed (GET /api/events): what every Agent is doing and what is open in Attention,
 // pushed by the daemon when it changes. One tab per browser holds the stream (a Web Lock picks
 // it) and passes each event to the others over a BroadcastChannel, so many open tabs still use
-// one connection. While no stream is up (`connected` false) readers ask on their own, as before.
+// one connection. Where the browser has no Web Locks (an http:// address other than this
+// computer), each tab holds a stream only while it is visible, so hidden tabs cannot use up the
+// browser's few connections to the server. While no stream is up (`connected` false) readers ask
+// on their own, as before.
 
 import type { LiveEvent } from '@bazilion/api-types'
 import {
@@ -71,7 +74,14 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
 
   const deliver = useCallback((event: LiveEvent) => {
     latest.current.set(event.type, event)
-    for (const handler of handlers.current.get(event.type) ?? []) handler(event)
+    for (const handler of handlers.current.get(event.type) ?? []) {
+      // One reader's failure must not keep the event from the others.
+      try {
+        handler(event)
+      } catch (error) {
+        console.warn('live feed reader failed:', error)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -82,16 +92,22 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
     let failures = 0
     const tab = Math.random().toString(36).slice(2)
     const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(CHANNEL)
+    // Shared: one tab holds the stream for all. Otherwise each tab has its own and keeps its
+    // events and its status to itself.
+    const shared = Boolean(channel && typeof navigator !== 'undefined' && navigator.locks)
     const post = (message: Message) => channel?.postMessage(message)
+    const share = (message: Message) => {
+      if (shared) post(message)
+    }
     let releaseLock: () => void = () => {}
 
     const status = (value: boolean) => {
       setConnected(value)
-      post({ kind: 'status', connected: value })
+      share({ kind: 'status', connected: value })
     }
 
     const open = () => {
-      if (stopped) return
+      if (stopped || (!shared && document.visibilityState === 'hidden')) return
       source = new EventSource('/api/events')
       for (const type of EVENT_TYPES) {
         source.addEventListener(type, (message) => {
@@ -99,7 +115,7 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
           if (!event) return
           failures = 0
           deliver(event)
-          post({ kind: 'event', event })
+          share({ kind: 'event', event })
         })
       }
       source.onopen = () => status(true)
@@ -129,9 +145,11 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
 
     if (channel) {
       channel.onmessage = ({ data }: MessageEvent<Message>) => {
-        if (data.kind === 'event') deliver(data.event)
-        else if (data.kind === 'status') setConnected(data.connected)
-        else if (data.kind === 'focus') {
+        if (data.kind === 'event') {
+          if (shared) deliver(data.event)
+        } else if (data.kind === 'status') {
+          if (shared) setConnected(data.connected)
+        } else if (data.kind === 'focus') {
           if (data.focused) focusedTabs.current.add(data.tab)
           else focusedTabs.current.delete(data.tab)
         } else if (data.kind === 'hello') {
@@ -145,7 +163,19 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
       }
     }
 
-    if (channel && typeof navigator !== 'undefined' && navigator.locks) {
+    const close = () => {
+      window.clearTimeout(retry)
+      source?.close()
+      source = null
+      setConnected(false)
+    }
+    // Without a shared stream, a hidden tab lets go of its own.
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') close()
+      else if (!source) open()
+    }
+
+    if (shared) {
       void navigator.locks
         .request(LOCK, () => {
           if (stopped) return
@@ -158,8 +188,10 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
         .catch(() => {})
       post({ kind: 'hello' })
     } else {
-      // No locks (an insecure origin) or no channel: every tab has its own stream.
-      lead()
+      // No locks (an http:// address other than this computer): every visible tab has its own.
+      leading.current = true
+      if (document.visibilityState !== 'hidden') open()
+      document.addEventListener('visibilitychange', onVisibility)
     }
 
     reportFocus()
@@ -172,6 +204,7 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
     return () => {
       stopped = true
       leave()
+      document.removeEventListener('visibilitychange', onVisibility)
       window.clearTimeout(retry)
       source?.close()
       leading.current = false

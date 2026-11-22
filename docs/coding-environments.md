@@ -98,7 +98,7 @@ a shell, uploads to remote hosts, `sudo` and environment dumps. The web chat sho
 **Deny**; a CLI chat in a terminal asks on stdin. A command still waiting after half a minute is
 also posted in the Agent's [Telegram](telegram.md) topic, when it has one, with **Allow once** and
 **Deny**; only the paired owner can use them, and the message shows the outcome once it is
-decided anywhere. An unanswered request is denied after five minutes. Turns with nobody to ask
+decided anywhere (a terminal chat whose command was decided elsewhere says so and goes on). An unanswered request is denied after five minutes. Turns with nobody to ask
 (Telegram, schedules, inbox wakes, queued follow-ups, piped CLI) deny flagged commands. Paths
 inside the Team (or under `/workspace` in Docker) count as local.
 

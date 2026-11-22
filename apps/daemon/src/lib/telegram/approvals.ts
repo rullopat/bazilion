@@ -44,23 +44,23 @@ function outcomeLine(status: CommandApproval['status']): string {
 
 /**
  * Send the approval to the Agent's topic if it still waits after `delayMs`. Nothing goes out when
- * Telegram is off, the Agent has no topic, or the command was decided meanwhile.
+ * Telegram is off, the Agent has no topic, or the command was decided meanwhile. `approval` is
+ * the one in the turn's frame, whose command text is already redacted of the turn's secrets.
  */
 export function scheduleApprovalPrompt(
   approval: CommandApproval,
   delayMs = APPROVAL_TELEGRAM_DELAY_MS,
 ): void {
   if (approval.status !== 'pending') return
-  const timer = setTimeout(() => void sendApprovalPrompt(approval.id), delayMs)
+  const timer = setTimeout(() => void sendApprovalPrompt(approval), delayMs)
   timer.unref()
   void commandApprovalRegistry.settled(approval.id)?.finally(() => clearTimeout(timer))
 }
 
-export async function sendApprovalPrompt(approvalId: string): Promise<boolean> {
-  const approval = commandApprovalRegistry.get(approvalId)
-  const settled = commandApprovalRegistry.settled(approvalId)
+export async function sendApprovalPrompt(approval: CommandApproval): Promise<boolean> {
+  const settled = commandApprovalRegistry.settled(approval.id)
   const live = telegramLive()
-  if (!approval || !settled || !live) return false
+  if (!commandApprovalRegistry.get(approval.id) || !settled || !live) return false
   const agent = agentRepo.get(live.db, approval.agentId)
   const topicId = agent ? agentRepo.getTelegramTopicId(live.db, agent.id) : null
   if (!agent || topicId === null) return false

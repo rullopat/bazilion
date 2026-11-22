@@ -11,6 +11,7 @@ const idle: AgentActivity = {
   questions: 0,
   approvals: 0,
   queuePaused: false,
+  followUps: 0,
   lastActivityAt: 1_000,
   results: 2,
   lastResultAt: 900,

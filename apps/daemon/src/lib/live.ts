@@ -1,17 +1,20 @@
 // The live feed behind GET /api/events: the activity feed and what is open in Attention, pushed to
 // every connected browser when they change. A change signal (lib/live-signal.ts) has the feed look
-// at once; a check every second catches the rest (saved files, follow-ups, recorded failures). It
-// runs only while someone is connected.
+// at both at once; besides, the activity is looked at every second (saved files, follow-ups) and
+// Attention every five (recorded failures, lesson proposals). It runs only while someone is
+// connected.
 
 import { createHash } from 'node:crypto'
 import type { LiveActivityEvent, LiveAttentionEvent, LiveEvent } from '@bazilion/api-types'
-import { attentionSummary, projectAttention } from '../core/attention.ts'
+import { projectAttention, summarizeAttention } from '../core/attention.ts'
 import { readActivity } from './activity.ts'
 import { waitingAttention } from './attention-waiting.ts'
 import { getCtx } from './ctx.ts'
 import { onLiveChange } from './live-signal.ts'
 
 const CHECK_MS = 1_000
+/** Attention is looked at every this many checks, unless a signal asks for it sooner. */
+const ATTENTION_EVERY = 5
 /** Several signals in a row (a turn starting, its first step) make one look. */
 const SETTLE_MS = 25
 
@@ -37,7 +40,7 @@ export function readLiveAttention(): LiveAttentionEvent {
     .slice(0, 16)
   return {
     type: 'attention',
-    summary: attentionSummary(db, waiting),
+    summary: summarizeAttention(all.items, all.degraded),
     revision,
     waiting: all.items.filter((item) => waiting.some((entry) => entry.key === item.key)),
   }
@@ -48,6 +51,7 @@ class LiveFeed {
   #last = new Map<LiveEvent['type'], string>()
   #timer: NodeJS.Timeout | undefined
   #settle: NodeJS.Timeout | undefined
+  #ticks = 0
   #unsignal: (() => void) | undefined
 
   /** Listen; the current state is sent first. Returns the function that stops listening. */
@@ -67,12 +71,15 @@ class LiveFeed {
   }
 
   #start(): void {
-    this.#timer = setInterval(() => this.#check(), CHECK_MS)
+    this.#timer = setInterval(() => {
+      this.#ticks++
+      this.#check(this.#ticks % ATTENTION_EVERY === 0)
+    }, CHECK_MS)
     this.#timer.unref()
     this.#unsignal = onLiveChange(() => {
       this.#settle ??= setTimeout(() => {
         this.#settle = undefined
-        this.#check()
+        this.#check(true)
       }, SETTLE_MS)
     })
   }
@@ -87,13 +94,14 @@ class LiveFeed {
     this.#last.clear()
   }
 
-  #read(): LiveEvent[] {
+  #read(attention = true): LiveEvent[] {
     const events: LiveEvent[] = []
     try {
       events.push(readLiveActivity())
     } catch (error) {
       console.warn(`live feed: activity: ${error instanceof Error ? error.message : error}`)
     }
+    if (!attention) return events
     try {
       events.push(readLiveAttention())
     } catch (error) {
@@ -102,9 +110,9 @@ class LiveFeed {
     return events
   }
 
-  #check(): void {
+  #check(attention: boolean): void {
     if (this.#listeners.size === 0) return
-    for (const event of this.#read()) {
+    for (const event of this.#read(attention)) {
       const json = JSON.stringify(event)
       if (this.#last.get(event.type) === json) continue
       this.#last.set(event.type, json)

@@ -45,5 +45,5 @@ tests cannot. The embedded Pi moves to 1.6.0. Picked by the owner from the sugge
 ## Known limits
 
 - Questions and approvals still live in the daemon's memory: a restart ends them.
-- Desktop notifications need `https://` or this computer's address.
+- Desktop notifications need `https://` or this computer's address, and the live updates up.
 - Telegram turns still deny flagged commands.

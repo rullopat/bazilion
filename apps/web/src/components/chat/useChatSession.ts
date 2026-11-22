@@ -208,8 +208,14 @@ export function useChatSession({
         const now = event.agents.find((entry) => entry.agentId === agentId) ?? null
         const was = activityRef.current
         activityRef.current = now
-        if (!now || !was || streamingRef.current) return
-        if (now.working !== was.working || now.queuePaused !== was.queuePaused) {
+        if (!now || streamingRef.current) return
+        // The first reading: anything that moved since the page was rendered shows now.
+        if (!was) return void checkHead()
+        if (
+          now.working !== was.working ||
+          now.queuePaused !== was.queuePaused ||
+          now.followUps !== was.followUps
+        ) {
           const ended = was.working && !now.working
           void refreshQueue().then((reloaded) => {
             if (ended && !reloaded) void checkHead()

@@ -12,6 +12,7 @@ const activity = (agentId: string, more: Partial<AgentActivity>): AgentActivity 
   questions: 0,
   approvals: 0,
   queuePaused: false,
+  followUps: 0,
   lastActivityAt: null,
   results: 0,
   lastResultAt: null,
