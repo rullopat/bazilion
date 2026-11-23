@@ -401,7 +401,8 @@ test('a page opened before an upgrade reloads for the new build instead of faili
   await pw(session.page.getByRole('region', { name: /^Connections of/ })).toBeVisible({
     timeout: 15_000,
   })
-  expect(refused).toBe(2)
+  // After the reload the page asks for the map's file again, and gets it.
+  await expect.poll(() => refused, { timeout: 10_000 }).toBe(2)
   // The refused file is the only problem, and the page recovered from it.
   const refusal = /ConnectionsView|dynamically imported|status of 404/
   expect(session.problems.filter((problem) => !refusal.test(problem))).toEqual([])
