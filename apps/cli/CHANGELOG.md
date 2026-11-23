@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.56.0
+
+### Minor Changes
+
+- [#104](https://github.com/rullopat/bazilion/pull/104) [`bbc6a47`](https://github.com/rullopat/bazilion/commit/bbc6a477db82dc160f4aab40ff0e6290bf75295c) Thanks [@rullopat](https://github.com/rullopat)! - Usage and cost per day, Team, Agent, model and conversation; failed background turns in Attention; conversation search in Jump to and the CLI; when each schedule runs next; text previews for every kind of text file; and pictures and accessibility checks on CI.
+
 ## 0.55.0
 
 ### Minor Changes
