@@ -160,6 +160,20 @@ async function workspacePictures(main: Session, ids: DemoIds): Promise<void> {
   const page = main.page
   await main.go('/', 2500)
   await shoot(page, 'overview')
+  // A Team's day: Today on its overview, scrolled to the top of the middle.
+  await main.go('/?team=launch', 2500)
+  // Only the middle pane scrolls; the page and its top bar stay where they are.
+  await page.evaluate(`(() => {
+    const heading = [...document.querySelectorAll('h2')].find((h) => h.textContent === 'Today')
+    let pane = heading?.parentElement
+    while (pane && !(pane.scrollHeight > pane.clientHeight && getComputedStyle(pane).overflowY !== 'visible'))
+      pane = pane.parentElement
+    if (heading && pane)
+      pane.scrollTop += heading.getBoundingClientRect().top - pane.getBoundingClientRect().top - 24
+    window.scrollTo(0, 0)
+  })()`)
+  await page.waitForTimeout(400)
+  await shoot(page, 'team-today')
   await main.go('/attention', 1500)
   await shoot(page, 'attention', { x: 0, y: 0, width: 1440, height: 640 })
   await main.go(`/?agent=${ids.mira}`, 1500)
@@ -228,6 +242,9 @@ async function workspacePictures(main: Session, ids: DemoIds): Promise<void> {
   await main.go('/templates/agents/writer', 1200)
   await settle()
   await shoot(page, 'agent-template', { x: 0, y: 0, width: 1440, height: 1440 })
+  await main.go('/config/mcp', 1200)
+  await settle()
+  await shoot(page, 'common-connections', { x: 0, y: 0, width: 1440, height: 900 })
 }
 
 /**
@@ -400,6 +417,7 @@ const browser = await launchBrowser()
 try {
   const demo = [
     'overview',
+    'team-today',
     'attention',
     'palette',
     'search',
@@ -413,6 +431,7 @@ try {
     'files',
     'manage-agents',
     'agent-template',
+    'common-connections',
     'workspace-dark',
     'phone-waiting',
     'phone-chat',

@@ -47,29 +47,32 @@ export function TeamPanel({ team }: { team: Team }) {
       <div className="flex min-w-0 items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-semibold text-foreground">{team.name}</div>
-          <Link
-            to="/"
-            search={{ team: team.id }}
-            className="text-xs font-semibold text-sapphire hover:text-sapphire-deep"
-          >
-            Its day so far
-          </Link>
-          {/* Where its files are: a path only a few need, shown when asked. */}
-          {showFolder ? (
-            <p className="m-0 flex min-w-0 items-center gap-1 font-mono text-xs text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+            <Link
+              to="/"
+              search={{ team: team.id }}
+              className="font-semibold text-sapphire hover:text-sapphire-deep"
+            >
+              Its day so far
+            </Link>
+            {/* Where its files are: a path only a few need, shown when asked. */}
+            {!showFolder && (
+              <button
+                type="button"
+                onClick={() => setShowFolder(true)}
+                className="unstyled text-muted-foreground underline underline-offset-2 hover:text-sapphire"
+              >
+                Show the folder
+              </button>
+            )}
+          </div>
+          {showFolder && (
+            <p className="m-0 mt-0.5 flex min-w-0 items-center gap-1 font-mono text-xs text-muted-foreground">
               <span className="min-w-0 truncate" title={team.path}>
                 {team.path}
               </span>
               <CopyButton value={team.path} ariaLabel="Copy the folder's path" />
             </p>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowFolder(true)}
-              className="unstyled text-xs text-muted-foreground underline underline-offset-2 hover:text-sapphire"
-            >
-              Show the folder
-            </button>
           )}
         </div>
         <Link
