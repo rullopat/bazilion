@@ -32,7 +32,7 @@ import { ConnectionsMap, type MapMember, pairId, pairOf } from './ConnectionsMap
 import { TeamThread, useTeamMessages } from './TeamThread'
 
 const MODE_HELP: Record<TeamPolicyMode, string> = {
-  open: 'Members message each other freely. A connection only matters for reaching other Teams.',
+  open: 'Every member can message every other member, with no connections needed. Connections here only matter for other Teams, or if you make the Team restricted.',
   restricted: 'A member can message a teammate only along a connection.',
 }
 

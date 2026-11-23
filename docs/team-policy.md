@@ -31,7 +31,8 @@ A denied message is an error returned to the `send_message` tool or the HTTP req
 reason, and a `team_policy_denied` line in the daemon log. Nothing is stored and nothing is queued.
 An Agent that moves to another Team loses its edges and joins the new Team with none; in a restricted
 Team a new member starts isolated until you add edges. Edits take effect immediately and the last
-write wins.
+write wins. Edges between members of an open Team are kept but unused: the Connections panel says
+how many are saved, and they apply once the Team is restricted.
 
 The loop guard on message chains (the first message and eight replies, unless changed under
 **Setup → Tools**) is separate from policy: it bounds cost, not reach.
