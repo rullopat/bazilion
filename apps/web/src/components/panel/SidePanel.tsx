@@ -3,6 +3,8 @@
 
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { revealInStrip } from '../../lib/utils'
 import { PANEL_LABELS, PANEL_TABS, type PanelTab } from '../../lib/workspace'
 import { useWorkspace } from '../workspace/context'
 import { useTeamCounts } from '../workspace/counts'
@@ -15,6 +17,9 @@ import { TeamPanel } from './TeamPanel'
 export function SidePanel({ tab }: { tab: PanelTab }) {
   const { agent, team, to } = useWorkspace()
   const counts = useTeamCounts(team?.id)
+  const strip = useRef<HTMLDivElement | null>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: again when another tab is chosen.
+  useEffect(() => revealInStrip(strip.current, '[aria-selected="true"]'), [tab])
   const count: Partial<Record<PanelTab, number | null>> = {
     changes: counts.changes,
     files: counts.files,
@@ -27,6 +32,7 @@ export function SidePanel({ tab }: { tab: PanelTab }) {
       {/* The tabs scroll sideways on a narrow screen rather than wrap; Close stays in view. */}
       <div className="flex items-center gap-1 border-b border-border bg-muted/60 p-2">
         <div
+          ref={strip}
           role="tablist"
           aria-label="Side panel"
           className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]"

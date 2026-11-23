@@ -298,8 +298,6 @@ const RPC_HANDLERS: RpcHandlers = {
   generateImages: (args, { hosts }) =>
     host(hosts.imageGenerationHost, 'image generation').generate(args),
   webSearch: (args, { hosts }) => host(hosts.webSearchHost, 'web search').search(args),
-  agentExists: ({ agentId }, { hosts }) =>
-    host(hosts.messagingHost, 'messaging').agentExists(agentId),
   sendMessage: (args, { hosts }) => host(hosts.messagingHost, 'messaging').sendMessage(args),
   listInbox: ({ agentId, unreadOnly }, { hosts }) =>
     host(hosts.messagingHost, 'messaging').listInbox(agentId, { unreadOnly }),
@@ -316,6 +314,7 @@ const RPC_HANDLERS: RpcHandlers = {
     host(hosts.browserHost, 'browser').invoke(agentId, action, args),
   mcpInvoke: ({ serverId, toolName, args }, { hosts }) =>
     host(hosts.mcpHost, 'MCP').invoke(serverId, toolName, args),
+  createAgent: (args, { hosts }) => host(hosts.teamHost, 'team').createAgent(args),
   refreshApiKey: async ({ providerName }, ctx) => {
     const token = await refreshApiKeyForTurn(
       providerName,

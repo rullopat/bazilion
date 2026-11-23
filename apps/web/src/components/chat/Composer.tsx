@@ -59,25 +59,25 @@ export function Composer({
 }) {
   const fileInput = useRef<HTMLInputElement | null>(null)
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the text changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the text, or the placeholder naming the Agent, changes.
   useLayoutEffect(() => {
     const element = inputRef.current
     if (!element) return
     element.style.height = 'auto'
     element.style.height = `${Math.min(element.scrollHeight, MAX_INPUT_HEIGHT)}px`
-  }, [value])
+  }, [value, agentName])
 
   return (
     <>
       {editing && (
         <div className="flex items-center gap-2 border-t border-frost bg-sapphire-glow px-5 py-2 text-[0.85em] text-sapphire-deep">
-          <span>editing last message — submit to replace, or</span>
+          <span>Editing your last message: send to replace it.</span>
           <button
             type="button"
             onClick={onCancelEdit}
             className="ml-auto rounded-sm border border-sapphire-light bg-transparent px-2 py-0.5 text-[0.92em] text-sapphire-deep hover:bg-snow"
           >
-            cancel
+            Cancel
           </button>
         </div>
       )}

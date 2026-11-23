@@ -21,6 +21,7 @@ import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
 import { questionRegistry } from './questions.ts'
 import { createResultHost } from './result-host.ts'
+import { agentContacts, createDbTeamHost } from './team-host.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
 import {
   type PreparedAgentTurn,
@@ -53,6 +54,8 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         mcpTools: mcp?.tools,
         turnId: turn.request.attemptId,
         bashApprovalMode: turn.bashApprovalMode,
+        contacts: agentContacts(db, agentId),
+        withOperator: withOperator(turn),
       },
       {
         env,
@@ -93,6 +96,11 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     if (turn.docker) await removeDockerContainers(turn.docker.containerPrefix)
     releasePreparedAgentTurn(turn)
   }
+}
+
+/** The operator started the turn: a web or terminal chat, a follow-up queued from one, Telegram. */
+function withOperator(turn: PreparedAgentTurn): boolean {
+  return turn.request.origin === 'http' || turn.request.origin === 'telegram'
 }
 
 /** The daemon side of the turn's tools, each bound to this turn's Agent, conversation and signal. */
@@ -144,6 +152,8 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
           signal,
         })
       : undefined,
+    // Agents add teammates when the operator asks, never from a schedule or a teammate's message.
+    teamHost: withOperator(turn) ? createDbTeamHost(db, paths, agent.agent.id) : undefined,
     // Bound to this turn's Agent: the worker cannot drive another Agent's browser.
     browserHost: isBrowserEnabled(env)
       ? createBrowserHost(resolveBrowserConfig(env), { paths, agentId: agent.agent.id, signal })

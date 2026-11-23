@@ -110,6 +110,15 @@ export interface RepositoryReviewResponse {
   authors?: Record<string, ReviewChangeAuthor>
 }
 
+/** Why a Team has no review: its folder is not a Git repository, or not one that can be read. */
+export interface ReviewUnavailableResponse {
+  teamId: string
+  unavailable: { code: 'not_repository' | 'unsupported_layout'; message: string }
+}
+
+/** `GET /api/teams/:id/review`: the review, or why there is none (not an error: 200 either way). */
+export type TeamReviewResponse = RepositoryReviewResponse | ReviewUnavailableResponse
+
 /** One comment of a review: about a changed file, or about one line of it. */
 export interface ReviewFeedbackComment {
   /** A path changed since the base. */

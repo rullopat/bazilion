@@ -9,11 +9,14 @@ export function FollowUps({
   queue,
   onChanged,
   onViewConversation,
+  conversationId,
 }: {
   agentId: string
   queue: UserQueueListResponse | null
   onChanged: () => void
   onViewConversation: (id: string) => void
+  /** The conversation on screen: a follow-up for it needs no link to it. */
+  conversationId: string | null
 }) {
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -70,13 +73,15 @@ export function FollowUps({
             <span className="text-xs text-mocha">
               {item.source === 'telegram' ? 'Telegram' : 'Web / API'}
             </span>
-            <Button
-              variant="ghost"
-              className="ml-auto"
-              onClick={() => onViewConversation(item.conversationId)}
-            >
-              View conversation
-            </Button>
+            {item.conversationId !== conversationId && (
+              <Button
+                variant="ghost"
+                className="ml-auto"
+                onClick={() => onViewConversation(item.conversationId)}
+              >
+                View its conversation
+              </Button>
+            )}
           </div>
           {editing?.id === item.id ? (
             <form

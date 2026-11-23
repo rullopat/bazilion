@@ -5,7 +5,9 @@ Telegram message), an Agent can stop and ask you one question with two to four c
 `ask_user` tool. It waits up to five
 minutes. You pick a choice, write your own answer, or skip; the first answer from any surface wins
 and the turn continues. Without an answer the Agent carries on knowing it got none. The question
-and its outcome stay in the conversation transcript.
+and its outcome stay in the conversation transcript. An open conversation in the web shows a
+question the moment it is asked, wherever the turn started, and drops it once it is answered,
+skipped, timed out or cancelled anywhere.
 
 An answer is information only: it grants no shell or communication permission. Do not answer a
 question with credentials; put those in the configuration.

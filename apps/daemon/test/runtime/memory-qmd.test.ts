@@ -95,6 +95,9 @@ test('refuses a key that is not a markdown file, which would never be listed or 
   await expect(mem.write('notes/first', 'The cat is called Baziu')).rejects.toThrow(
     'memory keys end in .md',
   )
+  // A bad name is the caller's mistake: the route answers 400, not 500.
+  await expect(mem.write('notes/first', 'x')).rejects.toMatchObject({ status: 400 })
+  await expect(mem.write('../escape.md', 'x')).rejects.toMatchObject({ status: 400 })
   expect(existsSync(join(root, 'notes', 'first'))).toBe(false)
 })
 

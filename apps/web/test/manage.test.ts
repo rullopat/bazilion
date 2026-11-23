@@ -332,4 +332,9 @@ test('creating a Team sends its id, its name and, for a project folder, the fold
   // What was typed for a folder is not sent for a new one.
   expect(teamRequest({ ...base, folder: '/home/pat/design' }).body).not.toHaveProperty('link')
   expect(teamRequest({ ...base, id: '' }).body).toBeNull()
+  // An id another Team has, or a name with nothing to make one from, says so before sending.
+  expect(teamRequest(base, ['design-studio']).problems.id).toBe(
+    'A Team already has this ID: choose another.',
+  )
+  expect(teamRequest({ ...base, name: '!!!', id: '' }).problems.id).toMatch(/type one/)
 })

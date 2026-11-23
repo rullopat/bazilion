@@ -10,6 +10,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,6 +18,18 @@ import { join } from 'node:path'
 import type { Browser } from 'playwright'
 import type { Instance } from './instance.ts'
 import type { Script } from './model-server.ts'
+
+// The scratch folders the demo makes (its project, the skills it imports) go when the run ends.
+const scratch: string[] = []
+process.once('exit', () => {
+  for (const dir of scratch) rmSync(dir, { recursive: true, force: true })
+})
+
+function scratchDir(prefix: string): string {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
+  scratch.push(dir)
+  return dir
+}
 
 export const DEMO_MODEL = 'paper-coder-32b'
 
@@ -329,6 +342,24 @@ Tell me what you are working on and I will pick it up.`,
       ],
     },
     {
+      match: /add a fact-checker/i,
+      steps: () => [
+        {
+          text: 'Adding one now.',
+          tools: [
+            {
+              name: 'agent_create',
+              args: {
+                name: 'Fact Checker',
+                role: 'Check every claim in the launch drafts against its source before it ships.',
+              },
+            },
+          ],
+        },
+        { text: 'Fact Checker is on the Team. I will brief it next.' },
+      ],
+    },
+    {
       match: /weekly summary/i,
       steps: () => [
         {
@@ -356,7 +387,7 @@ function cover(bg: string, ink: string, accent: string, sub: string): string {
  * the browser when one is given (for the pictures); without one they are left out.
  */
 export async function createLaunchSite(browser?: Browser): Promise<string> {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'paperboat-')))
+  const dir = scratchDir('paperboat-')
   mkdirSync(join(dir, 'site'))
   mkdirSync(join(dir, 'assets'))
   writeFileSync(join(dir, 'README.md'), '# launch-site\n\nThe Paperboat landing page.\n')
@@ -527,7 +558,7 @@ export async function seedDemoManage(instance: Instance): Promise<void> {
       test: false,
     },
   })
-  const skills = realpathSync(mkdtempSync(join(tmpdir(), 'paperboat-skills-')))
+  const skills = scratchDir('paperboat-skills-')
   const skill = (name: string, description: string, body: string) => {
     mkdirSync(join(skills, name))
     writeFileSync(

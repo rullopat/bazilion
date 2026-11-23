@@ -286,5 +286,7 @@ export function useChatSession({
     refreshHistory: sync.refreshHistory,
     refreshQueue: sync.refreshQueue,
     dismissStale: sync.dismissStale,
+    /** The conversation on screen; null before the Agent's first turn. */
+    conversationId: sync.knownConversationId,
   }
 }

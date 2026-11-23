@@ -322,6 +322,72 @@ test('a text file shows its first lines on its tile in Files', async () => {
   expect(session.problems).toEqual([])
 })
 
+test('going to another Agent and back keeps where you were in the conversation', async () => {
+  const session = await open({ width: 1280, height: 560 })
+  await session.go(`/?agent=${ids.mira}`)
+  const page = session.page
+  const log = page.getByRole('log', { name: 'Conversation with Mira' })
+  const scrollable = await log.evaluate((el) => el.scrollHeight - el.clientHeight)
+  expect(scrollable).toBeGreaterThan(200)
+  await log.evaluate((el) => {
+    el.scrollTop = 120
+  })
+  await page.waitForTimeout(200)
+  const rail = page.getByRole('navigation', { name: 'Teams and agents' })
+  await rail.getByRole('link').filter({ hasText: 'Dev' }).first().click()
+  await pw(page.getByPlaceholder('Message Dev')).toBeVisible()
+  await rail.getByRole('link').filter({ hasText: 'Mira' }).first().click()
+  await pw(page.getByPlaceholder('Message Mira')).toBeVisible()
+  const back = await log.evaluate((el) => el.scrollTop)
+  expect(Math.abs(back - 120)).toBeLessThan(30)
+  expect(session.problems).toEqual([])
+})
+
+test('a question asked and answered elsewhere comes and goes in the open conversation', async () => {
+  const session = await open()
+  await session.go(`/?agent=${ids.quill}`, 1500)
+  const questions = session.page.getByRole('region', { name: 'Agent questions' })
+  // As a turn started from the terminal does.
+  void instance
+    .chat(ids.quill, 'Before you finalise it: ask me which headline to use.', {
+      questionMode: 'web',
+    })
+    .catch(() => {})
+  await pw(questions).toContainText('Which headline should the announcement use?', {
+    timeout: 5_000,
+  })
+  const waiting = await instance.api<{ questions: Array<{ id: string }> }>(
+    `/api/agents/${ids.quill}/questions`,
+  )
+  const asked = waiting.questions[0]?.id ?? ''
+  // Answered elsewhere (the terminal, Telegram): the card goes.
+  await instance.api(`/api/agents/${ids.quill}/questions/${asked}/answer`, {
+    body: { answer: { kind: 'choice', index: 0 } },
+  })
+  await pw(questions).toHaveCount(0, { timeout: 5_000 })
+  expect(session.problems).toEqual([])
+})
+
+test('a Team and an Agent made outside the page show up without a reload', async () => {
+  const session = await open()
+  // Dev's Team, Mira's too, is open in the list.
+  await session.go(`/?agent=${ids.dev}`, 1500)
+  const rail = session.page.getByRole('navigation', { name: 'Teams and agents' })
+  // As `bazilion team add` does, or an Agent running it.
+  await instance.api('/api/teams', { method: 'POST', body: { id: 'outreach', name: 'Outreach' } })
+  await pw(rail).toContainText('Outreach', { timeout: 5_000 })
+  // An Agent asked for a teammate adds it with agent_create.
+  await instance.chat(ids.mira, 'Please add a fact-checker to the Team.')
+  await pw(rail.getByRole('link').filter({ hasText: 'Fact Checker' })).toBeVisible({
+    timeout: 5_000,
+  })
+  const agents = await instance.api<Array<{ name: string; teamId: string }>>('/api/agents')
+  expect(agents.find((agent) => agent.name === 'Fact Checker')?.teamId).toBe(
+    agents.find((agent) => agent.name === 'Mira')?.teamId,
+  )
+  expect(session.problems).toEqual([])
+})
+
 test('the live feed comes back after the daemon restarts', async () => {
   const session = await open()
   await session.go('/', 1500)

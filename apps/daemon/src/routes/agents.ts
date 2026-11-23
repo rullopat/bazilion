@@ -4,6 +4,7 @@
 
 import { join } from 'node:path'
 import {
+  agentNameProblem,
   type MoveAgentRequest,
   REASONING_LEVELS,
   type ReasoningLevel,
@@ -82,6 +83,8 @@ agentsRouter.patch('/:id', async (c) => {
       400,
     )
   }
+  const nameProblem = typeof name === 'string' ? agentNameProblem(name.trim()) : null
+  if (nameProblem) return c.json({ error: nameProblem }, 400)
   if (
     telegramMirrorMode !== undefined &&
     telegramMirrorMode !== 'minimal' &&

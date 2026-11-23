@@ -101,11 +101,20 @@ function offered({ spec, hosts }: Awaited<ReturnType<typeof runTurn>>) {
 test.each([
   'trigger',
   'inbox',
-] as const)('%s: an unattended turn gets the same tools as chat and auto-denies dangerous commands', async (origin) => {
+] as const)('%s: an unattended turn gets the same tools as chat, but adding Agents, and auto-denies dangerous commands', async (origin) => {
   const chat = await runTurn('http')
   const unattended = await runTurn(origin)
 
-  expect(offered(unattended)).toEqual(offered(chat))
+  const withoutTeam = (call: typeof chat) => {
+    const tools = offered(call)
+    return { ...tools, hosts: tools.hosts.filter((name) => name !== 'teamHost') }
+  }
+  expect(withoutTeam(unattended)).toEqual(withoutTeam(chat))
+  // Agents add teammates when the operator asks, never on their own.
+  expect(chat.hosts.teamHost).toBeDefined()
+  expect(unattended.hosts.teamHost).toBeUndefined()
+  expect(chat.spec.withOperator).toBe(true)
+  expect(unattended.spec.withOperator).toBe(false)
   expect(unattended.spec.mcpTools).toEqual([mcpTool])
   expect(unattended.hosts.browserHost).toBeDefined()
   expect(unattended.hosts.webSearchHost).toBeDefined()

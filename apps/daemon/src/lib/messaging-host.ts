@@ -13,17 +13,42 @@ import { agentRepo, type BazilionDb, messageRepo } from '../core/index.ts'
 import type { MessagingHost } from '../runtime/index.ts'
 import { sendAgentMessage } from './communication.ts'
 
+/**
+ * The Agent `ref` names for a message from `from`: an id, else a name of the sender's Team (any
+ * case), else a name or id prefix unique across Teams.
+ */
+export function recipientOf(db: BazilionDb, from: string, ref: string): string {
+  const wanted = ref.trim()
+  const exact = db.raw
+    .query<{ id: string }, [string]>('SELECT id FROM agents WHERE id = ?')
+    .get(wanted)
+  if (exact) return exact.id
+  const sender = agentRepo.get(db, from)
+  if (sender) {
+    const teammates = db.raw
+      .query<{ id: string }, [string, string]>(
+        "SELECT id FROM agents WHERE team_id = ? AND lower(name) = lower(?) AND status != 'archived' LIMIT 2",
+      )
+      .all(sender.teamId, wanted)
+    if (teammates.length === 1 && teammates[0]) return teammates[0].id
+    if (teammates.length > 1) {
+      throw new Error(`send_message: more than one teammate is named "${wanted}"; use the id`)
+    }
+  }
+  const found = agentRepo.get(db, wanted)
+  if (found) return found.id
+  throw new Error(
+    `send_message: no Agent "${wanted}". Use an id or an exact name from your teammates list.`,
+  )
+}
+
 export function createDbMessagingHost(
   db: BazilionDb,
   opts: { causalParentMessageId?: string | null } = {},
 ): MessagingHost {
   return {
-    agentExists(agentId) {
-      return agentRepo.get(db, agentId) !== null
-    },
     sendMessage(input) {
-      // The model may name the recipient by unique name or id prefix, as agentExists allows.
-      const to = agentRepo.get(db, input.to)?.id ?? input.to
+      const to = recipientOf(db, input.from, input.to)
       const m = sendAgentMessage(db, {
         ...input,
         to,

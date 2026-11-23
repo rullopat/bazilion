@@ -36,7 +36,8 @@ bazilion team review feedback <team> --path <path> --agent <agent> [--line <n>] 
   another page, drops it.
 - The Team's own `memory/` store and credential-shaped paths (`.env`, `*.pem`, `credentials.*`,
   `.ssh/`, …) never show content; untracked ones are only counted.
-- A Team whose workspace is not a Git repository says so instead of showing an empty list.
+- A Team whose workspace is not a Git repository says so instead of showing an empty list (the
+  review answers `200` with `unavailable`, not an error).
 
 The API behind both is `GET /api/teams/:id/review[?base=&patches=1&path=&authors=1]` and
 `POST /api/teams/:id/review/feedback` with

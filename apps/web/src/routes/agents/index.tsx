@@ -40,7 +40,7 @@ function AgentsPage() {
           disabled={templates.length === 0 || teams.length === 0}
           onClick={() => setSpawning(true)}
         >
-          Spawn an agent
+          Add an Agent
         </Button>
       }
     >

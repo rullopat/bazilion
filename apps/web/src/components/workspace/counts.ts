@@ -1,4 +1,4 @@
-import type { RepositoryReviewResponse, ResultListResponse } from '@bazilion/api-types'
+import type { ResultListResponse, TeamReviewResponse } from '@bazilion/api-types'
 import { useActivity } from '../../lib/activity'
 import { api } from '../../lib/api'
 import { useResource } from '../../lib/use-resource'
@@ -14,9 +14,9 @@ export function useTeamCounts(teamId: string | undefined): {
       if (!teamId) return { changes: null, files: null }
       const team = encodeURIComponent(teamId)
       const [changes, files] = await Promise.all([
-        api<RepositoryReviewResponse>(`/api/teams/${team}/review`, { signal })
-          .then((review) => review.changes.changes.length)
-          // Not a repository, or one that cannot be read: the tab says why.
+        // Not a repository, or one that cannot be read: the tab says why.
+        api<TeamReviewResponse>(`/api/teams/${team}/review`, { signal })
+          .then((review) => ('unavailable' in review ? null : review.changes.changes.length))
           .catch(() => null),
         api<ResultListResponse>(`/api/results?teamId=${team}&limit=1`, { signal })
           .then((list) => list.total)
@@ -24,7 +24,8 @@ export function useTeamCounts(teamId: string | undefined): {
       ])
       return { changes, files }
     },
-    [teamId, turnsEnded],
+    [teamId],
+    { refreshOn: turnsEnded },
   )
   return counts.data ?? { changes: null, files: null }
 }

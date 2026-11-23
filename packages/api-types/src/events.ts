@@ -27,6 +27,8 @@ export interface ProviderMessage {
   toolName?: string
   /** for role='tool': images the tool emitted (browser screenshots, MCP image results). */
   images?: ToolResultImage[]
+  /** for role='assistant': the reply ended there, stopped by the operator or failed. */
+  stopped?: 'cancelled' | 'failed'
 }
 
 export interface ToolDef {

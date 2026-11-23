@@ -56,7 +56,8 @@ export function useResults(teamId: string, filter: ResultFilter, pageSize = 24):
       }
       return { results, total }
     },
-    [key, wanted, turnsEnded],
+    [key, wanted],
+    { refreshOn: turnsEnded },
   )
 
   const results = pages.data?.results ?? []

@@ -62,7 +62,7 @@ export function TeamHome({ team }: { team: Team }) {
             </p>
             <Button variant="primary" className="mt-4" onClick={() => setSpawning(true)}>
               <Plus className="size-4" aria-hidden="true" />
-              Add an agent
+              Add an Agent
             </Button>
           </div>
         ) : (
@@ -104,7 +104,7 @@ export function TeamHome({ team }: { team: Team }) {
             <div className="mt-4">
               <Button variant="ghost" onClick={() => setSpawning(true)}>
                 <Plus className="size-4" aria-hidden="true" />
-                Add an agent
+                Add an Agent
               </Button>
             </div>
           </>

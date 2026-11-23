@@ -28,6 +28,8 @@ export type RenderEntry =
   | { type: 'command_approval'; approval: CommandApproval }
   | { type: 'system'; content: string }
   | { type: 'error'; content: string }
+  /** A reply that ended there: stopped by the operator, or failed. */
+  | { type: 'stopped'; reason: 'cancelled' | 'failed' }
 
 /** A browser turn: risky shell commands and agent questions wait for the user in the chat. */
 export function interactiveChatRequest(message: string, attachments: Attachment[]): ChatRequest {
@@ -84,6 +86,10 @@ export function projectMessages(messages: ProviderMessage[]): RenderEntry[] {
       }
       for (const call of message.toolCalls ?? []) {
         toolBox().items.push({ kind: 'call', id: call.id, name: call.name, body: call.arguments })
+      }
+      if (message.stopped) {
+        openTool = null
+        entries.push({ type: 'stopped', reason: message.stopped })
       }
     } else if (message.role === 'tool') {
       toolBox().items.push({
@@ -281,6 +287,8 @@ export function applyEvent(entries: RenderEntry[], event: SessionEvent): RenderE
     case 'file':
       return [...entries, { type: 'result', resultId: event.result.resultId }]
     case 'error':
+      // Stopping a turn is not an error: the conversation says where it stopped.
+      if (event.error === 'cancelled') return [...entries, { type: 'stopped', reason: 'cancelled' }]
       return [...entries, { type: 'error', content: `[error] ${event.error}` }]
     default:
       return entries

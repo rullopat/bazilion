@@ -32,8 +32,9 @@ import type { ChatControls } from '../chat/ChatPane'
 import { Dialog, DialogActions } from '../Dialog'
 import { useWorkspace } from './context'
 
+// A chip gives way to a long name with an ellipsis, never pushing the controls out of the bar.
 const CHIP =
-  'inline-flex h-[26px] shrink-0 items-center gap-1 rounded-full border border-border bg-muted px-2.5 text-xs font-semibold text-mocha hover:border-sapphire-light hover:text-sapphire'
+  'inline-flex h-[26px] min-w-0 max-w-[11rem] shrink items-center gap-1 rounded-full border border-border bg-muted px-2.5 text-xs font-semibold text-mocha hover:border-sapphire-light hover:text-sapphire'
 const MENU_ITEM =
   'flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50'
 
@@ -52,7 +53,7 @@ export function ConversationHeader({
   agent: ResolvedAgent
   /** Absent while an earlier conversation is being read. */
   chat?: ChatControls
-  /** The side panel's tab, or `none` when it is hidden. */
+  /** The side panel's tab, or `none` when it is not on screen (a narrow window hides one). */
   panel: PanelTab | 'none'
   /** The tab the panel reopens on. */
   lastPanel: PanelTab
@@ -70,23 +71,36 @@ export function ConversationHeader({
         <ArrowLeft className="size-4" aria-hidden="true" />
       </Link>
       <AgentAvatar identity={agent.agent.identity} size={32} />
-      {/* The Agent's name gives way last: the conversation's title shortens first. */}
-      <h1 className="m-0 min-w-0 max-w-[14rem] shrink-0 truncate font-display text-xl leading-tight text-charcoal">
+      {/* The Agent's name gives way last: the conversation's title shortens first, then a long
+          Team or model name; the menu and the panel button always stay in the bar. */}
+      <h1
+        title={agent.agent.name}
+        className="m-0 min-w-0 max-w-[14rem] shrink-0 truncate font-display text-xl leading-tight text-charcoal"
+      >
         {agent.agent.name}
       </h1>
-      <Link to="/" search={to({ panel: 'team', section: undefined })} className={CHIP}>
-        {agent.team.name}
+      <Link
+        to="/"
+        search={to({ panel: 'team', section: undefined })}
+        title={agent.team.name}
+        // A short Team name stays whole; only a long one gives way.
+        className={cn(CHIP, agent.team.name.length <= 16 && 'shrink-0')}
+      >
+        <span className="min-w-0 truncate">{agent.team.name}</span>
       </Link>
       <Link
         to="/"
         search={to({ panel: 'agent', section: undefined })}
         title={`Model: ${agent.model}`}
-        className={cn(CHIP, 'hidden font-mono font-normal sm:inline-flex')}
+        className={cn(
+          CHIP,
+          'hidden min-w-[4.5rem] shrink-[4] font-mono font-normal sm:inline-flex',
+        )}
       >
-        {shortModel(agent.model)}
-        <ChevronDown className="size-[11px]" aria-hidden="true" />
+        <span className="min-w-0 truncate">{shortModel(agent.model)}</span>
+        <ChevronDown className="size-[11px] shrink-0" aria-hidden="true" />
       </Link>
-      <div className="ml-auto flex min-w-16 shrink items-center justify-end gap-1.5">
+      <div className="ml-auto flex min-w-[7.75rem] shrink-[20] items-center justify-end gap-1.5">
         <ConversationMenu agentId={agent.agent.id} chat={chat} />
         <Link
           to="/"
@@ -120,7 +134,8 @@ function ConversationMenu({ agentId, chat }: { agentId: string; chat?: ChatContr
   // A finished turn may have named the conversation after its first message.
   const list = useResource(
     (signal) => api<ConversationListResponse>(`${base}?limit=20`, { signal }),
-    [base, turnsEnded],
+    [base],
+    { refreshOn: turnsEnded },
   )
   const open = chat ? chat.conversationsOpen : ownOpen
   const setOpen = chat ? chat.setConversationsOpen : setOwnOpen

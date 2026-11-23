@@ -115,6 +115,8 @@ describe('minimal worker runtime', () => {
           message: 'Research NASA Artemis II with official sources.',
           turnId: 'real-loop',
           bashApprovalMode: 'auto_deny',
+          contacts: [],
+          withOperator: true,
         },
         {
           signal: controller.signal,
@@ -332,6 +334,13 @@ describe('minimal worker runtime', () => {
     }).map((tool) => tool.name)
     expect(withQuestion).toContain('ask_user')
     expect(withQuestion.filter((name) => name !== 'ask_user')).toEqual(names)
+    expect(names).not.toContain('agent_create')
+    const withTeam = createBazilionCustomTools({
+      ...base,
+      teamHost: { createAgent: vi.fn() },
+    }).map((tool) => tool.name)
+    expect(withTeam.filter((name) => name !== 'agent_create')).toEqual(names)
+    expect(withTeam).toContain('agent_create')
     expect(names.some((name) => name.startsWith('browser_'))).toBe(false)
     expect(names.some((name) => name.startsWith('mcp_'))).toBe(false)
   })
@@ -571,6 +580,8 @@ function turnFixture(root: string): {
       message: 'test agent turn',
       turnId: 'turn-1',
       bashApprovalMode: 'auto_deny',
+      contacts: [],
+      withOperator: true,
     },
     docker: {
       image: 'test:image',
@@ -647,7 +658,6 @@ function scopedHosts(): {
 } {
   return {
     messagingHost: {
-      agentExists: () => false,
       sendMessage: () => ({ messageId: 'unused' }),
       listInbox: () => [],
       markRead: () => {},

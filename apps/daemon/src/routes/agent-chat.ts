@@ -32,6 +32,7 @@ import { isBrowserEnabled } from '../lib/browser/config.ts'
 import { selectedConversationTarget } from '../lib/conversation-target.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
+import { agentContacts } from '../lib/team-host.ts'
 import { createDbUserMdHost } from '../lib/user-md-host.ts'
 import { stopAgentTurn } from '../lib/user-queue.ts'
 import { searchRoute } from '../lib/web-search.ts'
@@ -318,6 +319,9 @@ agentChatRouter.get('/:id/chat/context', (c) =>
       memory: qmdBackend(join(resolved.team.path, 'memory')),
       messagingHost: createDbMessagingHost(db),
       userMdHost: createDbUserMdHost(db, paths),
+      // As in a chat turn: the operator is there.
+      teamHost: { createAgent: reportOnly },
+      contacts: agentContacts(db, resolved.agent.id),
       fileSink: reportOnly,
       ...(isBrowserEnabled(env) ? { browserHost: { invoke: reportOnly } } : {}),
       ...(searchRoute(env, resolved.model, codexConnected).backend

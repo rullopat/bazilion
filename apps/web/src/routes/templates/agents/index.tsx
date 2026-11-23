@@ -129,10 +129,10 @@ function AgentTemplatesPage() {
                     <>
                       <Button
                         variant="ghost"
-                        aria-label={`Spawn an agent from ${templateName(template)}`}
+                        aria-label={`Add an Agent from ${templateName(template)}`}
                         onClick={() => setSpawnFrom(template.id)}
                       >
-                        Spawn
+                        Add an Agent
                       </Button>
                       <RowMenu
                         label={`More for ${templateName(template)}`}

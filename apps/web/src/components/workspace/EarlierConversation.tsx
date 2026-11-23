@@ -6,6 +6,7 @@ import { Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { type ReactNode, useRef, useState } from 'react'
 import { ApiError, api, errorMessage } from '../../lib/api'
 import { useFindInTranscript } from '../../lib/find-in-transcript'
+import { placeKey, useTranscriptPlace } from '../../lib/transcript-scroll'
 import { useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
 import { CHAT_FRAME } from '../chat/ChatPane'
@@ -54,6 +55,11 @@ export function EarlierConversation({
     },
     [path],
   )
+  // Back at this conversation: where the reader was (it opens at its start otherwise).
+  useTranscriptPlace(logRef, () => placeKey(agentId, conversationId), {
+    ready: opened.data !== undefined,
+    skip: Boolean(search.find),
+  })
 
   async function continueHere() {
     setBusy(true)
@@ -77,7 +83,12 @@ export function EarlierConversation({
       <div className="flex flex-wrap items-center gap-2 border-b border-frost bg-muted px-4 py-2 text-sm">
         <span className="min-w-0 flex-1 basis-56 text-mocha">
           You are reading{' '}
-          {title ? <strong className="text-foreground">{title}</strong> : 'an earlier conversation'}
+          {title ? (
+            // The sentence ends with its own full stop.
+            <strong className="text-foreground">{title.replace(/\.+$/, '')}</strong>
+          ) : (
+            'an earlier conversation'
+          )}
           . New messages go to the active conversation.
         </span>
         <Button

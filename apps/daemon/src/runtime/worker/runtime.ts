@@ -13,7 +13,7 @@ import type {
   ResolvedAgent,
 } from '@bazilion/api-types'
 import type { DockerTurn } from '../shell/tooling.ts'
-import type { InjectedMcpTool, WorkerHostName } from './ipc-protocol.ts'
+import type { AgentContact, InjectedMcpTool, WorkerHostName } from './ipc-protocol.ts'
 
 const REDACTED_VALUE = '[REDACTED]'
 
@@ -52,6 +52,10 @@ export interface AgentTurnWorkerSpec {
   mcpTools?: InjectedMcpTool[]
   turnId: string
   bashApprovalMode: BashApprovalMode
+  /** Whom the Agent can message, for its system prompt. */
+  contacts: AgentContact[]
+  /** The operator started the turn (a chat, a follow-up, Telegram), not a schedule or a teammate. */
+  withOperator: boolean
 }
 
 /** A learning review: a digest of recent turns, answered only through `propose_lesson`. */

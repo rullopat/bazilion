@@ -16,10 +16,11 @@ import { ApiClientError } from '@bazilion/client'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChangesView } from '../components/changes/ChangesView'
 import { ReviewProvider } from '../components/changes/review'
 import { ChatPane } from '../components/chat/ChatPane'
+import { getDialogFocusRestoreTarget, restoreDialogFocus } from '../components/Dialog'
 import { FilesView } from '../components/files/FilesView'
 import { StatusBadge } from '../components/Page'
 import { SidePanel } from '../components/panel/SidePanel'
@@ -38,6 +39,7 @@ import { ActivityProvider } from '../lib/activity'
 import { daemonClient } from '../lib/daemon-client'
 import { usePageTitle } from '../lib/page-title'
 import { isTyping, neighbour } from '../lib/shortcuts'
+import { useMediaQuery } from '../lib/use-resource'
 import {
   PANEL_COOKIE,
   PANEL_LABELS,
@@ -204,6 +206,36 @@ function WorkspacePage() {
 
   // Below the widest layout the panel covers the conversation, so there it opens only when asked.
   const asked = search.panel !== undefined && search.panel !== 'none'
+  const wide = useMediaQuery('(min-width: 1280px)')
+  // What is on screen: a remembered panel is hidden below the widest layout until asked for.
+  const shownPanel: PanelTab | 'none' = panel !== 'none' && (asked || wide) ? panel : 'none'
+  // There it covers the page like a dialog: Escape closes it, and the page behind is inert.
+  const overlay = shownPanel !== 'none' && !wide
+  // Its open tab takes the focus, and what had it before gets it back when the panel closes.
+  const overlayBox = useRef<HTMLDivElement | null>(null)
+  const overlayOpener = useRef<ReturnType<typeof getDialogFocusRestoreTarget>>(null)
+  useLayoutEffect(() => {
+    if (!overlay) return
+    overlayOpener.current = getDialogFocusRestoreTarget(document)
+    overlayBox.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus()
+    return () => {
+      const opener = overlayOpener.current
+      overlayOpener.current = null
+      // After the page behind is no longer inert.
+      window.requestAnimationFrame(() => restoreDialogFocus(opener, document))
+    }
+  }, [overlay])
+  useEffect(() => {
+    if (!overlay) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return
+      event.preventDefault()
+      void router.navigate({ to: '/', search: { ...search, panel: 'none', section: undefined } })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [overlay, router, search])
 
   // The conversation on screen: the one being read, else the open Agent's active one, which the
   // chat reports when a first turn creates it or another one is loaded.
@@ -244,7 +276,7 @@ function WorkspacePage() {
   ) =>
     open && (
       <>
-        <ConversationHeader agent={open} chat={chat} panel={panel} lastPanel={memory.tab} />
+        <ConversationHeader agent={open} chat={chat} panel={shownPanel} lastPanel={memory.tab} />
         {open.agent.status === 'archived' && (
           <p className="m-0 flex flex-wrap items-center gap-2 border-b border-frost bg-warning/[0.07] px-4 py-2 text-sm text-chocolate">
             <StatusBadge variant="warning">Archived</StatusBadge>
@@ -297,6 +329,7 @@ function WorkspacePage() {
               }`}
             >
               <div
+                inert={overlay || undefined}
                 className={`flex min-h-0 flex-col gap-3 ${open || team ? 'hidden lg:flex' : ''}`}
               >
                 <WaitingStrip className="lg:hidden" />
@@ -304,7 +337,10 @@ function WorkspacePage() {
                   <Rail initialOpenGroups={data.openGroups} />
                 </div>
               </div>
-              <div className={`min-h-0 min-w-0 ${open || team ? '' : 'hidden lg:block'}`}>
+              <div
+                inert={overlay || undefined}
+                className={`min-h-0 min-w-0 ${open || team ? '' : 'hidden lg:block'}`}
+              >
                 {open && selected ? (
                   reading ? (
                     <EarlierConversation
@@ -346,6 +382,7 @@ function WorkspacePage() {
                     />
                   )}
                   <div
+                    ref={overlayBox}
                     className={
                       asked
                         ? 'fixed inset-y-0 right-0 z-40 w-[min(27rem,100vw)] p-2 xl:static xl:z-auto xl:min-h-0 xl:w-auto xl:min-w-0 xl:p-0'

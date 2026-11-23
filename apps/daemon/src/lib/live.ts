@@ -7,7 +7,7 @@
 import { createHash } from 'node:crypto'
 import type { LiveActivityEvent, LiveAttentionEvent, LiveEvent } from '@bazilion/api-types'
 import { projectAttention, summarizeAttention } from '../core/attention.ts'
-import { readActivity } from './activity.ts'
+import { readActivity, rosterRevision } from './activity.ts'
 import { waitingAttention } from './attention-waiting.ts'
 import { getCtx } from './ctx.ts'
 import { onLiveChange } from './live-signal.ts'
@@ -22,7 +22,7 @@ type Listener = (event: LiveEvent) => void
 
 export function readLiveActivity(): LiveActivityEvent {
   const { db, paths } = getCtx()
-  return { type: 'activity', agents: readActivity(db, paths) }
+  return { type: 'activity', agents: readActivity(db, paths), roster: rosterRevision(db) }
 }
 
 export function readLiveAttention(): LiveAttentionEvent {

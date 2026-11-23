@@ -78,7 +78,7 @@ function TeamsPage() {
                   key={team.id}
                   leading={
                     // A fixed slot, so that the names line up whatever the number of avatars.
-                    <span className="flex w-[5.25rem]">
+                    <span className="flex w-[5.5rem]">
                       {current.length > 0 ? (
                         <AvatarStack agents={current} />
                       ) : (
@@ -158,6 +158,7 @@ function TeamsPage() {
           onClose={() => setCreating(false)}
         >
           <TeamForm
+            taken={teams.map((team) => team.id)}
             onBusyChange={setCreatingBusy}
             onCreated={async () => {
               setCreating(false)

@@ -77,8 +77,12 @@ test('an unusable base is refused with a machine-readable code', async () => {
 
 test('a Team that is not a repository says so instead of returning an empty review', async () => {
   const response = await teamReviewRouter.request(`/${env.teamId}/review`)
-  expect(response.status).toBe(409)
-  expect((await response.json()) as { code?: string }).toMatchObject({ code: 'not_repository' })
+  // A state of the Team, not a failed request: the browser logs no error for it.
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({
+    teamId: env.teamId,
+    unavailable: { code: 'not_repository', message: 'This Team is not a Git repository.' },
+  })
 })
 
 test('an unknown Team is a 404, not a review of something else', async () => {

@@ -27,7 +27,8 @@ export function TeamPanel({ team }: { team: Team }) {
   // Agents write USER.md too: read it again after every turn and when a sheet closes.
   const fresh = useResource(
     (signal) => api<Team>(`/api/teams/${encodeURIComponent(team.id)}`, { signal }),
-    [team.id, turnsEnded, search.section],
+    [team.id, search.section],
+    { refreshOn: turnsEnded },
   )
   const userMd = fresh.data?.id === team.id ? fresh.data.userMd : team.userMd
   const activity = useActivity()
@@ -74,7 +75,7 @@ export function TeamPanel({ team }: { team: Team }) {
               onClick={() => setSpawning(true)}
             >
               <Plus className="size-3.5" aria-hidden="true" />
-              Add agent
+              Add an Agent
             </button>
           </div>
           {members.length === 0 ? (
@@ -253,7 +254,8 @@ function MemoryGlance({ team }: { team: Team }) {
         total: entries.length,
       }
     },
-    [base, debounced, turnsEnded],
+    [base, debounced],
+    { refreshOn: turnsEnded },
   )
   const total = notes.data?.total
 

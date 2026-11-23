@@ -29,6 +29,22 @@ export interface Team {
 
 /** The Team and the Profile first-run setup creates. */
 export const DEFAULT_TEAM_ID = 'default'
+
+/** The longest Agent name, the same in the web, the CLI and the API. */
+export const AGENT_NAME_MAX = 120
+
+/**
+ * Why a name cannot be an Agent's, or null. A name is one line of visible text: it is shown in
+ * every teammate's instructions, so line breaks and control or format characters are refused.
+ */
+export function agentNameProblem(name: string): string | null {
+  if (!name.trim()) return 'A name cannot be empty.'
+  if (name.length > AGENT_NAME_MAX) return `A name is at most ${AGENT_NAME_MAX} characters.`
+  if (/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(name)) {
+    return 'A name is one line of text, without control characters.'
+  }
+  return null
+}
 export const DEFAULT_PROFILE_ID = 'default'
 
 export type SkillsMode = 'all' | 'selected'

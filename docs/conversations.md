@@ -29,7 +29,12 @@ If the active conversation's history file is missing or unreadable, the chat say
 conversation to continue. Nothing recreates or replaces a missing history.
 
 Editing the last message in the web chat is refused when the Agent has switched to another
-conversation since the page loaded; reload and try again.
+conversation since the page loaded; reload and try again. **Edit** borrows the composer: what you
+had typed comes back when you cancel the edit or send it, and text you leave unsent waits in the
+composer while you look at another Agent, for as long as the page is open.
+
+A reply you stop with **Stop** ends with `Stopped.`, and one that failed with `This reply
+failed.`, in the conversation and in its history.
 
 ## Search
 

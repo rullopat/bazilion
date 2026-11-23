@@ -10,7 +10,11 @@ import { Notice } from './ui/parts'
 type Place = 'new' | 'link'
 
 /** What creating a Team sends, or what is still wrong with the form. */
-export function teamRequest(draft: { name: string; id: string; place: Place; folder: string }): {
+export function teamRequest(
+  draft: { name: string; id: string; place: Place; folder: string },
+  /** The ids of the Teams there are: a new one cannot take one. */
+  taken: readonly string[] = [],
+): {
   body: { id: string; name?: string; link?: string } | null
   problems: { id?: string; folder?: string }
 } {
@@ -19,6 +23,10 @@ export function teamRequest(draft: { name: string; id: string; place: Place; fol
   const problems: { id?: string; folder?: string } = {}
   const idProblem = slugProblem(id)
   if (idProblem) problems.id = idProblem
+  else if (taken.includes(id)) problems.id = 'A Team already has this ID: choose another.'
+  else if (!id && draft.name.trim()) {
+    problems.id = 'The name has no letters or digits to make an ID from: type one.'
+  }
   if (draft.place === 'link' && folder && !folder.startsWith('/')) {
     problems.folder = 'The full path of the folder, starting with /.'
   }
@@ -42,7 +50,10 @@ export function TeamForm({
   onCreated,
   onBusyChange,
   extraActions,
+  taken = [],
 }: {
+  /** The ids of the Teams there are. */
+  taken?: readonly string[]
   onCreated: (team: Team) => void | Promise<void>
   onBusyChange?: (busy: boolean) => void
   extraActions?: (busy: boolean) => ReactNode
@@ -56,7 +67,7 @@ export function TeamForm({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const shownId = idTouched ? id : slugify(name)
-  const request = teamRequest({ name, id: shownId, place, folder })
+  const request = teamRequest({ name, id: shownId, place, folder }, taken)
 
   function changeBusy(next: boolean) {
     setBusy(next)

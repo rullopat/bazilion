@@ -32,10 +32,10 @@ export function FocusFrame({
         <Link
           to="/"
           search={to({ view: undefined, result: undefined, panel: view })}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] border border-border bg-card px-2.5 text-sm font-semibold text-foreground hover:border-sapphire-light hover:text-sapphire"
+          className="inline-flex h-8 min-w-0 max-w-[14rem] items-center gap-1.5 rounded-[10px] border border-border bg-card px-2.5 text-sm font-semibold text-foreground hover:border-sapphire-light hover:text-sapphire"
         >
-          <ArrowLeft className="size-3.5" aria-hidden="true" />
-          {agent ? agent.agent.name : 'Back'}
+          <ArrowLeft className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 truncate">{agent ? agent.agent.name : 'Back'}</span>
         </Link>
         <h1 className="m-0 min-w-0 truncate font-display text-xl leading-tight text-charcoal">
           {team?.name}

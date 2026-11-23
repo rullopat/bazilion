@@ -119,6 +119,8 @@ test('spawned worker refreshes end-to-end without putting either token in ChatFr
         apiKey: initialToken,
         turnId: 'turn-spawn-integration',
         bashApprovalMode: 'auto_deny',
+        contacts: [],
+        withOperator: true,
       },
       {
         env: process.env,

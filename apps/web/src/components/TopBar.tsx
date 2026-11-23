@@ -63,7 +63,11 @@ export function TopBar() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        setPaletteOpen((open) => !open)
+        // Not on top of another dialog: it keeps the focus until it is closed.
+        const other = Array.from(
+          document.querySelectorAll('[role="dialog"], [role="alertdialog"]'),
+        ).some((dialog) => !dialog.hasAttribute('data-jump-palette'))
+        if (!other) setPaletteOpen((open) => !open)
       } else if (
         !event.defaultPrevented &&
         event.key === '?' &&

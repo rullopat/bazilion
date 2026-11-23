@@ -9,6 +9,7 @@ import type { ResolvedAgent } from '@bazilion/api-types'
 import { parseSkillContent } from '../../core/skills/parse.ts'
 import { readRegularFileNoFollow, resolveRealDirectory } from '../safe-files.ts'
 import type { BashSandboxMode } from '../shell/security.ts'
+import type { AgentContact } from '../worker/ipc-protocol.ts'
 import { browserGuideSection } from './browser-guide.ts'
 
 const SANDBOX_SKILLS_DIR = '/skills'
@@ -34,7 +35,20 @@ export interface BuildSystemPromptOptions {
   browserGuide?: boolean | 'attached'
   /** Web research guidance, when the turn has web_search. */
   searchGuide?: boolean
+  /** Whom the Agent can message: its teammates, and Agents of other Teams it may reach. */
+  contacts?: readonly AgentContact[]
+  /** The turn offers `agent_create`. */
+  canCreateAgents?: boolean
+  /**
+   * The operator started the turn (a chat, a follow-up, Telegram). Otherwise (a schedule, a
+   * teammate's message) a first-run ritual waits: there is nobody to answer its questions.
+   */
+  withOperator?: boolean
 }
+
+/** Teammates listed by name in the prompt; past this, the rest are counted. */
+const MAX_LISTED_TEAMMATES = 40
+const MAX_LISTED_OUTSIDE = 20
 
 /** One titled block of the appended system prompt, kept apart so it can be measured. */
 export interface PromptSection {
@@ -158,7 +172,16 @@ export function buildSystemPromptSections(
   // and lists hard rules at the top so tool-eager models still notice them
   // even if they skim the body.
   const bootstrap = homeDocuments['BOOTSTRAP.md']?.trimEnd()
-  if (bootstrap) {
+  if (bootstrap && options.withOperator === false) {
+    parts.push({
+      id: 'first-run',
+      text: [
+        '# First-Run Ritual',
+        '',
+        'You have not had your first conversation with the human yet; it waits until they talk to you. This turn was not started by them (a teammate wrote to you, or a schedule fired), so nobody is here to answer its questions: do not greet the human or ask who you are. Do the work this turn asks for, with what you know.',
+      ].join('\n'),
+    })
+  } else if (bootstrap) {
     parts.push({
       id: 'first-run',
       text: [
@@ -170,6 +193,11 @@ export function buildSystemPromptSections(
         '- Your first reply is ONLY a greeting + ONE question. No tool calls. Wait for the human to answer.',
         '- Each subsequent turn: at most one new question. Wait between turns.',
         '- Only after the ritual is complete (you have enough to write IDENTITY.md): call `home_write` once, then `bootstrap_done`.',
+        ...(agent.team.userMd.trim()
+          ? [
+              "- The Team's USER.md (under About the User) already says some things about the human: do not ask what it answers.",
+            ]
+          : []),
         '',
         '## BOOTSTRAP.md',
         '',
@@ -252,6 +280,7 @@ export function buildSystemPromptSections(
     '',
     'An `AGENTS.md` file in the workspace holds repository instructions that govern its own directory and everything below it. The ones from the workspace root down to your working directory are already in your project instructions; read any other `AGENTS.md` on the path to files you edit.',
   ]
+  teamLines.push('', ...teammateLines(agent, options))
   parts.push({ id: 'team', text: teamLines.join('\n') })
 
   if (agent.team.userMd.trim()) {
@@ -280,6 +309,51 @@ export function buildSystemPromptSections(
   })
 
   return parts
+}
+
+/** Who the Agent can message, by name and id, so it never needs the operator to look them up. */
+function teammateLines(agent: ResolvedAgent, options: BuildSystemPromptOptions): string[] {
+  const contacts = options.contacts ?? []
+  // Names are shown on one line whatever they hold: one made before names were checked cannot
+  // start a line of these instructions.
+  const line = (text: string) => text.replace(/[\p{Cc}\p{Cf}\u2028\u2029\s]+/gu, ' ').trim()
+  const entry = (contact: AgentContact, team: boolean) =>
+    `- ${line(contact.name)}: id ${contact.id}${team ? '' : `, Team ${line(contact.teamName)}`} (template ${line(contact.template)})`
+  const listed = (list: readonly AgentContact[], max: number, team: boolean) => [
+    ...list.slice(0, max).map((contact) => entry(contact, team)),
+    ...(list.length > max ? [`- and ${list.length - max} more`] : []),
+  ]
+  const teammates = contacts.filter((contact) => contact.teamId === agent.team.id)
+  const reachable = teammates.filter((contact) => contact.canMessage)
+  const unreachable = teammates.filter((contact) => !contact.canMessage)
+  const outside = contacts.filter((contact) => contact.teamId !== agent.team.id)
+  const create = options.canCreateAgents
+    ? ' When the human asks you to add teammates, create them with `agent_create`.'
+    : ''
+  const lines = ['## Your teammates', '']
+  if (teammates.length === 0) {
+    lines.push(`You are the only Agent in this Team so far.${create}`)
+  } else {
+    lines.push(
+      `Message an Agent with \`send_message\`: put its id (or its exact name) in \`to\`. These are current; do not ask the human for ids.${create}`,
+    )
+    if (reachable.length > 0) lines.push('', ...listed(reachable, MAX_LISTED_TEAMMATES, true))
+    if (unreachable.length > 0) {
+      lines.push(
+        '',
+        "In this restricted Team you have no connection to these teammates, so you cannot message them; the human can connect you in the Team's Connections view:",
+        ...listed(unreachable, MAX_LISTED_TEAMMATES, true),
+      )
+    }
+  }
+  if (outside.length > 0) {
+    lines.push(
+      '',
+      'Team Policy also lets you message these Agents of other Teams:',
+      ...listed(outside, MAX_LISTED_OUTSIDE, false),
+    )
+  }
+  return lines
 }
 
 function boundReviewedLessons(lessons: readonly string[], maxCharacters = 8_000): string[] {

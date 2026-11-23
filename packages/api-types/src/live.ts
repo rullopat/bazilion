@@ -9,6 +9,8 @@ import type { AttentionItem, AttentionSummary } from './attention.ts'
 export interface LiveActivityEvent {
   type: 'activity'
   agents: AgentActivity[]
+  /** As `ActivityResponse.roster`. */
+  roster: string
 }
 
 /** What is open in Attention. */
