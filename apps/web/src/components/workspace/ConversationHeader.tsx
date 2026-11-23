@@ -71,10 +71,11 @@ export function ConversationHeader({
         <ArrowLeft className="size-4" aria-hidden="true" />
       </Link>
       <AgentAvatar identity={agent.agent.identity} size={32} />
-      {/* A long name shortens, but keeps a few letters; the controls on the right stay whole. */}
+      {/* The Agent's name gives way last: the conversation's title shortens first, then a long
+          Team or model name; the menu and the panel button always stay in the bar. */}
       <h1
         title={agent.agent.name}
-        className="m-0 min-w-[5rem] max-w-[14rem] shrink truncate font-display text-xl leading-tight text-charcoal"
+        className="m-0 min-w-0 max-w-[14rem] shrink-0 truncate font-display text-xl leading-tight text-charcoal"
       >
         {agent.agent.name}
       </h1>
@@ -95,7 +96,7 @@ export function ConversationHeader({
         <span className="min-w-0 truncate">{shortModel(agent.model)}</span>
         <ChevronDown className="size-[11px] shrink-0" aria-hidden="true" />
       </Link>
-      <div className="ml-auto flex min-w-[8.5rem] shrink items-center justify-end gap-1.5">
+      <div className="ml-auto flex min-w-[7.75rem] shrink-[20] items-center justify-end gap-1.5">
         <ConversationMenu agentId={agent.agent.id} chat={chat} />
         <Link
           to="/"
