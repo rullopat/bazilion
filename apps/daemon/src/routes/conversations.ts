@@ -1,5 +1,6 @@
 import type {
   ConversationListResponse,
+  ConversationSearchResponse,
   ConversationUsage,
   NewConversationInput,
 } from '@bazilion/api-types'
@@ -7,16 +8,33 @@ import { resolveAgent } from '../core/agent/resolve.ts'
 import { mergeSecretsIntoEnv } from '../core/index.ts'
 import * as conversations from '../core/repos/conversations.ts'
 import { runAgentLifecycleMutation } from '../lib/agent-cancel.ts'
+import { searchConversations } from '../lib/conversation-search.ts'
 import { selectConversation, startConversation } from '../lib/conversation-target.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { conversationUsage } from '../lib/usage.ts'
 import { loadInitialMessages, piMessagesToProviderView } from '../runtime/index.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
-import { jsonBody, newRouter, routeAgent } from './http.ts'
+import { jsonBody, newRouter, routeAgent, routeAgentRef } from './http.ts'
 
 // The conversation library: list, start, read, rename and switch an Agent's conversations.
 
 export const conversationsRouter = newRouter<{ Variables: { agentId: string } }>()
+
+/** `GET /api/conversations/search?q=…[&agent=…][&limit=…]`: messages holding every word. */
+export const conversationSearchRouter = newRouter()
+
+conversationSearchRouter.get('/search', (c) => {
+  const { db, paths, authToken } = getCtx()
+  const agent = c.req.query('agent')
+  return c.json(
+    searchConversations(db, paths, {
+      query: c.req.query('q') ?? '',
+      ...(agent ? { agentId: routeAgentRef(agent).id } : {}),
+      limit: Number(c.req.query('limit') ?? 20) || 20,
+      secrets: envSecretValues(mergeSecretsIntoEnv(db, authToken)),
+    }) satisfies ConversationSearchResponse,
+  )
+})
 
 conversationsRouter.use('/:agentId/conversations/*', async (c, next) => {
   // Accepts an Agent id, unique name or id prefix; everything below uses the full id.

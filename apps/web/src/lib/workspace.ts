@@ -34,6 +34,8 @@ export interface WorkspaceSearch {
   result?: string
   /** An earlier conversation being read. */
   conversation?: string
+  /** Words from a search: the conversation opens on the first message holding them. */
+  find?: string
   /** A sheet opened over the workspace: one of the Agent's or the Team's deeper pages. */
   section?: Section
   /** The Team memory note the memory sheet opens on. */
@@ -76,6 +78,7 @@ export function parseWorkspaceSearch(search: Record<string, unknown>): Workspace
     file: text(search.file),
     result: text(search.result),
     conversation: text(search.conversation),
+    find: text(search.find),
     section: isOneOf(SECTIONS, search.section) ? search.section : undefined,
     note: text(search.note),
   }

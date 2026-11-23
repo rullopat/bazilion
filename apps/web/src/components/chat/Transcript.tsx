@@ -54,6 +54,7 @@ export function Bubble({
         const body = entry.content.slice(INBOX_WAKE_PREFIX.length)
         return (
           <details
+            data-message=""
             className={`my-3 rounded-lg border border-fawn bg-ivory px-3 py-2 text-sm text-mocha ${dropClass}`}
             aria-label="Teammate update"
           >
@@ -66,7 +67,7 @@ export function Bubble({
         )
       }
       return (
-        <div className={`group relative my-4 flex flex-col items-end ${dropClass}`}>
+        <div data-message="" className={`group relative my-4 flex flex-col items-end ${dropClass}`}>
           <span className="sr-only">you</span>
           {entry.images && entry.images.length > 0 && (
             <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-1">
@@ -131,7 +132,7 @@ export function Bubble({
         )
       }
       return (
-        <div className={`my-4 flex flex-col items-start ${dropClass}`}>
+        <div data-message="" className={`my-4 flex flex-col items-start ${dropClass}`}>
           <span className="sr-only">agent</span>
           <div
             className="md-content bubble-content w-full leading-[1.55] text-chocolate"

@@ -634,3 +634,14 @@
     margin-bottom: 1rem;
   }
 }
+
+/* The message a search opened the conversation on, marked for a moment. */
+[data-message] {
+  border-radius: 12px;
+  transition: box-shadow 0.4s ease;
+}
+.found-message {
+  box-shadow:
+    0 0 0 2px var(--ring),
+    0 0 0 6px var(--accent);
+}

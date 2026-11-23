@@ -2,9 +2,10 @@
 // operator continues this one.
 
 import type { Conversation, ProviderMessage } from '@bazilion/api-types'
-import { Link, useRouter } from '@tanstack/react-router'
-import { type ReactNode, useState } from 'react'
+import { Link, useNavigate, useRouter } from '@tanstack/react-router'
+import { type ReactNode, useRef, useState } from 'react'
 import { ApiError, api, errorMessage } from '../../lib/api'
+import { useFindInTranscript } from '../../lib/find-in-transcript'
 import { useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
 import { CHAT_FRAME } from '../chat/ChatPane'
@@ -28,8 +29,13 @@ export function EarlierConversation({
   conversationId: string
   header: ReactNode
 }) {
-  const { to } = useWorkspace()
+  const { search, to } = useWorkspace()
   const router = useRouter()
+  const navigate = useNavigate()
+  const logRef = useRef<HTMLDivElement | null>(null)
+  useFindInTranscript(logRef, search.find, () => {
+    void navigate({ to: '/', search: to({ find: undefined }), replace: true })
+  })
   const path = `/api/agents/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -91,7 +97,7 @@ export function EarlierConversation({
           {error}
         </p>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <div className="mx-auto max-w-[50rem]">
           {opened.error && (
             <p role="alert" className="text-sm text-danger">

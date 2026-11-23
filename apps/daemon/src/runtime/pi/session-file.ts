@@ -36,18 +36,27 @@ function checkHeader(entry: FileEntry | undefined, id: string): void {
     throw new Error('Session file does not belong to this conversation')
 }
 
-/** Every entry of a conversation's transcript. A line still being appended is left out. */
-export function readSessionFile(directory: string, id: string): FileEntry[] {
+/** A transcript's complete lines as text; a line still being appended is left out. */
+export function readSessionText(directory: string, id: string): string {
   const { bytes, size } = readStart(directory, id, MAX_SESSION_BYTES)
   if (size > MAX_SESSION_BYTES) throw new Error('Session file is larger than 64 MiB')
   const text = bytes.toString('utf8')
+  return text.slice(0, text.lastIndexOf('\n') + 1)
+}
+
+/** The entries of a transcript's text, its header checked against the conversation's id. */
+export function parseSessionText(text: string, id: string): FileEntry[] {
   const entries = text
-    .slice(0, text.lastIndexOf('\n') + 1)
     .split('\n')
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line) as FileEntry)
   checkHeader(entries[0], id)
   return entries
+}
+
+/** Every entry of a conversation's transcript. A line still being appended is left out. */
+export function readSessionFile(directory: string, id: string): FileEntry[] {
+  return parseSessionText(readSessionText(directory, id), id)
 }
 
 /** Whether anything follows the header: false for a conversation no turn has written to. */

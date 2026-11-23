@@ -1,6 +1,7 @@
 import {
   type Conversation,
   type ConversationListResponse,
+  type ConversationSearchResponse,
   type ConversationUsage,
   type ProviderMessage,
   usageSummary,
@@ -8,7 +9,14 @@ import {
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
-import { agentArg, apiPath, jsonFlag, positional, printJson } from '../command-helpers.ts'
+import {
+  agentArg,
+  apiPath,
+  jsonFlag,
+  positional,
+  printJson,
+  terminalSafe,
+} from '../command-helpers.ts'
 
 const conversationArg = positional('Conversation id')
 
@@ -40,6 +48,43 @@ const list = defineCommand({
       }),
     ]))
       console.log(line)
+  },
+})
+
+const search = defineCommand({
+  meta: {
+    name: 'search',
+    description: "Find the messages that hold every word, in every Agent's conversations",
+  },
+  args: {
+    query: positional('Words to find (quote several: "launch email")'),
+    agent: { type: 'string', description: 'Only this Agent (id or name)' },
+    limit: { type: 'string', default: '20', description: 'Most messages listed (up to 50)' },
+    json: jsonFlag,
+  },
+  async run({ args }) {
+    const query = new URLSearchParams({ q: args.query, limit: args.limit })
+    if (args.agent) query.set('agent', args.agent)
+    const body = await createClient().get<ConversationSearchResponse>(
+      `/api/conversations/search?${query}`,
+    )
+    if (args.json) return printJson(body)
+    if (body.hits.length === 0) console.log('(no messages hold every word)')
+    for (const hit of body.hits) {
+      const when = hit.at ? new Date(hit.at).toISOString().slice(0, 16).replace('T', ' ') : ''
+      console.log(
+        terminalSafe(
+          `${hit.agentName} · ${hit.conversationTitle}${hit.active ? ' (active)' : ''} · ${hit.role === 'user' ? 'you' : hit.agentName} ${when}`,
+        ),
+      )
+      console.log(`  ${terminalSafe(hit.snippet)}`)
+      console.log(`  bazilion conversation show ${hit.agentId.slice(0, 8)} ${hit.conversationId}`)
+    }
+    if (body.truncated) console.log(`Only the newest ${body.hits.length}; use --limit for more.`)
+    if (body.unreadable > 0)
+      console.log(
+        `${body.unreadable} conversation${body.unreadable === 1 ? '' : 's'} could not be read.`,
+      )
   },
 })
 
@@ -120,5 +165,5 @@ export const conversationCommand = defineCommand({
     name: 'conversation',
     description: 'List, read, start, rename and switch Agent conversations',
   },
-  subCommands: { list, show, new: newConversation, rename, select },
+  subCommands: { list, show, new: newConversation, rename, select, search },
 })

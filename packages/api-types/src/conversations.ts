@@ -20,6 +20,35 @@ export interface ConversationListResponse {
   usage: Record<string, ConversationUsage>
 }
 
+/** A message holding every word searched for, in what a conversation shows. */
+export interface ConversationSearchHit {
+  agentId: string
+  agentName: string
+  teamId: string
+  teamName: string
+  archived: boolean
+  conversationId: string
+  conversationTitle: string
+  /** The conversation new turns write to. */
+  active: boolean
+  role: 'user' | 'assistant'
+  /** When the message was written, if the history says. */
+  at: number | null
+  /** The message around the first word found, on one line. */
+  snippet: string
+}
+
+export interface ConversationSearchResponse {
+  /** The words looked for, lower-cased. */
+  words: string[]
+  /** Newest first. */
+  hits: ConversationSearchHit[]
+  /** More messages matched than were returned. */
+  truncated: boolean
+  /** Conversations whose history could not be read, and so were not searched. */
+  unreadable: number
+}
+
 export interface NewConversationInput {
   title?: string
 }
