@@ -19,6 +19,7 @@ const totals = (patch: Partial<UsageTotals>): UsageTotals => ({
   estimated: false,
   planTokens: 0,
   localTokens: 0,
+  unpricedTokens: 0,
   ...patch,
 })
 

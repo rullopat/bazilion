@@ -29,6 +29,10 @@ export function totalsLines(totals: UsageTotals): string[] {
   ]
   if (totals.planTokens > 0) lines.push(`On a plan   ${formatTokens(totals.planTokens)} tokens`)
   if (totals.localTokens > 0) lines.push(`Local       ${formatTokens(totals.localTokens)} tokens`)
+  if (totals.unpricedTokens > 0)
+    lines.push(
+      `Unpriced    ${formatTokens(totals.unpricedTokens)} tokens on models the catalog has no price for (not in Spent)`,
+    )
   return lines
 }
 

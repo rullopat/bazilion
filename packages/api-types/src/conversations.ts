@@ -36,6 +36,8 @@ export interface ConversationSearchHit {
   at: number | null
   /** The message around the first word found, on one line. */
   snippet: string
+  /** Which of its conversation's matching messages it is, oldest first, from 0. */
+  nth: number
 }
 
 export interface ConversationSearchResponse {

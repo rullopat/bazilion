@@ -1,11 +1,11 @@
 // /api/usage: tokens and cost per day, Agent, Team and model, read from the saved conversations.
 
 import { DomainError } from '../core/errors.ts'
-import * as agentRepo from '../core/repos/agents.ts'
+import { mergeSecretsIntoEnv } from '../core/index.ts'
 import * as teamRepo from '../core/repos/teams.ts'
 import { getCtx } from '../lib/ctx.ts'
-import { usageReport, validTimeZone } from '../lib/usage.ts'
-import { newRouter } from './http.ts'
+import { planProviders, usageReport, validTimeZone } from '../lib/usage.ts'
+import { newRouter, routeAgentRef } from './http.ts'
 
 export const usageRouter = newRouter()
 
@@ -26,9 +26,12 @@ usageRouter.get('/', (c) => {
     ? validTimeZone(rawZone)
     : Intl.DateTimeFormat().resolvedOptions().timeZone
   if (!timeZone) throw new DomainError(400, `unknown time zone: ${rawZone}`)
-  const agentId = c.req.query('agent') || undefined
-  const teamId = c.req.query('team') || undefined
-  if (agentId && !agentRepo.get(db, agentId)) throw new DomainError(404, 'agent not found')
-  if (teamId && !teamRepo.get(db, teamId, paths)) throw new DomainError(404, 'team not found')
-  return c.json(usageReport(db, paths, { days, timeZone, agentId, teamId }))
+  // An Agent by id, unique name or id prefix, as everywhere else; the report filters by its id.
+  const agentRef = c.req.query('agent')
+  const agentId = agentRef ? routeAgentRef(agentRef).id : undefined
+  const teamRef = c.req.query('team')
+  const teamId = teamRef ? teamRepo.get(db, teamRef, paths)?.id : undefined
+  if (teamRef && !teamId) throw new DomainError(404, `team not found: ${teamRef}`)
+  const plans = planProviders(mergeSecretsIntoEnv(db, getCtx().authToken))
+  return c.json(usageReport(db, paths, { days, timeZone, agentId, teamId, plans }))
 })

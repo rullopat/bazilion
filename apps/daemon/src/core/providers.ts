@@ -33,6 +33,8 @@ export interface ProviderDef {
    * where Pi's catalog prices the model.
    */
   plan?: boolean
+  /** When this variable is set, the provider is used through a subscription (a Claude token). */
+  planEnv?: string
   /** OpenAI-compatible `GET /models` listing, used to offer the provider's own model ids. */
   modelsUrl?: string
   /** Listed first under "Add a provider" and on the first-run screen. */
@@ -122,6 +124,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     displayName: 'Anthropic',
     hint: 'Claude models · console.anthropic.com',
     keyEnv: ['ANTHROPIC_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'],
+    planEnv: 'ANTHROPIC_OAUTH_TOKEN',
     fields: [
       { envVar: 'ANTHROPIC_API_KEY', kind: 'secret', label: 'API key', placeholder: 'sk-ant-...' },
       {

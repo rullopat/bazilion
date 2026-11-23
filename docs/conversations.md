@@ -34,8 +34,8 @@ conversation since the page loaded; reload and try again.
 ## Search
 
 Search finds the messages, yours and the Agents' replies, that hold every word you give, in
-every Agent's conversations, newest first. It looks at what a conversation shows: tool output
-and anything a summary replaced are not searched. A stored credential is never found, and is
+every Agent's conversations, newest first. It looks at what a conversation shows, as it reads:
+tool output, anything a summary replaced and a link's address are not searched. A stored credential is never found, and is
 taken out of what a result shows.
 
 - **Web:** type three characters or more in **Jump to** (⌘K or Ctrl+K). **In conversations**

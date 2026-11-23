@@ -78,10 +78,14 @@ function AgentChat({
   // Opened from a search: go to the message found, and stop following the end.
   const workspace = useWorkspaceOptional()
   const navigate = useNavigate()
-  useFindInTranscript(logRef, workspace?.search.find, () => {
+  useFindInTranscript(logRef, workspace?.search.find, workspace?.search.match, () => {
     nearBottomRef.current = false
     if (workspace)
-      void navigate({ to: '/', search: workspace.to({ find: undefined }), replace: true })
+      void navigate({
+        to: '/',
+        search: workspace.to({ find: undefined, match: undefined }),
+        replace: true,
+      })
   })
 
   // Follow new output while the reader is at the bottom; leave them alone once they scroll up.

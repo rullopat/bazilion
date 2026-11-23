@@ -147,3 +147,23 @@ test('a snippet reads as the message does, without its Markdown', () => {
     'The headline is plain: Paperboat 2.0 is here',
   )
 })
+
+test('a word only in a link address is not found; each match knows its place in its conversation', async () => {
+  const conversation = startConversation(env.db, env.paths, agentId)
+  parent = null
+  write(
+    agentId,
+    conversation.id,
+    'assistant',
+    'Read [the guide](https://x.test/deployment-checklist).',
+    1000,
+  )
+  write(agentId, conversation.id, 'user', 'The checklist is long', 2000)
+  write(agentId, conversation.id, 'assistant', 'Then follow the checklist step by step', 3000)
+  const body = (await (await search('checklist')).json()) as ConversationSearchResponse
+  expect(body.hits.map((hit) => [hit.at, hit.nth])).toEqual([
+    [3000, 1],
+    [2000, 0],
+  ])
+  expect(body.hits.every((hit) => hit.snippet.toLowerCase().includes('checklist'))).toBe(true)
+})

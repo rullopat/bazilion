@@ -311,6 +311,8 @@ function Totals({ report }: { report: UsageReport }) {
             : totals.estimated
               ? 'Estimated from catalog prices, except what a provider reported it billed.'
               : 'As the providers reported it billed.'}
+          {totals.unpricedTokens > 0 &&
+            ` ${formatTokens(totals.unpricedTokens)} tokens on models with no known price are not in it.`}
         </p>
       </div>
       <dl className="m-0 grid grid-cols-2 gap-3 self-start sm:grid-cols-4">

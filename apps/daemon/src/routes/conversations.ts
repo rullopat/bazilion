@@ -11,7 +11,7 @@ import { runAgentLifecycleMutation } from '../lib/agent-cancel.ts'
 import { searchConversations } from '../lib/conversation-search.ts'
 import { selectConversation, startConversation } from '../lib/conversation-target.ts'
 import { getCtx } from '../lib/ctx.ts'
-import { conversationUsage } from '../lib/usage.ts'
+import { conversationUsage, planProviders } from '../lib/usage.ts'
 import { loadInitialMessages, piMessagesToProviderView } from '../runtime/index.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
 import { jsonBody, newRouter, routeAgent, routeAgentRef } from './http.ts'
@@ -23,16 +23,17 @@ export const conversationsRouter = newRouter<{ Variables: { agentId: string } }>
 /** `GET /api/conversations/search?q=…[&agent=…][&limit=…]`: messages holding every word. */
 export const conversationSearchRouter = newRouter()
 
-conversationSearchRouter.get('/search', (c) => {
+conversationSearchRouter.get('/search', async (c) => {
   const { db, paths, authToken } = getCtx()
   const agent = c.req.query('agent')
   return c.json(
-    searchConversations(db, paths, {
+    (await searchConversations(db, paths, {
+      signal: c.req.raw.signal,
       query: c.req.query('q') ?? '',
       ...(agent ? { agentId: routeAgentRef(agent).id } : {}),
       limit: Number(c.req.query('limit') ?? 20) || 20,
       secrets: envSecretValues(mergeSecretsIntoEnv(db, authToken)),
-    }) satisfies ConversationSearchResponse,
+    })) satisfies ConversationSearchResponse,
   )
 })
 
@@ -50,7 +51,11 @@ conversationsRouter.get('/:agentId/conversations', (c) => {
     Number(c.req.query('limit') ?? 20),
     Number(c.req.query('offset') ?? 0),
   )
-  const used = conversationUsage(paths, c.get('agentId'))
+  const used = conversationUsage(
+    paths,
+    c.get('agentId'),
+    planProviders(mergeSecretsIntoEnv(db, getCtx().authToken)),
+  )
   const usage: Record<string, ConversationUsage> = {}
   for (const conversation of list.conversations) {
     const found = used.get(conversation.id)
@@ -82,7 +87,10 @@ conversationsRouter.get('/:agentId/conversations/:id', (c) => {
       loadInitialMessages(resolveAgent(db, paths, agentId), paths, { id }),
       envSecretValues(mergeSecretsIntoEnv(db, authToken)),
     )
-    const usage = conversationUsage(paths, agentId).get(id) ?? null
+    const usage =
+      conversationUsage(paths, agentId, planProviders(mergeSecretsIntoEnv(db, authToken))).get(
+        id,
+      ) ?? null
     return c.json({ conversation, messages, usage })
   } catch {
     return c.json(

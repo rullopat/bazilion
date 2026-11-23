@@ -190,4 +190,7 @@ test('a wake-up that cannot start is one item, gone once it starts', () => {
   expect(forgetTurnFailure('inbox-start:agent')).toBe(true)
   expect(list()).toEqual([])
   expect(turnFailureCause('Worker 1234 exited')).toBe(turnFailureCause('Worker 99 exited'))
+  expect(turnFailureCause('500 overloaded_error (request req_011CXyzAbc)')).toBe(
+    turnFailureCause('500 overloaded_error (request req_022QwErTyu)'),
+  )
 })

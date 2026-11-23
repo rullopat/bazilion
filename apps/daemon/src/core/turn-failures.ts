@@ -22,14 +22,21 @@ function store(): RememberedTurnFailure[] {
   return holder[KEY]
 }
 
-/** Keep a failure; one with the id of a kept one (the same wake-up tried again) replaces it. */
+/**
+ * Keep a failure. One with the id of a kept one (the same wake-up tried again) takes its place
+ * but keeps its time: a retry is the same failure, so an acknowledgement of it holds.
+ */
 export function rememberTurnFailure(failure: RememberedTurnFailure): void {
   const kept = store()
   const at = kept.findIndex((entry) => entry.id === failure.id)
+  const first = at >= 0 ? kept[at] : undefined
   if (at >= 0) kept.splice(at, 1)
-  kept.push(failure)
+  kept.push(first ? { ...failure, at: first.at } : failure)
   const since = failure.at - KEPT_MS
-  const fresh = kept.filter((entry) => entry.at >= since).slice(-MAX_KEPT)
+  // The one just kept stays, however long ago it first failed.
+  const fresh = kept
+    .filter((entry) => entry.at >= since || entry.id === failure.id)
+    .slice(-MAX_KEPT)
   kept.splice(0, kept.length, ...fresh)
 }
 

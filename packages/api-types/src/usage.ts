@@ -25,6 +25,8 @@ export interface UsageTotals {
   planTokens: number
   /** Tokens on a model server on this computer. */
   localTokens: number
+  /** Tokens on providers paid per use whose model has no price in Pi's catalog: not in `cost`. */
+  unpricedTokens: number
 }
 
 export interface UsageDay extends UsageTotals {

@@ -66,11 +66,21 @@ interface ConversationRow {
   selected: string | null
 }
 
-export function searchConversations(
+/**
+ * The work is done one conversation at a time, letting the daemon do other things between two,
+ * and stops when the request that asked is gone (Jump to asks again as you type).
+ */
+export async function searchConversations(
   db: BazilionDb,
   paths: Paths,
-  options: { query: string; agentId?: string; limit?: number; secrets?: readonly string[] },
-): ConversationSearchResponse {
+  options: {
+    query: string
+    agentId?: string
+    limit?: number
+    secrets?: readonly string[]
+    signal?: AbortSignal
+  },
+): Promise<ConversationSearchResponse> {
   const words = searchWords(options.query)
   const limit = Math.min(Math.max(options.limit ?? 20, 1), MAX_SEARCH_HITS)
   // In the raw JSON a word reads as JSON writes it (a quote or a backslash escaped).
@@ -88,6 +98,8 @@ export function searchConversations(
   const hits: ConversationSearchHit[] = []
   let unreadable = 0
   for (const row of rows) {
+    await new Promise((resolve) => setImmediate(resolve))
+    if (options.signal?.aborted) break
     const directory = join(paths.agentDir(row.agentId), 'sessions')
     let text: string
     try {
@@ -106,6 +118,7 @@ export function searchConversations(
       unreadable++
       continue
     }
+    let nth = 0
     for (const message of messages) {
       if (message.role !== 'user' && message.role !== 'assistant') continue
       const [shown] = piMessagesToProviderView([message], options.secrets ?? [])
@@ -117,7 +130,9 @@ export function searchConversations(
           : shown.content,
         options.secrets ?? [],
       )
-      const found = content.toLowerCase()
+      // Matched as it reads, not in its Markdown: a word only in a link's address does not count,
+      // so the snippet and the conversation on screen both show it.
+      const found = plainText(content).toLowerCase()
       if (!words.every((word) => found.includes(word))) continue
       const at = (message as { timestamp?: unknown }).timestamp
       hits.push({
@@ -132,6 +147,7 @@ export function searchConversations(
         role: message.role,
         at: typeof at === 'number' && Number.isFinite(at) ? at : null,
         snippet: snippetOf(content, words),
+        nth: nth++,
       })
     }
   }

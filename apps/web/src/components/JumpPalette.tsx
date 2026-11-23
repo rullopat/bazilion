@@ -377,6 +377,7 @@ export function JumpPalette({
         agent: hit.agentId,
         ...(hit.active ? {} : { conversation: hit.conversationId }),
         find: hits.query,
+        match: hit.nth,
       },
     }))
   }, [hits, trimmed, agents])

@@ -9,7 +9,7 @@ import * as providerModels from '../../src/core/repos/providerModels.ts'
 import * as providerState from '../../src/core/repos/providerState.ts'
 import * as webTokens from '../../src/core/repos/webTokens.ts'
 import { startConversation } from '../../src/lib/conversation-target.ts'
-import { dayOf, shiftDay, usageOfLine, usageReport } from '../../src/lib/usage.ts'
+import { dayOf, planProviders, shiftDay, usageOfLine, usageReport } from '../../src/lib/usage.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 let env: TestEnv
@@ -166,6 +166,14 @@ test('GET /api/usage and the conversation list carry the totals', async () => {
   expect((await app.request('/api/usage?days=0', { headers })).status).toBe(400)
   expect((await app.request('/api/usage?tz=Mars/Base', { headers })).status).toBe(400)
   expect((await app.request('/api/usage?agent=nope', { headers })).status).toBe(404)
+  // An Agent by name or id prefix, as everywhere else.
+  for (const ref of ['worker', agentId.slice(0, 8)]) {
+    const named = (await (
+      await app.request(`/api/usage?agent=${ref}`, { headers })
+    ).json()) as UsageReport
+    expect(named.totals.calls).toBe(1)
+    expect(named.scope).toMatchObject({ kind: 'agent', id: agentId })
+  }
   const response = await app.request('/api/usage?days=7&tz=Europe/Rome', { headers })
   expect(response.status).toBe(200)
   const body = (await response.json()) as UsageReport
@@ -183,4 +191,32 @@ test('GET /api/usage and the conversation list carry the totals', async () => {
   mkdirSync(join(directory, '00000000-0000-4000-8000-000000000000.jsonl'))
   const again = (await (await app.request('/api/usage', { headers })).json()) as UsageReport
   expect(again.unreadable).toBe(1)
+})
+
+test('a Claude token makes Anthropic a subscription; a paid model with no price is counted apart', () => {
+  const conversation = startConversation(env.db, env.paths, agentId)
+  appendFileSync(
+    sessionFile(conversation.id),
+    [
+      reply(NOW, 'anthropic', 'claude-x', 1000, 0.5),
+      reply(NOW, 'anthropic', 'claude-x', 1000, 0.5),
+      reply(NOW, 'some-gateway', 'unknown-model', 700, 0),
+      '',
+    ].join('\n'),
+  )
+  const paid = report(null).totals
+  // Two calls in one quarter of an hour are kept as one record and still counted twice.
+  expect(paid).toMatchObject({ calls: 3, planTokens: 0, unpricedTokens: 700 })
+  expect(paid.cost).toBeCloseTo(1)
+  const plans = planProviders({ ANTHROPIC_OAUTH_TOKEN: 'token' })
+  expect(plans.has('anthropic')).toBe(true)
+  expect(planProviders({}).has('anthropic')).toBe(false)
+  const subscribed = usageReport(env.db, env.paths, {
+    days: null,
+    timeZone: 'UTC',
+    now: NOW,
+    plans,
+  })
+  expect(subscribed.totals).toMatchObject({ cost: 0, planTokens: 2000, unpricedTokens: 700 })
+  expect(subscribed.byModel.find((model) => model.provider === 'anthropic')?.billing).toBe('plan')
 })

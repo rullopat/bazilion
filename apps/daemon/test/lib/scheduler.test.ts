@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { projectAttention } from '../../src/core/attention.ts'
+import { acknowledgeAttention, projectAttention } from '../../src/core/attention.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as conversations from '../../src/core/repos/conversations.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
@@ -272,6 +272,63 @@ describe('scheduler', () => {
         href: `/?agent=a1&section=mailbox`,
       },
     ])
+  })
+
+  test('an inbox turn stopped by the operator is not a failure; one that throws after it starts is', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const failures = () =>
+      projectAttention(env.db, { state: 'open', kind: 'turn_failure' }).items.filter(
+        (item) => item.agentId === 'a1',
+      )
+    messageRepo.send(env.db, { from: 'a2', to: 'a1', payload: JSON.stringify({ text: 'one' }) })
+    turnPlans.push({
+      abort: true,
+      frames: [{ kind: 'event', event: { type: 'error', error: 'cancelled' } }] as ChatFrame[],
+    })
+    await scheduler._tickOnce()
+    expect(failures()).toEqual([])
+
+    messageRepo.send(env.db, { from: 'a2', to: 'a1', payload: JSON.stringify({ text: 'two' }) })
+    turnPlans.push({ error: new Error('ChatGPT sign-in expired') })
+    await scheduler._tickOnce()
+    expect(failures()).toMatchObject([{ title: 'Turn for new mail failed' }])
+    expect(failures()[0]?.diagnostic).toContain('ChatGPT sign-in expired')
+  })
+
+  test('an acknowledged wake-up that cannot start stays acknowledged while it is retried', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    messageRepo.send(env.db, { from: 'a2', to: 'a1', payload: JSON.stringify({ text: 'one' }) })
+    prepareError = new Error('BAZILION_BASH_SANDBOX must be "off" or "docker", received: bogus')
+    const failedAt = Date.now()
+    await scheduler._tickOnce()
+    const open = () =>
+      projectAttention(env.db, { state: 'open', kind: 'turn_failure' }).items.filter(
+        (item) => item.agentId === 'a1',
+      )
+    const key = open()[0]?.key ?? ''
+    vi.setSystemTime(failedAt + 1_000)
+    acknowledgeAttention(env.db, key, true)
+    vi.setSystemTime(failedAt + 10_000)
+    await scheduler._tickOnce()
+    expect(open()).toEqual([])
   })
 
   test('archived Agents get no scheduled or inbox turns until they are unarchived', async () => {

@@ -32,8 +32,9 @@ background turns failed", what the provider said, and how many of each there wer
 the provider's kind of failure (credentials, a limit, an unreachable server, a missing model) or,
 for anything else, the same message.
 
-**Acknowledge** sets it aside; a later failure of the same cause opens it again, counting only
-what came after. Retrying or removing the failed follow-ups takes them off. A follow-up a daemon
+A turn you stopped, or an Agent archived meanwhile, is cancelled, not failed. **Acknowledge** sets
+it aside; a later failure of the same cause opens it again, counting only what came after (a
+wake-up that cannot start and is tried again is the same failure). Retrying or removing the failed follow-ups takes them off. A follow-up a daemon
 restart interrupted is the paused queue's item instead. Turns for new mail are kept in the
 daemon's memory: a restart forgets them, and one that could not start at all leaves once it
 starts. Scheduled triggers keep their own kind.
@@ -44,6 +45,8 @@ Bazilion can post new Attention items to the [Telegram](telegram.md) bot's servi
 reach your phone. This is off by default. Each new open item of a selected kind is sent once, with
 its title, Agent and Team. When the web UI is published at `BAZILION_PUBLIC_ORIGIN` the notice
 links to the item; otherwise open **Attention** in the web UI. A notice resolves nothing.
+
+A choice of kinds saved before 0.56.0 does not include failed turns: tick them to be told.
 
 ### Configure
 

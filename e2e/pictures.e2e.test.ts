@@ -119,9 +119,12 @@ describe.skipIf(MODE === 'off')('pictures', () => {
 
   /** The picture, decoded, and Chrome's own PNG bytes (far smaller than a re-encoding). */
   async function picture(scene: Scene): Promise<{ png: PNG; bytes: Buffer }> {
+    // One language and time zone whatever the machine: dates and times read the same way.
     const session: Session = await signIn(browser, instance, {
       width: 1280,
       height: 800,
+      locale: 'en-GB',
+      timezoneId: 'UTC',
       ...scene.options,
     })
     try {

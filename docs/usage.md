@@ -26,9 +26,10 @@ Days are counted in the time zone of the browser or terminal that asks.
 | | |
 | --- | --- |
 | **Spent** | US dollars for providers paid per use. It is what the provider reported it billed when it says so (OpenRouter does), otherwise Pi's catalog price for the tokens, and then Usage says it is an estimate. |
-| **On a subscription** | Tokens through ChatGPT, GitHub Copilot, a Qwen or Xiaomi MiMo token plan: the plan is paid for, not each call, so they cost nothing here. |
+| **On a subscription** | Tokens through ChatGPT, GitHub Copilot, a Qwen or Xiaomi MiMo token plan, or Anthropic while a Claude token (`ANTHROPIC_OAUTH_TOKEN`) is set: the plan is paid for, not each call, so they cost nothing here. Past calls count by how the provider is set up now. |
 | **On this computer** | Tokens on LM Studio, Ollama or llama.cpp. |
 | **Model calls** | Replies, conversation summaries and cache warm-ups. |
+| **Unpriced** | Tokens on a provider paid per use whose model Pi's catalog has no price for: counted, but not in **Spent**, and said so. |
 
 A conversation summary is counted for the model of the reply before it.
 

@@ -114,9 +114,10 @@ const ORIGIN_COUNT: Record<TurnOrigin, [one: string, many: string]> = {
 export function turnFailureCause(reason: string): string {
   const kind = classifyProviderFailure(reason)
   if (kind !== 'other') return kind
+  // Ids differ in each failure (a request id such as req_011CXyz…, a hex run): they do not count.
   const shape = reason
     .toLowerCase()
-    .replace(/[0-9a-f]{8,}|\d+/g, '#')
+    .replace(/\b(?=[\w-]*\d)[\w-]{8,}\b|[0-9a-f]{8,}|\d+/g, '#')
     .replace(/\s+/g, ' ')
     .slice(0, 120)
   return `other-${createHash('sha256').update(shape).digest('hex').slice(0, 12)}`

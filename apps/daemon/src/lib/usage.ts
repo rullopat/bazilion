@@ -1,8 +1,9 @@
 // What models were used for: tokens and cost per day, Agent, Team, model and conversation, read
 // from the Agents' Pi session files. Pi records the usage of every reply (and of conversation
 // summaries and cache warm-ups) in the transcript; nothing else stores it. A transcript only grows,
-// so each file is read from where the last read stopped and its records are kept in memory; a file
-// that shrank or was replaced is read again from the start.
+// so each file is read from where the last read stopped and its totals are kept in memory, added
+// up per quarter of an hour, provider and model (every time zone's days start on a quarter hour);
+// a file that shrank or was replaced is read again from the start.
 
 import { closeSync, constants, fstatSync, openSync, readdirSync, readSync } from 'node:fs'
 import { join } from 'node:path'
@@ -20,9 +21,11 @@ import type { BazilionDb } from '../core/db/client.ts'
 import type { Paths } from '../core/paths.ts'
 import { PROVIDERS, type ProviderDef } from '../core/providers.ts'
 
-/** One model call, as the transcript records it. */
+/** Model calls of one quarter of an hour, provider and model, as the transcript records them. */
 export interface UsageRecord {
+  /** The quarter of an hour's start; a single call's own time before it is added up. */
   at: number
+  calls: number
   provider: string
   model: string
   input: number
@@ -40,7 +43,8 @@ interface ScannedFile {
   ino: number
   /** Where the next read starts: just after the last complete line. */
   offset: number
-  records: UsageRecord[]
+  /** By quarter of an hour, provider, model and whether the cost was billed. */
+  totals: Map<string, UsageRecord>
   /** The provider and model of the latest reply, for summaries that do not name theirs. */
   lastModel: { provider: string; model: string } | null
 }
@@ -83,6 +87,7 @@ function toRecord(
   if (total === 0 && cost === 0) return null
   return {
     at,
+    calls: 1,
     provider,
     model,
     input,
@@ -143,6 +148,26 @@ export function usageOfLine(
   return null
 }
 
+const QUARTER_HOUR = 15 * 60_000
+
+/** Add a call to its quarter of an hour: memory grows with the time a conversation spans. */
+function keep(file: ScannedFile, record: UsageRecord): void {
+  const at = Math.floor(record.at / QUARTER_HOUR) * QUARTER_HOUR
+  const key = `${at}|${record.provider}|${record.model}|${record.billed}`
+  const kept = file.totals.get(key)
+  if (!kept) {
+    file.totals.set(key, { ...record, at })
+    return
+  }
+  kept.calls += record.calls
+  kept.input += record.input
+  kept.output += record.output
+  kept.cacheRead += record.cacheRead
+  kept.cacheWrite += record.cacheWrite
+  kept.total += record.total
+  kept.cost += record.cost
+}
+
 /** Bring one transcript's records up to date; throws when it cannot be read. */
 function scanFile(path: string): ScannedFile {
   const files = cache()
@@ -152,7 +177,7 @@ function scanFile(path: string): ScannedFile {
     if (!stat.isFile()) throw new Error('not a regular file')
     let file = files.get(path)
     if (!file || file.dev !== stat.dev || file.ino !== stat.ino || stat.size < file.offset) {
-      file = { dev: stat.dev, ino: stat.ino, offset: 0, records: [], lastModel: null }
+      file = { dev: stat.dev, ino: stat.ino, offset: 0, totals: new Map(), lastModel: null }
       files.set(path, file)
     }
     // Lines are cut at the byte level, so a character split between two reads stays whole.
@@ -173,7 +198,7 @@ function scanFile(path: string): ScannedFile {
       for (const line of bytes.subarray(0, end).toString('utf8').split('\n')) {
         if (!line.trim()) continue
         const record = usageOfLine(line, file)
-        if (record) file.records.push(record)
+        if (record) keep(file, record)
       }
       // A line still being appended is read again next time.
       pending = Buffer.from(bytes.subarray(end + 1, length))
@@ -214,7 +239,8 @@ export function scanUsage(
       const path = join(directory, name)
       seen.add(path)
       try {
-        conversations.push({ agentId, conversationId: id, records: scanFile(path).records })
+        const totals = scanFile(path).totals
+        conversations.push({ agentId, conversationId: id, records: [...totals.values()] })
       } catch {
         unreadable++
       }
@@ -234,10 +260,27 @@ const BY_PI_NAME = new Map<string, ProviderDef>(
   PROVIDERS.map((provider) => [provider.piName ?? provider.id, provider]),
 )
 
-export function billingOf(provider: string): UsageBilling {
-  const def = BY_PI_NAME.get(provider)
-  if (def?.local) return 'local'
-  if (def?.plan) return 'plan'
+/**
+ * The providers (by Pi's name) used through a subscription now: those that only are, and those
+ * whose subscription credential is set (Anthropic with a Claude token). Past calls are counted by
+ * how the provider is used now.
+ */
+export function planProviders(env: Readonly<Record<string, string | undefined>>): Set<string> {
+  return new Set(
+    PROVIDERS.filter(
+      (provider) => provider.plan || (provider.planEnv && env[provider.planEnv]),
+    ).map((provider) => provider.piName ?? provider.id),
+  )
+}
+
+const ALWAYS_PLANS = planProviders({})
+
+export function billingOf(
+  provider: string,
+  plans: ReadonlySet<string> = ALWAYS_PLANS,
+): UsageBilling {
+  if (BY_PI_NAME.get(provider)?.local) return 'local'
+  if (plans.has(provider)) return 'plan'
   return 'paid'
 }
 
@@ -252,11 +295,16 @@ export const emptyTotals = (): UsageTotals => ({
   estimated: false,
   planTokens: 0,
   localTokens: 0,
+  unpricedTokens: 0,
 })
 
-export function addRecord(totals: UsageTotals, record: UsageRecord): void {
-  const billing = billingOf(record.provider)
-  totals.calls++
+export function addRecord(
+  totals: UsageTotals,
+  record: UsageRecord,
+  plans: ReadonlySet<string> = ALWAYS_PLANS,
+): void {
+  const billing = billingOf(record.provider, plans)
+  totals.calls += record.calls
   totals.inputTokens += record.input
   totals.outputTokens += record.output
   totals.cacheReadTokens += record.cacheRead
@@ -267,7 +315,7 @@ export function addRecord(totals: UsageTotals, record: UsageRecord): void {
   else if (record.cost > 0) {
     totals.cost += record.cost
     if (!record.billed) totals.estimated = true
-  }
+  } else totals.unpricedTokens += record.total
 }
 
 const formatters = new Map<string, Intl.DateTimeFormat>()
@@ -328,12 +376,15 @@ export interface UsageQuery {
   /** Days counted, today included; null for everything saved. */
   days: number | null
   timeZone: string
+  /** The providers used through a subscription now (`planProviders`). */
+  plans?: ReadonlySet<string>
   agentId?: string
   teamId?: string
   now?: number
 }
 
 export function usageReport(db: BazilionDb, paths: Paths, query: UsageQuery): UsageReport {
+  const plans = query.plans ?? ALWAYS_PLANS
   const agents = agentRows(db)
   const shown = agents.filter(
     (agent) =>
@@ -362,13 +413,13 @@ export function usageReport(db: BazilionDb, paths: Paths, query: UsageQuery): Us
     for (const record of conversation.records) {
       const day = dayOf(record.at, query.timeZone)
       if ((from !== null && day < from) || day > to) continue
-      addRecord(totals, record)
+      addRecord(totals, record, plans)
       let dayTotals = days.get(day)
       if (!dayTotals) {
         dayTotals = { day, ...emptyTotals() }
         days.set(day, dayTotals)
       }
-      addRecord(dayTotals, record)
+      addRecord(dayTotals, record, plans)
       let agentTotals = byAgent.get(agent.id)
       if (!agentTotals) {
         agentTotals = {
@@ -381,13 +432,13 @@ export function usageReport(db: BazilionDb, paths: Paths, query: UsageQuery): Us
         }
         byAgent.set(agent.id, agentTotals)
       }
-      addRecord(agentTotals, record)
+      addRecord(agentTotals, record, plans)
       let teamTotals = byTeam.get(agent.team_id)
       if (!teamTotals) {
         teamTotals = { teamId: agent.team_id, teamName: agent.team_name, ...emptyTotals() }
         byTeam.set(agent.team_id, teamTotals)
       }
-      addRecord(teamTotals, record)
+      addRecord(teamTotals, record, plans)
       const modelKey = `${record.provider}\u0000${record.model}`
       let modelTotals = byModel.get(modelKey)
       if (!modelTotals) {
@@ -395,12 +446,12 @@ export function usageReport(db: BazilionDb, paths: Paths, query: UsageQuery): Us
           provider: record.provider,
           providerName: BY_PI_NAME.get(record.provider)?.displayName ?? record.provider,
           model: record.model,
-          billing: billingOf(record.provider),
+          billing: billingOf(record.provider, plans),
           ...emptyTotals(),
         }
         byModel.set(modelKey, modelTotals)
       }
-      addRecord(modelTotals, record)
+      addRecord(modelTotals, record, plans)
     }
   }
   return {
@@ -434,11 +485,15 @@ export function usageReport(db: BazilionDb, paths: Paths, query: UsageQuery): Us
 }
 
 /** Each of an Agent's conversations' use, by conversation id. */
-export function conversationUsage(paths: Paths, agentId: string): Map<string, ConversationUsage> {
+export function conversationUsage(
+  paths: Paths,
+  agentId: string,
+  plans: ReadonlySet<string> = ALWAYS_PLANS,
+): Map<string, ConversationUsage> {
   const usage = new Map<string, ConversationUsage>()
   for (const conversation of scanUsage(paths, [agentId]).conversations) {
     const totals = emptyTotals()
-    for (const record of conversation.records) addRecord(totals, record)
+    for (const record of conversation.records) addRecord(totals, record, plans)
     usage.set(conversation.conversationId, {
       calls: totals.calls,
       totalTokens: totals.totalTokens,

@@ -33,8 +33,8 @@ export function EarlierConversation({
   const router = useRouter()
   const navigate = useNavigate()
   const logRef = useRef<HTMLDivElement | null>(null)
-  useFindInTranscript(logRef, search.find, () => {
-    void navigate({ to: '/', search: to({ find: undefined }), replace: true })
+  useFindInTranscript(logRef, search.find, search.match, () => {
+    void navigate({ to: '/', search: to({ find: undefined, match: undefined }), replace: true })
   })
   const path = `/api/agents/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`
   const [busy, setBusy] = useState(false)

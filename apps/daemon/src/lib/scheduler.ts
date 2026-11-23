@@ -361,11 +361,16 @@ async function fireInboxWake(agentId: string): Promise<void> {
     s.inboxBackoff.delete(agentId)
     if (forgetTurnFailure(`inbox-start:${agentId}`)) signalLiveChange()
     let failure: string | null = null
-    for await (const frame of runAgentTurn(preparedTurn)) {
-      const frameFailure = turnFrameFailure(frame)
-      if (frameFailure) failure ??= turnFailureReason(frameFailure)
+    try {
+      for await (const frame of runAgentTurn(preparedTurn)) {
+        const frameFailure = turnFrameFailure(frame)
+        if (frameFailure) failure ??= turnFailureReason(frameFailure)
+      }
+    } catch (error) {
+      failure ??= turnFailureReason(error)
     }
-    if (failure) {
+    // Stopped by the operator (or the Agent archived): cancelled, not failed.
+    if (failure && !controller.signal.aborted) {
       console.warn(JSON.stringify({ event: 'inbox_wake_failed', agentId, failure: 'turn_failed' }))
       // The mail was read by a turn that failed: Attention says so, as for a failed follow-up.
       rememberTurnFailure({
