@@ -14,7 +14,13 @@ import pixelmatch from 'pixelmatch'
 import type { Browser } from 'playwright'
 import { PNG } from 'pngjs'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { launchBrowser, type Session, type SessionOptions, signIn } from './browser.ts'
+import {
+  closeBrowser,
+  launchBrowser,
+  type Session,
+  type SessionOptions,
+  signIn,
+} from './browser.ts'
 import {
   createLaunchSite,
   DEMO_MODEL,
@@ -112,9 +118,10 @@ describe.skipIf(MODE === 'off')('pictures', () => {
   })
 
   afterAll(async () => {
-    await browser?.close()
+    // The servers first: a browser that hangs on closing must not leave them running.
     await instance?.stop()
     await model?.close()
+    await closeBrowser(browser)
   })
 
   /** The picture, decoded, and Chrome's own PNG bytes (far smaller than a re-encoding). */

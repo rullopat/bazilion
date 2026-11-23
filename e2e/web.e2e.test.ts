@@ -8,7 +8,7 @@ import { expect as pw } from '@playwright/test'
 import type { Browser } from 'playwright'
 import { afterAll, afterEach, beforeAll, expect, test } from 'vitest'
 import { accessibilityProblems } from './accessibility.ts'
-import { launchBrowser, type Session, signIn } from './browser.ts'
+import { closeBrowser, launchBrowser, type Session, signIn } from './browser.ts'
 import {
   createLaunchSite,
   DEMO_MODEL,
@@ -47,9 +47,10 @@ afterEach(async () => {
 })
 
 afterAll(async () => {
-  await browser?.close()
+  // The servers first: a browser that hangs on closing must not leave them running.
   await instance?.stop()
   await model?.close()
+  await closeBrowser(browser)
 })
 
 async function open(options: Parameters<typeof signIn>[2] = {}): Promise<Session> {
@@ -386,6 +387,26 @@ test('a Team and an Agent made outside the page show up without a reload', async
     agents.find((agent) => agent.name === 'Mira')?.teamId,
   )
   expect(session.problems).toEqual([])
+})
+
+test('a page opened before an upgrade reloads for the new build instead of failing', async () => {
+  const session = await open()
+  await session.go(`/?agent=${ids.mira}&panel=connections`)
+  // As after an upgrade: the old build's map is gone from the server, once.
+  let refused = 0
+  await session.page.route(/\/assets\/ConnectionsView-[^/]+\.js$/, async (route) => {
+    if (refused++ === 0) await route.fulfill({ status: 404, body: '' })
+    else await route.continue()
+  })
+  await session.page.getByRole('link', { name: 'Open the map' }).click()
+  await pw(session.page.getByRole('region', { name: /^Connections of/ })).toBeVisible({
+    timeout: 15_000,
+  })
+  // After the reload the page asks for the map's file again, and gets it.
+  await expect.poll(() => refused, { timeout: 10_000 }).toBe(2)
+  // The refused file is the only problem, and the page recovered from it.
+  const refusal = /ConnectionsView|dynamically imported|status of 404/
+  expect(session.problems.filter((problem) => !refusal.test(problem))).toEqual([])
 })
 
 test('the live feed comes back after the daemon restarts', async () => {

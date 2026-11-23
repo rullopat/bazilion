@@ -63,9 +63,12 @@ export function TopBar() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        // Not on top of another dialog: it keeps the focus until it is closed.
+        // Not on top of another dialog: it keeps the focus until it is closed. One still fading
+        // out after Escape (data-state="closed") is closed already.
         const other = Array.from(
-          document.querySelectorAll('[role="dialog"], [role="alertdialog"]'),
+          document.querySelectorAll(
+            '[role="dialog"]:not([data-state="closed"]), [role="alertdialog"]:not([data-state="closed"])',
+          ),
         ).some((dialog) => !dialog.hasAttribute('data-jump-palette'))
         if (!other) setPaletteOpen((open) => !open)
       } else if (

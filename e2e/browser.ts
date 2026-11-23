@@ -31,6 +31,18 @@ export interface Session {
   close(): Promise<void>
 }
 
+/**
+ * Close the browser, giving up after a while: headless Chrome on macOS sometimes never answers,
+ * and a test run must not wait on it (nor leave its servers running behind it).
+ */
+export async function closeBrowser(browser: Browser | undefined): Promise<void> {
+  if (!browser) return
+  await Promise.race([
+    browser.close().catch(() => {}),
+    new Promise((resolve) => setTimeout(resolve, 10_000)),
+  ])
+}
+
 export async function launchBrowser(): Promise<Browser> {
   return chromium.launch({
     executablePath: process.env.BAZILION_E2E_BROWSER ?? findBrowserExecutable().path,
