@@ -19,6 +19,12 @@ export function moveAgent(
     throw new DomainError(404, `team not found: ${destinationTeamId}`)
   }
   if (agent.teamId === destinationTeamId) return agent
+  if (agentRepo.nameTakenInTeam(db, destinationTeamId, agent.name)) {
+    throw new DomainError(
+      409,
+      `That Team already has an Agent named ${agent.name}: rename one of them first.`,
+    )
+  }
   return db.raw.transaction(() => {
     teamPolicyRepo.removeAgentEdges(db, agent.teamId, agent.id)
     agentRepo.setTeam(db, agent.id, destinationTeamId)

@@ -3,15 +3,19 @@ import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import {
+  connectionNeedsSwitch,
   defaultPosition,
   edgeKey,
   endpointLabel,
   hasEdge,
+  MODE_NAME,
   OUTSIDE,
   type PolicyDocument,
   type PolicyMember,
+  SWITCH_QUESTION,
   sameDocument,
   setEdge,
+  switchAndConnect,
   templateDocument,
   templateInput,
 } from '../../lib/team-policy'
@@ -25,7 +29,7 @@ import { TeamPolicyFlow } from './TeamPolicyFlow'
 import { TeamPolicyMatrix } from './TeamPolicyMatrix'
 
 const MODE_HELP: Record<TeamPolicyMode, string> = {
-  open: 'Every member can message every other member, with no connections needed; connections only matter for messages to and from other Teams, or if the Team is made restricted.',
+  open: 'Every member can message every other member, with no connections needed; connections only matter for messages to and from other Teams, or if the Team is set to Connections only.',
   restricted: 'Members message each other only along connections.',
 }
 
@@ -70,8 +74,15 @@ export function TeamPolicyEditor({
     [profiles],
   )
 
-  const toggle = (from: string, to: string, allowed: boolean) =>
+  // In an open template a teammate connection does nothing: drawing one asks to switch first.
+  const [proposed, setProposed] = useState<{ from: string; to: string } | null>(null)
+  const toggle = (from: string, to: string, allowed: boolean) => {
+    if (connectionNeedsSwitch(draft, from, to, allowed)) {
+      setProposed({ from, to })
+      return
+    }
     setDraft((current) => setEdge(current, from, to, allowed))
+  }
 
   const save = async () => {
     setSaving(true)
@@ -121,8 +132,8 @@ export function TeamPolicyEditor({
               value={draft.mode}
               onChange={(mode) => setDraft((current) => ({ ...current, mode }))}
               options={[
-                { id: 'open', label: 'Open' },
-                { id: 'restricted', label: 'Restricted' },
+                { id: 'open', label: MODE_NAME.open },
+                { id: 'restricted', label: MODE_NAME.restricted },
               ]}
             />
           </div>
@@ -216,6 +227,19 @@ export function TeamPolicyEditor({
           </p>
         </footer>
       </section>
+      <ConfirmDialog
+        open={proposed !== null}
+        title={SWITCH_QUESTION.title}
+        description={<p>{SWITCH_QUESTION.description}</p>}
+        confirmLabel={SWITCH_QUESTION.confirm}
+        onConfirm={() => {
+          if (proposed) setDraft((current) => switchAndConnect(current, proposed.from, proposed.to))
+          setProposed(null)
+        }}
+        onOpenChange={(open) => {
+          if (!open) setProposed(null)
+        }}
+      />
       <ConfirmDialog
         open={confirmDiscard}
         title="Discard your changes to this template?"

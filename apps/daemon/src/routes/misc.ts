@@ -76,14 +76,15 @@ miscRouter.get('/health/details', async (c) => {
   }
 
   const skills = discoverSkills(paths)
-  let parseErrors = 0
+  const broken: HealthReport['skills']['broken'] = []
   for (const s of skills) {
     try {
       parseSkillFile(s.skillFile)
-    } catch {
-      parseErrors++
+    } catch (error) {
+      broken.push({ name: s.name, error: error instanceof Error ? error.message : String(error) })
     }
   }
+  const parseErrors = broken.length
 
   let effectiveEnv: NodeJS.ProcessEnv = process.env
   let codexConnected = false
@@ -158,7 +159,17 @@ miscRouter.get('/health/details', async (c) => {
     home: paths.home,
     paths: pathChecks,
     database,
-    skills: { installed: skills.length, parseErrors },
+    skills: { installed: skills.length, parseErrors, broken },
+    problems: [
+      ...Object.entries(pathChecks)
+        .filter(([, present]) => !present)
+        .map(([name]) => `The ${name === 'db' ? 'database' : name} of the home is missing.`),
+      ...(database && !database.ok ? [database.error] : []),
+      ...broken.map((skill) => `The skill ${skill.name} cannot be read: ${skill.error}`),
+      ...(shellSecurity.ok
+        ? []
+        : [`How Agents run commands is not set right: ${shellSecurity.error}`]),
+    ],
     providers: providerSection,
     webSearch: {
       braveConfigured: Boolean(effectiveEnv.BRAVE_API_KEY?.trim()),

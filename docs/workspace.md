@@ -14,7 +14,9 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
 - **The overview** fills the middle while nothing is open: who is waiting for you, who is
   working, every Team with its members, the latest files from every Team, and the Agents that were
   active last. A Team opened on its own shows its members with what each is doing, its views,
-  its latest files and what its Agents said to each other lately.
+  **Today** (its day at a glance: hand-offs and replies between its Agents, files delivered,
+  conversations worked in, questions and approvals waiting, newest first; `bazilion team today
+  <team>` prints the same), its latest files and what its Agents said to each other lately.
 - **The list on the left** shows every Team with its Agents. Each Agent has one line that says
   what it is doing: `Waiting for you: a question`, `Waiting for you: a command to approve`,
   `Working: writing theme.js`, `Follow-ups paused`, `2 new files`, `New activity` or `Idle`. A
@@ -30,13 +32,16 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   hover and replaces that turn. Going to another Agent and back opens the conversation where you
   left it (at the end if you were at the end), for as long as the page is open.
 - **The bar above it** names the Agent, its Team and its model, and holds the conversation menu:
-  read an earlier conversation, continue it, start a new one, rename one.
+  read an earlier conversation, continue it, start a new one, rename one. An Agent that gave
+  itself another name in its IDENTITY.md shows it too (`Sally · Sales Director`);
+  the Agent tab offers to make it its name. Within a Team every Agent has its own name.
 - **The side panel** has five tabs. **Agent**: model and reasoning, saved as soon as you pick
   them with an **Undo**; the Team it belongs to; the ways into its schedules, learning, mailbox,
   skills, Telegram topic and browser. **Team**: members (left out beside a Team's own overview),
-  About you (USER.md), shared memory, settings. **Connections**: who may message whom and what
-  they said lately. **Changes**: what the Team's workspace changed since a commit. **Files**: what
-  its Agents delivered, by kind and by whom, with the same filters as the gallery. The panel
+  About you (USER.md), shared memory, settings, and the Team folder behind **Show the folder**.
+  **Connections**: who may message whom and what they said lately. **Changes**: what the Team's
+  workspace changed since a commit, shown only when the Team folder is a Git repository. **Files**:
+  what its Agents delivered, by kind and by whom, with the same filters as the gallery. The panel
   remembers its last tab; the button at the right of the bar hides it.
 - **Three full-width views** take the place of the conversation, with the list folded to avatars:
   the Connections map ([Team Policy](team-policy.md)), Changes ([change review](change-review.md))

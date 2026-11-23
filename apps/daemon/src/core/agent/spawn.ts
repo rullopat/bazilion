@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  AGENT_ROLE_MAX,
   type Agent,
   agentNameProblem,
   DEFAULT_TEAM_ID,
@@ -15,11 +16,35 @@ import * as agentRepo from '../repos/agents.ts'
 import * as teamRepo from '../repos/teams.ts'
 import { discoverSkills } from '../skills/discover.ts'
 
+/** Put the role at the top of the Agent's AGENTS.md and drop its first-run ritual. */
+function giveRole(
+  dir: string,
+  role: string,
+  teamName: string,
+  addedBy: { id: string; name: string } | undefined,
+): void {
+  const day = new Date().toISOString().slice(0, 10)
+  const who = addedBy
+    ? `${addedBy.name} (Agent id ${addedBy.id}) added you to the Team ${teamName} on ${day}, when the operator asked. Report back to ${addedBy.name} unless the operator says otherwise.`
+    : `The operator added you to the Team ${teamName} on ${day}.`
+  const file = join(dir, 'AGENTS.md')
+  const rest = existsSync(file) ? readFileSync(file, 'utf8').trim() : ''
+  writeFileSync(
+    file,
+    `${['# Your role', '', role, '', who].join('\n')}\n${rest ? `\n---\n\n${rest}\n` : ''}`,
+  )
+  rmSync(join(dir, 'BOOTSTRAP.md'), { force: true })
+}
+
 export interface SpawnAgentInput {
   profileId: string
   name?: string
   modelOverride?: string | null
   reasoningLevel?: ReasoningLevel
+  /** What it is for; it then starts knowing its job, without the get-to-know questions. */
+  role?: string
+  /** Who added it, said under its role: "the operator" unless an Agent did. */
+  addedBy?: { id: string; name: string }
   /**
    * Team the new agent joins. One agent belongs to exactly one team. When
    * omitted, falls back to the seeded 'default' team — the same fallback
@@ -33,6 +58,10 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
   const givenName = input.name?.trim() || undefined
   const nameProblem = givenName === undefined ? null : agentNameProblem(givenName)
   if (nameProblem) throw new DomainError(400, nameProblem)
+  const role = input.role?.trim() || undefined
+  if (role && role.length > AGENT_ROLE_MAX) {
+    throw new DomainError(400, `A role is at most ${AGENT_ROLE_MAX} characters.`)
+  }
   const loaded = loadProfile(db, input.profileId)
   const id = randomUUID()
   const dir = paths.agentDir(id)
@@ -72,10 +101,14 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
           `spawnAgent: team "${teamId}" does not exist. Pass an explicit --team or complete first-run setup first.`,
         )
       }
+      if (givenName !== undefined && agentRepo.nameTakenInTeam(db, team.id, givenName)) {
+        throw new DomainError(409, `${team.name} already has an Agent named ${givenName}.`)
+      }
       const agent = agentRepo.insert(db, {
         id,
         profileId: input.profileId,
-        name: givenName ?? loaded.profile.name,
+        // A name given is the Agent's own; the template's is numbered when the Team has it.
+        name: givenName ?? agentRepo.freeNameInTeam(db, team.id, loaded.profile.name),
         modelOverride: input.modelOverride ?? null,
         reasoningLevel,
         status: 'idle',
@@ -90,6 +123,10 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
           ? discoverSkills(paths).map((s) => s.name)
           : loaded.defaultSkills
       for (const s of skills) agentRepo.attachSkill(db, id, s)
+
+      // Given a role, it starts knowing its job: the get-to-know questions are for Agents that
+      // are told who they are in their first conversation.
+      if (role) giveRole(dir, role, team.name, input.addedBy)
 
       return agent
     })()

@@ -4,6 +4,8 @@
 // question answered in the conversation, dropdowns, shortcuts, the phone layout and the
 // notifications switch. Run with `pnpm build && pnpm test:e2e`.
 
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect as pw } from '@playwright/test'
 import type { Browser } from 'playwright'
 import { afterAll, afterEach, beforeAll, expect, test } from 'vitest'
@@ -403,14 +405,143 @@ test('an open Team says its members need no connections, and what saved ones are
   try {
     const session = await open()
     await session.go(`/?agent=${ids.scout}&panel=connections`)
-    const card = session.page.getByText('Open Team').locator('..')
+    const card = session.page.getByText('Everyone can message everyone').locator('..')
     await pw(card).toContainText('with no connections needed')
-    await pw(card).toContainText(
-      '2 connections between teammates are saved; they apply once the Team is restricted.',
-    )
+    await pw(card).toContainText('2 connections between teammates are saved; they apply then.')
     expect(session.problems).toEqual([])
   } finally {
     await instance.api('/api/teams/research/policy', { method: 'PATCH', body: { edges: [] } })
+  }
+})
+
+test('an Agent added with its job starts on it, and a Team has each name once', async () => {
+  const session = await open()
+  await session.go('/?team=launch', 1500)
+  const home = session.page.getByRole('region', { name: 'Launch' })
+  const dialog = session.page.getByRole('dialog', { name: 'Add an Agent' })
+  await home.getByRole('button', { name: 'Add an Agent' }).click()
+  await dialog.getByLabel('Name').fill('Rhea')
+  await dialog.getByLabel('What is it for?').fill('Writes the weekly newsletter.')
+  await dialog.getByRole('button', { name: 'Add the Agent' }).click()
+  await pw(dialog).toBeHidden()
+  const agents = await instance.api<Array<{ id: string; name: string }>>('/api/agents')
+  const rhea = agents.find((agent) => agent.name === 'Rhea')
+  expect(rhea).toBeDefined()
+  try {
+    // Its job is on top of its instructions, and it skips the ritual that asks its name.
+    const dir = join(instance.home, 'agents', rhea?.id ?? '')
+    expect(readFileSync(join(dir, 'AGENTS.md'), 'utf8')).toMatch(
+      /^# Your role\n\nWrites the weekly newsletter\.\n\nThe operator added you to the Team Launch/,
+    )
+    expect(existsSync(join(dir, 'BOOTSTRAP.md'))).toBe(false)
+    // Adding it opened its conversation, its first line ready to be typed.
+    await pw(session.page.getByPlaceholder('Message Rhea')).toBeVisible()
+    // Another "mira" in Launch is refused, whatever its case. Jump to adds to the open Agent's
+    // Team, without leaving the page while it is still loading.
+    await session.page.keyboard.press('Control+k')
+    await session.page.keyboard.type('Add an Agent')
+    await session.page
+      .getByRole('option', { name: /Add an Agent/ })
+      .first()
+      .click()
+    await pw(dialog.getByLabel('Team')).toContainText('Launch')
+    await dialog.getByLabel('Name').fill('mira')
+    await dialog.getByRole('button', { name: 'Add the Agent' }).click()
+    await pw(dialog.getByRole('alert')).toContainText('Launch already has an Agent named mira.')
+    expect(session.problems.filter((problem) => !problem.includes('409'))).toEqual([])
+  } finally {
+    if (rhea) await instance.api(`/api/agents/${rhea.id}`, { method: 'DELETE' })
+  }
+})
+
+test('an Agent that calls itself something else shows both names and can take its own', async () => {
+  const identity = join(instance.home, 'agents', ids.quill, 'IDENTITY.md')
+  const before = readFileSync(identity, 'utf8')
+  writeFileSync(identity, before.replace('- **Name:** Quill', '- **Name:** Quillon'))
+  try {
+    const session = await open()
+    await session.go(`/?agent=${ids.quill}&panel=agent`, 1500)
+    await pw(session.page.getByRole('heading', { level: 1 })).toContainText('Quillon')
+    await session.page.getByRole('button', { name: 'Use Quillon as its name' }).click()
+    const rail = session.page.getByRole('navigation', { name: 'Teams and agents' })
+    await pw(rail.getByRole('link').filter({ hasText: 'Quillon' })).toBeVisible({ timeout: 5_000 })
+    await pw(session.page.getByRole('button', { name: 'Use Quillon as its name' })).toBeHidden()
+    expect(session.problems).toEqual([])
+  } finally {
+    writeFileSync(identity, before)
+    await instance.api(`/api/agents/${ids.quill}`, { method: 'PATCH', body: { name: 'Quill' } })
+  }
+})
+
+test('connecting two teammates of an open Team asks to switch it to Connections only', async () => {
+  const session = await open()
+  await session.go(`/?agent=${ids.scout}&view=connections`, 1500)
+  const modes = session.page.getByRole('group', { name: 'Who can message whom' })
+  await pw(modes.getByRole('button', { name: 'Everyone' })).toHaveAttribute('aria-pressed', 'true')
+  await session.page
+    .getByRole('group', { name: 'Show as' })
+    .getByRole('button', { name: 'Table' })
+    .click()
+  await session.page.getByRole('button', { name: 'Allow Scout to Sage' }).click()
+  const question = session.page.getByRole('dialog', {
+    name: 'Switch the Team to Connections only?',
+  })
+  await pw(question).toBeVisible()
+  await question.getByRole('button', { name: 'Switch and connect' }).click()
+  await pw(modes.getByRole('button', { name: 'Connections only' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await pw(session.page.getByRole('button', { name: 'Deny Scout to Sage' })).toBeVisible()
+  // Nothing is saved until Save.
+  const policy = await instance.api<{ mode: string }>('/api/teams/research/policy')
+  expect(policy.mode).toBe('open')
+  expect(session.problems).toEqual([])
+})
+
+test("a Team's overview shows its day so far", async () => {
+  const session = await open()
+  await session.go('/?team=launch', 1500)
+  const home = session.page.getByRole('region', { name: 'Launch' })
+  await pw(home.getByRole('heading', { name: 'Today' })).toBeVisible()
+  // Mira handed the launch work to her teammates in the demo history.
+  await pw(home.getByRole('link').filter({ hasText: 'Mira handed off to' }).first()).toBeVisible()
+  await pw(home.getByRole('link').filter({ hasText: 'delivered' }).first()).toBeVisible()
+  expect(session.problems).toEqual([])
+})
+
+test('a common connection asks only for what it needs and keeps its secret', async () => {
+  const session = await open()
+  await session.go('/config/mcp')
+  await session.page.getByRole('button', { name: 'Connect Notion' }).click()
+  const dialog = session.page.getByRole('dialog', { name: 'Connect Notion' })
+  const add = dialog.getByRole('button', { name: 'Add Notion' })
+  await pw(add).toBeDisabled()
+  // Checked once it has faded in: halfway, its colours are blended with the page behind it.
+  await session.page.evaluate(
+    // A cancelled animation rejects its `finished`: it is over all the same.
+    `Promise.allSettled(document.getAnimations()
+      .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+      .map((animation) => animation.finished))`,
+  )
+  expect(await accessibilityProblems(session.page, 'the Connect Notion dialog')).toEqual([])
+  await dialog.getByLabel('Integration secret').fill('ntn_PRIVATE_E2E_VALUE')
+  await add.click()
+  await pw(dialog).toBeHidden()
+  try {
+    const servers = session.page.getByRole('region', { name: 'Servers' })
+    await pw(servers).toContainText('variables: NOTION_TOKEN')
+    await pw(servers).toContainText('asks you before tools that send or change something')
+    await pw(
+      session.page.getByRole('region', { name: 'Common connections' }).getByText('Added as notion'),
+    ).toBeVisible()
+    expect(await session.page.content()).not.toContain('ntn_PRIVATE_E2E_VALUE')
+    expect(session.problems).toEqual([])
+  } finally {
+    // No later turn may start it: it would download the server.
+    const { servers } = await instance.api<{ servers: Array<{ id: string }> }>('/api/mcp-servers')
+    for (const server of servers)
+      await instance.api(`/api/mcp-servers/${server.id}`, { method: 'DELETE' })
   }
 })
 

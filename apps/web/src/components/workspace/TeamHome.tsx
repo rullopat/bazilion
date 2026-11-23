@@ -1,11 +1,12 @@
 // What the middle of the workspace shows when a Team is in view and no Agent is open: the Team's
-// members to pick from, each with what it is doing.
+// members to pick from, each with what it is doing, and its day so far.
 
 import type { Team } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft, Code2, Images, Network, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { teamSummary, useActivity } from '../../lib/activity'
+import { MODE_NAME } from '../../lib/team-policy'
 import { AgentAvatar } from '../AgentAvatar'
 import { Button } from '../Button'
 import { TeamThread, useTeamMessages } from '../connections/TeamThread'
@@ -15,6 +16,7 @@ import { SpawnDialog } from '../SpawnDialog'
 import { useWorkspace } from './context'
 import { useTeamCounts } from './counts'
 import { STATE_DOT } from './state-style'
+import { TeamToday } from './TeamToday'
 
 const VIEWS = [
   { view: 'connections', label: 'Connections', icon: Network },
@@ -110,33 +112,43 @@ export function TeamHome({ team }: { team: Team }) {
           </>
         )}
 
+        {members.length > 0 && (
+          <>
+            <h2 className={HEADING}>Today</h2>
+            <TeamToday teamId={team.id} />
+          </>
+        )}
+
         <div className="mt-8 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {VIEWS.map(({ view, label, icon: Icon }) => (
-            <Link
-              key={view}
-              to="/"
-              search={{ team: team.id, view }}
-              className="flex min-h-16 items-center gap-2.5 rounded-2xl border border-border bg-muted/50 px-3 py-2.5 text-foreground hover:border-sapphire-light hover:bg-accent/30"
-            >
-              <Icon className="size-[18px] shrink-0 text-mocha" aria-hidden="true" />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">{label}</span>
-                <span className="block truncate text-xs text-mocha">
-                  {view === 'connections'
-                    ? `${team.policyMode === 'open' ? 'Open' : 'Restricted'} · ${
-                        messages.data?.length
-                          ? `${messages.data.length} message${messages.data.length === 1 ? '' : 's'}`
-                          : 'no messages yet'
-                      }`
-                    : view === 'changes'
-                      ? counts.changes === null
-                        ? 'Not a Git repository'
-                        : `${counts.changes} changed file${counts.changes === 1 ? '' : 's'}`
-                      : `${counts.files ?? 0} saved file${counts.files === 1 ? '' : 's'}`}
+          {/* Changes only for a Team whose folder is a Git repository. */}
+          {VIEWS.filter(({ view }) => view !== 'changes' || counts.repository !== false).map(
+            ({ view, label, icon: Icon }) => (
+              <Link
+                key={view}
+                to="/"
+                search={{ team: team.id, view }}
+                className="flex min-h-16 items-center gap-2.5 rounded-2xl border border-border bg-muted/50 px-3 py-2.5 text-foreground hover:border-sapphire-light hover:bg-accent/30"
+              >
+                <Icon className="size-[18px] shrink-0 text-mocha" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{label}</span>
+                  <span className="block truncate text-xs text-mocha">
+                    {view === 'connections'
+                      ? `${MODE_NAME[team.policyMode]} · ${
+                          messages.data?.length
+                            ? `${messages.data.length} message${messages.data.length === 1 ? '' : 's'}`
+                            : 'no messages yet'
+                        }`
+                      : view === 'changes'
+                        ? counts.changes === null
+                          ? 'Not readable'
+                          : `${counts.changes} changed file${counts.changes === 1 ? '' : 's'}`
+                        : `${counts.files ?? 0} saved file${counts.files === 1 ? '' : 's'}`}
+                  </span>
                 </span>
-              </span>
-            </Link>
-          ))}
+              </Link>
+            ),
+          )}
         </div>
 
         {files.results.length > 0 && (

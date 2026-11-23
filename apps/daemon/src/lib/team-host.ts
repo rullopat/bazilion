@@ -3,12 +3,12 @@
 // Team, at most a few per turn; it starts knowing its role and who made it, without the first-run
 // ritual, and in a restricted Team it is connected with its creator both ways.
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { agentNameProblem } from '@bazilion/api-types'
+import { AGENT_ROLE_MAX, agentNameProblem, chosenName } from '@bazilion/api-types'
 import {
   agentRepo,
   type BazilionDb,
+  loadIdentityFromFile,
   mayMessage,
   type Paths,
   profileRepo,
@@ -20,9 +20,17 @@ import type { AgentContact, CreateAgentArgs, CreatedAgent } from '../runtime/wor
 import { signalLiveChange } from './live-signal.ts'
 import { notifyDirectoryDirty } from './telegram/directory.ts'
 
+/** The name an Agent gave itself in its IDENTITY.md, when it is not its name in the list. */
+function calledName(agent: { name: string; dir: string }): { calledName?: string } {
+  const own = chosenName({
+    ...agent,
+    identity: loadIdentityFromFile(join(agent.dir, 'IDENTITY.md')),
+  })
+  return own ? { calledName: own } : {}
+}
+
 /** Agents one turn may add: enough for a Team, not a runaway loop. */
 export const MAX_CREATED_PER_TURN = 6
-const MAX_ROLE = 4_000
 
 /**
  * The other Agents that are not archived: every teammate, and Agents of other Teams that Team
@@ -44,6 +52,8 @@ export function agentContacts(db: BazilionDb, agentId: string): AgentContact[] {
     .map((agent) => ({
       id: agent.id,
       name: agent.name,
+      // Only a teammate is reached by the name it gave itself (`recipientOf`).
+      ...(agent.teamId === self.teamId ? calledName(agent) : {}),
       teamId: agent.teamId,
       teamName: teams.get(agent.teamId) ?? agent.teamId,
       template: templates.get(agent.profileId) ?? agent.profileId,
@@ -54,16 +64,6 @@ export function agentContacts(db: BazilionDb, agentId: string): AgentContact[] {
     .filter((contact) => contact.teamId !== self.teamId && contact.canMessage)
     .sort((a, b) => a.teamName.localeCompare(b.teamName))
   return [...own, ...others]
-}
-
-function roleNote(role: string, creator: { id: string; name: string }, teamName: string): string {
-  return [
-    '# Your role',
-    '',
-    role,
-    '',
-    `${creator.name} (Agent id ${creator.id}) added you to the Team ${teamName} on ${new Date().toISOString().slice(0, 10)}, when the operator asked. Report back to ${creator.name} unless the operator says otherwise.`,
-  ].join('\n')
 }
 
 /** `agent_create` for one turn of `creatorId`. */
@@ -83,21 +83,15 @@ export function createDbTeamHost(
       const nameProblem = agentNameProblem(name)
       if (nameProblem) throw new Error(`agent_create: ${nameProblem}`)
       if (!role) throw new Error('agent_create: "role" is required: say what the Agent is for')
-      if (role.length > MAX_ROLE) {
-        throw new Error(`agent_create: a role is at most ${MAX_ROLE} characters`)
+      if (role.length > AGENT_ROLE_MAX) {
+        throw new Error(`agent_create: a role is at most ${AGENT_ROLE_MAX} characters`)
       }
       if (created >= MAX_CREATED_PER_TURN) {
         throw new Error(
           `agent_create: at most ${MAX_CREATED_PER_TURN} Agents per turn; ask the operator before adding more`,
         )
       }
-      const taken = agentRepo
-        .list(db)
-        .some(
-          (agent) =>
-            agent.teamId === creator.teamId && agent.name.toLowerCase() === name.toLowerCase(),
-        )
-      if (taken) {
+      if (agentRepo.nameTakenInTeam(db, creator.teamId, name)) {
         throw new Error(`agent_create: this Team already has an Agent named "${name}"`)
       }
 
@@ -120,22 +114,15 @@ export function createDbTeamHost(
         name,
         ...(model && model !== template.defaultModel ? { modelOverride: model } : {}),
         teamId: creator.teamId,
+        // It starts knowing its job and who to report to.
+        role,
+        addedBy: { id: creator.id, name: creator.name },
       })
       created++
-
-      // It starts knowing its job and who to report to; the first-run ritual is for the Agents
-      // the operator makes, who tell them who they are.
-      const agentsFile = join(agent.dir, 'AGENTS.md')
       const teamName =
         db.raw
           .query<{ name: string }, [string]>('SELECT name FROM teams WHERE id = ?')
           .get(creator.teamId)?.name ?? creator.teamId
-      const rest = existsSync(agentsFile) ? readFileSync(agentsFile, 'utf8').trim() : ''
-      writeFileSync(
-        agentsFile,
-        `${roleNote(role, creator, teamName)}\n${rest ? `\n---\n\n${rest}\n` : ''}`,
-      )
-      rmSync(join(agent.dir, 'BOOTSTRAP.md'), { force: true })
 
       const restricted = teamPolicyRepo.mode(db, creator.teamId) === 'restricted'
       if (restricted) {

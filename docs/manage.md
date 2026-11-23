@@ -10,10 +10,10 @@ with the reason.
 
 | Page | Address | What you do there | CLI |
 | --- | --- | --- | --- |
-| Agents | `/agents` | Find an Agent, archive, restore, move to another Team, delete, spawn | `bazilion agent list\|spawn\|archive\|unarchive\|move\|delete` |
+| Agents | `/agents` | Find an Agent, add one, archive, restore, move to another Team, delete | `bazilion agent list\|spawn\|archive\|unarchive\|move\|delete` |
 | Teams | `/teams` | Create a Team in a new folder or on a project folder; remove an empty one | `bazilion team add\|list\|rm` |
-| Agent templates | `/templates/agents` | Create a template; edit its settings and files; spawn from it; delete an unused one | `bazilion profile create\|list\|show\|edit\|update\|delete` |
-| Team templates | `/templates/teams` | Create a roster; arrange its Agents and connections; spawn it | `bazilion team-template list\|create\|show\|spawn\|rm` |
+| Agent templates | `/templates/agents` | Create a template; edit its settings and files; add an Agent from it; delete an unused one | `bazilion profile create\|list\|show\|edit\|update\|delete` |
+| Team templates | `/templates/teams` | Create a roster; arrange its Agents and connections; use it for a Team | `bazilion team-template list\|create\|show\|spawn\|rm` |
 | Skills | `/skills` | Import from OpenClaw, a folder or a ZIP file; read the scan's findings; remove | `bazilion skill list\|import\|rm` |
 | Usage | `/usage` | Tokens and money per day, Team, Agent and model ([usage](usage.md)) | `bazilion usage` |
 
@@ -24,7 +24,16 @@ Agents are grouped by Team. **Find** matches a name, or the creature and vibe fr
 the Agent was spawned from and the model it answers with, and says so when that model is not in
 Chat. An archived Agent keeps its files and conversations and takes no work; **Restore** brings
 it back. **Move to another Team** keeps its conversations and files and leaves its connections
-behind. **Delete permanently** removes everything, after asking.
+behind. **Delete permanently** removes everything, after asking. A row shows the name an Agent
+gave itself in IDENTITY.md when it differs (`· calls itself Sales Director`).
+
+**Add an Agent** asks for a template, a Team, a name and **What is it for?**. With a role the
+Agent starts working at once: the role goes on top of its AGENTS.md with who added it, and it skips
+the first-run ritual that would ask you its name and purpose. Without one it starts with that
+ritual. From the CLI: `bazilion agent spawn --profile <template> --name Ana --role "Runs the
+weekly newsletter"`. Names are unique within a Team, whatever their case: adding, renaming or
+moving an Agent to a Team that has one by that name is refused (an Agent added without a name
+takes its template's, numbered when taken: `Writer 2`).
 
 ## Teams
 
@@ -53,8 +62,8 @@ spawned from it or a Team template uses it.
 
 A Team template is a roster: one Agent per slot, each from an Agent template, and the
 connections between them. On its page, drag from one Agent to another to connect them, or use
-the **Matrix** view; **Save** keeps the roster. **Spawn this Team** creates the Agents and
-connections in a new Team or in one that exists ([team policy](team-policy.md)).
+the **Matrix** view; **Save** keeps the roster. **Use this template** adds the Agents and
+connections to a new Team or to one that exists ([team policy](team-policy.md)).
 
 ## Skills
 

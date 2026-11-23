@@ -238,7 +238,15 @@ export function useChatSession({
   /** Stop the running turn, wherever it came from. */
   async function stop() {
     try {
-      await api(`${base}/cancel`, { method: 'POST' })
+      const stopped = await api<{ cancelled: boolean; queuePaused: boolean }>(`${base}/cancel`, {
+        method: 'POST',
+      })
+      // Stop also holds the follow-ups waiting behind the turn: say so, and where to resume.
+      if (stopped.queuePaused) {
+        pushNote(
+          'The follow-ups waiting behind this turn are paused too. Resume them under Follow-ups when you are ready.',
+        )
+      }
     } catch (error) {
       // 409: nothing was running any more.
       if (!(error instanceof ApiError && error.status === 409)) {

@@ -8,5 +8,12 @@ export function unarchiveAgent(db: BazilionDb, id: string): void {
   if (agent.status !== 'archived') {
     throw new DomainError(400, `agent is not archived (status: ${agent.status})`)
   }
+  // While it was archived, another Agent of its Team may have taken its name.
+  if (agentRepo.nameTakenInTeam(db, agent.teamId, agent.name, agent.id)) {
+    throw new DomainError(
+      409,
+      `Its Team now has another Agent named ${agent.name}: rename one of them first.`,
+    )
+  }
   agentRepo.unarchive(db, agent.id)
 }

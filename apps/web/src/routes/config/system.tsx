@@ -13,6 +13,7 @@ const fetchSystem = createServerFn({ method: 'GET' }).handler(async () => {
   ])
   return {
     ok: health.ok,
+    problems: health.problems ?? [],
     runtime: health.shellSecurity,
     // The same words as on the Commands card, where these are set.
     commands: tools.find((tool) => tool.id === 'commands')?.state ?? null,
@@ -25,13 +26,13 @@ export const Route = createFileRoute('/config/system')({
 })
 
 function SystemPage() {
-  const { ok, runtime, commands } = Route.useLoaderData()
+  const { ok, problems, runtime, commands } = Route.useLoaderData()
   return (
     <ConfigPage
       title="System"
       description="The installation itself: its health, how Agents run commands, and a backup of everything."
     >
-      <HealthCard ok={ok} />
+      <HealthCard ok={ok} problems={problems} />
       <RuntimeCard shell={runtime} state={commands} />
       <BackupCard />
     </ConfigPage>

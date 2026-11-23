@@ -135,7 +135,7 @@ export async function spawnAndBind(
   rawName: string,
   teamSlug: string | null = null,
 ): Promise<CommandResult> {
-  const requestedName = rawName === '-' ? autoName(ctx, profile) : rawName
+  const requestedName = rawName === '-' ? autoName(ctx, profile, teamSlug ?? 'default') : rawName
 
   let agent: Awaited<ReturnType<typeof spawnAgent>>
   try {
@@ -186,11 +186,12 @@ export async function spawnAndBind(
 }
 
 /**
- * Auto-name format: `<profile-id>-<count>` where `count` is the next integer
- * after the existing agent count for this profile. Stable + greppable; the
- * doc earmarks alternative formats (adjective+noun) as a future polish.
+ * Auto-name format: `<profile-id>-<n>`, from the next integer after the existing agent count for
+ * this profile, moving on past a name the Team already has (after a delete, `writer-2` may still
+ * be there). Stable + greppable.
  */
-function autoName(ctx: Pick<CommandCtx, 'db'>, profile: Profile): string {
-  const count = agentRepo.countByProfile(ctx.db, profile.id)
-  return `${profile.id}-${count + 1}`
+function autoName(ctx: Pick<CommandCtx, 'db'>, profile: Profile, teamId: string): string {
+  let n = agentRepo.countByProfile(ctx.db, profile.id) + 1
+  while (agentRepo.nameTakenInTeam(ctx.db, teamId, `${profile.id}-${n}`)) n++
+  return `${profile.id}-${n}`
 }

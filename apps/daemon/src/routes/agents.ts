@@ -60,6 +60,7 @@ agentsRouter.post('/', async (c) => {
     ...(typeof body.model === 'string' && body.model ? { modelOverride: body.model } : {}),
     ...(body.reasoningLevel ? { reasoningLevel: body.reasoningLevel } : {}),
     ...(typeof body.teamId === 'string' && body.teamId ? { teamId: body.teamId } : {}),
+    ...(typeof body.role === 'string' && body.role.trim() ? { role: body.role } : {}),
   })
   notifyDirectoryDirty()
   return c.json({ agent }, 201)
@@ -85,6 +86,12 @@ agentsRouter.patch('/:id', async (c) => {
   }
   const nameProblem = typeof name === 'string' ? agentNameProblem(name.trim()) : null
   if (nameProblem) return c.json({ error: nameProblem }, 400)
+  if (typeof name === 'string') {
+    const current = agentRepo.get(getCtx().db, id)
+    if (current && agentRepo.nameTakenInTeam(getCtx().db, current.teamId, name, id)) {
+      return c.json({ error: `This Team already has an Agent named ${name.trim()}.` }, 409)
+    }
+  }
   if (
     telegramMirrorMode !== undefined &&
     telegramMirrorMode !== 'minimal' &&

@@ -68,6 +68,7 @@ function ipcBashApproval(call: WorkerIpcCall, input: AgentTurnInput): BashApprov
         command: request.command,
         risks: [...request.risks],
         mode: input.bashApprovalMode,
+        ...(request.tool ? { tool: request.tool } : {}),
       })
       return approval.status === 'allowed' ? 'approved' : 'denied'
     },
@@ -113,7 +114,15 @@ async function openAgentTurn(
       ? { invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }) }
       : undefined,
     mcpHost: served.has('mcpHost')
-      ? { invoke: (serverId, toolName, args) => call('mcpInvoke', { serverId, toolName, args }) }
+      ? {
+          invoke: (serverId, toolName, args, options) =>
+            call('mcpInvoke', {
+              serverId,
+              toolName,
+              args,
+              ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+            }),
+        }
       : undefined,
     webSearchHost: served.has('webSearchHost')
       ? { search: (args) => call('webSearch', args) }

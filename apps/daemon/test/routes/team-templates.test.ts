@@ -185,6 +185,23 @@ test('spawning into an existing Team appends with unique names and keeps its mod
   expect(policy.edges).toHaveLength(6)
 })
 
+test('a slot named like an Agent of the Team in another case gets a number, not a refusal', async () => {
+  const { call } = await setup()
+  await call('/api/team-templates', { method: 'POST', body: { id: 'review', ...roster } })
+  await call('/api/team-templates/review/spawn', { method: 'POST', body: { teamId: 'shared' } })
+  await call('/api/team-templates', {
+    method: 'POST',
+    body: { id: 'shouty', ...roster, slots: [{ profileId: 'p', agentName: 'AUTHOR' }], edges: [] },
+  })
+  const spawned = await call('/api/team-templates/shouty/spawn', {
+    method: 'POST',
+    body: { teamId: 'shared' },
+  })
+  expect(spawned.status).toBe(201)
+  const policy = (await (await call('/api/teams/shared/policy')).json()) as TeamPolicy
+  expect(policy.members.map((agent) => agent.name)).toContain('AUTHOR-2')
+})
+
 test('a failed spawn leaves no new Team or Agent directories behind', async () => {
   const { ctx, call } = await setup()
   await call('/api/team-templates', { method: 'POST', body: { id: 'review', ...roster } })

@@ -213,10 +213,6 @@ export function MailboxView({
         )}
       </SetupCard>
 
-      {senders.length > 0 && (
-        <SendMessage agent={agent} senders={senders} onSent={() => void onChanged()} />
-      )}
-
       <SetupCard
         labelledBy="agent-loop-breaks"
         icon={<OctagonX className="size-5" />}
@@ -245,6 +241,11 @@ export function MailboxView({
           </CardList>
         )}
       </SetupCard>
+
+      {/* A way to try how the Agent handles mail, not mail itself: last, and folded. */}
+      {senders.length > 0 && (
+        <SendMessage agent={agent} senders={senders} onSent={() => void onChanged()} />
+      )}
     </div>
   )
 }
@@ -263,6 +264,7 @@ function SendMessage({
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [trying, setTrying] = useState(false)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -286,43 +288,52 @@ function SendMessage({
     <SetupCard
       labelledBy="agent-mailbox-send"
       icon={<Send className="size-5" />}
-      title="Send a message to this Agent"
+      title="Try a message from a teammate"
       description={`Write to ${agent.name} as one of its teammates, to see how it handles mail.`}
-    >
-      <CardForm onSubmit={(event) => void submit(event)}>
-        <SelectField
-          label="From"
-          value={from}
-          options={senders}
-          disabled={submitting}
-          onChange={setFrom}
-        />
-        <TextAreaField
-          label="Message"
-          value={text}
-          rows={3}
-          disabled={submitting}
-          onChange={(value) => {
-            setText(value)
-            setSent(false)
-          }}
-        />
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Button variant="primary" type="submit" disabled={submitting || !text.trim()}>
-            {submitting ? 'Sending…' : 'Send'}
+      action={
+        !trying && (
+          <Button variant="ghost" onClick={() => setTrying(true)}>
+            Try it
           </Button>
-          <p
-            role="status"
-            className={`m-0 text-sm font-medium ${error ? 'text-warning' : 'text-success'}`}
-          >
-            {error
-              ? `Not sent: ${error}`
-              : sent
-                ? `Sent. ${agent.name} reads it when it is free.`
-                : ''}
-          </p>
-        </div>
-      </CardForm>
+        )
+      }
+    >
+      {trying && (
+        <CardForm onSubmit={(event) => void submit(event)}>
+          <SelectField
+            label="From"
+            value={from}
+            options={senders}
+            disabled={submitting}
+            onChange={setFrom}
+          />
+          <TextAreaField
+            label="Message"
+            value={text}
+            rows={3}
+            disabled={submitting}
+            onChange={(value) => {
+              setText(value)
+              setSent(false)
+            }}
+          />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Button variant="primary" type="submit" disabled={submitting || !text.trim()}>
+              {submitting ? 'Sending…' : 'Send'}
+            </Button>
+            <p
+              role="status"
+              className={`m-0 text-sm font-medium ${error ? 'text-warning' : 'text-success'}`}
+            >
+              {error
+                ? `Not sent: ${error}`
+                : sent
+                  ? `Sent. ${agent.name} reads it when it is free.`
+                  : ''}
+            </p>
+          </div>
+        </CardForm>
+      )}
     </SetupCard>
   )
 }

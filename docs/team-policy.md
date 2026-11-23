@@ -13,7 +13,9 @@ Telegram, Results, questions and notifications.
   edges between slots and a policy mode. Spawning a template creates the Agents and their edges.
 
 A Team's policy is a **mode** plus directed **allow edges**. An edge endpoint is a member Agent or
-`outside`, which stands for every Agent in other Teams.
+`outside`, which stands for every Agent in other Teams. The web names the modes by what they do:
+**Everyone** (`open`: everyone can message everyone) and **Connections only** (`restricted`: only
+along connections).
 
 | Message | Allowed when |
 | --- | --- |
@@ -32,7 +34,9 @@ reason, and a `team_policy_denied` line in the daemon log. Nothing is stored and
 An Agent that moves to another Team loses its edges and joins the new Team with none; in a restricted
 Team a new member starts isolated until you add edges. Edits take effect immediately and the last
 write wins. Edges between members of an open Team are kept but unused: the Connections panel says
-how many are saved, and they apply once the Team is restricted.
+how many are saved, and they apply once the Team is restricted. Drawing a connection between two
+teammates of an open Team asks first whether to switch the Team to **Connections only**, since
+the connection would otherwise change nothing; a connection to or from `outside` needs no switch.
 
 The loop guard on message chains (the first message and eight replies, unless changed under
 **Setup → Tools**) is separate from policy: it bounds cost, not reach.
@@ -42,11 +46,11 @@ The loop guard on message chains (the first message and eight replies, unless ch
 | Task | CLI | Web |
 | --- | --- | --- |
 | Show a Team's policy | `bazilion team policy show <team>` | **Connections** in the side panel |
-| Open or restrict a Team | `bazilion team policy mode <team> open\|restricted` | Open/Restricted switch of the Connections view |
+| Open or restrict a Team | `bazilion team policy mode <team> open\|restricted` | **Who can message whom** in the Connections view: Everyone or Connections only |
 | Add or remove an edge | `bazilion team policy allow\|deny <team> <from> <to>` | Connections view: the map or the table |
 | See what Agents said to each other | `bazilion team messages <team>` | Connections: recent messages |
 | Manage templates | `bazilion team-template list\|show\|create\|export\|import\|rm` | Manage → Team templates |
-| Spawn a template into a Team | `bazilion team-template spawn <template> <team>` | **Spawn** on Team templates, or **Spawn this Team** on its page |
+| Use a template for a Team | `bazilion team-template spawn <template> <team>` | **Use** on Team templates, or **Use this template** on its page |
 | Save a Team as a template | `bazilion team-template save <team> <template>` | Team tab → Settings → Save as a Team template |
 
 On the map every Agent is a node with what it is doing, and every pair that is connected or that

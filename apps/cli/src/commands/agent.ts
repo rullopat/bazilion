@@ -20,6 +20,11 @@ const spawnCmd = defineCommand({
       type: 'string',
       description: 'Reasoning level: off|minimal|low|medium|high|xhigh (default: medium)',
     },
+    role: {
+      type: 'string',
+      description:
+        'What it is for: it starts knowing its job, without the get-to-know questions of a first conversation',
+    },
   },
   async run({ args }) {
     const body: SpawnAgentRequest = {
@@ -28,6 +33,7 @@ const spawnCmd = defineCommand({
       model: args.model,
       reasoningLevel: args.reasoning as SpawnAgentRequest['reasoningLevel'],
       teamId: args.team ?? 'default',
+      ...(args.role ? { role: args.role } : {}),
     }
     const { agent } = await createClient().post<{ agent: Agent }>('/api/agents', body)
     console.log(`spawned agent ${agent.id} (${agent.name})`)

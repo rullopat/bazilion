@@ -260,6 +260,34 @@ export function findByName(db: BazilionDb, name: string): Agent[] {
  * Agent matching `name` within a specific team. Used to resolve the
  * qualified `/talk <team>/<name>` syntax. Null when nothing matches.
  */
+/**
+ * Whether a Team has an Agent (not archived) by this name, in any case: names are how teammates
+ * and the operator tell Agents apart, so one Team has each name once.
+ */
+export function nameTakenInTeam(
+  db: BazilionDb,
+  teamId: string,
+  name: string,
+  exceptId?: string,
+): boolean {
+  // Compared in JavaScript: SQLite's lower() leaves letters outside ASCII as they are (Éva, éva).
+  const wanted = name.trim().toLowerCase()
+  return db.raw
+    .query<{ id: string; name: string }, [string]>(
+      "SELECT id, name FROM agents WHERE team_id = ? AND status != 'archived'",
+    )
+    .all(teamId)
+    .some((row) => row.id !== exceptId && row.name.trim().toLowerCase() === wanted)
+}
+
+/** `base`, or `base 2`, `base 3`… : the first name the Team does not have yet. */
+export function freeNameInTeam(db: BazilionDb, teamId: string, base: string): string {
+  if (!nameTakenInTeam(db, teamId, base)) return base
+  let suffix = 2
+  while (nameTakenInTeam(db, teamId, `${base} ${suffix}`)) suffix++
+  return `${base} ${suffix}`
+}
+
 export function findByNameInTeam(db: BazilionDb, teamId: string, name: string): Agent | null {
   const row = db.raw
     .query<RawAgent, [string, string]>(

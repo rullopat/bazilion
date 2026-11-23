@@ -1,8 +1,8 @@
 # Attention and notifications
 
 **Attention** lists what needs you. First what an Agent is waiting on right now: a
-[question](questions.md) it asked (`agent_question`) and a command it wants approved
-(`command_approval`), soonest to expire first, each with the time it stops waiting. Then lesson
+[question](questions.md) it asked (`agent_question`) and a command or an
+[MCP tool call](mcp.md#tools-that-ask-first) it wants approved (`command_approval`), soonest to expire first, each with the time it stops waiting. Then lesson
 proposals waiting for a decision, failed or cancelled reviews, scheduled triggers that failed,
 Agent message loops that were stopped, Agent queues paused after a daemon restart, and background
 turns that failed (`turn_failure`).

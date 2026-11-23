@@ -12,8 +12,8 @@ const TONE: Record<ServiceState['tone'], Tone> = {
   off: 'neutral',
 }
 
-/** Whether the home, the database and what they hold are in order. */
-export function HealthCard({ ok }: { ok: boolean }) {
+/** Whether the home, the database and what they hold are in order, and if not, what is not. */
+export function HealthCard({ ok, problems }: { ok: boolean; problems: string[] }) {
   return (
     <SetupCard
       labelledBy="system-health"
@@ -29,7 +29,23 @@ export function HealthCard({ ok }: { ok: boolean }) {
           </p>
         ) : (
           <Notice tone="warning" title="Something in the installation is not as it should be.">
-            Run <code>bazilion doctor</code> in a terminal: its report names what.
+            {problems.length > 0 ? (
+              <ul className="m-0 mt-1 list-disc space-y-1 pl-5">
+                {problems.map((problem) => (
+                  <li key={problem} className="break-words">
+                    {problem}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="m-0 mt-1.5">
+              {problems.some((problem) => problem.startsWith('The skill ')) && (
+                <>
+                  Fix or remove a broken skill under <a href="/skills">Manage → Skills</a>.{' '}
+                </>
+              )}
+              <code>bazilion doctor</code> in a terminal gives the full report.
+            </p>
           </Notice>
         )}
       </CardBody>

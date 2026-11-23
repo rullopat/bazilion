@@ -20,7 +20,14 @@ export interface HealthReport {
     | { ok: true; profiles: number; activeAgents: number; totalAgents: number; teams: number }
     | { ok: false; error: string }
     | null
-  skills: { installed: number; parseErrors: number }
+  skills: {
+    installed: number
+    parseErrors: number
+    /** Each installed skill that cannot be read, and why. */
+    broken: Array<{ name: string; error: string }>
+  }
+  /** What is not in order, one sentence each, so the System page can name it; empty when ok. */
+  problems: string[]
   providers: {
     /** Names of cloud providers with credentials configured (e.g. ['anthropic', 'groq']). */
     configured: string[]

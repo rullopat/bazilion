@@ -91,15 +91,23 @@ test('the runtime card repeats what the Commands card says is in effect, and poi
 })
 
 test('the health card says whether the installation is in order and where the report is', () => {
-  const healthy = renderToStaticMarkup(createElement(HealthCard, { ok: true }))
+  const healthy = renderToStaticMarkup(createElement(HealthCard, { ok: true, problems: [] }))
   expect(healthy).toContain('Healthy')
   expect(healthy).toContain('<code>bazilion doctor</code>')
   expect(healthy).not.toContain('role="status"')
 
-  const broken = renderToStaticMarkup(createElement(HealthCard, { ok: false }))
+  const broken = renderToStaticMarkup(
+    createElement(HealthCard, {
+      ok: false,
+      problems: ['The skill pdf-forms cannot be read: description: bad indentation'],
+    }),
+  )
   expect(broken).toContain('Issues found')
   expect(broken).not.toContain('Healthy')
   expect(broken).toContain('role="status"')
+  // It names what is wrong, and where a broken skill is fixed.
+  expect(broken).toContain('The skill pdf-forms cannot be read')
+  expect(broken).toContain('href="/skills"')
   expect(broken).toContain('<code>bazilion doctor</code>')
 })
 

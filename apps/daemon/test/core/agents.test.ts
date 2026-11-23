@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { archiveAgent } from '../../src/core/agent/archive.ts'
 import { deleteAgent } from '../../src/core/agent/delete.ts'
+import { moveAgent } from '../../src/core/agent/move.ts'
 import { resolveAgent } from '../../src/core/agent/resolve.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { unarchiveAgent } from '../../src/core/agent/unarchive.ts'
@@ -274,9 +275,37 @@ test('agentRepo.get resolves by exact name when unique', () => {
 
 test('agentRepo.get returns null for an ambiguous name', () => {
   seedProfile()
+  // One Team has each name once; two Teams can share one.
+  registerTeam(env.db, { id: 'other', name: 'Other' }, env.paths)
   spawn({ name: 'twin' })
-  spawn({ name: 'twin' })
+  spawn({ name: 'twin', teamId: 'other' })
   expect(agentRepo.get(env.db, 'twin')).toBeNull()
+})
+
+test('a Team has each Agent name once; the template’s name is numbered', () => {
+  seedProfile()
+  const first = spawn()
+  const second = spawn()
+  expect(second.name).toBe(`${first.name} 2`)
+  expect(() => spawn({ name: first.name.toUpperCase() })).toThrow('already has an Agent named')
+  registerTeam(env.db, { id: 'other', name: 'Other' }, env.paths)
+  const elsewhere = spawn({ name: first.name, teamId: 'other' })
+  expect(() => moveAgent(env.db, env.paths, elsewhere.id, env.teamId)).toThrow('rename one')
+})
+
+test('a name is the same name whatever its case, in every alphabet, and after a restore', () => {
+  seedProfile()
+  spawn({ name: 'Éva' })
+  // SQLite's lower() would not see these as one name.
+  expect(() => spawn({ name: 'éva' })).toThrow('already has an Agent named')
+  const sally = spawn({ name: 'Sally' })
+  archiveAgent(env.db, sally.id)
+  // Archived, its name is free; restored, it would be taken twice.
+  const other = spawn({ name: 'sally' })
+  expect(() => unarchiveAgent(env.db, sally.id)).toThrow('another Agent named Sally')
+  agentRepo.setName(env.db, other.id, 'Sal')
+  unarchiveAgent(env.db, sally.id)
+  expect(agentRepo.get(env.db, sally.id)?.status).not.toBe('archived')
 })
 
 test('agentRepo.get prefers exact name over prefix collision', () => {

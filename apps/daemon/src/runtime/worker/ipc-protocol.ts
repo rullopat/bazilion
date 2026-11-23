@@ -38,7 +38,13 @@ export interface RpcMethods {
     result: ToolResultPart[]
   }
   mcpInvoke: {
-    args: { serverId: string; toolName: string; args: Record<string, unknown> }
+    args: {
+      serverId: string
+      toolName: string
+      args: Record<string, unknown>
+      /** The model's call, so an approval it needs is tied to it. */
+      toolCallId?: string
+    }
     result: ToolResultPart[]
   }
   /** The daemon refreshes the turn's own OAuth credential; only the access token comes back. */
@@ -51,6 +57,8 @@ export interface RpcMethods {
 export interface AgentContact {
   id: string
   name: string
+  /** The name it gave itself, when it is not `name` ("Sales Director" calls itself Sally). */
+  calledName?: string
   teamId: string
   teamName: string
   /** The Agent template it was made from, by name. */
@@ -119,6 +127,8 @@ export interface BashApprovalArgs {
   command: string
   risks: CommandRisk[]
   mode: BashApprovalMode
+  /** An MCP tool that asks first, as `server · tool`. */
+  tool?: string
 }
 
 /**
@@ -132,6 +142,10 @@ export interface InjectedMcpTool {
   serverId: string
   /** Original tool name on the server, used in `tools/call`. */
   rawName: string
+  /** The server's name, as the operator gave it. */
+  serverName?: string
+  /** It sends or changes something outside: the operator approves each call. */
+  ask?: boolean
   description: string
   inputSchema: object
 }
@@ -206,6 +220,13 @@ export interface McpHost {
     serverId: string,
     toolName: string,
     args: Record<string, unknown>,
+    options?: {
+      toolCallId?: string
+      /** Ends the call, and any approval it waits for: the worker that made it is gone. */
+      signal?: AbortSignal
+      /** Hears of an approval the call waits for (a tool that asks first), and its outcome. */
+      onApproval?: (approval: CommandApproval) => void
+    },
   ): Promise<ToolResultPart[]>
 }
 

@@ -52,8 +52,8 @@ test('the Servers card lists each server with its state, how it is reached and w
   )
   expect(html).toContain('1 of 2 on')
   expect(rows(html)).toEqual([
-    'files Enabled stdio npx -y @scope/server /srv/data Test Disable Delete',
-    'docs_search Disabled http bearer token https://mcp.example.com/mcp Test Enable Delete',
+    'files Enabled stdio asks you before tools that send or change something npx -y @scope/server /srv/data Test Variables Disable Delete',
+    'docs_search Disabled http bearer token asks you before tools that send or change something https://mcp.example.com/mcp Test Enable Delete',
   ])
   // Each button says which server it is for.
   for (const name of ['Test files', 'Disable files', 'Delete files', 'Enable docs_search']) {

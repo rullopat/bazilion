@@ -12,6 +12,7 @@ import type {
   TeamTemplate,
 } from '@bazilion/api-types'
 import { modelName, type Tone } from './model-facts'
+import { MODE_NAME } from './team-policy'
 
 /** A chip: a few words and how loud they are. */
 export interface Label {
@@ -170,9 +171,7 @@ export function memberCounts(agents: readonly Agent[]): Record<string, number> {
 }
 
 export function policyLabel(mode: Team['policyMode']): Label {
-  return mode === 'restricted'
-    ? { label: 'Restricted', tone: 'neutral' }
-    : { label: 'Open', tone: 'neutral' }
+  return { label: MODE_NAME[mode], tone: 'neutral' }
 }
 
 /** Why a Team cannot be removed, or null when it can. */

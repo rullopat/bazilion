@@ -10,6 +10,15 @@ const OUTCOME: Record<CommandApproval['status'], string> = {
   cancelled: 'Cancelled — the command was not run.',
 }
 
+const TOOL_OUTCOME: Record<CommandApproval['status'], string> = {
+  pending: 'Waiting for a decision.',
+  allowed: 'Allowed once — for this call only.',
+  denied: 'Denied — nothing was sent.',
+  auto_denied: 'Denied — nobody could approve it in this turn, so nothing was sent.',
+  expired: 'Expired — nothing was sent.',
+  cancelled: 'Cancelled — nothing was sent.',
+}
+
 /** A risky shell command waiting for the user; Allow and Deny apply to this one call only. */
 export function CommandApprovalCard({
   approval,
@@ -26,15 +35,21 @@ export function CommandApprovalCard({
   return (
     <section
       className="my-3 rounded-lg border border-danger/50 bg-danger/5 p-4 text-chocolate"
-      aria-label="Shell command approval"
+      aria-label={approval.tool ? 'Approval before it goes out' : 'Shell command approval'}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="m-0 text-[0.72em] font-semibold uppercase tracking-wider text-danger">
-            Shell command approval
+            {approval.tool ? 'Before it goes out' : 'Shell command approval'}
           </p>
           <h2 className="m-0 mt-1 font-body text-[0.95em] font-semibold">
-            {pending ? 'A risky command is waiting for you' : 'Command decision recorded'}
+            {approval.tool
+              ? pending
+                ? `It wants to use ${approval.tool}`
+                : 'Decision recorded'
+              : pending
+                ? 'A risky command is waiting for you'
+                : 'Command decision recorded'}
           </h2>
         </div>
         <span className="rounded-full border border-danger/30 px-2 py-0.5 text-[0.75em] font-semibold uppercase tracking-wide text-danger">
@@ -62,7 +77,7 @@ export function CommandApprovalCard({
             <time dateTime={new Date(approval.expiresAt).toISOString()}>
               {new Date(approval.expiresAt).toLocaleString()}
             </time>
-            . Deny blocks only this command; Stop ends the whole turn.
+            . Deny blocks only this {approval.tool ? 'call' : 'command'}; Stop ends the whole turn.
           </p>
           {error && (
             <p
@@ -93,7 +108,7 @@ export function CommandApprovalCard({
         </>
       ) : (
         <p role="status" className="mt-3 text-[0.84em] font-medium text-mocha">
-          {OUTCOME[approval.status]}
+          {approval.tool ? TOOL_OUTCOME[approval.status] : OUTCOME[approval.status]}
         </p>
       )}
     </section>

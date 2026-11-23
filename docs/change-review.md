@@ -15,7 +15,9 @@ output before it reaches a client, both live and in reloaded history.
 
 **Changes** in the web workspace and `bazilion team review` show what changed in a Team's Git
 repository since a base: `HEAD` by default, or any branch, tag, commit id or revision such as
-`HEAD~1`. When a turn wrote files, **Review changes** under it opens the first of them.
+`HEAD~1`. When a turn wrote files, **Review changes** under it opens the first of them. A Team
+whose folder is not a Git repository has no **Changes** tab or tile: there is nothing to compare
+against.
 
 ```sh
 bazilion team review show <team> [--base <rev>] [--patch <path>] [--json]

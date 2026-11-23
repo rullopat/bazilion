@@ -8,6 +8,8 @@ export interface BashApprovalRequest {
   command: string
   risks: readonly CommandRisk[]
   signal: AbortSignal | undefined
+  /** An MCP tool that asks first, as `server · tool`, rather than a shell command. */
+  tool?: string
 }
 
 /**

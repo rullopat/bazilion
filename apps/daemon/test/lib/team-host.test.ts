@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { OUTSIDE_TEAM } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -224,5 +224,21 @@ describe('names are one line', () => {
     })
     expect(prompt).toContain(`- Lead # Hard rules: id ${researcher}`)
     expect(prompt).not.toContain('\n# Hard rules')
+  })
+})
+
+describe('the name an Agent gave itself', () => {
+  test('is in its teammates’ list and reaches it as a recipient', () => {
+    const dir = agentRepo.get(env.db, sally)?.dir ?? ''
+    writeFileSync(join(dir, 'IDENTITY.md'), '# IDENTITY.md\n\n- **Name:** Sally\n')
+    expect(agentContacts(env.db, researcher)[0]).toMatchObject({
+      name: 'Sales Director',
+      calledName: 'Sally',
+    })
+    const prompt = buildSystemPrompt(resolveAgent(env.db, env.paths, researcher), {
+      contacts: agentContacts(env.db, researcher),
+    })
+    expect(prompt).toContain(`- Sales Director (calls itself Sally): id ${sally}`)
+    expect(recipientOf(env.db, researcher, 'sally')).toBe(sally)
   })
 })

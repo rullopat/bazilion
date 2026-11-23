@@ -318,7 +318,7 @@ function teammateLines(agent: ResolvedAgent, options: BuildSystemPromptOptions):
   // start a line of these instructions.
   const line = (text: string) => text.replace(/[\p{Cc}\p{Cf}\u2028\u2029\s]+/gu, ' ').trim()
   const entry = (contact: AgentContact, team: boolean) =>
-    `- ${line(contact.name)}: id ${contact.id}${team ? '' : `, Team ${line(contact.teamName)}`} (template ${line(contact.template)})`
+    `- ${line(contact.name)}${contact.calledName ? ` (calls itself ${line(contact.calledName)})` : ''}: id ${contact.id}${team ? '' : `, Team ${line(contact.teamName)}`} (template ${line(contact.template)})`
   const listed = (list: readonly AgentContact[], max: number, team: boolean) => [
     ...list.slice(0, max).map((contact) => entry(contact, team)),
     ...(list.length > max ? [`- and ${list.length - max} more`] : []),

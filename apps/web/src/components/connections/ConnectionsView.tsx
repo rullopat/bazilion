@@ -8,15 +8,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { useActivity } from '../../lib/activity'
 import { api, errorMessage } from '../../lib/api'
 import {
+  connectionNeedsSwitch,
   endpointLabel,
   hasEdge,
   liveDocument,
   liveEdges,
+  MODE_NAME,
+  MODE_SENTENCE,
   OUTSIDE,
   type PolicyDocument,
   type PolicyPosition,
+  SWITCH_QUESTION,
   sameDocument,
   setEdge,
+  switchAndConnect,
 } from '../../lib/team-policy'
 import { useResource } from '../../lib/use-resource'
 import { AgentAvatar } from '../AgentAvatar'
@@ -32,7 +37,7 @@ import { ConnectionsMap, type MapMember, pairId, pairOf } from './ConnectionsMap
 import { TeamThread, useTeamMessages } from './TeamThread'
 
 const MODE_HELP: Record<TeamPolicyMode, string> = {
-  open: 'Every member can message every other member, with no connections needed. Connections here only matter for other Teams, or if you make the Team restricted.',
+  open: 'Every member can message every other member, with no connections needed. Connections here only matter for other Teams, or if you switch the Team to Connections only.',
   restricted: 'A member can message a teammate only along a connection.',
 }
 
@@ -148,8 +153,14 @@ function Editor({ team, policy }: { team: Team; policy: TeamPolicy }) {
     return counts
   }, [thread, memberIds])
 
+  // In an open Team a teammate connection does nothing: drawing one asks to switch first.
+  const [proposed, setProposed] = useState<{ from: string; to: string } | null>(null)
   const toggle = (from: string, to: string, allowed: boolean) => {
     setNotice(null)
+    if (connectionNeedsSwitch(draft, from, to, allowed)) {
+      setProposed({ from, to })
+      return
+    }
     setDraft((current) => setEdge(current, from, to, allowed))
   }
 
@@ -193,11 +204,11 @@ function Editor({ team, policy }: { team: Team; policy: TeamPolicy }) {
       actions={
         <>
           <Segmented
-            label="How members reach each other"
+            label="Who can message whom"
             value={draft.mode}
             options={[
-              { id: 'open', label: 'Open' },
-              { id: 'restricted', label: 'Restricted' },
+              { id: 'open', label: MODE_NAME.open },
+              { id: 'restricted', label: MODE_NAME.restricted },
             ]}
             onChange={(mode) => {
               setNotice(null)
@@ -305,7 +316,7 @@ function Editor({ team, policy }: { team: Team; policy: TeamPolicy }) {
             <div>
               <h2 className="m-0 font-body text-sm font-semibold text-foreground">
                 {active.length} member{active.length === 1 ? '' : 's'} ·{' '}
-                {draft.mode === 'open' ? 'open Team' : 'restricted Team'}
+                {MODE_SENTENCE[draft.mode].toLowerCase()}
               </h2>
               <p className="m-0 mt-1 text-xs leading-relaxed text-mocha">
                 Select an Agent to choose who it can message, or a line to see what two Agents said
@@ -339,6 +350,19 @@ function Editor({ team, policy }: { team: Team; policy: TeamPolicy }) {
           )}
         </aside>
       </div>
+      <ConfirmDialog
+        open={proposed !== null}
+        title={SWITCH_QUESTION.title}
+        description={<p>{SWITCH_QUESTION.description}</p>}
+        confirmLabel={SWITCH_QUESTION.confirm}
+        onConfirm={() => {
+          if (proposed) setDraft((current) => switchAndConnect(current, proposed.from, proposed.to))
+          setProposed(null)
+        }}
+        onOpenChange={(open) => {
+          if (!open) setProposed(null)
+        }}
+      />
       <ConfirmDialog
         open={confirmDiscard}
         title="Discard the connection changes?"
@@ -394,7 +418,7 @@ function Direction({
       <span
         className={`shrink-0 text-xs font-semibold ${allowed ? 'text-accent-foreground' : 'text-muted-foreground'}`}
       >
-        {allowed ? 'Connected' : implied ? 'Open anyway' : 'Not connected'}
+        {allowed ? 'Connected' : implied ? 'No connection needed' : 'Not connected'}
       </span>
     </button>
   )

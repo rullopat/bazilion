@@ -312,8 +312,14 @@ const RPC_HANDLERS: RpcHandlers = {
     host(hosts.userMdHost, 'USER.md').write(teamId, content, ifMatch),
   browserInvoke: ({ agentId, action, args }, { hosts }) =>
     host(hosts.browserHost, 'browser').invoke(agentId, action, args),
-  mcpInvoke: ({ serverId, toolName, args }, { hosts }) =>
-    host(hosts.mcpHost, 'MCP').invoke(serverId, toolName, args),
+  mcpInvoke: ({ serverId, toolName, args, toolCallId }, ctx) =>
+    host(ctx.hosts.mcpHost, 'MCP').invoke(serverId, toolName, args, {
+      ...(toolCallId ? { toolCallId } : {}),
+      // The call ends with the worker: an approval it waits for is cancelled with it.
+      signal: ctx.signal,
+      // A tool that asks first shows its approval in the chat, as a risky command does.
+      onApproval: (approval) => ctx.pushFrame(approvalFrame(approval)),
+    }),
   createAgent: (args, { hosts }) => host(hosts.teamHost, 'team').createAgent(args),
   refreshApiKey: async ({ providerName }, ctx) => {
     const token = await refreshApiKeyForTurn(

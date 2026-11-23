@@ -266,6 +266,7 @@ export async function listMcpTools(
       tools.push({
         toolName,
         serverId: server.id,
+        serverName: server.name,
         rawName: tool.name,
         description: tool.description ?? `MCP tool ${tool.name} from ${server.name}`,
         inputSchema: schema,

@@ -2,6 +2,7 @@
 // tools, spawns the worker, relays its frames (mirroring them to Telegram) and ends the turn's
 // registration whatever happens.
 
+import { randomUUID } from 'node:crypto'
 import type { ChatFrame } from '@bazilion/api-types'
 import { imageRoute } from '../core/image-generation-config.ts'
 import { agentReviewRepo, mergeSecretsIntoEnv } from '../core/index.ts'
@@ -40,7 +41,30 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     // The worker, and so every shell command of the turn, never sees Bazilion's own credentials.
     const env = toolEnvironment(mergeSecretsIntoEnv(db, authToken), authToken)
     const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, turn.agent)
-    const mcp = await resolveMcpForTurn(db, authToken, turn.controller.signal)
+    // A tool that sends or changes something outside waits for the operator, as a risky command
+    // does: in the chat, Telegram and Attention, and refused when nobody can answer this turn.
+    const mcp = await resolveMcpForTurn(db, authToken, turn.controller.signal, (request) =>
+      commandApprovalRegistry.begin(
+        {
+          id: randomUUID(),
+          turnId: turn.request.attemptId,
+          toolCallId: request.toolCallId,
+          agentId,
+          teamId: turn.agent.team.id,
+          command: request.command,
+          risks: [
+            {
+              code: 'outward-action',
+              message: 'It sends or changes something outside Bazilion.',
+              span: { start: 0, end: 0 },
+            },
+          ],
+          mode: turn.bashApprovalMode,
+          tool: request.tool,
+        },
+        request.signal ?? turn.controller.signal,
+      ),
+    )
     const frames = spawnWorkerTurn(
       {
         kind: 'agent_turn',

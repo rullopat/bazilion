@@ -1,9 +1,14 @@
 // /api/teams: the Team registry and each Team's USER.md. Every other /api/teams/:id/* feature has
 // its own router (team-memory, team-policy, team-review, team-coding-environment, telegram).
 
-import type { RegisterTeamRequest, SetTeamUserMdRequest } from '@bazilion/api-types'
+import type {
+  RegisterTeamRequest,
+  SetTeamUserMdRequest,
+  TeamDayResponse,
+} from '@bazilion/api-types'
 import { deleteTeam, registerTeam, teamRepo } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { startOfToday, teamDay } from '../lib/team-day.ts'
 import { USER_MD_MAX_BYTES } from '../lib/user-md-host.ts'
 import { jsonBody, newRouter, routeTeam } from './http.ts'
 
@@ -23,6 +28,16 @@ teamsRouter.post('/', async (c) => {
 })
 
 teamsRouter.get('/:id', (c) => c.json(routeTeam(c)))
+
+// The Team's day: hand-offs, replies, files, conversations worked in and what waits, since the
+// start of the caller's day (`since`, epoch ms; this machine's midnight when absent).
+teamsRouter.get('/:id/today', (c) => {
+  const raw = c.req.query('since')
+  const since = raw === undefined ? startOfToday() : Number(raw)
+  if (!Number.isSafeInteger(since) || since < 0) return c.json({ error: 'Invalid since' }, 400)
+  const { db, paths } = getCtx()
+  return c.json(teamDay(db, paths, routeTeam(c).id, since) satisfies TeamDayResponse)
+})
 
 teamsRouter.delete('/:id', (c) => {
   const { db, paths } = getCtx()

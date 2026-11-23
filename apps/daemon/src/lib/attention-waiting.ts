@@ -73,7 +73,9 @@ export function waitingAttention(db: BazilionDb): AttentionItem[] {
         occurredAt: approval.createdAt,
         updatedAt: approval.createdAt,
         expiresAt: approval.expiresAt,
-        title: `${name(entry)} wants to run a command that needs your approval`,
+        title: approval.tool
+          ? `${name(entry)} wants to use ${approval.tool}, which needs your approval`
+          : `${name(entry)} wants to run a command that needs your approval`,
         diagnostic: bounded(`${command.slice(0, 200)}${risks ? `: ${risks}` : ''}`, 'A command'),
         href: href(approval.agentId),
         acknowledgeable: false,
