@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.57.1
+
+### Patch Changes
+
+- [#108](https://github.com/rullopat/bazilion/pull/108) [`72cbd84`](https://github.com/rullopat/bazilion/commit/72cbd84c56cb9173ae6029ca16c35463c3e2f33e) Thanks [@rullopat](https://github.com/rullopat)! - A browser tab left open across an upgrade no longer shows "Could not load this page" with "Failed to fetch dynamically imported module" when it opens the Connections map or another part it had not loaded yet: it reloads itself once to get the new version, and otherwise says that Bazilion was updated and offers **Reload**. ⌘K or Ctrl+K pressed while a dialog is still closing opens **Jump to** again (0.57.0 ignored it then).
+
 ## 0.57.0
 
 ### Minor Changes
