@@ -34,12 +34,14 @@
 
 import type { AgentTrigger, Message, TriggerDispatch } from '@bazilion/api-types'
 import { agentRepo, messageRepo, triggerDispatchRepo, triggerRepo } from '../core/index.ts'
+import { forgetTurnFailure, rememberTurnFailure } from '../core/turn-failures.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { selectCausalParent } from './agent-loop-guard.ts'
 import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
 import { resolveConversationTarget } from './conversation-target.ts'
 import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
+import { signalLiveChange } from './live-signal.ts'
 import { dispatchPendingReviews } from './review-dispatcher.ts'
 import { turnFailureReason, turnFrameFailure } from './turn-outcome.ts'
 
@@ -330,12 +332,23 @@ async function fireInboxWake(agentId: string): Promise<void> {
     }
     turnStarted = true
     s.inboxBackoff.delete(agentId)
+    if (forgetTurnFailure(`inbox-start:${agentId}`)) signalLiveChange()
+    let failure: string | null = null
     for await (const frame of runAgentTurn(preparedTurn)) {
-      if (frame.kind === 'fatal') {
-        console.warn(
-          JSON.stringify({ event: 'inbox_wake_failed', agentId, failure: 'turn_failed' }),
-        )
-      }
+      const frameFailure = turnFrameFailure(frame)
+      if (frameFailure) failure ??= turnFailureReason(frameFailure)
+    }
+    if (failure) {
+      console.warn(JSON.stringify({ event: 'inbox_wake_failed', agentId, failure: 'turn_failed' }))
+      // The mail was read by a turn that failed: Attention says so, as for a failed follow-up.
+      rememberTurnFailure({
+        id: attemptId,
+        agentId,
+        origin: 'inbox',
+        at: Date.now(),
+        reason: failure,
+      })
+      signalLiveChange()
     }
   } catch (err) {
     if (!handoffStarted && registered) unregisterAgent(agentId)
@@ -343,6 +356,15 @@ async function fireInboxWake(agentId: string): Promise<void> {
     if (!turnStarted) {
       retryInMs = backoff ? Math.min(backoff.delayMs * 2, INBOX_RETRY_MAX_MS) : INBOX_RETRY_BASE_MS
       s.inboxBackoff.set(agentId, { delayMs: retryInMs, nextAttemptAt: Date.now() + retryInMs })
+      // The mail stays unread and is tried again; one item says why it cannot start.
+      rememberTurnFailure({
+        id: `inbox-start:${agentId}`,
+        agentId,
+        origin: 'inbox',
+        at: Date.now(),
+        reason: turnFailureReason(err),
+      })
+      signalLiveChange()
     }
     console.warn(
       JSON.stringify({

@@ -20,6 +20,7 @@ const KINDS: Record<AttentionRecordedKind, string> = {
   trigger_failure: 'Scheduled trigger failures',
   agent_loop_break: 'Agent message loop breaks',
   queue_interrupted: 'Queues paused after restart',
+  turn_failure: 'Failed background turns',
 }
 
 function browserZone(): string {

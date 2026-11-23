@@ -8,6 +8,7 @@ import * as messageRepo from '../../src/core/repos/messages.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as triggerDispatchRepo from '../../src/core/repos/triggerDispatches.ts'
 import * as triggerRepo from '../../src/core/repos/triggers.ts'
+import { forgetTurnFailures } from '../../src/core/turn-failures.ts'
 import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 import { seedConversationTarget, seedRegisteredConversation } from '../fixtures/conversation.ts'
@@ -96,6 +97,7 @@ describe('scheduler', () => {
   })
 
   afterEach(() => {
+    forgetTurnFailures()
     scheduler._resetSchedulerForTest()
     unregisterAgent('a1')
     env.cleanup()
@@ -202,6 +204,11 @@ describe('scheduler', () => {
     expect(messageRepo.get(env.db, message.id)?.readAt).toBeNull()
     expect(messageRepo.listRecipientsWithUnread(env.db)).toEqual(['a1'])
     expect(retryDelays()).toEqual([10_000])
+    const failures = () =>
+      projectAttention(env.db, { state: 'open', kind: 'turn_failure' }).items.filter(
+        (item) => item.agentId === 'a1',
+      )
+    expect(failures()).toMatchObject([{ title: 'Turn for new mail failed' }])
 
     // A lasting failure backs off instead of retrying on every tick, doubling each time.
     vi.setSystemTime(failedAt + 9_999)
@@ -216,10 +223,14 @@ describe('scheduler', () => {
     vi.setSystemTime(failedAt + 29_999)
     await scheduler._tickOnce()
     expect(turnCalls).toEqual([])
+    // Retried, it is still one item.
+    expect(failures()).toHaveLength(1)
     vi.setSystemTime(failedAt + 30_000)
     await scheduler._tickOnce()
     expect(turnCalls).toHaveLength(1)
     expect(messageRepo.get(env.db, message.id)?.readAt).not.toBeNull()
+    // Once the wake-up starts, the item that said it could not is gone.
+    expect(failures()).toEqual([])
 
     // A started turn clears the backoff: the next message is delivered on the next tick.
     const next = messageRepo.send(env.db, {
@@ -230,6 +241,37 @@ describe('scheduler', () => {
     await scheduler._tickOnce()
     expect(turnCalls).toHaveLength(2)
     expect(messageRepo.get(env.db, next.id)?.readAt).not.toBeNull()
+  })
+
+  test('an inbox turn that fails is listed in Attention: the mail was read', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    messageRepo.send(env.db, { from: 'a2', to: 'a1', payload: JSON.stringify({ text: 'go' }) })
+    turnPlans.push({
+      frames: [
+        { kind: 'event', event: { type: 'error', error: '401 Unauthorized: invalid x-api-key' } },
+        { kind: 'done', messages: [] },
+      ] as ChatFrame[],
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await scheduler._tickOnce()
+    const items = projectAttention(env.db, { state: 'open', kind: 'turn_failure' }).items.filter(
+      (item) => item.agentId === 'a1',
+    )
+    expect(items).toMatchObject([
+      {
+        title: 'Turn for new mail failed',
+        diagnostic: 'The provider refused the credentials: 401 Unauthorized: invalid x-api-key',
+        href: `/?agent=a1&section=mailbox`,
+      },
+    ])
   })
 
   test('archived Agents get no scheduled or inbox turns until they are unarchived', async () => {
