@@ -6,6 +6,7 @@ import { ArrowLeft, Code2, Images, Network } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { FOCUS_VIEWS, type FocusView } from '../../lib/workspace'
 import { useWorkspace } from './context'
+import { useTeamCounts } from './counts'
 
 const VIEW = {
   connections: { label: 'Connections', icon: Network },
@@ -23,6 +24,7 @@ export function FocusFrame({
   children: ReactNode
 }) {
   const { team, agent, to } = useWorkspace()
+  const counts = useTeamCounts(team?.id)
   return (
     <section
       aria-label={`${VIEW[view].label} of ${team?.name ?? 'the Team'}`}
@@ -44,7 +46,10 @@ export function FocusFrame({
           aria-label="Team views"
           className="flex rounded-[12px] border border-border bg-card p-0.5"
         >
-          {FOCUS_VIEWS.map((id) => {
+          {FOCUS_VIEWS.filter(
+            // Changes only for a Team whose folder is a Git repository.
+            (id) => id !== 'changes' || id === view || counts.repository !== false,
+          ).map((id) => {
             const Icon = VIEW[id].icon
             const current = id === view
             return (

@@ -4,6 +4,7 @@
 import {
   type Conversation,
   type ConversationListResponse,
+  chosenName,
   type ResolvedAgent,
   usageSummary,
 } from '@bazilion/api-types'
@@ -78,6 +79,12 @@ export function ConversationHeader({
         className="m-0 min-w-0 max-w-[14rem] shrink-0 truncate font-display text-xl leading-tight text-charcoal"
       >
         {agent.agent.name}
+        {chosenName(agent.agent) && (
+          <span className="font-body text-sm text-muted-foreground">
+            {' '}
+            · {chosenName(agent.agent)}
+          </span>
+        )}
       </h1>
       <Link
         to="/"

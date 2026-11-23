@@ -13,6 +13,20 @@ import {
 
 export const OUTSIDE = OUTSIDE_TEAM
 
+/**
+ * A Team's mode by what it does. The CLI and the API keep `open` and `restricted`; the web says
+ * what each means, so nobody wonders whether teammates need a connection.
+ */
+export const MODE_NAME: Record<TeamPolicyMode, string> = {
+  open: 'Everyone',
+  restricted: 'Connections only',
+}
+
+export const MODE_SENTENCE: Record<TeamPolicyMode, string> = {
+  open: 'Everyone can message everyone',
+  restricted: 'Only along connections',
+}
+
 export interface PolicyPosition {
   x: number
   y: number
@@ -65,6 +79,35 @@ export function setEdge(
     : document.edges.filter((edge) => edge.from !== from || edge.to !== to)
   return { ...document, edges }
 }
+
+/**
+ * A connection between two teammates of an open Team would change nothing: drawing one asks to
+ * switch the Team to Connections only first. One to or from other Teams applies in either mode.
+ */
+export function connectionNeedsSwitch(
+  document: PolicyDocument,
+  from: string,
+  to: string,
+  allowed: boolean,
+): boolean {
+  return allowed && document.mode === 'open' && from !== OUTSIDE && to !== OUTSIDE
+}
+
+/** The draft with the Team switched to Connections only and the connection drawn. */
+export function switchAndConnect(
+  document: PolicyDocument,
+  from: string,
+  to: string,
+): PolicyDocument {
+  return { ...setEdge(document, from, to, true), mode: 'restricted' }
+}
+
+export const SWITCH_QUESTION = {
+  title: 'Switch the Team to Connections only?',
+  description:
+    'Everyone in this Team can already message everyone, so a connection between two teammates would change nothing. With Connections only, connections decide who can message whom: a teammate without one can then only talk to you. Nothing changes until you save.',
+  confirm: 'Switch and connect',
+} as const
 
 export function endpointLabel(document: PolicyDocument, key: string): string {
   if (key === OUTSIDE) return 'Other teams'

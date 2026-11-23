@@ -76,15 +76,24 @@ export async function promptForCommandApproval(
   approval: CommandApproval,
   prompt: CommandApprovalPrompt,
 ): Promise<CommandApprovalDecision> {
-  prompt.write('  [shell command approval required]')
-  prompt.write('  command:')
+  // An MCP tool that sends or changes something outside asks the same way as a risky command.
+  const tool = approval.tool
+  prompt.write(tool ? '  [tool approval required]' : '  [shell command approval required]')
+  if (tool) prompt.write(`  tool: ${terminalSafe(tool)}`)
+  prompt.write(tool ? '  call:' : '  command:')
   for (const line of approval.command.split('\n')) prompt.write(`    ${terminalSafe(line)}`)
   prompt.write('  risks:')
   for (const risk of approval.risks) {
     prompt.write(`    - ${terminalSafe(risk.code)}: ${terminalSafe(risk.message)}`)
   }
   try {
-    const answer = (await prompt.question('  Allow this command once? [y/N] ')).trim().toLowerCase()
+    const answer = (
+      await prompt.question(
+        tool ? '  Allow this call once? [y/N] ' : '  Allow this command once? [y/N] ',
+      )
+    )
+      .trim()
+      .toLowerCase()
     return answer === 'y' || answer === 'yes' ? 'allow' : 'deny'
   } catch {
     prompt.write('  [approval input unavailable; denying]')
@@ -105,17 +114,23 @@ export async function respondToCommandApproval(
     // Decided meanwhile in the web UI or Telegram, or timed out: the turn goes on, and its next
     // frame says how the command was decided.
     if ((error as { status?: number }).status !== 404) throw error
-    console.log('  [this command was already decided elsewhere]')
+    console.log(`  [this ${approval.tool ? 'call' : 'command'} was already decided elsewhere]`)
   }
   return decision
 }
 
 const APPROVAL_OUTCOMES: Partial<Record<CommandApproval['status'], string>> = {
-  allowed: 'shell command allowed',
-  denied: 'shell command denied',
-  auto_denied: 'shell command auto-denied: non-interactive turn',
-  expired: 'shell command approval expired',
-  cancelled: 'shell command approval cancelled',
+  allowed: 'allowed',
+  denied: 'denied',
+  auto_denied: 'auto-denied: non-interactive turn',
+  expired: 'approval expired',
+  cancelled: 'approval cancelled',
+}
+
+/** How a decided approval is printed: `shell command denied`, `tool call allowed`. */
+function approvalOutcome(approval: CommandApproval): string | undefined {
+  const outcome = APPROVAL_OUTCOMES[approval.status]
+  return outcome && `${approval.tool ? 'tool call' : 'shell command'} ${outcome}`
 }
 
 function closeDeltaLine(state: PrintState): void {
@@ -222,7 +237,7 @@ async function streamTurn(
       closeDeltaLine(state)
       const approval = event.approval
       if (approval.status !== 'pending') {
-        const outcome = APPROVAL_OUTCOMES[approval.status]
+        const outcome = approvalOutcome(approval)
         if (outcome) console.log(`  [${outcome}]`)
       } else if (!answeredApprovals.has(approval.id)) {
         answeredApprovals.add(approval.id)

@@ -193,3 +193,81 @@ test('only stdio and http transports can be saved', async () => {
   expect(res.status).toBe(400)
   expect(await res.text()).toContain('transport must be stdio or http')
 })
+
+test('a stdio server’s own variables are write-only and reach that server only', async () => {
+  const fixture = fileURLToPath(new URL('../fixtures/mcp-stdio.mjs', import.meta.url))
+  const created = await post({
+    name: 'withenv',
+    transport: 'stdio',
+    command: process.execPath,
+    args: [fixture],
+    env: { MCP_FIXTURE_SECRET: 'PRIVATE_SERVER_VALUE' },
+  })
+  expect(created.status).toBe(201)
+  const { server } = (await created.json()) as { server: McpServer }
+  expect(server.envNames).toEqual(['MCP_FIXTURE_SECRET'])
+  expect(JSON.stringify(server)).not.toContain('PRIVATE_SERVER_VALUE')
+  const resolved = await turn()
+  const out = await resolved?.host.invoke(server.id, 'foo', {})
+  expect(JSON.stringify(out)).toContain('PRIVATE_SERVER_VALUE')
+  // No Agent environment, nor another server's, carries it.
+  const { toolEnvironment } = await import('../../src/runtime/shell/security.ts')
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const { mergeSecretsIntoEnv } = await import('../../src/core/index.ts')
+  const ctx = getCtx()
+  expect(
+    JSON.stringify(toolEnvironment(mergeSecretsIntoEnv(ctx.db, ctx.authToken), ctx.authToken)),
+  ).not.toContain('PRIVATE_SERVER_VALUE')
+  // Removing it takes it away.
+  await patch(server.id, { env: { MCP_FIXTURE_SECRET: null } })
+  const again = (await (await (await router()).request(`/${server.id}`)).json()) as {
+    server: McpServer
+  }
+  expect(again.server.envNames).toEqual([])
+})
+
+test('a tool that asks first runs only once the operator allows it', async () => {
+  const { f, server } = await httpServer()
+  expect(server.ask).toEqual({})
+  await patch(server.id, { ask: { foo: true } })
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const { resolveMcpForTurn } = await import('../../src/lib/mcp/resolve.ts')
+  const ctx = getCtx()
+
+  // Without a way to ask, it is refused.
+  const unattended = await resolveMcpForTurn(ctx.db, ctx.authToken)
+  expect(unattended?.tools[0]?.ask).toBe(true)
+  await expect(unattended?.host.invoke(server.id, 'foo', {})).rejects.toThrow('approval')
+
+  const decide = (status: 'allowed' | 'denied') =>
+    resolveMcpForTurn(ctx.db, ctx.authToken, undefined, (request) => {
+      const approval = {
+        id: 'a',
+        turnId: 't',
+        toolCallId: request.toolCallId,
+        agentId: 'x',
+        teamId: 'y',
+        command: request.command,
+        risks: [],
+        tool: request.tool,
+        status: 'pending' as const,
+        createdAt: 0,
+        expiresAt: 0,
+      }
+      return { approval, settled: Promise.resolve({ ...approval, status }) }
+    })
+  const seen: string[] = []
+  const denied = await decide('denied')
+  await expect(
+    denied?.host.invoke(server.id, 'foo', {}, { onApproval: (a) => seen.push(a.status) }),
+  ).rejects.toThrow('was not approved')
+  const allowed = await decide('allowed')
+  await expect(allowed?.host.invoke(server.id, 'foo', {})).resolves.toBeDefined()
+  expect(seen).toEqual(['pending', 'denied'])
+  // The worker that asked is gone: an approval given after that sends nothing.
+  const before = f.requests.length
+  await expect(
+    allowed?.host.invoke(server.id, 'foo', {}, { signal: AbortSignal.abort() }),
+  ).rejects.toThrow()
+  expect(f.requests.slice(before).map((request) => request.method)).not.toContain('tools/call')
+})

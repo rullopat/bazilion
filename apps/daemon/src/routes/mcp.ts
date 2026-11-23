@@ -5,16 +5,69 @@
 // stored in the encrypted secrets table under `MCP_TOKEN_<id>` and never returned. Any mutation
 // closes the live connection so the next use reconnects with the new configuration.
 
-import type { McpServerInput, McpToolInfo, McpTransport } from '@bazilion/api-types'
+import type { McpServer, McpServerInput, McpToolInfo, McpTransport } from '@bazilion/api-types'
 import { mcpServerRepo, openSecrets } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { closeMcpConnection, listMcpTools } from '../lib/mcp/pool.ts'
 import { mcpConnectOptions, mcpTokenSecretKey } from '../lib/mcp/resolve.ts'
+import {
+  askChoices,
+  looksOutward,
+  removeServerSettings,
+  serverEnvNames,
+  setAskChoices,
+  setServerEnv,
+  toolAsks,
+  validEnvName,
+} from '../lib/mcp/settings.ts'
 import { jsonBody, newRouter } from './http.ts'
 
 export const mcpRouter = newRouter()
 
 const TRANSPORTS = new Set<McpTransport>(['stdio', 'http'])
+
+/** A server as the API shows it: with its variables' names and which tools ask first. */
+function shown(server: McpServer): McpServer {
+  const { db, authToken } = getCtx()
+  return {
+    ...server,
+    envNames: serverEnvNames(db, authToken, server.id),
+    ask: askChoices(db, authToken, server.id),
+  }
+}
+
+/** What is wrong with the variables or the ask choices of an input, or null. */
+function validateSettings(
+  input: Pick<McpServerInput, 'env' | 'ask'>,
+  transport: McpTransport,
+): string | null {
+  if (input.env !== undefined) {
+    if (transport !== 'stdio')
+      return 'env is for stdio servers; an http server takes a bearer token'
+    if (!input.env || typeof input.env !== 'object' || Array.isArray(input.env))
+      return 'env must be an object of variable names to values (or null to remove one)'
+    for (const [name, value] of Object.entries(input.env)) {
+      if (!validEnvName(name)) return `env: ${name} is not a variable name`
+      if (value !== null && typeof value !== 'string')
+        return `env: ${name} must be a string or null`
+    }
+  }
+  if (input.ask !== undefined && input.ask !== null) {
+    if (
+      typeof input.ask !== 'object' ||
+      Array.isArray(input.ask) ||
+      !Object.values(input.ask).every((asks) => typeof asks === 'boolean')
+    )
+      return 'ask must map tool names to true (asks first) or false (never asks), or be null'
+  }
+  return null
+}
+
+function applySettings(id: string, input: Pick<McpServerInput, 'env' | 'ask'>): void {
+  const { db, authToken } = getCtx()
+  if (input.env) setServerEnv(db, authToken, id, input.env)
+  if (input.ask !== undefined) setAskChoices(db, authToken, id, input.ask)
+}
 
 function validate(input: McpServerInput): string | null {
   // Restrict to [a-zA-Z0-9_] so the name IS its tool namespace. Allowing `-`
@@ -41,13 +94,13 @@ function validate(input: McpServerInput): string | null {
 
 mcpRouter.get('/', (c) => {
   const { db } = getCtx()
-  return c.json({ servers: mcpServerRepo.list(db) })
+  return c.json({ servers: mcpServerRepo.list(db).map(shown) })
 })
 
 mcpRouter.post('/', async (c) => {
   const body = (await jsonBody<McpServerInput>(c)) as McpServerInput | null
   if (!body) return c.json({ error: 'invalid JSON body' }, 400)
-  const err = validate(body)
+  const err = validate(body) ?? validateSettings(body, body.transport)
   if (err) return c.json({ error: err }, 400)
   const { db, authToken } = getCtx()
   if (mcpServerRepo.getByName(db, body.name)) {
@@ -66,14 +119,15 @@ mcpRouter.post('/', async (c) => {
   if (hasAuth) {
     openSecrets(db, authToken).set(mcpTokenSecretKey(server.id), body.authToken as string)
   }
-  return c.json({ server }, 201)
+  applySettings(server.id, body)
+  return c.json({ server: shown(server) }, 201)
 })
 
 mcpRouter.get('/:id', (c) => {
   const { db } = getCtx()
   const server = mcpServerRepo.get(db, c.req.param('id'))
   if (!server) return c.json({ error: 'MCP server not found' }, 404)
-  return c.json({ server })
+  return c.json({ server: shown(server) })
 })
 
 mcpRouter.patch('/:id', async (c) => {
@@ -92,7 +146,7 @@ mcpRouter.patch('/:id', async (c) => {
     args: body.args ?? existing.args,
     url: body.url !== undefined ? body.url : existing.url,
   }
-  const err = validate(merged)
+  const err = validate(merged) ?? validateSettings(body, merged.transport)
   if (err) return c.json({ error: err }, 400)
   if (merged.name !== existing.name && mcpServerRepo.getByName(db, merged.name)) {
     return c.json({ error: `an MCP server named "${merged.name}" already exists` }, 409)
@@ -117,9 +171,11 @@ mcpRouter.patch('/:id', async (c) => {
     enabled: body.enabled,
     hasAuth,
   })
+  if (!server) return c.json({ error: 'MCP server not found' }, 404)
+  applySettings(id, body)
   // Config changed — drop the cached connection so the next turn reconnects.
   await closeMcpConnection(id)
-  return c.json({ server })
+  return c.json({ server: shown(server) })
 })
 
 mcpRouter.delete('/:id', async (c) => {
@@ -128,6 +184,7 @@ mcpRouter.delete('/:id', async (c) => {
   if (!mcpServerRepo.get(db, id)) return c.json({ error: 'MCP server not found' }, 404)
   await closeMcpConnection(id)
   openSecrets(db, authToken).remove(mcpTokenSecretKey(id))
+  removeServerSettings(db, authToken, id)
   mcpServerRepo.remove(db, id)
   return c.body(null, 204)
 })
@@ -141,7 +198,13 @@ mcpRouter.post('/:id/test', async (c) => {
   await closeMcpConnection(id)
   try {
     const tools = await listMcpTools(server, () => mcpConnectOptions(db, authToken, server))
-    const info: McpToolInfo[] = tools.map((t) => ({ name: t.rawName, description: t.description }))
+    const chosen = askChoices(db, authToken, server.id)
+    const info: McpToolInfo[] = tools.map((t) => ({
+      name: t.rawName,
+      description: t.description,
+      asks: toolAsks(chosen, t.rawName),
+      asksByDefault: looksOutward(t.rawName),
+    }))
     return c.json({ ok: true, tools: info })
   } catch (err) {
     return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 502)

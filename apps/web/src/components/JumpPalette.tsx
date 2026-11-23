@@ -3,15 +3,16 @@
 // on every page. What waits for you comes first, then what is working, then the actions; words
 // typed also find the messages of every conversation that hold them, listed last.
 
-import type {
-  ActivityResponse,
-  Agent,
-  AgentActivity,
-  ConversationListResponse,
-  ConversationSearchHit,
-  ConversationSearchResponse,
-  Profile,
-  Team,
+import {
+  type ActivityResponse,
+  type Agent,
+  type AgentActivity,
+  type ConversationListResponse,
+  type ConversationSearchHit,
+  type ConversationSearchResponse,
+  chosenName,
+  type Profile,
+  type Team,
 } from '@bazilion/api-types'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Keyboard, MessageSquarePlus, Moon, Search, Sun, UserPlus } from 'lucide-react'
@@ -261,7 +262,8 @@ export function JumpPalette({
     const agentDestination = (agent: Agent, group: Group): Destination => ({
       key: `agent:${agent.id}`,
       group,
-      label: agent.name,
+      // Found by either name: "Sales Director · Sally".
+      label: chosenName(agent) ? `${agent.name} · ${chosenName(agent)}` : agent.name,
       hint: `${teamName.get(agent.teamId) ?? agent.teamId} · ${agentState(byAgent.get(agent.id), undefined).text}`,
       agent,
       search: { agent: agent.id },

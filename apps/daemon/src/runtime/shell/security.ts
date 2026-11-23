@@ -364,7 +364,7 @@ export function resolveShellSecurityConfig(
 
 /** Bazilion's own credentials, by variable name: never handed to Agent tools. */
 const INTERNAL_SECRET_NAME =
-  /^(?:OPENAI_CODEX_OAUTH|TELEGRAM_BOT_TOKEN|BAZILION_TOKEN|MCP_TOKEN_.*)$/
+  /^(?:OPENAI_CODEX_OAUTH|TELEGRAM_BOT_TOKEN|BAZILION_TOKEN|MCP_TOKEN_.*|MCP_ENV_.*|MCP_ASK_.*)$/
 
 /**
  * The environment for Agent tools (the turn worker, so its shell commands, and MCP stdio servers):

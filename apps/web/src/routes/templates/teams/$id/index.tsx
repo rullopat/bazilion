@@ -48,13 +48,13 @@ function TeamTemplatePage() {
   const router = useRouter()
   const [spawning, setSpawning] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  // Spawning takes the saved roster: with changes on screen it would not be the one in view.
+  // Using it takes the saved roster: with changes on screen it would not be the one in view.
   const [unsaved, setUnsaved] = useState(false)
 
   return (
     <ManagePage
       title={template.name}
-      description={`A roster of ${count(template.slots.length, 'Agent')} and ${count(template.edges.length, 'connection')}. Spawning it creates them in a new Team or one that exists; Teams already spawned keep their own.`}
+      description={`A roster of ${count(template.slots.length, 'Agent')} and ${count(template.edges.length, 'connection')}. Using it adds them to a new Team or one that exists; Teams made from it earlier keep their own.`}
       actions={
         <>
           <Button
@@ -63,7 +63,7 @@ function TeamTemplatePage() {
             aria-describedby={unsaved ? 'spawn-needs-save' : undefined}
             onClick={() => setSpawning(true)}
           >
-            Spawn this Team
+            Use this template
           </Button>
           <RowMenu
             label={`More for ${template.name}`}

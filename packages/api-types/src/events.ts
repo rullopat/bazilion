@@ -55,6 +55,8 @@ export type CommandRiskCode =
   | 'remote-pipe-execution'
   | 'outbound-exfiltration'
   | 'privilege-or-credential-access'
+  /** An MCP tool that sends or changes something outside, set to ask first. */
+  | 'outward-action'
 
 export interface CommandRisk {
   code: CommandRiskCode
@@ -80,6 +82,11 @@ export interface CommandApproval {
   teamId: string
   command: string
   risks: CommandRisk[]
+  /**
+   * Set for an MCP tool that asks first (`server · tool`): `command` is then the tool and its
+   * arguments, not a shell command.
+   */
+  tool?: string
   status: CommandApprovalStatus
   /** When the Agent asked, epoch milliseconds. */
   createdAt: number

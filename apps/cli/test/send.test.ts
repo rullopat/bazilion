@@ -41,7 +41,9 @@ test('a name shared by several agents is reported as ambiguous', async () => {
   const a = extractAgentId(
     (await server.cli(['agent', 'spawn', '--profile', 'p', '--name', 'ann'])).stdout,
   )
-  await server.cli(['agent', 'spawn', '--profile', 'p', '--name', 'ann'])
+  // One Team has each name once; two Teams can share one.
+  await server.cli(['team', 'add', 'other', '--name', 'Other'])
+  await server.cli(['agent', 'spawn', '--profile', 'p', '--name', 'ann', '--team', 'other'])
   const r = await server.cli(['send', a, 'ann', 'hi'])
   expect(r.exitCode).not.toBe(0)
   expect(r.stderr).toContain('agent name "ann" is ambiguous')

@@ -14,9 +14,12 @@ import { ConnectionsPanel } from './ConnectionsPanel'
 import { FilesPanel } from './FilesPanel'
 import { TeamPanel } from './TeamPanel'
 
-export function SidePanel({ tab }: { tab: PanelTab }) {
+export function SidePanel({ tab: asked }: { tab: PanelTab }) {
   const { agent, team, to } = useWorkspace()
   const counts = useTeamCounts(team?.id)
+  // Changes only for a Team whose folder is a Git repository; asked for anyway, the Team tab.
+  const tabs = PANEL_TABS.filter((id) => id !== 'changes' || counts.repository !== false)
+  const tab: PanelTab = tabs.includes(asked) ? asked : 'team'
   const strip = useRef<HTMLDivElement | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: again when another tab is chosen.
   useEffect(() => revealInStrip(strip.current, '[aria-selected="true"]'), [tab])
@@ -37,7 +40,7 @@ export function SidePanel({ tab }: { tab: PanelTab }) {
           aria-label="Side panel"
           className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
         >
-          {PANEL_TABS.map((id) => {
+          {tabs.map((id) => {
             const selected = id === tab
             const number = count[id]
             return (

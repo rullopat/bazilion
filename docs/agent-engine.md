@@ -90,7 +90,9 @@ and refreshes from the secrets table; only the access token comes back.
 6. **Team**: the workspace path (`/workspace` in Docker mode), the rule that an `AGENTS.md`
    governs its directory and everything below it, and **Your teammates**: every other Agent of the
    Team by name and id, split by whether Team Policy lets this Agent message it, plus the Agents of
-   other Teams it may reach (`lib/team-host.ts:agentContacts`, read when the turn starts).
+   other Teams it may reach (`lib/team-host.ts:agentContacts`, read when the turn starts). A
+   teammate that calls itself something else in its IDENTITY.md is listed with that name too, and
+   `send_message` takes either name.
 7. **About the User**: the Team's USER.md, and how to update it with `user_md_get` /
    `user_md_write`.
 8. **Reviewed lessons**: private lessons you approved, up to 8,000 characters.

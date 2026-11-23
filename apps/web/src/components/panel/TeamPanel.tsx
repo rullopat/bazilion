@@ -8,8 +8,10 @@ import { useEffect, useState } from 'react'
 import { useActivity } from '../../lib/activity'
 import { api } from '../../lib/api'
 import { markdownPreview, markdownTitle } from '../../lib/markdown-text'
+import { MODE_NAME, MODE_SENTENCE } from '../../lib/team-policy'
 import { useResource } from '../../lib/use-resource'
 import { AgentAvatar } from '../AgentAvatar'
+import { CopyButton } from '../CopyButton'
 import { SpawnDialog } from '../SpawnDialog'
 import { SpawnTeamModal } from '../SpawnTeamModal'
 import { SelectMenu } from '../ui/form'
@@ -34,6 +36,7 @@ export function TeamPanel({ team }: { team: Team }) {
   const activity = useActivity()
   const router = useRouter()
   const [spawning, setSpawning] = useState(false)
+  const [showFolder, setShowFolder] = useState(false)
   const [templateId, setTemplateId] = useState<string | null>(null)
   const members = agents.filter((agent) => agent.teamId === team.id)
   const eligible = teamTemplates.filter((template) => template.slots.length > 0)
@@ -44,21 +47,38 @@ export function TeamPanel({ team }: { team: Team }) {
       <div className="flex min-w-0 items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-semibold text-foreground">{team.name}</div>
-          <p className="m-0 truncate font-mono text-xs text-muted-foreground" title={team.path}>
-            {team.path}
-          </p>
+          <Link
+            to="/"
+            search={{ team: team.id }}
+            className="text-xs font-semibold text-sapphire hover:text-sapphire-deep"
+          >
+            Its day so far
+          </Link>
+          {/* Where its files are: a path only a few need, shown when asked. */}
+          {showFolder ? (
+            <p className="m-0 flex min-w-0 items-center gap-1 font-mono text-xs text-muted-foreground">
+              <span className="min-w-0 truncate" title={team.path}>
+                {team.path}
+              </span>
+              <CopyButton value={team.path} ariaLabel="Copy the folder's path" />
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowFolder(true)}
+              className="unstyled text-xs text-muted-foreground underline underline-offset-2 hover:text-sapphire"
+            >
+              Show the folder
+            </button>
+          )}
         </div>
         <Link
           to="/"
           search={to({ panel: 'connections', section: undefined })}
-          title={
-            team.policyMode === 'open'
-              ? 'Members message each other freely'
-              : 'Members message each other only along connections'
-          }
+          title={MODE_SENTENCE[team.policyMode]}
           className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-semibold text-mocha hover:border-sapphire-light hover:text-sapphire"
         >
-          {team.policyMode === 'open' ? 'Open' : 'Restricted'}
+          {MODE_NAME[team.policyMode]}
         </Link>
       </div>
 

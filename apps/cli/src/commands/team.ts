@@ -14,6 +14,7 @@ import { teamEnvironmentCommand } from './team-environment.ts'
 import { teamMessagesCommand } from './team-messages.ts'
 import { teamPolicyCommand } from './team-policy.ts'
 import { teamReviewCommand } from './team-review.ts'
+import { teamTodayCommand } from './team-today.ts'
 
 const addCmd = defineCommand({
   meta: {
@@ -179,6 +180,7 @@ export const teamCommand = defineCommand({
     environment: teamEnvironmentCommand,
     review: teamReviewCommand,
     messages: teamMessagesCommand,
+    today: teamTodayCommand,
     add: addCmd,
     list: listCmd,
     rm: rmCmd,

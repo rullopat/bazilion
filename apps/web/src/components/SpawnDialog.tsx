@@ -1,4 +1,5 @@
 import {
+  AGENT_ROLE_MAX,
   type Agent,
   agentNameProblem,
   type ChatModelEntry,
@@ -15,7 +16,7 @@ import { api, errorMessage } from '../lib/api'
 import { Button } from './Button'
 import { Dialog, DialogActions } from './Dialog'
 import { MODELS_PATH, ModelMenu } from './ModelMenu'
-import { SelectField, TextField } from './ui/form'
+import { SelectField, TextAreaField, TextField } from './ui/form'
 import { Notice } from './ui/parts'
 
 /** The one way to spawn an Agent; opens its chat afterwards. */
@@ -42,6 +43,11 @@ export function SpawnDialog({
   )
   const [name, setName] = useState('')
   const nameProblem = name.trim() ? agentNameProblem(name.trim()) : null
+  const [role, setRole] = useState('')
+  const roleProblem =
+    role.trim().length > AGENT_ROLE_MAX
+      ? `A role is at most ${AGENT_ROLE_MAX} characters.`
+      : undefined
   const [model, setModel] = useState('')
   const [chatModels, setChatModels] = useState<ChatModelEntry[]>([])
   const [teamId, setTeamId] = useState(
@@ -72,6 +78,7 @@ export function SpawnDialog({
       const request: SpawnAgentRequest = { profileId, teamId }
       if (name.trim()) request.name = name.trim()
       if (model) request.model = model
+      if (role.trim()) request.role = role.trim()
       const { agent } = await api<{ agent: Agent }>('/api/agents', { body: request })
       onClose()
       await navigate({ to: '/', search: { agent: agent.id } })
@@ -111,6 +118,16 @@ export function SpawnDialog({
           className="max-w-none"
           onChange={setName}
         />
+        <TextAreaField
+          label="What is it for?"
+          value={role}
+          rows={3}
+          disabled={busy}
+          placeholder="Find small recruiting agencies in Krakow, with a source for each, and hand them to the Sales Director."
+          hint="Its job, what it delivers and to whom. It starts knowing it and gets to work, without the get-to-know questions. Leave it empty to have it ask you who it is."
+          problem={roleProblem}
+          onChange={setRole}
+        />
         <ModelMenu
           kit
           label="Model"
@@ -130,13 +147,13 @@ export function SpawnDialog({
           className="max-w-none"
           hint={
             restricted
-              ? 'This Team is restricted: the new Agent starts with no connections. Add them under Connections.'
+              ? 'In this Team messages go only along connections, and the new Agent starts with none. Add them under Connections.'
               : undefined
           }
           onChange={setTeamId}
         />
         {error && (
-          <Notice tone="warning" role="alert" title="It was not spawned.">
+          <Notice tone="warning" role="alert" title="It was not added.">
             {error}
           </Notice>
         )}
@@ -147,7 +164,9 @@ export function SpawnDialog({
           <Button
             variant="primary"
             type="submit"
-            disabled={busy || !profileId || !teamId || nameProblem !== null}
+            disabled={
+              busy || !profileId || !teamId || nameProblem !== null || roleProblem !== undefined
+            }
           >
             {busy ? 'Adding…' : 'Add the Agent'}
           </Button>

@@ -39,6 +39,7 @@ export class CommandApprovalRegistry implements BashApprovalHost {
       teamId: input.teamId,
       command: input.command,
       risks: input.risks,
+      ...(input.tool ? { tool: input.tool } : {}),
       status: 'pending',
       createdAt: Date.now(),
       expiresAt: Date.now() + this.#timeoutMs,

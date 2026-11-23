@@ -9,7 +9,9 @@
 //      they call `process.send({type: 'rpc', ...})` and the parent dispatches
 //      through this host.
 
-import { agentRepo, type BazilionDb, messageRepo } from '../core/index.ts'
+import { join } from 'node:path'
+import { chosenName } from '@bazilion/api-types'
+import { agentRepo, type BazilionDb, loadIdentityFromFile, messageRepo } from '../core/index.ts'
 import type { MessagingHost } from '../runtime/index.ts'
 import { sendAgentMessage } from './communication.ts'
 
@@ -25,15 +27,23 @@ export function recipientOf(db: BazilionDb, from: string, ref: string): string {
   if (exact) return exact.id
   const sender = agentRepo.get(db, from)
   if (sender) {
-    const teammates = db.raw
-      .query<{ id: string }, [string, string]>(
-        "SELECT id FROM agents WHERE team_id = ? AND lower(name) = lower(?) AND status != 'archived' LIMIT 2",
-      )
-      .all(sender.teamId, wanted)
+    // Compared in JavaScript: SQLite's lower() leaves letters outside ASCII as they are.
+    const key = wanted.toLowerCase()
+    const team = agentRepo.list(db).filter((agent) => agent.teamId === sender.teamId)
+    const teammates = team.filter((agent) => agent.name.trim().toLowerCase() === key)
     if (teammates.length === 1 && teammates[0]) return teammates[0].id
     if (teammates.length > 1) {
       throw new Error(`send_message: more than one teammate is named "${wanted}"; use the id`)
     }
+    // The name a teammate gave itself ("Sally" for the Sales Director) reaches it too.
+    const calling = team.filter(
+      (agent) =>
+        chosenName({
+          name: agent.name,
+          identity: loadIdentityFromFile(join(agent.dir, 'IDENTITY.md')),
+        })?.toLowerCase() === key,
+    )
+    if (calling.length === 1 && calling[0]) return calling[0].id
   }
   const found = agentRepo.get(db, wanted)
   if (found) return found.id

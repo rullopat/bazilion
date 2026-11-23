@@ -21,7 +21,9 @@ const COMMAND_CHARS = 1_500
 function promptBody(agentName: string, approval: CommandApproval): string {
   const risks = [...new Set(approval.risks.map((risk) => risk.message))].join(' ')
   return [
-    `⚠️ ${agentName} wants to run a command that needs your approval:`,
+    approval.tool
+      ? `⚠️ ${agentName} wants to use ${approval.tool}, which sends or changes something outside:`
+      : `⚠️ ${agentName} wants to run a command that needs your approval:`,
     clip(approval.command, COMMAND_CHARS),
     risks ? `Why it asks: ${clip(risks, 500)}` : '',
   ]

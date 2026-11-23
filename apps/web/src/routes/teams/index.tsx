@@ -13,6 +13,7 @@ import { CardEmpty, CardList, Chip, ListRow, RowMenu, SetupCard } from '../../co
 import { api } from '../../lib/api'
 import { daemonClient } from '../../lib/daemon-client'
 import { count, teamRemoveBlocker } from '../../lib/manage'
+import { MODE_NAME, MODE_SENTENCE } from '../../lib/team-policy'
 
 const fetchTeams = createServerFn({ method: 'GET' }).handler(async () => {
   const client = daemonClient()
@@ -100,7 +101,11 @@ function TeamsPage() {
                       {team.name}
                     </Link>
                   }
-                  chip={team.policyMode === 'restricted' && <Chip tone="neutral">Restricted</Chip>}
+                  chip={
+                    team.policyMode === 'restricted' && (
+                      <Chip tone="neutral">{MODE_NAME.restricted}</Chip>
+                    )
+                  }
                   meta={
                     <>
                       <span>
@@ -109,11 +114,7 @@ function TeamsPage() {
                           : current.map((agent) => agent.name).join(', ')}
                         {archived > 0 && ` · ${archived} archived`}
                       </span>
-                      <span>
-                        {team.policyMode === 'restricted'
-                          ? 'Members message each other along connections'
-                          : 'Members message each other freely'}
-                      </span>
+                      <span>{MODE_SENTENCE[team.policyMode]}</span>
                       <code>{team.id}</code>
                     </>
                   }

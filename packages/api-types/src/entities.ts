@@ -33,6 +33,9 @@ export const DEFAULT_TEAM_ID = 'default'
 /** The longest Agent name, the same in the web, the CLI and the API. */
 export const AGENT_NAME_MAX = 120
 
+/** The longest role an Agent can be given when it is added ("What is it for?"). */
+export const AGENT_ROLE_MAX = 4_000
+
 /**
  * Why a name cannot be an Agent's, or null. A name is one line of visible text: it is shown in
  * every teammate's instructions, so line breaks and control or format characters are refused.
@@ -346,6 +349,21 @@ export interface AgentIdentityFile {
   avatar?: string
 }
 
+/**
+ * The name an Agent gave itself (its IDENTITY.md, usually in its first conversation), when it is
+ * not the name it has in the list: "Sales Director" that calls itself Sally. Null otherwise.
+ */
+export function chosenName(agent: {
+  name: string
+  identity?: AgentIdentityFile | null
+}): string | null {
+  const own = agent.identity?.name?.trim()
+  // An Agent writes its IDENTITY.md itself: a name that breaks the rule for names is not shown,
+  // nor put in its teammates' prompts.
+  if (!own || agentNameProblem(own)) return null
+  return own.toLowerCase() !== agent.name.trim().toLowerCase() ? own : null
+}
+
 export interface ResolvedAgent {
   agent: Agent
   profile: Profile
@@ -372,6 +390,14 @@ export interface McpServer {
   url: string | null
   /** Whether an HTTP bearer token is stored for this server. */
   hasAuthToken: boolean
+  /** stdio: the names of its own environment variables (a token, a client id); never the values. */
+  envNames?: string[]
+  /**
+   * The operator's choices for single tools: true asks before each call, false never does. Every
+   * other tool asks when its name says it sends, posts, shares, creates, changes or deletes
+   * something.
+   */
+  ask?: Record<string, boolean>
   enabled: boolean
   createdAt: number
   updatedAt: number
@@ -386,6 +412,10 @@ export interface McpServerInput {
   url?: string | null
   /** HTTP bearer token; stored encrypted. Pass null to clear. */
   authToken?: string | null
+  /** stdio: set (a value) or remove (null) its own environment variables; stored encrypted. */
+  env?: Record<string, string | null>
+  /** Replaces the choices of which tools ask first; null or {} goes back to the default rule. */
+  ask?: Record<string, boolean> | null
   enabled?: boolean
 }
 
@@ -393,6 +423,10 @@ export interface McpServerInput {
 export interface McpToolInfo {
   name: string
   description: string
+  /** It asks the operator before each call: the operator's choice, or else the default rule. */
+  asks?: boolean
+  /** What the default rule says for it, from its name. */
+  asksByDefault?: boolean
 }
 
 export interface LoadedProfile {

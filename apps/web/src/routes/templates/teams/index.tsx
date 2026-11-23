@@ -21,6 +21,7 @@ import {
 import { api, errorMessage } from '../../../lib/api'
 import { daemonClient } from '../../../lib/daemon-client'
 import { count, rosterCounts, rosterLine, slugify, slugProblem } from '../../../lib/manage'
+import { MODE_NAME } from '../../../lib/team-policy'
 
 const fetchTemplates = createServerFn({ method: 'GET' }).handler(async () => {
   const client = daemonClient()
@@ -56,7 +57,7 @@ function TeamTemplatesPage() {
   return (
     <ManagePage
       title="Team templates"
-      description="Reusable rosters: one Agent per slot, from an Agent template, and who may message whom. Spawning one creates its Agents and their connections."
+      description="Reusable rosters: one Agent per slot, from an Agent template, and who may message whom. Using one adds its Agents and their connections to a new Team or one that exists."
       actions={
         <Button variant="primary" onClick={() => setCreating(true)}>
           New Team template
@@ -97,7 +98,9 @@ function TeamTemplatesPage() {
                     </a>
                   }
                   chip={
-                    template.policyMode === 'restricted' && <Chip tone="neutral">Restricted</Chip>
+                    template.policyMode === 'restricted' && (
+                      <Chip tone="neutral">{MODE_NAME.restricted}</Chip>
+                    )
                   }
                   meta={
                     <>
@@ -111,10 +114,10 @@ function TeamTemplatesPage() {
                       <Button
                         variant="ghost"
                         disabled={template.slots.length === 0}
-                        aria-label={`Spawn ${template.name}`}
+                        aria-label={`Use ${template.name}`}
                         onClick={() => setSpawning(template)}
                       >
-                        Spawn
+                        Use
                       </Button>
                       <RowMenu
                         label={`More for ${template.name}`}

@@ -37,7 +37,7 @@ const show = defineCommand({
     if (args.json) return printJson(policy)
     console.log(`# Team ${policy.teamId} policy`)
     console.log(
-      `mode:    ${policy.mode}${policy.mode === 'open' ? ' (members message each other freely)' : ' (members need an allow edge)'}`,
+      `mode:    ${policy.mode}${policy.mode === 'open' ? ' (everyone can message everyone)' : ' (only along connections)'}`,
     )
     console.log(`members: ${policy.members.map((agent) => agent.name).join(', ') || '(none)'}`)
     if (!policy.edges.length) return console.log('edges:   (none)')

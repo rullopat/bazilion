@@ -48,11 +48,11 @@ export function spawnTeamTemplate(
         agentRepo
           .list(db, { includeArchived: true })
           .filter((agent) => agent.teamId === input.teamId)
-          .map((agent) => agent.name),
+          .map((agent) => agent.name.trim().toLowerCase()),
       )
       for (const slot of template.slots) {
         const name = uniqueName(slot.agentName, names)
-        names.add(name)
+        names.add(name.toLowerCase())
         created.push(
           spawnAgent(db, paths, {
             profileId: slot.profileId,
@@ -118,9 +118,11 @@ export function saveTeamAsTemplate(
   })
 }
 
+/** `base`, or `base-2`…: a name the Team does not have yet, whatever its case (`existing` is lower case). */
 function uniqueName(base: string, existing: ReadonlySet<string>): string {
-  if (!existing.has(base)) return base
+  const taken = (name: string) => existing.has(name.trim().toLowerCase())
+  if (!taken(base)) return base
   let suffix = 2
-  while (existing.has(`${base}-${suffix}`)) suffix++
+  while (taken(`${base}-${suffix}`)) suffix++
   return `${base}-${suffix}`
 }

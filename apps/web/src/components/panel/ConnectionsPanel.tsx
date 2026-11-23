@@ -7,6 +7,7 @@ import { ArrowLeftRight, ArrowRight, Network } from 'lucide-react'
 import { useActivity } from '../../lib/activity'
 import { api } from '../../lib/api'
 import { pairKey, trafficByPair } from '../../lib/messages'
+import { MODE_SENTENCE } from '../../lib/team-policy'
 import { useResource } from '../../lib/use-resource'
 import { AgentAvatar } from '../AgentAvatar'
 import { TeamThread, useTeamMessages } from '../connections/TeamThread'
@@ -51,14 +52,12 @@ export function ConnectionsPanel({ team }: { team: Team }) {
   return (
     <div>
       <div className="rounded-2xl border border-border bg-muted/50 px-3 py-2.5">
-        <p className="m-0 text-sm font-semibold text-foreground">
-          {mode === 'open' ? 'Open Team' : 'Restricted Team'}
-        </p>
+        <p className="m-0 text-sm font-semibold text-foreground">{MODE_SENTENCE[mode]}</p>
         <p className="m-0 mt-0.5 text-xs leading-relaxed text-mocha">
           {mode === 'open'
-            ? `Every member can message every other member, with no connections needed. Connections here only matter for messages to and from other Teams, or if you make the Team restricted.${
+            ? `Every member can message every other member, with no connections needed. Connections here only matter for messages to and from other Teams, or if you switch the Team to Connections only.${
                 saved > 0
-                  ? ` ${saved} ${saved === 1 ? 'connection between teammates is' : 'connections between teammates are'} saved; ${saved === 1 ? 'it applies' : 'they apply'} once the Team is restricted.`
+                  ? ` ${saved} ${saved === 1 ? 'connection between teammates is' : 'connections between teammates are'} saved; ${saved === 1 ? 'it applies' : 'they apply'} then.`
                   : ''
               }`
             : 'A member can message a teammate only along a connection.'}{' '}

@@ -3,6 +3,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { ConfigPage } from '../../components/ConfigPage'
 import { AddServerCard, ServersCard } from '../../components/setup/McpCards'
+import { CommonConnectionsCard } from '../../components/setup/McpPresets'
 import { daemonClient } from '../../lib/daemon-client'
 
 const fetchServers = createServerFn({ method: 'GET' }).handler(() =>
@@ -30,6 +31,7 @@ function McpPage() {
         </>
       }
     >
+      <CommonConnectionsCard servers={servers} onAdded={reload} />
       <AddServerCard onAdded={reload} />
       <ServersCard servers={servers} onChanged={reload} />
     </ConfigPage>

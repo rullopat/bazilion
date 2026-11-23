@@ -1,11 +1,12 @@
 // The Agent tab: who the open Agent is, what it runs on, and the ways into its deeper pages
 // (schedules, learning, mailbox, skills, Telegram, browser), which open as sheets.
 
-import type {
-  ListAgentLessonProposalsResponse,
-  ListInboxResponse,
-  ListTriggersResponse,
-  ResolvedAgent,
+import {
+  chosenName,
+  type ListAgentLessonProposalsResponse,
+  type ListInboxResponse,
+  type ListTriggersResponse,
+  type ResolvedAgent,
 } from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
 import {
@@ -20,7 +21,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { shortTime, useActivity } from '../../lib/activity'
-import { archiveAgent, deleteAgent, unarchiveAgent } from '../../lib/agent-actions'
+import { archiveAgent, deleteAgent, renameAgent, unarchiveAgent } from '../../lib/agent-actions'
 import { api, errorMessage } from '../../lib/api'
 import { useHydrated, useResource } from '../../lib/use-resource'
 import type { AgentSection } from '../../lib/workspace'
@@ -46,6 +47,17 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
   const router = useRouter()
   const hydrated = useHydrated()
   const [renaming, setRenaming] = useState(false)
+  const own = chosenName(agent)
+  async function takeOwnName() {
+    if (!own) return
+    setError(null)
+    try {
+      await renameAgent(agent.id, own)
+      await router.invalidate()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
   const [confirm, setConfirm] = useState<'archive' | 'delete' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const archived = agent.status === 'archived'
@@ -156,6 +168,19 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
           {(agent.identity?.creature || agent.identity?.vibe) && (
             <p className="m-0 truncate text-xs text-muted-foreground">
               {[agent.identity?.creature, agent.identity?.vibe].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          {own && (
+            // The name it gave itself is not its name in the list: offer it, never change it.
+            <p className="m-0 mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-mocha">
+              <span>It calls itself {own}.</span>
+              <button
+                type="button"
+                onClick={() => void takeOwnName()}
+                className="unstyled font-semibold text-sapphire underline underline-offset-2 hover:text-sapphire-deep"
+              >
+                Use {own} as its name
+              </button>
             </p>
           )}
           <p className="m-0 mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-mocha">

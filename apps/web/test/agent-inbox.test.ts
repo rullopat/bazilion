@@ -34,10 +34,12 @@ test('the mailbox lists messages by who sent them, can mark them read and send a
   expect(html).toContain('Mark read')
   expect(html).toContain('hello')
   expect(html).toContain('From Bob')
-  expect(html).toContain('Send a message to this Agent')
-  // Senders are named, not numbered; the first one is chosen.
-  expect(html).toMatch(/role="combobox"[^>]*>.*>Bob<\/span>/)
-  expect(html).not.toContain('agent-2)')
+  // Trying a teammate's message is offered, folded, after the mail itself.
+  expect(html).toContain('Try a message from a teammate')
+  expect(html.indexOf('Try a message from a teammate')).toBeGreaterThan(
+    html.indexOf('Stopped chains'),
+  )
+  expect(html).not.toContain('role="combobox"')
   // An archived Agent cannot send, and the Agent does not write to itself.
   expect(
     mailSenders('agent-1', [

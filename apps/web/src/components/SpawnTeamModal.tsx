@@ -2,6 +2,7 @@ import type { Team, TeamTemplate } from '@bazilion/api-types'
 import { useState } from 'react'
 import { api, errorMessage } from '../lib/api'
 import { count, slugify, slugProblem } from '../lib/manage'
+import { MODE_SENTENCE } from '../lib/team-policy'
 import { Button } from './Button'
 import { Dialog, DialogActions } from './Dialog'
 import { ChoiceCards, SelectField, TextField } from './ui/form'
@@ -9,7 +10,7 @@ import { Notice } from './ui/parts'
 
 type Target = 'new' | 'existing'
 
-/** Spawn a Team template's Agents and connections into a new Team or one that exists. */
+/** Use a Team template: add its Agents and connections to a new Team or one that exists. */
 export function SpawnTeamModal({
   template,
   teams,
@@ -63,7 +64,7 @@ export function SpawnTeamModal({
 
   return (
     <Dialog
-      title={`Spawn ${template.name}`}
+      title={`Use ${template.name}`}
       description={`Creates ${count(template.slots.length, 'Agent')} and ${count(template.edges.length, 'connection')} between them.`}
       busy={busy}
       onClose={onClose}
@@ -79,7 +80,7 @@ export function SpawnTeamModal({
             {
               value: 'new',
               label: 'A new Team',
-              hint: `It is ${template.policyMode === 'restricted' ? 'restricted: members message each other along connections' : 'open: members message each other freely'}, as the template is.`,
+              hint: `${MODE_SENTENCE[template.policyMode]}, as in the template.`,
             },
             {
               value: 'existing',
@@ -135,7 +136,7 @@ export function SpawnTeamModal({
           <Notice tone="warning">This template has no Agents yet: add some to it first.</Notice>
         )}
         {error && (
-          <Notice tone="warning" role="alert" title="The Team was not spawned.">
+          <Notice tone="warning" role="alert" title="The Agents were not added.">
             {error}
           </Notice>
         )}
@@ -144,7 +145,7 @@ export function SpawnTeamModal({
             Cancel
           </Button>
           <Button variant="primary" type="submit" disabled={busy || !ready}>
-            {busy ? 'Spawning…' : `Spawn ${count(template.slots.length, 'Agent')}`}
+            {busy ? 'Adding…' : `Add ${count(template.slots.length, 'Agent')}`}
           </Button>
         </DialogActions>
       </form>

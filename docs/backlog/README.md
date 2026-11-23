@@ -47,5 +47,6 @@ are never reused, so the gaps below are deliberate.
 | [BAZ-077](done/BAZ-077-live-and-away.md) | Live updates, reaching the operator when away, browser tests | 0.55.0 | [workspace](../workspace.md#live), [coding environments](../coding-environments.md) |
 | [BAZ-078](done/BAZ-078-cost-search-and-checks.md) | Usage and cost, failed turns in Attention, conversation search, checks on CI | 0.56.0 | [usage](../usage.md), [Attention](../attention-notifications.md#failed-background-turns), [conversations](../conversations.md#search) |
 | [BAZ-079](done/BAZ-079-polish-and-fixes.md) | Polish and fixes: teammates, live lists, kept places, a bug hunt | 0.57.0 | [Team Policy](../team-policy.md), [agent engine](../agent-engine.md#5-tools), [workspace](../workspace.md#live) |
+| [BAZ-080](done/BAZ-080-say-what-it-does.md) | Say what it does: connections, roles, names, a Team's day, common connections | 0.58.0 | [MCP](../mcp.md#common-connections), [Team Policy](../team-policy.md), [manage](../manage.md#agents), [workspace](../workspace.md) |
 
 No story is in draft or in progress.

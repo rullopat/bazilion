@@ -1,7 +1,7 @@
 // One Agent in the rail: its avatar, name and what it is doing, with a menu for its settings,
 // renaming and archiving.
 
-import type { Agent } from '@bazilion/api-types'
+import { type Agent, chosenName } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
 import { Archive, Ellipsis, Pencil, Send, Settings2 } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
@@ -49,6 +49,9 @@ export function AgentRow({
               }`}
             >
               {agent.name}
+              {chosenName(agent) && (
+                <span className="font-normal text-muted-foreground"> · {chosenName(agent)}</span>
+              )}
             </span>
             {agent.telegramTopicId !== null && (
               <span

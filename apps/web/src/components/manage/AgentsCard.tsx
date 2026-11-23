@@ -1,7 +1,13 @@
 // The Agents page's list: every Agent, grouped by Team, found by name, with what can be done to
 // each.
 
-import type { Agent, ChatModelEntry, ProfileSummary, Team } from '@bazilion/api-types'
+import {
+  type Agent,
+  type ChatModelEntry,
+  chosenName,
+  type ProfileSummary,
+  type Team,
+} from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
 import { Bot } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -15,6 +21,7 @@ import {
   groupAgents,
   templateName,
 } from '../../lib/manage'
+import { MODE_SENTENCE } from '../../lib/team-policy'
 import { AgentAvatar } from '../AgentAvatar'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
@@ -179,10 +186,10 @@ export function AgentsCard({
           <section key={team.id} aria-label={team.name}>
             <GroupHeader
               title={team.name}
-              meta={`${count(members.length, 'Agent')} · ${team.policyMode === 'restricted' ? 'Restricted' : 'Open'}`}
+              meta={`${count(members.length, 'Agent')} · ${MODE_SENTENCE[team.policyMode].toLowerCase()}`}
               action={
                 <Link to="/" search={{ team: team.id, panel: 'team' }}>
-                  Open Team
+                  Go to the Team
                 </Link>
               }
             />
@@ -206,6 +213,12 @@ export function AgentsCard({
                         className="text-foreground hover:text-primary"
                       >
                         {agent.name}
+                        {chosenName(agent) && (
+                          <span className="font-normal text-muted-foreground">
+                            {' '}
+                            · calls itself {chosenName(agent)}
+                          </span>
+                        )}
                       </Link>
                     }
                     chip={isArchived && <Chip tone="neutral">Archived</Chip>}

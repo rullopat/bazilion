@@ -38,6 +38,7 @@ export const doctorCommand = defineCommand({
     console.log(`  ${r.skills.installed} skill(s) installed`)
     if (r.skills.parseErrors > 0) {
       check('all skills parse', false, `${r.skills.parseErrors} skill(s) have errors`)
+      for (const skill of r.skills.broken ?? []) console.log(`    ${skill.name}: ${skill.error}`)
     }
 
     console.log()
