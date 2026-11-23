@@ -12,8 +12,18 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const references = resolve(import.meta.dirname, '../e2e/pictures')
-const run = (command: string, args: string[]) =>
-  execFileSync(command, args, { encoding: 'utf8' }).trim()
+function run(command: string, args: string[]): string {
+  try {
+    return execFileSync(command, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr?.trim()
+    console.error(`${command} ${args.slice(0, 2).join(' ')} failed${stderr ? `: ${stderr}` : ''}`)
+    process.exit(1)
+  }
+}
 
 let runId = process.argv[2]
 if (!runId) {
@@ -40,6 +50,7 @@ if (!runId) {
 
 const download = mkdtempSync(join(tmpdir(), 'pictures-'))
 try {
+  // A run that kept no pictures (it passed, or failed before the comparison) has no artifact.
   run('gh', ['run', 'download', runId, '--name', 'pictures', '--dir', download])
   const taken = readdirSync(download).filter(
     (name) => name.endsWith('.png') && !/\.(diff|reference)\.png$/.test(name),

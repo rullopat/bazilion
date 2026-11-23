@@ -313,7 +313,7 @@ function Totals({ report }: { report: UsageReport }) {
               : 'As the providers reported it billed.'}
         </p>
       </div>
-      <dl className="m-0 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <dl className="m-0 grid grid-cols-2 gap-3 self-start sm:grid-cols-4">
         <Stat label="Tokens" value={formatTokens(totals.totalTokens)} />
         <Stat label="On a subscription" value={formatTokens(totals.planTokens)} />
         <Stat label="On this computer" value={formatTokens(totals.localTokens)} />
@@ -366,7 +366,8 @@ function Breakdown({
                 {row.meta && <span>{row.meta}</span>}
                 <span>
                   {formatTokens(row.totals.inputTokens + row.totals.cacheReadTokens)} in ·{' '}
-                  {formatTokens(row.totals.outputTokens)} out · {row.totals.calls} call
+                  {formatTokens(row.totals.outputTokens)} out · {row.totals.calls.toLocaleString()}{' '}
+                  call
                   {row.totals.calls === 1 ? '' : 's'}
                 </span>
               </>

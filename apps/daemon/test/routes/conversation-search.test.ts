@@ -11,7 +11,7 @@ import * as providerModels from '../../src/core/repos/providerModels.ts'
 import * as providerState from '../../src/core/repos/providerState.ts'
 import { openSecrets } from '../../src/core/repos/secrets.ts'
 import * as webTokens from '../../src/core/repos/webTokens.ts'
-import { snippetOf } from '../../src/lib/conversation-search.ts'
+import { plainText, snippetOf } from '../../src/lib/conversation-search.ts'
 import { startConversation } from '../../src/lib/conversation-target.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -129,4 +129,21 @@ test('a snippet is cut around the first word found', () => {
   expect(snippet.endsWith('…')).toBe(true)
   expect(snippet).toContain('needle')
   expect(snippetOf('short needle', ['needle'])).toBe('short needle')
+})
+
+test('a snippet reads as the message does, without its Markdown', () => {
+  expect(plainText('**Dark mode is in.** See `theme.js` and [the diff](https://x.test).')).toBe(
+    'Dark mode is in. See theme.js and the diff.',
+  )
+  expect(
+    plainText('## Tracks\n| Track | Owner |\n| --- | --- |\n| Toggle | Dev |')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  ).toBe('Tracks Track Owner Toggle Dev')
+  expect(plainText('- one\n2. two\n> quoted *word* and snake_case_name')).toBe(
+    'one\ntwo\nquoted word and snake_case_name',
+  )
+  expect(snippetOf('**The headline is plain**: *Paperboat 2.0 is here*', ['headline'])).toBe(
+    'The headline is plain: Paperboat 2.0 is here',
+  )
 })

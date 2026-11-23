@@ -16,7 +16,8 @@ import { redactExactValues } from '../runtime/worker/runtime.ts'
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
 const MAX_WORDS = 8
 export const MAX_SEARCH_HITS = 50
-const BEFORE = 60
+/** A snippet starts a few words before the first word found, so that a short line shows it. */
+const BEFORE = 24
 const AFTER = 140
 
 /** The words of a query, lower-cased, each once; refused when too short or too many. */
@@ -27,9 +28,23 @@ export function searchWords(query: string): string[] {
   return words
 }
 
+/** Markdown as it reads: no emphasis marks, headings, list marks, table rules or link targets. */
+export function plainText(markdown: string): string {
+  return markdown
+    .replace(/^\s*```.*$/gm, ' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, '')
+    .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-*:?\s*$/gm, ' ')
+    .replace(/\|/g, ' ')
+    .replace(/(\*\*|__|`)/g, '')
+    .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,;:!?]|$)/g, '$1$2')
+}
+
 /** The text around the first word found, whitespace folded, with ellipses where it is cut. */
 export function snippetOf(text: string, words: readonly string[]): string {
-  const flat = text.replace(/\s+/g, ' ').trim()
+  const flat = plainText(text).replace(/\s+/g, ' ').trim()
   const lower = flat.toLowerCase()
   const at = Math.min(
     ...words.map((word) => lower.indexOf(word)).filter((index) => index >= 0),

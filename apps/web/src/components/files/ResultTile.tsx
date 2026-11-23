@@ -104,10 +104,11 @@ export function ResultTile({
   }`
 
   if (compact) {
+    // The tile's link or button names the file: the picture adds nothing to read out.
     const face = isPreviewImage(result) ? (
       <img
         src={resultPath(result.id, 'preview')}
-        alt={result.name}
+        alt=""
         loading="lazy"
         className="block aspect-[4/3] w-full bg-card object-contain p-1.5"
       />

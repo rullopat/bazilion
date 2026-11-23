@@ -31,6 +31,7 @@ import {
   seedDemoBase,
   seedDemoHistory,
   seedDemoManage,
+  seedDemoUsage,
 } from '../e2e/demo.ts'
 import { type Instance, startInstance } from '../e2e/instance.ts'
 import { startModelServer } from '../e2e/model-server.ts'
@@ -109,6 +110,7 @@ async function demoPictures(browser: Browser): Promise<void> {
     known = ids
     await seedDemoHistory(instance, ids)
     await seedDemoManage(instance)
+    await seedDemoUsage(instance, ids)
     // The Research Team is unfolded, as an operator who uses it would have it.
     const cookies = [
       {
@@ -164,7 +166,14 @@ async function workspacePictures(main: Session, ids: DemoIds): Promise<void> {
   await page.keyboard.press('Control+k')
   await page.waitForTimeout(1500)
   await shoot(page, 'palette', { x: 432, y: 104, width: 576, height: 620 })
+  // Words typed also find messages in the conversations.
+  await page.keyboard.type('dark mode')
+  await page.waitForTimeout(1500)
+  await shoot(page, 'search', { x: 432, y: 104, width: 576, height: 620 })
   await page.keyboard.press('Escape')
+  await main.go('/usage', 2000)
+  await page.locator('body').click({ position: { x: 1, y: 1 } })
+  await shoot(page, 'usage', { x: 0, y: 0, width: 1440, height: 1300 })
   await main.go(`/?agent=${ids.mira}&panel=agent&section=schedules`, 1500)
   const sheet = await page.getByRole('dialog').first().boundingBox()
   await shoot(
@@ -393,6 +402,8 @@ try {
     'overview',
     'attention',
     'palette',
+    'search',
+    'usage',
     'schedules',
     'workspace',
     'handoffs',

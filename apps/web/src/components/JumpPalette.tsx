@@ -47,6 +47,25 @@ interface Destination {
   search?: WorkspaceSearch
   path?: string
   run?: () => void
+  /** Words a search found in the label, shown stronger. */
+  found?: string[]
+}
+
+/** The label with the words a search found in it set apart. */
+export function markWords(label: string, words: readonly string[]): ReactNode[] {
+  const wanted = words.map((word) => word.toLowerCase()).filter(Boolean)
+  if (wanted.length === 0) return [label]
+  const escaped = wanted.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  return label.split(new RegExp(`(${escaped.join('|')})`, 'gi')).map((part, index) =>
+    index % 2 === 1 ? (
+      // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one label never reorder.
+      <strong key={index} className="font-semibold text-foreground">
+        {part}
+      </strong>
+    ) : (
+      part
+    ),
+  )
 }
 
 const PAGES: Array<[label: string, hint: string, path: string]> = [
@@ -352,6 +371,7 @@ export function JumpPalette({
       group: 'In conversations',
       label: hit.snippet,
       hint: `${hit.agentName} · ${hit.conversationTitle}`,
+      found: hits.query.split(/\s+/),
       agent: agentById.get(hit.agentId),
       search: {
         agent: hit.agentId,
@@ -484,7 +504,13 @@ export function JumpPalette({
                         {destination.icon}
                       </span>
                     ) : null}
-                    <span className="min-w-0 truncate font-semibold">{destination.label}</span>
+                    {destination.found ? (
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {markWords(destination.label, destination.found)}
+                      </span>
+                    ) : (
+                      <span className="min-w-0 truncate font-semibold">{destination.label}</span>
+                    )}
                     <span className="ml-auto min-w-0 shrink truncate pl-3 text-xs text-muted-foreground">
                       {destination.hint}
                     </span>

@@ -4,7 +4,7 @@
 //
 // Fonts render differently on each system, so the comparison runs on Linux CI only, where the
 // references were taken (BAZILION_PICTURES=compare forces it, =update writes new references on a
-// Linux machine, =off skips it). A failed run keeps what it saw in e2e/.pictures-out/ (CI uploads
+// Linux machine, =off skips it). A failed run keeps what it saw in e2e/pictures-out/ (CI uploads
 // it as the `pictures` artifact); `pnpm pictures:accept` copies those into e2e/pictures/ when the
 // change is meant.
 
@@ -31,7 +31,7 @@ const MODE =
   process.env.BAZILION_PICTURES ??
   (process.platform === 'linux' && process.env.CI ? 'compare' : 'off')
 const REFERENCES = join(import.meta.dirname, 'pictures')
-const OUT = join(import.meta.dirname, '.pictures-out')
+const OUT = join(import.meta.dirname, 'pictures-out')
 /** A pixel differs when its colour moves this much (pixelmatch's 0–1 scale)… */
 const PIXEL_THRESHOLD = 0.1
 /** …and a picture differs when more than this share of its pixels do. */

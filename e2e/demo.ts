@@ -4,7 +4,14 @@
 // the stand-in model's script for each conversation. Every name, key and file is invented.
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Browser } from 'playwright'
@@ -649,4 +656,68 @@ export async function seedDemoManage(instance: Instance): Promise<void> {
     body: { profileId: 'default', name: 'Atlas', teamId: 'research' },
   })
   await instance.api(`/api/agents/${old.agent.id}/archive`, { method: 'POST' })
+}
+
+/**
+ * A month of model use for the Usage picture: the stand-in model is a local server and costs
+ * nothing, so this writes what a paid model and a ChatGPT plan would have cost into the Agents'
+ * histories, as Pi records it. Invented, like the rest of the demo; for pictures only.
+ */
+export async function seedDemoUsage(
+  instance: Instance,
+  ids: DemoIds,
+  now = Date.now(),
+): Promise<void> {
+  const plans: Array<[agent: string, provider: string, model: string, scale: number]> = [
+    [ids.mira, 'anthropic', 'claude-fable-5-2', 1.4],
+    [ids.dev, 'anthropic', 'claude-fable-5-2', 2.2],
+    [ids.dev, 'openai-codex', 'gpt-6.2-sol', 1.5],
+    [ids.quill, 'anthropic', 'claude-haiku-5-5', 0.9],
+    [ids.scout, 'anthropic', 'claude-fable-5-2', 1.1],
+  ]
+  for (const [agent, provider, model, scale] of plans) {
+    const { selectedId } = await instance.api<{ selectedId: string | null }>(
+      `/api/agents/${agent}/conversations?limit=1`,
+    )
+    if (!selectedId) continue
+    const file = join(instance.home, 'agents', agent, 'sessions', `${selectedId}.jsonl`)
+    const lines = readFileSync(file, 'utf8').trim().split('\n')
+    // Chained after the last entry, so the conversation shows what it did before.
+    let parent = (JSON.parse(lines.at(-1) ?? '{}') as { id?: string }).id ?? null
+    const entries: string[] = []
+    for (let day = 29; day >= 1; day--) {
+      // Busier on weekdays and towards the launch; the same numbers every run.
+      const at = now - day * 86_400_000 + ((day * 7919) % 36_000) * 1000
+      const weekday = new Date(at).getDay() % 6 !== 0
+      const calls = Math.round((weekday ? 6 : 2) * scale * (1 + (30 - day) / 30))
+      for (let call = 0; call < calls; call++) {
+        const input = 9_000 + ((day * 31 + call * 17) % 40) * 400
+        const output = 700 + ((day * 13 + call * 29) % 30) * 60
+        const priced = model === 'claude-haiku-5-5' ? [1, 5] : [5, 25]
+        const cost = (input * (priced[0] ?? 0) + output * (priced[1] ?? 0)) / 1_000_000
+        const id = `demo${day}x${call}${provider.slice(0, 3)}`
+        entries.push(
+          JSON.stringify({
+            type: 'usage',
+            id,
+            parentId: parent,
+            timestamp: new Date(at + call * 60_000).toISOString(),
+            kind: 'demo_history',
+            provider,
+            model,
+            usage: {
+              input,
+              output,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: input + output,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: cost },
+            },
+          }),
+        )
+        parent = id
+      }
+    }
+    appendFileSync(file, `${entries.join('\n')}\n`)
+  }
 }
