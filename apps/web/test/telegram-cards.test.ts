@@ -5,7 +5,8 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
 import { NotificationsCard } from '../src/components/setup/NotificationsCard.tsx'
-import { BotCard, PreflightCard } from '../src/components/setup/TelegramCards.tsx'
+import { BotCard } from '../src/components/setup/telegram/BotCard.tsx'
+import { PreflightCard } from '../src/components/setup/telegram/PreflightCard.tsx'
 
 const done = async () => {}
 const nothing = () => {}
