@@ -26,7 +26,7 @@ import type { AgentState } from '../../lib/activity'
 import { pairKey } from '../../lib/messages'
 import { hasEdge, OUTSIDE, type PolicyDocument, type PolicyPosition } from '../../lib/team-policy'
 import { AgentAvatar } from '../AgentAvatar'
-import { STATE_DOT } from '../workspace/Rail'
+import { STATE_DOT } from '../workspace/state-style'
 
 export interface MapMember {
   id: string

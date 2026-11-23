@@ -15,7 +15,7 @@ import { SpawnTeamModal } from '../SpawnTeamModal'
 import { SelectMenu } from '../ui/form'
 import { SearchField } from '../ui/parts'
 import { useWorkspace } from '../workspace/context'
-import { STATE_DOT } from '../workspace/Rail'
+import { STATE_DOT } from '../workspace/state-style'
 import { PanelGroup, PanelHeading } from './SidePanel'
 
 const SMALL_ACTION =

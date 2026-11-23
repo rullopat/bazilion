@@ -14,7 +14,7 @@ import { useResults } from '../files/use-results'
 import { SpawnDialog } from '../SpawnDialog'
 import { useWorkspace } from './context'
 import { useTeamCounts } from './counts'
-import { STATE_DOT } from './Rail'
+import { STATE_DOT } from './state-style'
 
 const VIEWS = [
   { view: 'connections', label: 'Connections', icon: Network },
