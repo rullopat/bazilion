@@ -15,6 +15,7 @@ import { imageGenerateTool } from '../tools/image-generate.ts'
 import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
+import { agentCreateTool } from '../tools/team.ts'
 import type { ToolHandler, ToolResultPart } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
 import { webFetchTool, webSearchTool } from '../tools/web.ts'
@@ -24,6 +25,7 @@ import type {
   InjectedMcpTool,
   McpHost,
   MessagingHost,
+  TeamHost,
   UserMdHost,
   WebSearchHost,
 } from '../worker/ipc-protocol.ts'
@@ -70,6 +72,8 @@ export interface BazilionCustomToolsOpts {
   /** Daemon-run search; absent means no web_search tool. */
   webSearchHost?: WebSearchHost
   askUser?: AskUser
+  /** Adding teammates (`agent_create`), in a turn the operator started. */
+  teamHost?: TeamHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
 }
@@ -98,5 +102,6 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.fileSink) handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink))
   if (opts.imageGenerationHost) handlers.push(imageGenerateTool(opts.imageGenerationHost))
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
+  if (opts.teamHost) handlers.push(agentCreateTool(opts.teamHost))
   return handlers.map(ourToolToPiTool)
 }

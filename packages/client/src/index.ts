@@ -10,10 +10,10 @@ import type {
   EnqueueUserInput,
   NotificationSettings,
   NotificationSettingsResponse,
-  RepositoryReviewResponse,
   ReviewFeedbackRequest,
   ReviewFeedbackResponse,
   TeamCodingEnvironment,
+  TeamReviewResponse,
   UserQueueItem,
   UserQueueListResponse,
 } from '@bazilion/api-types'
@@ -121,7 +121,7 @@ export function createClient(cfg: ClientConfig) {
       return {
         changes: (
           options: { base?: string; patches?: boolean; path?: string; authors?: boolean } = {},
-        ): Promise<RepositoryReviewResponse> => {
+        ): Promise<TeamReviewResponse> => {
           const params = new URLSearchParams()
           if (options.base !== undefined) params.set('base', options.base)
           if (options.patches) params.set('patches', '1')

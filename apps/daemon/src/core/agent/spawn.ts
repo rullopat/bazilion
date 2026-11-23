@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type Agent, DEFAULT_TEAM_ID, type ReasoningLevel } from '@bazilion/api-types'
+import {
+  type Agent,
+  agentNameProblem,
+  DEFAULT_TEAM_ID,
+  type ReasoningLevel,
+} from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import { DomainError } from '../errors.ts'
 import type { Paths } from '../paths.ts'
@@ -24,6 +29,10 @@ export interface SpawnAgentInput {
 }
 
 export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput): Agent {
+  // A blank name takes the template's, as the web and the CLI say.
+  const givenName = input.name?.trim() || undefined
+  const nameProblem = givenName === undefined ? null : agentNameProblem(givenName)
+  if (nameProblem) throw new DomainError(400, nameProblem)
   const loaded = loadProfile(db, input.profileId)
   const id = randomUUID()
   const dir = paths.agentDir(id)
@@ -66,7 +75,7 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
       const agent = agentRepo.insert(db, {
         id,
         profileId: input.profileId,
-        name: input.name ?? loaded.profile.name,
+        name: givenName ?? loaded.profile.name,
         modelOverride: input.modelOverride ?? null,
         reasoningLevel,
         status: 'idle',

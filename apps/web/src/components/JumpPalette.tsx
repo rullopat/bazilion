@@ -16,13 +16,14 @@ import type {
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Keyboard, MessageSquarePlus, Moon, Search, Sun, UserPlus } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { agentState, shortTime } from '../lib/activity'
 import { api } from '../lib/api'
 import { NEW_CONVERSATION_EVENT } from '../lib/shortcuts'
 import { setThemeMode } from '../lib/theme'
 import { parseWorkspaceSearch, type WorkspaceSearch } from '../lib/workspace'
 import { AgentAvatar } from './AgentAvatar'
+import { getDialogFocusRestoreTarget, restoreDialogFocus } from './Dialog'
 import { SpawnDialog } from './SpawnDialog'
 
 type Group =
@@ -183,12 +184,22 @@ export function JumpPalette({
     }
   }, [open, trimmed])
 
-  useEffect(() => {
+  // Emptied before the palette is painted, so what is typed at once after ⌘K is kept; and what
+  // had the focus gets it back when the palette is closed without going anywhere.
+  const opener = useRef<ReturnType<typeof getDialogFocusRestoreTarget>>(null)
+  const went = useRef(false)
+  useLayoutEffect(() => {
     if (!open) return
+    opener.current = getDialogFocusRestoreTarget(document)
+    went.current = false
     setQuery('')
     setActive(0)
     setEnterPending(false)
     setDark(document.documentElement.classList.contains('dark'))
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
     const controller = new AbortController()
     const signal = controller.signal
     Promise.all([
@@ -399,6 +410,7 @@ export function JumpPalette({
 
   function go(destination: Destination | undefined) {
     if (!destination) return
+    went.current = true
     onClose()
     if (destination.run) destination.run()
     else if (destination.path) void navigate({ to: destination.path })
@@ -411,7 +423,14 @@ export function JumpPalette({
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-chocolate/30 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content
+            data-jump-palette=""
             aria-describedby={undefined}
+            onCloseAutoFocus={(event) => {
+              // Where the palette went decides the focus; closed without going, it goes back.
+              if (went.current) return
+              event.preventDefault()
+              restoreDialogFocus(opener.current, document)
+            }}
             className="fixed left-1/2 top-[12vh] z-50 flex max-h-[70vh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-baziu-lg outline-none"
           >
             <DialogPrimitive.Title className="sr-only">

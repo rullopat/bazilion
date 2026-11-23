@@ -4,17 +4,16 @@
 
 import type { Attachment, ProviderMessage, SessionHeadResponse } from '@bazilion/api-types'
 import { useNavigate } from '@tanstack/react-router'
-import { type ReactNode, useLayoutEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useActivityOptional } from '../../lib/activity'
 import { useFindInTranscript } from '../../lib/find-in-transcript'
+import { isAtEnd, placeKey, useTranscriptPlace } from '../../lib/transcript-scroll'
 import { useWorkspaceOptional } from '../workspace/context'
 import { AgentQuestions } from './AgentQuestions'
 import { Composer, encodeFiles, MAX_ATTACHMENTS } from './Composer'
 import { FollowUps } from './FollowUps'
 import { TranscriptBlocks, useMarkdownReady } from './Transcript'
 import { type Draft, useChatSession } from './useChatSession'
-
-const AUTOSCROLL_THRESHOLD_PX = 40
 
 /** What the bar above the conversation can do to it. */
 export interface ChatControls {
@@ -40,6 +39,9 @@ export interface ChatPaneProps {
   /** The conversation on screen changed: the first turn made one, or another was loaded. */
   onConversationChange?: (conversationId: string | null) => void
 }
+
+/** Unsent text per Agent, kept while the page is open. */
+const drafts = new Map<string, string>()
 
 export const CHAT_FRAME =
   'relative flex h-full flex-col overflow-hidden rounded-[16px] border border-frost bg-snow shadow-baziu-sm'
@@ -68,7 +70,24 @@ function AgentChat({
     onOpenLibrary: () => setConversationsOpen(true),
     onConversation: onConversationChange,
   })
-  const [input, setInput] = useState('')
+  // What was typed and not sent waits here while another Agent is open (for this page only).
+  const [input, setInputState] = useState(() => drafts.get(agentId) ?? '')
+  // Editing the last message borrows the composer; cancelling gives back what was in it. While
+  // editing, the draft kept for this Agent is what was there before, never the edited message.
+  const beforeEdit = useRef('')
+  const editingRef = useRef(false)
+  // An edit can also end on its own (another turn began): the composer is no longer borrowed.
+  useEffect(() => {
+    if (!chat.editing) editingRef.current = false
+  }, [chat.editing])
+  const setInput = (next: string | ((current: string) => string)) =>
+    setInputState((current) => {
+      const value = typeof next === 'function' ? next(current) : next
+      const kept = editingRef.current ? beforeEdit.current : value
+      if (kept) drafts.set(agentId, kept)
+      else drafts.delete(agentId)
+      return value
+    })
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -88,6 +107,15 @@ function AgentChat({
       })
   })
 
+  // Back at this Agent: where the reader was. Before the effect below, so it does not jump to the end.
+  useTranscriptPlace(logRef, () => placeKey(agentId, chat.conversationId()), {
+    ready: true,
+    skip: Boolean(workspace?.search.find),
+    onRestored: () => {
+      nearBottomRef.current = false
+    },
+  })
+
   // Follow new output while the reader is at the bottom; leave them alone once they scroll up.
   useLayoutEffect(() => {
     const log = logRef.current
@@ -104,12 +132,16 @@ function AgentChat({
   async function submit() {
     const draft: Draft = { text: input, attachments }
     if (!draft.text.trim() && draft.attachments.length === 0) return
-    setInput('')
+    // An edit sent gives the composer back what was typed before it.
+    const earlier = editingRef.current ? beforeEdit.current : ''
+    editingRef.current = false
+    beforeEdit.current = ''
+    setInput(earlier)
     setAttachments([])
     const restore = await chat.send(draft)
     activity?.refresh()
     if (restore) {
-      setInput((current) => current || restore.text)
+      setInput((current) => (current && current !== earlier ? current : restore.text))
       setAttachments((current) => (current.length > 0 ? current : restore.attachments))
     }
   }
@@ -117,6 +149,8 @@ function AgentChat({
   function edit() {
     const text = chat.startEdit()
     if (text === null) return
+    beforeEdit.current = input
+    editingRef.current = true
     setInput(text)
     inputRef.current?.focus()
   }
@@ -183,7 +217,7 @@ function AgentChat({
           <span className="flex-1">
             {chat.recoveredTurn
               ? 'The recovered turn has new activity.'
-              : 'There is new activity from another source (a follow-up, Telegram or a schedule).'}
+              : 'There is new activity from elsewhere (the terminal, a follow-up, Telegram or a schedule).'}
           </span>
           <button
             type="button"
@@ -206,9 +240,7 @@ function AgentChat({
       <div
         ref={logRef}
         onScroll={(event) => {
-          const log = event.currentTarget
-          nearBottomRef.current =
-            log.scrollHeight - log.scrollTop - log.clientHeight < AUTOSCROLL_THRESHOLD_PX
+          nearBottomRef.current = isAtEnd(event.currentTarget)
         }}
         role="log"
         aria-label={`Conversation with ${agentName}`}
@@ -259,6 +291,7 @@ function AgentChat({
         queue={chat.queue}
         onChanged={() => void chat.refreshQueue()}
         onViewConversation={(id) => onViewConversation?.(id)}
+        conversationId={chat.conversationId()}
       />
       <AgentQuestions agentId={agentId} agentName={agentName} refreshKey={chat.questionsKey} />
       <Composer
@@ -272,7 +305,12 @@ function AgentChat({
           setAttachments((current) => current.filter((_, i) => i !== index))
         }
         editing={chat.editing}
-        onCancelEdit={chat.cancelEdit}
+        onCancelEdit={() => {
+          chat.cancelEdit()
+          editingRef.current = false
+          setInput(beforeEdit.current)
+          beforeEdit.current = ''
+        }}
         agentBusy={chat.agentBusy}
         onStop={() => void chat.stop()}
         inputRef={inputRef}

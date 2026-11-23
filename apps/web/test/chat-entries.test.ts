@@ -153,3 +153,20 @@ test('tool boxes and the files they delivered form one block of work', () => {
   expect(blocks[4]).toMatchObject({ type: 'work', index: 7, items: [], resultIds: ['r3'] })
   expect(blocks[3]).toMatchObject({ type: 'entry', index: 6 })
 })
+
+test('a stopped reply says so, from the history and live', () => {
+  const history: ProviderMessage[] = [
+    { role: 'user', content: 'Write the release notes' },
+    { role: 'assistant', content: '', stopped: 'cancelled' },
+  ]
+  expect(projectMessages(history)).toEqual([
+    { type: 'user', content: 'Write the release notes' },
+    { type: 'stopped', reason: 'cancelled' },
+  ])
+  expect(applyEvent([], { type: 'error', error: 'cancelled' })).toEqual([
+    { type: 'stopped', reason: 'cancelled' },
+  ])
+  expect(applyEvent([], { type: 'error', error: 'rate limited' })).toEqual([
+    { type: 'error', content: '[error] rate limited' },
+  ])
+})

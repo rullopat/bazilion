@@ -34,4 +34,9 @@ export interface AgentActivity {
 
 export interface ActivityResponse {
   agents: AgentActivity[]
+  /**
+   * A digest of the Teams, Agents and templates: it changes when one is added, renamed, moved,
+   * archived or removed, from anywhere (the web, the CLI, an Agent). Pages load their lists again.
+   */
+  roster: string
 }

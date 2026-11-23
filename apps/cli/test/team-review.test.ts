@@ -38,6 +38,14 @@ afterAll(async () => {
 const git = (...args: string[]) =>
   runGit(join(server.home, 'teams', 'default'), server.home, ...args)
 
+test('team review says when the Team is not a Git repository', async () => {
+  const shown = await server.cli(['team', 'review', 'show', 'default'])
+  expect(shown.exitCode).not.toBe(0)
+  expect(shown.stderr).toContain('This Team is not a Git repository.')
+  const patch = await server.cli(['team', 'review', 'show', 'default', '--patch', 'app.txt'])
+  expect(patch.stderr).toContain('This Team is not a Git repository.')
+})
+
 test('team review lists changes, prints diffs on request and queues file feedback', async () => {
   const root = join(server.home, 'teams', 'default')
   git('init', '-q', '-b', 'main')

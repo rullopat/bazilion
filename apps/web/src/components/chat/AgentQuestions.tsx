@@ -11,7 +11,9 @@ import { Button } from '../Button'
 
 /**
  * Questions the Agent is waiting on. The chat reloads them when it opens, when a turn starts or
- * ends and when its stream carries a new question (`refreshKey` changes).
+ * ends and when its stream carries a new question (`refreshKey` changes); the live feed's count
+ * of the Agent's questions reloads them too, so a question asked or answered elsewhere (a turn
+ * started from the terminal, an answer given there or in Telegram, a timeout) shows here at once.
  */
 export function AgentQuestions({
   agentId,
@@ -23,7 +25,8 @@ export function AgentQuestions({
   refreshKey: number
 }) {
   const [items, setItems] = useState<AgentQuestion[]>([])
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the reload signal.
+  const waiting = useActivityOptional()?.byAgent.get(agentId)?.questions ?? 0
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey and waiting are reload signals.
   useEffect(() => {
     const controller = new AbortController()
     api<AgentQuestionListResponse>(`/api/agents/${encodeURIComponent(agentId)}/questions`, {
@@ -34,7 +37,7 @@ export function AgentQuestions({
         // Best effort: the next refresh tries again.
       })
     return () => controller.abort()
-  }, [agentId, refreshKey])
+  }, [agentId, refreshKey, waiting])
   if (!items.length) return null
   return (
     <section

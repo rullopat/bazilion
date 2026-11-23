@@ -1,4 +1,4 @@
-import type { Agent } from '@bazilion/api-types'
+import { AGENT_NAME_MAX, type Agent } from '@bazilion/api-types'
 import { useState } from 'react'
 import { renameAgent } from '../../lib/agent-actions'
 import { errorMessage } from '../../lib/api'
@@ -50,7 +50,7 @@ export function RenameAgentDialog({
             autoFocus
             value={name}
             onChange={(event) => setName(event.target.value)}
-            maxLength={120}
+            maxLength={AGENT_NAME_MAX}
           />
         </label>
         {error && (

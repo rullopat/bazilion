@@ -137,7 +137,7 @@ export function Overview() {
           <div className="mt-4">
             <Button variant="primary" onClick={() => setSpawning(true)}>
               <Plus className="size-4" aria-hidden="true" />
-              Add your first agent
+              Add your first Agent
             </Button>
           </div>
         )}

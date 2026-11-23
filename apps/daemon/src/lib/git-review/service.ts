@@ -1,4 +1,9 @@
-import type { RepositoryChanges, RepositoryReviewResponse, ReviewLimits } from '@bazilion/api-types'
+import type {
+  RepositoryChanges,
+  ReviewLimits,
+  ReviewUnavailableResponse,
+  TeamReviewResponse,
+} from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { DomainError } from '../../core/errors.ts'
 import type { Paths } from '../../core/paths.ts'
@@ -17,8 +22,10 @@ import { readRepositoryIdentity, resolveComparisonBase } from './identity.ts'
 
 /** A review cannot be produced for this Team or repository layout. */
 class ReviewUnavailableError extends DomainError {
-  constructor(code: 'not_repository' | 'unsupported_layout', message: string) {
-    super(409, message, code)
+  readonly reason: ReviewUnavailableResponse['unavailable']['code']
+  constructor(reason: ReviewUnavailableResponse['unavailable']['code'], message: string) {
+    super(409, message, reason)
+    this.reason = reason
   }
 }
 
@@ -97,14 +104,22 @@ export async function readTeamReview(
     /** Also say which Agent last wrote each changed file. */
     authors?: boolean
   } = {},
-): Promise<RepositoryReviewResponse> {
+): Promise<TeamReviewResponse> {
   const team = requireTeam(db, paths, teamId)
-  const changes: RepositoryChanges = await withRepository(team.path, async (captured) => {
-    const base = await resolveComparisonBase(captured, input.base ?? 'HEAD')
-    const identity = await readRepositoryIdentity(captured)
-    const listed = await listChanges(captured, base, identity, input.limits)
-    return input.patches ? attachPatches(captured, listed, input.limits, input.patchPath) : listed
-  })
+  let changes: RepositoryChanges
+  try {
+    changes = await withRepository(team.path, async (captured) => {
+      const base = await resolveComparisonBase(captured, input.base ?? 'HEAD')
+      const identity = await readRepositoryIdentity(captured)
+      const listed = await listChanges(captured, base, identity, input.limits)
+      return input.patches ? attachPatches(captured, listed, input.limits, input.patchPath) : listed
+    })
+  } catch (error) {
+    // A folder that is not a repository is a state of the Team, not a failed request: the
+    // Changes view says so, and the browser logs no error each time an Agent is opened.
+    if (!(error instanceof ReviewUnavailableError)) throw error
+    return { teamId: team.id, unavailable: { code: error.reason, message: error.message } }
+  }
   if (!input.authors) return { teamId: team.id, changes }
   const changedPaths = changes.changes.map((change) => change.path)
   return {

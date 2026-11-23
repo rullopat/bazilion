@@ -171,6 +171,12 @@ export function Bubble({
           <span className="whitespace-pre-wrap">{entry.content}</span>
         </div>
       )
+    case 'stopped':
+      return (
+        <p className="my-2 px-1 text-[0.85em] italic text-muted-foreground">
+          {entry.reason === 'cancelled' ? 'Stopped.' : 'This reply failed.'}
+        </p>
+      )
     case 'error':
       return (
         <div className="my-3 rounded-r-sm border-l-[3px] border-danger bg-danger/10 px-3 py-1 text-[0.92em] text-danger">

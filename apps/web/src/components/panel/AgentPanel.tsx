@@ -68,7 +68,8 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
         unread: unread.messages.length,
       }
     },
-    [base, activity.turnsEnded, search.section],
+    [base, search.section],
+    { refreshOn: activity.turnsEnded },
   )
   const telegram = useResource(
     (signal) =>

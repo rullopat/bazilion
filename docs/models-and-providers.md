@@ -72,7 +72,7 @@ bazilion provider models anthropic                         # in use, and offered
 bazilion provider models-set anthropic claude-fable-5-2,claude-haiku-5-5
 ```
 
-Wherever a model is chosen (an Agent's **Agent** tab, **Spawn an agent**, an Agent template) the
+Wherever a model is chosen (an Agent's **Agent** tab, **Add an Agent**, an Agent template) the
 menu shows these names by provider, with how much each model reads and whether it sees images.
 The CLI and the API keep the `provider:model` id.
 

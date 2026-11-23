@@ -91,7 +91,7 @@ function AgentTemplatePage() {
       actions={
         <>
           <Button variant="primary" onClick={() => setSpawning(true)}>
-            Spawn an agent
+            Add an Agent
           </Button>
           <RowMenu
             label={`More for ${name}`}

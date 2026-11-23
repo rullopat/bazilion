@@ -1,5 +1,6 @@
 import {
   type Agent,
+  agentNameProblem,
   type ChatModelEntry,
   DEFAULT_PROFILE_ID,
   DEFAULT_TEAM_ID,
@@ -40,6 +41,7 @@ export function SpawnDialog({
       '',
   )
   const [name, setName] = useState('')
+  const nameProblem = name.trim() ? agentNameProblem(name.trim()) : null
   const [model, setModel] = useState('')
   const [chatModels, setChatModels] = useState<ChatModelEntry[]>([])
   const [teamId, setTeamId] = useState(
@@ -82,7 +84,7 @@ export function SpawnDialog({
   const template = profiles.find((profile) => profile.id === profileId)
   return (
     <Dialog
-      title="Spawn an agent"
+      title="Add an Agent"
       description="It starts with its template's files, model and skills, in the Team you choose."
       busy={busy}
       onClose={onClose}
@@ -105,6 +107,7 @@ export function SpawnDialog({
           disabled={busy}
           placeholder={template?.name || template?.id || 'The template’s name'}
           hint="Leave it empty to use the template’s name."
+          problem={nameProblem ?? undefined}
           className="max-w-none"
           onChange={setName}
         />
@@ -141,8 +144,12 @@ export function SpawnDialog({
           <Button variant="ghost" disabled={busy} onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" disabled={busy || !profileId || !teamId}>
-            {busy ? 'Spawning…' : 'Spawn agent'}
+          <Button
+            variant="primary"
+            type="submit"
+            disabled={busy || !profileId || !teamId || nameProblem !== null}
+          >
+            {busy ? 'Adding…' : 'Add the Agent'}
           </Button>
         </DialogActions>
       </form>

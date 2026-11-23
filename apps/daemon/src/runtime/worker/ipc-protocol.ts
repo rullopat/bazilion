@@ -24,7 +24,6 @@ export interface RpcMethods {
   publishResult: { args: PublishResultArgs; result: ResultReference }
   generateImages: { args: ImageGenerationInput; result: ImageGenerationOutput }
   webSearch: { args: WebSearchArgs; result: WebSearchOutput }
-  agentExists: { args: { agentId: string }; result: boolean }
   sendMessage: { args: SendMessageArgs; result: { messageId: string } }
   listInbox: { args: { agentId: string; unreadOnly: boolean }; result: Message[] }
   markRead: { args: { messageId: string }; result: null }
@@ -45,6 +44,41 @@ export interface RpcMethods {
   /** The daemon refreshes the turn's own OAuth credential; only the access token comes back. */
   refreshApiKey: { args: { providerName: string }; result: string }
   bashApproval: { args: BashApprovalArgs; result: CommandApproval }
+  createAgent: { args: CreateAgentArgs; result: CreatedAgent }
+}
+
+/** Another Agent the turn's Agent may know about: a teammate, or one Team Policy lets it reach. */
+export interface AgentContact {
+  id: string
+  name: string
+  teamId: string
+  teamName: string
+  /** The Agent template it was made from, by name. */
+  template: string
+  /** Team Policy lets the turn's Agent message it now. */
+  canMessage: boolean
+}
+
+/** A teammate an Agent adds with `agent_create`; the daemon binds it to the Agent's Team. */
+export interface CreateAgentArgs {
+  name: string
+  /** What the new Agent is for: written into its AGENTS.md, so it starts knowing its job. */
+  role: string
+  /** An Agent template id; the creator's own template when omitted. */
+  template?: string
+  /** `provider:model`; the creator's model when omitted. */
+  model?: string
+}
+
+export interface CreatedAgent {
+  id: string
+  name: string
+  teamId: string
+  teamName: string
+  template: string
+  model: string
+  /** In a restricted Team: connected with its creator both ways. */
+  connected: boolean
 }
 
 export type RpcMethod = keyof RpcMethods
@@ -141,7 +175,7 @@ export interface WebSearchOutput {
 // the worker implements the same interfaces as IPC proxies.
 
 export interface MessagingHost {
-  agentExists(agentId: string): boolean | Promise<boolean>
+  /** `to` is an id, or a name (the sender's teammates first); unknown recipients throw. */
   sendMessage(input: SendMessageArgs): { messageId: string } | Promise<{ messageId: string }>
   listInbox(agentId: string, opts: { unreadOnly: boolean }): Message[] | Promise<Message[]>
   markRead(messageId: string): void | Promise<void>
@@ -208,6 +242,11 @@ export interface ImageGenerationHost {
   generate(input: ImageGenerationInput): Promise<ImageGenerationOutput>
 }
 
+/** The turn's Agent adding a teammate; bound by the daemon to that Agent and its Team. */
+export interface TeamHost {
+  createAgent(input: CreateAgentArgs): CreatedAgent | Promise<CreatedAgent>
+}
+
 /** Search runs in the daemon, which holds the backend URL and credentials. */
 export interface WebSearchHost {
   search(args: WebSearchArgs): Promise<WebSearchOutput>
@@ -227,6 +266,8 @@ export interface WorkerHosts {
   webSearchHost?: WebSearchHost
   browserHost?: BrowserHost
   mcpHost?: McpHost
+  /** Only in a turn the operator started: Agents add teammates when asked, not on their own. */
+  teamHost?: TeamHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

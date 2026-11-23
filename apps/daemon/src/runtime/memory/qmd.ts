@@ -124,13 +124,13 @@ function safeKey(root: string, key: string): string {
     key.startsWith('\\\\') ||
     segments.includes('..')
   ) {
-    throw new Error(`unsafe memory key: ${key}`)
+    throw new DomainError(400, `unsafe memory key: ${key}`)
   }
 
   // Only markdown files are indexed, so any other key would be stored but never listed or found.
-  if (!key.endsWith('.md')) throw new Error(`memory keys end in .md: ${key}`)
+  if (!key.endsWith('.md')) throw new DomainError(400, `memory keys end in .md: ${key}`)
   const candidate = resolve(root, key)
-  if (candidate === root) throw new Error(`unsafe memory key: ${key}`)
+  if (candidate === root) throw new DomainError(400, `unsafe memory key: ${key}`)
   assertContained(root, candidate)
   return candidate
 }

@@ -32,6 +32,8 @@ test.each([
         message: mode,
         turnId: 'bound-turn',
         bashApprovalMode: 'auto_deny',
+        contacts: [],
+        withOperator: true,
       },
       {
         env: {},

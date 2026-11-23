@@ -22,11 +22,11 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
       def: {
         name: 'send_message',
         description:
-          'Send a message to another agent. Use the recipient\'s agent id (UUID). Use this ONLY for things the recipient needs to ACT on: delegating a task, asking a peer for information you cannot get yourself, escalating a decision. Do NOT use it for status updates or to announce changes to team-shared resources — USER.md and the team memory backend both propagate to every agent in the team automatically on their next turn, so messages like "I updated USER.md" or "I wrote a new memory note" are pure noise and will trigger an inbox-wake loop on the recipient.',
+          'Send a message to another agent: `to` is its id, or its exact name (your teammates are listed in your instructions). Use this ONLY for things the recipient needs to ACT on: delegating a task, asking a peer for information you cannot get yourself, escalating a decision. Do NOT use it for status updates or to announce changes to team-shared resources — USER.md and the team memory backend both propagate to every agent in the team automatically on their next turn, so messages like "I updated USER.md" or "I wrote a new memory note" are pure noise and will trigger an inbox-wake loop on the recipient.',
         parameters: {
           type: 'object',
           properties: {
-            to: { type: 'string', description: 'Recipient agent id' },
+            to: { type: 'string', description: 'Recipient Agent id, or its exact name' },
             text: { type: 'string', description: 'Message text' },
             reply_to: {
               type: 'string',
@@ -41,9 +41,6 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
         const text = String(args.text ?? '')
         if (!to) throw new Error('send_message: "to" is required')
         if (!text) throw new Error('send_message: "text" is required')
-        if (!(await host.agentExists(to))) {
-          throw new Error(`send_message: agent not found: ${to}`)
-        }
         const replyTo = typeof args.reply_to === 'string' ? args.reply_to : null
         const { messageId } = await host.sendMessage({
           from: fromAgentId,

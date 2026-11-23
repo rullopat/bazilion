@@ -95,7 +95,6 @@ async function openAgentTurn(
     mcpTools: input.mcpTools,
     messagingHost: served.has('messagingHost')
       ? {
-          agentExists: (agentId) => call('agentExists', { agentId }),
           sendMessage: (args) => call('sendMessage', args),
           listInbox: (agentId, { unreadOnly }) => call('listInbox', { agentId, unreadOnly }),
           markRead: async (messageId) => {
@@ -142,6 +141,11 @@ async function openAgentTurn(
         }
       : undefined,
     bashApprovalHost: served.has('bashApprovalHost') ? ipcBashApproval(call, input) : undefined,
+    teamHost: served.has('teamHost')
+      ? { createAgent: (args) => call('createAgent', args) }
+      : undefined,
+    contacts: input.contacts,
+    withOperator: input.withOperator,
   })
 }
 

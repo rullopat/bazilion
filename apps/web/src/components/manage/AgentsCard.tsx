@@ -160,7 +160,7 @@ export function AgentsCard({
               disabled={templates.length === 0 || teams.length === 0}
               onClick={onSpawn}
             >
-              Spawn an agent
+              Add an Agent
             </Button>
           }
         >

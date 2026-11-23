@@ -43,11 +43,13 @@ import { createSessionShellTools, type DockerTurn } from '../shell/tooling.ts'
 import type { AskUser } from '../tools/ask-user.ts'
 import type { FileSink } from '../tools/deliver-file.ts'
 import type {
+  AgentContact,
   BrowserHost,
   ImageGenerationHost,
   InjectedMcpTool,
   McpHost,
   MessagingHost,
+  TeamHost,
   UserMdHost,
   WebSearchHost,
 } from '../worker/ipc-protocol.ts'
@@ -90,6 +92,12 @@ export interface CreateBazilionSessionOptions {
   apiKey?: string
   /** Refreshes an OAuth access token that expires during a long turn. */
   refreshApiKey?: (providerName: string) => Promise<string>
+  /** Enables `agent_create`; given only in a turn the operator started. */
+  teamHost?: TeamHost
+  /** Whom the Agent can message, listed in its system prompt. */
+  contacts?: readonly AgentContact[]
+  /** The operator started the turn: only then does a first-run ritual apply. */
+  withOperator?: boolean
 }
 
 export interface BazilionSessionHandle {
@@ -219,6 +227,7 @@ function turnSurface(opts: TurnOptions) {
     imageGenerationHost: opts.imageGenerationHost,
     webSearchHost: opts.webSearchHost,
     askUser: opts.askUser,
+    teamHost: opts.teamHost,
     env,
   })
   const promptOptions: BuildSystemPromptOptions = {
@@ -229,6 +238,9 @@ function turnSurface(opts: TurnOptions) {
       ? { browserGuide: resolveBrowserConfig(env).attach ? ('attached' as const) : true }
       : {}),
     ...(opts.webSearchHost ? { searchGuide: true } : {}),
+    contacts: opts.contacts ?? [],
+    canCreateAgents: opts.teamHost !== undefined,
+    withOperator: opts.withOperator ?? true,
   }
   return {
     cwd,

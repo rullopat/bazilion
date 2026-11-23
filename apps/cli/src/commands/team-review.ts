@@ -38,6 +38,8 @@ const showCmd = defineCommand({
       ...(args.patch ? { patches: true, path: args.patch } : args.json ? { patches: true } : {}),
       authors: !args.patch,
     })
+    // A folder that is not a repository has no review: said, and the command fails.
+    if ('unavailable' in review) throw new Error(review.unavailable.message)
     if (args.json) return printJson(review)
     const changes = review.changes
     if (args.patch) {

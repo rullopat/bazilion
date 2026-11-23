@@ -1,5 +1,6 @@
-import { Link } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { Link, useRouterState } from '@tanstack/react-router'
+import { type ReactNode, useEffect, useRef } from 'react'
+import { revealInStrip } from '../lib/utils'
 
 /**
  * Sub-navigation of a page family: links under `base`, each `[suffix, label]`. A tab is current
@@ -17,8 +18,13 @@ export function SectionTabs({
   tabs: readonly (readonly [suffix: string, label: string])[]
   children?: ReactNode
 }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const strip = useRef<HTMLElement | null>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: again when another tab is chosen.
+  useEffect(() => revealInStrip(strip.current, '[aria-current="page"]'), [pathname])
   return (
     <nav
+      ref={strip}
       aria-label={label}
       className="mb-6 flex max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/50 p-1"
     >

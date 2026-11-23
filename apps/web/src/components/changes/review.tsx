@@ -1,7 +1,11 @@
 // A review of a Team's changes: the comparison base, and the comments gathered so far. The
 // Changes tab and the side-by-side view share it, so a comment made in one is in the other.
 
-import type { RepositoryReviewResponse, ReviewChange } from '@bazilion/api-types'
+import type {
+  RepositoryReviewResponse,
+  ReviewChange,
+  TeamReviewResponse,
+} from '@bazilion/api-types'
 import {
   createContext,
   type ReactNode,
@@ -104,17 +108,19 @@ export function useReviewList(teamId: string, base: string): Resource<ReviewList
   return useResource(
     async (signal): Promise<ReviewList> => {
       try {
-        const review = await api<RepositoryReviewResponse>(
+        const review = await api<TeamReviewResponse>(
           reviewPath(teamId, { authors: '1', ...(base ? { base } : {}) }),
           { signal },
         )
+        if ('unavailable' in review) return { review: null, unavailable: review.unavailable }
         return { review, unavailable: null }
       } catch (cause) {
         if (!(cause instanceof ApiError) || signal.aborted) throw cause
         return { review: null, unavailable: { code: cause.code, message: errorMessage(cause) } }
       }
     },
-    [teamId, base, turnsEnded],
+    [teamId, base],
+    { refreshOn: turnsEnded },
   )
 }
 
@@ -136,10 +142,11 @@ export function useFileDiff(
   return useResource(
     async (signal): Promise<FileDiff | null> => {
       if (!path) return null
-      const response = await api<RepositoryReviewResponse>(
+      const response = await api<TeamReviewResponse>(
         reviewPath(teamId, { patches: '1', path, ...(base ? { base } : {}) }),
         { signal },
       )
+      if ('unavailable' in response) throw new Error(response.unavailable.message)
       const change = response.changes.changes.find((entry) => entry.path === path)
       return {
         path,
@@ -148,7 +155,9 @@ export function useFileDiff(
         omitted: change?.contentOmitted ?? null,
       }
     },
-    [teamId, base, path, revision],
+    [teamId, base, path],
+    // The list loaded again: the diff follows, staying on screen meanwhile.
+    { refreshOn: revision },
   )
 }
 

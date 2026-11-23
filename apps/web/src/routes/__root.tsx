@@ -21,6 +21,7 @@ import { fetchAuthState, isSetupOpen, PUBLIC_PATHS } from '../lib/auth'
 import { DesktopNotifier } from '../lib/desktop-notifications'
 import { LiveProvider } from '../lib/live'
 import { PageTitleProvider } from '../lib/page-title'
+import { RosterWatcher } from '../lib/roster'
 import appCss from '../styles.css?url'
 
 // Sync, runs in <head> before paint. Reads 'baziu-theme' from localStorage
@@ -113,6 +114,7 @@ function RootComponent() {
         <LiveProvider enabled={!isLogin && pathname !== '/welcome'}>
           <AttentionCountProvider enabled={!isLogin && pathname !== '/welcome'}>
             <DesktopNotifier />
+            <RosterWatcher />
             <PageTitleProvider>
               {isLogin ? (
                 <Outlet />

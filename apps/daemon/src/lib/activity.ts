@@ -2,6 +2,7 @@
 // waits for the operator, and what it has produced. The workspace polls it instead of asking each
 // Agent's queue. A running turn's step lives in memory only.
 
+import { createHash } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ActivityStep, AgentActivity, ChatFrame } from '@bazilion/api-types'
@@ -74,6 +75,29 @@ function lastActivityAt(db: BazilionDb, paths: Paths, agentId: string): number |
   } catch {
     return null
   }
+}
+
+// What the roster digest covers: the rows behind the workspace's lists of Teams, Agents and
+// templates, from the web, the CLI or an Agent. Not what changes on its own as turns run (an
+// Agent's turns since its last review, its Telegram topic, the USER.md Agents keep up to date,
+// which the Team panel loads again when a turn ends).
+const ROSTER_QUERIES = [
+  'SELECT id, name, policy_mode, telegram_icon_color, telegram_topic_name_format FROM teams ORDER BY id',
+  `SELECT id, profile_id, name, model_override, status, reasoning_level, review_enabled,
+     review_every_n_turns, review_model, review_reasoning_level, team_id, telegram_icon_emoji,
+     telegram_mirror_mode FROM agents ORDER BY id`,
+  'SELECT id, name, updated_at FROM profiles ORDER BY id',
+  'SELECT id, name, updated_at FROM team_templates ORDER BY id',
+] as const
+
+/** A short digest of the Teams, Agents and templates as they are now. */
+export function rosterRevision(db: BazilionDb): string {
+  const hash = createHash('sha256')
+  for (const sql of ROSTER_QUERIES) {
+    hash.update(JSON.stringify(db.raw.query<Record<string, unknown>, []>(sql).all()))
+    hash.update('\n')
+  }
+  return hash.digest('hex').slice(0, 16)
 }
 
 /** One entry per Agent that is not archived. */

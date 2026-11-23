@@ -289,6 +289,8 @@ export function piMessagesToProviderView(
         const toolCalls = extractAssistantToolCalls(am)
         const msg: ProviderMessage = { role: 'assistant', content: text }
         if (toolCalls.length > 0) msg.toolCalls = toolCalls
+        if (am.stopReason === 'aborted') msg.stopped = 'cancelled'
+        else if (am.stopReason === 'error') msg.stopped = 'failed'
         out.push(msg)
         break
       }

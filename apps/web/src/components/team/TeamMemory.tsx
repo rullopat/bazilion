@@ -7,6 +7,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import { markdownPreview, markdownTitle } from '../../lib/markdown-text'
 import { renderMd } from '../../lib/md'
+import { noteKey } from '../../lib/memory-key'
 import { useHydrated } from '../../lib/use-resource'
 import { cn } from '../../lib/utils'
 import { Button } from '../Button'
@@ -118,8 +119,13 @@ export function TeamMemory({ team, openKey }: { team: Team; openKey?: string }) 
   async function save(event: FormEvent) {
     event.preventDefault()
     if (open.mode !== 'edit' && open.mode !== 'new') return
-    const key = open.key.trim()
-    if (!key) return
+    // A new note's name becomes a path ending in .md; an existing note keeps its own.
+    const named = open.mode === 'new' ? noteKey(open.key) : { key: open.key }
+    if ('error' in named) {
+      setError(named.error)
+      return
+    }
+    const { key } = named
     setBusy(true)
     setError(null)
     try {
@@ -277,7 +283,7 @@ export function TeamMemory({ team, openKey }: { team: Team; openKey?: string }) 
                 mono
                 disabled={busy}
                 placeholder="decisions/launch-date.md"
-                hint="A path: folders group notes, such as people/sam.md."
+                hint="A path: folders group notes, such as people/sam. It ends in .md, added when left out."
                 onChange={(value) => setOpen({ ...current, key: value })}
               />
             ) : (
@@ -321,9 +327,9 @@ export function TeamMemory({ team, openKey }: { team: Team; openKey?: string }) 
 
       <ConfirmDialog
         open={pending !== null}
-        title="Drop your unsaved edit?"
+        title="Discard your unsaved edit?"
         description={<p className="m-0">What you changed in this note is lost.</p>}
-        confirmLabel="Drop the edit"
+        confirmLabel="Discard the edit"
         onConfirm={() => {
           const action = pending
           setPending(null)

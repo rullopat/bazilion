@@ -72,7 +72,7 @@ function WelcomePage() {
       })
       await navigate({ to: '/', search: { agent: agent.id } })
     } catch {
-      // The workspace offers "Spawn first agent" and says what is wrong.
+      // The workspace offers "Add the first Agent" and says what is wrong.
       await navigate({ to: '/' })
     }
   }

@@ -21,6 +21,12 @@ A Team's policy is a **mode** plus directed **allow edges**. An edge endpoint is
 | Between members of a **restricted** Team | an edge `sender -> recipient` exists |
 | From a member of Team A to a member of Team B | Team A has `sender -> outside` and Team B has `outside -> recipient`, whatever the modes |
 
+Every turn's system prompt lists the Agent's teammates by name and id, says which of them policy
+lets it message, and names the Agents of other Teams it may reach, so you never pass ids around.
+When you ask an Agent for teammates it adds them with `agent_create` (see
+[the agent engine](agent-engine.md#5-tools)); in a restricted Team each is connected with its
+creator both ways, and other connections stay yours to make.
+
 A denied message is an error returned to the `send_message` tool or the HTTP request, with the
 reason, and a `team_policy_denied` line in the daemon log. Nothing is stored and nothing is queued.
 An Agent that moves to another Team loses its edges and joins the new Team with none; in a restricted

@@ -80,13 +80,17 @@ and refreshes from the secrets table; only the access token comes back.
 1. **Agent instructions**: the Agent's `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `IDENTITY.md`,
    copied from its Profile at spawn.
 2. **First-Run Ritual**: while `BOOTSTRAP.md` exists, with the rule to call `bootstrap_done` when
-   onboarding is complete.
+   onboarding is complete, and not to ask what the Team's USER.md already says. Only in a turn you
+   started (a chat, a follow-up, Telegram): a schedule or a teammate's message gets a note to do the
+   work instead, since nobody is there to answer.
 3. **Agent Home**: what the private home is for, and `home_*` versus `memory_write`.
 4. **Available Skills**: each attached skill's `SKILL.md` body and its runtime directory (the host
    directory, or its read-only `/skills/...` mount in Docker mode).
 5. **Web research** and the **browser guide**, when those tools are present.
-6. **Team**: the workspace path (`/workspace` in Docker mode) and the rule that an `AGENTS.md`
-   governs its directory and everything below it.
+6. **Team**: the workspace path (`/workspace` in Docker mode), the rule that an `AGENTS.md`
+   governs its directory and everything below it, and **Your teammates**: every other Agent of the
+   Team by name and id, split by whether Team Policy lets this Agent message it, plus the Agents of
+   other Teams it may reach (`lib/team-host.ts:agentContacts`, read when the turn starts).
 7. **About the User**: the Team's USER.md, and how to update it with `user_md_get` /
    `user_md_write`.
 8. **Reviewed lessons**: private lessons you approved, up to 8,000 characters.
@@ -122,9 +126,14 @@ can reconcile its view. The JSONL file is the only record of the conversation.
 - `bootstrap_done`: removes `BOOTSTRAP.md`.
 - `web_fetch`: a guarded page fetch (no private addresses, also after redirects) turned into
   Markdown. `web_search`, when a search backend is ready, runs in the daemon.
-- `send_message`, `read_inbox`, `wait_for_reply`: the mailbox. Every message carries a causal chain
+- `send_message`, `read_inbox`, `wait_for_reply`: the mailbox. `to` is an id or a name, a
+  teammate's name first (`lib/messaging-host.ts:recipientOf`). Every message carries a causal chain
   and hop count; the daemon refuses a send past `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) and
   records the stop.
+- `agent_create`: adds an Agent to the Agent's own Team (name, role, optional template and model,
+  by default its own), only in a turn you started and at most six per turn
+  (`lib/team-host.ts`). The new Agent's `AGENTS.md` starts with its role and who made it, it gets
+  no first-run ritual, and in a restricted Team it is connected with its creator both ways.
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and
   `mcp__<server>__<tool>`: each present when its host is.
 

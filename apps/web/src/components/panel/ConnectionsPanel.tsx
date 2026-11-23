@@ -19,7 +19,8 @@ export function ConnectionsPanel({ team }: { team: Team }) {
   const policy = useResource(
     (signal) => api<TeamPolicy>(`/api/teams/${encodeURIComponent(team.id)}/policy`, { signal }),
     // The map may have saved new connections while this tab was behind it.
-    [team.id, turnsEnded, search.view],
+    [team.id, search.view],
+    { refreshOn: turnsEnded },
   )
   const messages = useTeamMessages(team.id)
 

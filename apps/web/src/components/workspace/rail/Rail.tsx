@@ -82,7 +82,7 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
           <div className="m-1 mb-2 flex flex-col items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center">
             <p className="m-0 text-sm font-semibold text-foreground">No agents yet</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Your default Team is ready. Spawn the first agent to start a conversation.
+              Your default Team is ready. Add the first Agent to start a conversation.
             </p>
             {sortedProfiles[0] ? (
               <Button
@@ -90,7 +90,7 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
                 className="mt-3"
                 onClick={() => setSpawnProfile(sortedProfiles[0]?.id ?? DEFAULT_PROFILE_ID)}
               >
-                Spawn first agent
+                Add the first Agent
               </Button>
             ) : (
               <a href="/templates/agents?new=1" className="mt-3 text-xs font-semibold">
@@ -161,6 +161,7 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
           }}
         >
           <TeamForm
+            taken={teams.map((team) => team.id)}
             onBusyChange={setCreateTeamBusy}
             onCreated={async (team) => {
               setCreateTeamOpen(false)

@@ -13,10 +13,13 @@ export interface Resource<T> {
 /**
  * Load something from the daemon when a panel opens, and again whenever a dependency changes.
  * `load` gets a signal that aborts when the dependencies change or the component goes away.
+ * A change of `refreshOn` (a turn ended) loads again keeping the data on screen, so the view does
+ * not flash "Loading" or lose its scroll; a change of `deps` is another thing to show.
  */
 export function useResource<T>(
   load: (signal: AbortSignal) => Promise<T>,
   deps: readonly unknown[],
+  { refreshOn }: { refreshOn?: unknown } = {},
 ): Resource<T> {
   const [data, setData] = useState<T | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +55,13 @@ export function useResource<T>(
     // biome-ignore lint/correctness/useExhaustiveDependencies: the caller's dependencies decide.
     deps,
   )
+
+  const refreshedRef = useRef(refreshOn)
+  useEffect(() => {
+    if (Object.is(refreshedRef.current, refreshOn)) return
+    refreshedRef.current = refreshOn
+    void run(false)
+  }, [refreshOn, run])
 
   return { data, error, loading, reload: useCallback(() => run(false), [run]) }
 }

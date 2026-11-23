@@ -27,7 +27,8 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   opens their diff. A question from the Agent has one button per choice. While an Agent waits on
   you, its step and the line under the conversation say `waiting for you` in amber, as the list
   does; green and `working` mean it is working. **Edit**, under your last message, appears on
-  hover and replaces that turn.
+  hover and replaces that turn. Going to another Agent and back opens the conversation where you
+  left it (at the end if you were at the end), for as long as the page is open.
 - **The bar above it** names the Agent, its Team and its model, and holds the conversation menu:
   read an earlier conversation, continue it, start a new one, rename one.
 - **The side panel** has five tabs. **Agent**: model and reasoning, saved as soon as you pick
@@ -45,7 +46,9 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   They are built from the same cards and fields as Setup and Manage.
 
 On a narrow screen the list, the conversation and the panel take turns: pick an Agent to see its
-conversation, and open the panel from the bar. The panel's tabs scroll sideways. Above the list,
+conversation, and open the panel from the bar. Below 1,280 pixels the panel covers the page like
+a dialog: Escape closes it and the page behind it cannot be reached until then. Its tabs scroll
+sideways, keeping the open one in view. Above the list,
 **Waiting for you** names the Agents waiting on a question or a command, up to three, with a link
 to Attention for the rest.
 
@@ -56,6 +59,10 @@ daemon pushes what every Agent is doing and what is open in Attention over one e
 (`GET /api/events`), so a question shows the moment it is asked. One tab per browser holds the
 stream and shares it with the others. While it cannot connect (an older proxy, a daemon
 restarting) the pages ask every few seconds instead, and the stream is tried again.
+
+The stream also carries a digest of the Teams, Agents and templates. When it changes, because a
+Team or an Agent was added, renamed, moved or archived from the CLI, by an Agent or in another
+tab, the page loads its lists again: nothing needs a reload.
 
 **Notify me on this computer**, in the person menu, turns on desktop notifications for this
 browser, after the browser asks you. When an Agent starts waiting for you and no Bazilion tab has

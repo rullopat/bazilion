@@ -18,7 +18,8 @@ export function useTeamMessages(teamId: string, limit = 100): Resource<Message[]
         `/api/teams/${encodeURIComponent(teamId)}/messages?limit=${limit}`,
         { signal },
       ).then((body) => body.messages),
-    [teamId, limit, turnsEnded],
+    [teamId, limit],
+    { refreshOn: turnsEnded },
   )
 }
 
