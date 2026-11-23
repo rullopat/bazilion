@@ -73,19 +73,19 @@ export function listInbox(
   opts?: { unreadOnly?: boolean },
 ): Message[] {
   const sql = opts?.unreadOnly
-    ? 'SELECT * FROM messages WHERE to_agent_id = ? AND read_at IS NULL ORDER BY created_at ASC'
-    : 'SELECT * FROM messages WHERE to_agent_id = ? ORDER BY created_at ASC'
+    ? 'SELECT * FROM messages WHERE to_agent_id = ? AND read_at IS NULL ORDER BY created_at ASC, rowid ASC'
+    : 'SELECT * FROM messages WHERE to_agent_id = ? ORDER BY created_at ASC, rowid ASC'
   return db.raw.query<RawMessage, [string]>(sql).all(agentId).map(toMessage)
 }
 
-/** Messages a member of the Team sent or received, newest first. */
+/** Messages a member of the Team sent or received, newest first; sent in one millisecond, last sent first. */
 export function listForTeam(db: BazilionDb, teamId: string, limit: number): Message[] {
   return db.raw
     .query<RawMessage, [string, string, number]>(
       `SELECT m.* FROM messages m
        WHERE m.from_agent_id IN (SELECT id FROM agents WHERE team_id = ?)
           OR m.to_agent_id IN (SELECT id FROM agents WHERE team_id = ?)
-       ORDER BY m.created_at DESC, m.id DESC LIMIT ?`,
+       ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?`,
     )
     .all(teamId, teamId, limit)
     .map(toMessage)
@@ -136,7 +136,7 @@ export function drainUnreadForAgent(db: BazilionDb, agentId: string): Message[] 
       .query<RawMessage, [string]>(
         `SELECT * FROM messages
          WHERE to_agent_id = ? AND read_at IS NULL
-         ORDER BY created_at ASC`,
+         ORDER BY created_at ASC, rowid ASC`,
       )
       .all(agentId)
     if (rows.length === 0) return []

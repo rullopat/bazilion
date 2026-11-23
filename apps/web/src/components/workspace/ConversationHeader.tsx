@@ -70,7 +70,8 @@ export function ConversationHeader({
         <ArrowLeft className="size-4" aria-hidden="true" />
       </Link>
       <AgentAvatar identity={agent.agent.identity} size={32} />
-      <h1 className="m-0 min-w-0 truncate font-display text-xl leading-tight text-charcoal">
+      {/* The Agent's name gives way last: the conversation's title shortens first. */}
+      <h1 className="m-0 min-w-0 max-w-[14rem] shrink-0 truncate font-display text-xl leading-tight text-charcoal">
         {agent.agent.name}
       </h1>
       <Link to="/" search={to({ panel: 'team', section: undefined })} className={CHIP}>
