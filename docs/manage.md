@@ -1,7 +1,8 @@
 # Manage
 
 **Manage** in the top bar holds the pages for what Agents are made of: **Agents**, **Teams**,
-**Agent templates**, **Team templates** and **Skills**, under one tab bar. The workspace (`/`) is
+**Agent templates**, **Team templates** and **Skills**, and what they used, **Usage**, under one
+tab bar. The workspace (`/`) is
 for working with Agents; these pages are for housekeeping. Each lists what there is first, and
 creates new things in a dialog from the button at the top right. The rarer and destructive
 actions of a row are behind its **⋯** button; one the daemon would refuse is shown disabled,
@@ -14,6 +15,7 @@ with the reason.
 | Agent templates | `/templates/agents` | Create a template; edit its settings and files; spawn from it; delete an unused one | `bazilion profile create\|list\|show\|edit\|update\|delete` |
 | Team templates | `/templates/teams` | Create a roster; arrange its Agents and connections; spawn it | `bazilion team-template list\|create\|show\|spawn\|rm` |
 | Skills | `/skills` | Import from OpenClaw, a folder or a ZIP file; read the scan's findings; remove | `bazilion skill list\|import\|rm` |
+| Usage | `/usage` | Tokens and money per day, Team, Agent and model ([usage](usage.md)) | `bazilion usage` |
 
 ## Agents
 
@@ -37,8 +39,8 @@ workspace's **Team** tab.
 A template is what a new Agent starts with. Its page has two cards, each saved with one
 **Save**:
 
-- **Settings**: the name, the default model, and the skills attached at spawn (all installed
-  skills, or chosen ones). A banner says when the default model is not in Chat: Agents spawned
+- **Settings**: the name (it cannot be blank; a template created without one takes its id), the
+  default model, and the skills attached at spawn (all installed skills, or chosen ones). A banner says when the default model is not in Chat: Agents spawned
   from it are refused until it is.
 - **Files**: SOUL.md, IDENTITY.md, BOOTSTRAP.md, AGENTS.md and TOOLS.md, one at a time. A dot
   marks a file changed and not saved; **Save** keeps every changed file. A template without one

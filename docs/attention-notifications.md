@@ -4,7 +4,8 @@
 [question](questions.md) it asked (`agent_question`) and a command it wants approved
 (`command_approval`), soonest to expire first, each with the time it stops waiting. Then lesson
 proposals waiting for a decision, failed or cancelled reviews, scheduled triggers that failed,
-Agent message loops that were stopped, and Agent queues paused after a daemon restart.
+Agent message loops that were stopped, Agent queues paused after a daemon restart, and background
+turns that failed (`turn_failure`).
 
 It is the **Attention** page of the web UI, which says how much is open, filters by state, kind
 and severity, links each item to where it is dealt with (**Answer** and **Decide** open the
@@ -21,6 +22,21 @@ in other ways: every question is posted in the Agent's Telegram topic, a command
 after half a minute too (see [questions](questions.md) and
 [coding environments](coding-environments.md)), and the web UI can show a desktop notification
 when Bazilion is in the background ([the workspace](workspace.md#live)).
+
+## Failed background turns
+
+A turn nobody was watching can fail where you would not see it: a follow-up (sent from the web, a
+terminal or Telegram) or a turn an Agent ran for new mail. Attention lists them as one item per
+Agent and cause, so a refused key or a rate limit is one line however many turns it stopped: "3
+background turns failed", what the provider said, and how many of each there were. The cause is
+the provider's kind of failure (credentials, a limit, an unreachable server, a missing model) or,
+for anything else, the same message.
+
+**Acknowledge** sets it aside; a later failure of the same cause opens it again, counting only
+what came after. Retrying or removing the failed follow-ups takes them off. A follow-up a daemon
+restart interrupted is the paused queue's item instead. Turns for new mail are kept in the
+daemon's memory: a restart forgets them, and one that could not start at all leaves once it
+starts. Scheduled triggers keep their own kind.
 
 ## Telegram notifications
 

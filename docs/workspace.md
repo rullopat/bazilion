@@ -75,7 +75,10 @@ signed out or expiring.
 conversation with the open Agent, adding an Agent, switching the theme, the keyboard shortcuts),
 the other Agents by when they were last active, recent conversations, Teams, the open Team's
 views and the Manage and Setup pages. Type to narrow it down; Enter opens the one highlighted,
-also when you press it before the lists have arrived.
+also when you press it before the lists have arrived. Three characters or more also search the
+conversations: **In conversations**, last, lists the messages holding every word typed, and
+opening one shows its conversation at that message, marked for a moment
+([conversations](conversations.md#search)).
 
 | Keys | |
 | --- | --- |

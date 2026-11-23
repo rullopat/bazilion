@@ -80,6 +80,12 @@ Each row on the page says who uses the model. Removing a model an Agent template
 moves the template to another model and says so; an Agent with its own model on a removed model
 is refused until it gets another one in its **Agent** tab.
 
+## What they cost
+
+[Usage](usage.md) adds up the tokens and cost Pi records for every reply. Providers paid per use
+count in dollars; ChatGPT, GitHub Copilot and the Qwen and Xiaomi MiMo token plans are
+subscriptions and count in tokens only, as do the local servers.
+
 ## Settings and precedence
 
 A provider's fields are settings like any other: `bazilion config set ANTHROPIC_API_KEY …` writes

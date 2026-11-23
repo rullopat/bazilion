@@ -27,8 +27,11 @@ workspace file does not change it.
 
 - **Telegram:** a bound Agent's delivered files are sent to its topic as documents.
 
-Previews show plain text and Markdown up to 256 KiB as text, and PNG, JPEG, GIF and WebP images up
-to 10 MiB. Everything else, HTML and SVG included, is download-only.
+Previews show text up to 256 KiB as text: a text type (Markdown, CSV, JSON, YAML, XML…), or a
+file delivered without one whose name says text (`.py`, `.ts`, `.sh`, `.log`, `.toml` and the
+like), as long as it is UTF-8. A text file's tile in the Files view shows its first lines. PNG,
+JPEG, GIF and WebP images are shown up to 10 MiB. Everything else, HTML and SVG included, is
+download-only.
 
 In a zip, files keep their names; a second file of the same name becomes `name (2).ext`. The zip
 is not compressed.
@@ -49,5 +52,5 @@ is not compressed.
 | `GET /api/results/archive?teamId=…` (or `agentId`, `sessionId`) | The matching files as one zip (413 above 512 MiB together) |
 | `GET /api/results/:id` | Metadata |
 | `GET /api/results/:id/download` | The file, as an attachment |
-| `GET /api/results/:id/preview` | Text or image preview (415 when not previewable) |
+| `GET /api/results/:id/preview[?bytes=N]` | Text or image preview (415 when not previewable); `bytes` keeps the start of a text file, on a whole character |
 | `DELETE /api/results/:id` | Delete |

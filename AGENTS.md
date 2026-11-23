@@ -18,6 +18,7 @@ pnpm test                      # vitest across the tree
 pnpm test:docker               # the Docker sandbox suite (needs Docker and debian:bookworm-slim)
 pnpm test:e2e                  # browser tests of the built package (pnpm build first; needs Chrome)
 pnpm site-pictures <dir>       # the website's product pictures (pnpm build first; needs cwebp)
+pnpm pictures:accept [run]     # take a CI run's differing pictures as the references (needs gh)
 pnpm build                     # web build, then the CLI bundle
 pnpm vitest run <file>         # one file; add -t 'name' for one test
 pnpm tsx apps/cli/src/index.ts <command>   # the CLI from source; `serve` starts the daemon
@@ -114,8 +115,14 @@ Daemon paths are again relative to `apps/daemon/`.
 - Opt-in suite: `BAZILION_TEST_DOCKER=1` (Docker sandbox).
 - `e2e/` drives the built package in Chrome on a scratch home against a stand-in model server
   (`model-server.ts`, scripted per conversation), with the Paperboat demo (`demo.ts`). A test
-  fails on any page error, console error or failed request. `scripts/site-pictures.ts` uses the
-  same harness for the website's pictures.
+  fails on any page error, console error or failed request. Every page also passes axe-core's
+  WCAG 2.1 A/AA rules, light and dark (`accessibility.ts`), and a keyboard walk.
+  `scripts/site-pictures.ts` uses the same harness for the website's pictures.
+- `e2e/pictures.e2e.test.ts` compares pictures of the web UI with `e2e/pictures/*.png`. Fonts
+  render per system, so it runs on Linux CI only (`BAZILION_PICTURES=compare|update|off` to
+  choose). A failed CI run uploads what it saw, with diffs, as the `pictures` artifact; after
+  looking at them, `pnpm pictures:accept [run id]` takes them as the new references. Never take
+  references on macOS.
 
 ## Conventions
 
