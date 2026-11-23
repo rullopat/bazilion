@@ -60,21 +60,27 @@ const addCmd = defineCommand({
   },
 })
 
-function triggerRow(t: AgentTrigger): string[] {
+function triggerRow(t: AgentTrigger, next: number | null | undefined): string[] {
   const last = t.lastFiredAt ? new Date(t.lastFiredAt).toISOString() : '(never)'
   const state = t.enabled ? 'enabled' : 'disabled'
   const msgPreview = t.message.length > 60 ? `${t.message.slice(0, 60)}…` : t.message
-  return [t.id, state, spec(t), `last: ${last}`, `"${msgPreview}"`]
+  const upcoming = typeof next === 'number' ? new Date(next).toISOString() : '-'
+  return [t.id, state, spec(t), `next: ${upcoming}`, `last: ${last}`, `"${msgPreview}"`]
 }
 
 const listCmd = defineCommand({
   meta: { name: 'list', description: 'List triggers for an agent' },
   args: { agent: agentArg },
   async run({ args }) {
-    const { triggers } = await createClient().get<ListTriggersResponse>(
+    const { triggers, nextRuns, schedulerOff } = await createClient().get<ListTriggersResponse>(
       apiPath('agents', args.agent, 'triggers'),
     )
-    printRows(triggers.map(triggerRow), '(no triggers)')
+    printRows(
+      triggers.map((trigger) => triggerRow(trigger, nextRuns[trigger.id])),
+      '(no triggers)',
+    )
+    if (schedulerOff && triggers.length > 0)
+      console.log('The daemon runs no schedules: it was started with BAZILION_SCHEDULER=off.')
   },
 })
 

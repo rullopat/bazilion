@@ -5,7 +5,14 @@ import { useEffect, useState } from 'react'
 import { ApiError, api, apiFetch, errorMessage } from '../../lib/api'
 import type { WorkspaceSearch } from '../../lib/workspace'
 import { Button } from '../Button'
-import { formatBytes, isPreviewImage, isPreviewText, kindLabel, resultPath } from './result-utils'
+import {
+  formatBytes,
+  isPreviewImage,
+  isPreviewText,
+  kindLabel,
+  resultPath,
+  tileTextPath,
+} from './result-utils'
 
 /**
  * A saved file where it was delivered: a picture shows as a picture, anything else as a row with
@@ -28,7 +35,7 @@ export function ResultTile({
   /** Where clicking the picture leads (the Files view); a plain picture without it. */
   open?: WorkspaceSearch
   selected?: boolean
-  /** A tile of a grid: every file the same shape, cropped pictures, no inline text preview. */
+  /** A tile of a grid: every file the same shape, cropped pictures, the start of a text file. */
   compact?: boolean
   /** In a grid, choose the tile instead of following `open`. */
   onPick?: () => void
@@ -104,13 +111,10 @@ export function ResultTile({
         loading="lazy"
         className="block aspect-[4/3] w-full bg-card object-contain p-1.5"
       />
+    ) : isPreviewText(result) ? (
+      <TextFace result={result} />
     ) : (
-      <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 bg-card text-mocha">
-        <FileText className="size-7" aria-hidden="true" />
-        <span className="max-w-full truncate px-2 font-mono text-xs font-medium uppercase tracking-wide">
-          {kindLabel(result.mimeType, result.name)}
-        </span>
-      </span>
+      <KindFace result={result} />
     )
     return (
       <figure className={`m-0 ${frame}`}>
@@ -226,5 +230,48 @@ export function ResultTile({
         </p>
       )}
     </div>
+  )
+}
+
+/** A file shown by its kind: an icon and "PDF", "ZIP". */
+function KindFace({ result }: { result: AgentResult }) {
+  return (
+    <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 bg-card text-mocha">
+      <FileText className="size-7" aria-hidden="true" />
+      <span className="max-w-full truncate px-2 font-mono text-xs font-medium uppercase tracking-wide">
+        {kindLabel(result.mimeType, result.name)}
+      </span>
+    </span>
+  )
+}
+
+/** A text file shown by its first lines, fading out; by its kind until they arrive or if not. */
+function TextFace({ result }: { result: AgentResult }) {
+  const [start, setStart] = useState<string | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    apiFetch(tileTextPath(result.id), { signal: controller.signal })
+      .then((response) => response.text())
+      .then((text) => setStart(text.trim() ? text : null))
+      .catch(() => setStart(null))
+    return () => controller.abort()
+  }, [result.id])
+  if (start === null) return <KindFace result={result} />
+  return (
+    <span className="relative block aspect-[4/3] w-full overflow-hidden bg-card text-left">
+      <pre
+        aria-hidden="true"
+        className="m-0 h-full overflow-hidden whitespace-pre-wrap break-words p-2.5 font-mono text-[10px] leading-[1.45] text-mocha"
+      >
+        {start}
+      </pre>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent"
+      />
+      <span className="absolute bottom-1.5 right-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-mocha">
+        {kindLabel(result.mimeType, result.name)}
+      </span>
+    </span>
   )
 }

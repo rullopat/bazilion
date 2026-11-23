@@ -108,7 +108,9 @@ export function TeamPolicyEditor({
               label="Name"
               value={draft.name}
               disabled={saving}
+              required
               className="max-w-none"
+              problem={draft.name.trim() ? undefined : 'A template needs a name.'}
               onChange={(name) => setDraft((current) => ({ ...current, name }))}
             />
           </div>
@@ -180,7 +182,11 @@ export function TeamPolicyEditor({
           </aside>
         </div>
         <footer className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-4 sm:px-5">
-          <Button variant="primary" disabled={!dirty || saving} onClick={() => void save()}>
+          <Button
+            variant="primary"
+            disabled={!dirty || saving || !draft.name.trim()}
+            onClick={() => void save()}
+          >
             {saving ? 'Saving…' : 'Save'}
           </Button>
           {dirty && (

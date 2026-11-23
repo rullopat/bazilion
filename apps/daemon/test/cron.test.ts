@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest'
-import { matchesCron, parseCron, validateCron } from '../src/lib/cron.ts'
+import { matchesCron, nextCronMatch, parseCron, validateCron } from '../src/lib/cron.ts'
 
 function at(y: number, mo: number, d: number, h: number, mi: number, dow?: number): Date {
   // Local time — matches what matchesCron reads via getMinutes / getHours / etc.
@@ -140,5 +140,26 @@ describe('matchesCron across daylight-saving changes (daemon local time)', () =>
     expect(matching('Europe/Berlin', '0 9 * * *', '2026-07-15T06:30:00Z', 120)).toEqual([
       '2026-07-15T07:00:00.000Z',
     ])
+  })
+})
+
+describe('nextCronMatch', () => {
+  const next = (expr: string, from: Date) => {
+    const found = nextCronMatch(parseCron(expr), from.getTime())
+    return found === null ? null : new Date(found)
+  }
+  test('the same minute when it matches, else the next matching one', () => {
+    expect(next('30 9 * * *', at(2026, 11, 23, 9, 30))).toEqual(at(2026, 11, 23, 9, 30))
+    expect(next('30 9 * * *', at(2026, 11, 23, 9, 31))).toEqual(at(2026, 11, 24, 9, 30))
+    expect(next('*/15 * * * *', at(2026, 11, 23, 9, 31))).toEqual(at(2026, 11, 23, 9, 45))
+  })
+  test('weekdays, months and leap days are skipped to', () => {
+    // 2026-11-28 is a Saturday: the next weekday 09:00 is Monday the 30th.
+    expect(next('0 9 * * 1-5', at(2026, 11, 28, 10, 0))).toEqual(at(2026, 11, 30, 9, 0))
+    expect(next('0 0 1 3 *', at(2026, 11, 23, 0, 0))).toEqual(at(2027, 3, 1, 0, 0))
+    expect(next('0 12 29 2 *', at(2026, 11, 23, 0, 0))).toEqual(at(2028, 2, 29, 12, 0))
+  })
+  test('an expression that never matches has no next run', () => {
+    expect(next('0 0 31 2 *', at(2026, 11, 23, 0, 0))).toBeNull()
   })
 })

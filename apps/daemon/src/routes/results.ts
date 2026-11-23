@@ -1,3 +1,4 @@
+import { isTextPreview } from '@bazilion/api-types'
 import * as results from '../core/repos/results.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { zipStream } from '../lib/zip.ts'
@@ -112,13 +113,38 @@ resultsRouter.get('/:id/preview', (c) => {
   const db = getCtx().db
   const result = results.get(db, c.req.param('id'))
   if (!result) return c.json({ error: 'Result not found' }, 404)
-  const text = ['text/plain', 'text/markdown'].includes(result.mimeType)
+  const text = isTextPreview(result)
   const image = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(result.mimeType)
-  if ((!text && !image) || result.byteLength > (text ? 256 * 1024 : 10 * 1024 * 1024)) {
+  if (!text && (!image || result.byteLength > 10 * 1024 * 1024)) {
     return c.json({ error: 'Preview is unavailable for this file. Use Download.' }, 415)
   }
+  // A tile shows only the start of a text file: `?bytes=` cuts it, on a whole character.
+  const bytesParam = Number(c.req.query('bytes'))
+  const cut = text && Number.isInteger(bytesParam) && bytesParam > 0 ? bytesParam : null
   try {
     const bytes = results.read(db, result.id)
+    if (text) {
+      let shown: string
+      try {
+        shown = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+      } catch {
+        return c.json({ error: 'This file is not text. Use Download.' }, 415)
+      }
+      if (shown.includes('\u0000'))
+        return c.json({ error: 'This file is not text. Use Download.' }, 415)
+      if (cut !== null && Buffer.byteLength(shown) > cut) {
+        // Whole characters only: drop a last one cut in half.
+        shown = Buffer.from(shown)
+          .subarray(0, cut)
+          .toString('utf8')
+          .replace(/\uFFFD$/, '')
+      }
+      c.header('Content-Type', 'text/plain; charset=utf-8')
+      c.header('X-Content-Type-Options', 'nosniff')
+      c.header('Content-Security-Policy', "default-src 'none'; sandbox")
+      c.header('Cache-Control', 'private, max-age=3600')
+      return c.body(shown)
+    }
     const magic =
       result.mimeType === 'image/png'
         ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))

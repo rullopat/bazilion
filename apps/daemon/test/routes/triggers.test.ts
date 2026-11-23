@@ -91,3 +91,35 @@ test.each([
   })
   expect(response.status).toBe(400)
 })
+
+test('a schedule says when it runs next; the scheduler being off says none does', async () => {
+  const { ctx, trigger } = await setupTrigger()
+  const { nextRunAt } = await import('../../src/lib/scheduler.ts')
+  const { triggerRepo } = await import('../../src/core/index.ts')
+  const now = trigger.createdAt + 10_000
+  expect(nextRunAt(trigger, now)).toBe(trigger.createdAt + 60_000)
+  // Overdue: it runs at the next tick.
+  expect(nextRunAt(trigger, trigger.createdAt + 120_000)).toBe(trigger.createdAt + 120_000)
+  const cron = triggerRepo.insert(ctx.db, {
+    agentId: trigger.agentId,
+    kind: 'cron',
+    intervalSec: null,
+    cronExpr: '*/5 * * * *',
+    message: 'cron work',
+  })
+  const minute = Math.floor(now / 300_000) * 300_000
+  // A minute it already ran in does not count again.
+  expect(nextRunAt({ ...cron, lastFiredAt: minute }, minute + 1000)).toBe(minute + 300_000)
+  expect(nextRunAt({ ...cron, enabled: false }, now)).toBeNull()
+
+  const { agentTriggersRouter } = await import('../../src/routes/triggers.ts')
+  const off = await (await agentTriggersRouter.request(`/${trigger.agentId}/triggers`)).json()
+  expect(off).toMatchObject({ schedulerOff: true, nextRuns: { [trigger.id]: null } })
+  process.env.BAZILION_SCHEDULER = 'on'
+  const on = (await (await agentTriggersRouter.request(`/${trigger.agentId}/triggers`)).json()) as {
+    schedulerOff: boolean
+    nextRuns: Record<string, number | null>
+  }
+  expect(on.schedulerOff).toBe(false)
+  expect(typeof on.nextRuns[cron.id]).toBe('number')
+})

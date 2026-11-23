@@ -39,7 +39,7 @@ import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts
 import { selectCausalParent } from './agent-loop-guard.ts'
 import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
 import { resolveConversationTarget } from './conversation-target.ts'
-import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
+import { matchesCron, nextCronMatch, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
 import { signalLiveChange } from './live-signal.ts'
 import { dispatchPendingReviews } from './review-dispatcher.ts'
@@ -108,6 +108,33 @@ function isDue(t: AgentTrigger, now: number, cronCache: Map<string, ParsedCron>)
     return matchesCron(parsed, new Date(nowFloor))
   }
   return false
+}
+
+/**
+ * When a trigger next runs: the next matching minute (a cron) or the end of the interval, now
+ * when that is already past; null when it is paused or its expression never matches. A busy Agent
+ * runs it once its turn ends.
+ */
+export function nextRunAt(t: AgentTrigger, now = Date.now()): number | null {
+  if (!t.enabled) return null
+  if (t.kind === 'interval') {
+    const every = (t.intervalSec ?? 0) * 1000
+    if (every <= 0) return null
+    return Math.max((t.lastFiredAt ?? t.createdAt) + every, now)
+  }
+  if (!t.cronExpr) return null
+  let parsed: ParsedCron
+  try {
+    parsed = parseCron(t.cronExpr)
+  } catch {
+    return null
+  }
+  // A minute it already ran in does not count again.
+  const from =
+    t.lastFiredAt && floorToMinute(t.lastFiredAt) === floorToMinute(now)
+      ? floorToMinute(now) + 60_000
+      : floorToMinute(now)
+  return nextCronMatch(parsed, from)
 }
 
 function scheduledOccurrence(t: AgentTrigger, now: number): number {

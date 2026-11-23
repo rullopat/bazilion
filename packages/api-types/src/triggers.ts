@@ -22,6 +22,10 @@ export interface CreateTriggerResponse {
 export interface ListTriggersResponse {
   triggers: AgentTrigger[]
   dispatches: TriggerDispatch[]
+  /** When each trigger runs next, by id; null while it is paused or when it never matches. */
+  nextRuns: Record<string, number | null>
+  /** The daemon runs no schedules (`BAZILION_SCHEDULER=off`): none of them runs. */
+  schedulerOff: boolean
 }
 
 export interface ListTriggerDispatchesResponse {

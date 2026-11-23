@@ -12,7 +12,7 @@ import {
   DEFAULT_SOUL,
   DEFAULT_TOOLS,
 } from './templates.ts'
-import { validateSlug } from './validate.ts'
+import { templateName, validateSlug } from './validate.ts'
 
 export interface CreateProfileInput {
   id: string
@@ -34,6 +34,8 @@ export interface CreateProfileInput {
 
 export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfileInput): Profile {
   validateSlug(input.id)
+  // Checked before anything is written, so that a refusal leaves nothing behind.
+  const name = input.name === undefined ? input.id : templateName(input.name)
   // Checked before any file is written: the templates below would overwrite its files.
   if (profileRepo.get(db, input.id))
     throw new DomainError(400, `profile already exists: ${input.id}`)
@@ -66,7 +68,7 @@ export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfile
   const skillsMode: SkillsMode = input.skillsMode ?? 'selected'
   const profile = profileRepo.insert(db, {
     id: input.id,
-    name: input.name ?? input.id,
+    name,
     defaultModel: input.defaultModel,
     skillsMode,
   })
