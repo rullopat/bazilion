@@ -11,14 +11,12 @@ import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { ConfigPage } from '../../components/ConfigPage'
 import { NotificationsCard } from '../../components/setup/NotificationsCard'
-import {
-  AllowedUsersCard,
-  BotCard,
-  MigrationBanner,
-  PairingCard,
-  PreflightCard,
-  TELEGRAM_PATH,
-} from '../../components/setup/TelegramCards'
+import { AllowedUsersCard } from '../../components/setup/telegram/AllowedUsersCard'
+import { BotCard } from '../../components/setup/telegram/BotCard'
+import { MigrationBanner } from '../../components/setup/telegram/MigrationBanner'
+import { PairingCard } from '../../components/setup/telegram/PairingCard'
+import { PreflightCard } from '../../components/setup/telegram/PreflightCard'
+import { TELEGRAM_PATH } from '../../components/setup/telegram/parts'
 import { api, errorMessage } from '../../lib/api'
 import { daemonClient } from '../../lib/daemon-client'
 import { botState } from '../../lib/telegram-setup'

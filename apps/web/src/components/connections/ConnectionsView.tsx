@@ -27,7 +27,7 @@ import { TeamPolicyMatrix } from '../team-policy/TeamPolicyMatrix'
 import { UnsavedChangesGuard } from '../UnsavedChangesGuard'
 import { useWorkspace } from '../workspace/context'
 import { FocusFrame } from '../workspace/FocusFrame'
-import { STATE_DOT } from '../workspace/Rail'
+import { STATE_DOT } from '../workspace/state-style'
 import { ConnectionsMap, type MapMember, pairId, pairOf } from './ConnectionsMap'
 import { TeamThread, useTeamMessages } from './TeamThread'
 
