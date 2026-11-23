@@ -436,9 +436,15 @@ test('an Agent added with its job starts on it, and a Team has each name once', 
     expect(existsSync(join(dir, 'BOOTSTRAP.md'))).toBe(false)
     // Adding it opened its conversation, its first line ready to be typed.
     await pw(session.page.getByPlaceholder('Message Rhea')).toBeVisible()
-    // Another "mira" in Launch is refused, whatever its case.
-    await session.go('/?team=launch', 1500)
-    await home.getByRole('button', { name: 'Add an Agent' }).click()
+    // Another "mira" in Launch is refused, whatever its case. Jump to adds to the open Agent's
+    // Team, without leaving the page while it is still loading.
+    await session.page.keyboard.press('Control+k')
+    await session.page.keyboard.type('Add an Agent')
+    await session.page
+      .getByRole('option', { name: /Add an Agent/ })
+      .first()
+      .click()
+    await pw(dialog.getByLabel('Team')).toContainText('Launch')
     await dialog.getByLabel('Name').fill('mira')
     await dialog.getByRole('button', { name: 'Add the Agent' }).click()
     await pw(dialog.getByRole('alert')).toContainText('Launch already has an Agent named mira.')
