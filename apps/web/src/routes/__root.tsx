@@ -22,6 +22,7 @@ import { DesktopNotifier } from '../lib/desktop-notifications'
 import { LiveProvider } from '../lib/live'
 import { PageTitleProvider } from '../lib/page-title'
 import { RosterWatcher } from '../lib/roster'
+import { StaleBuildReloader } from '../lib/stale-build'
 import appCss from '../styles.css?url'
 
 // Sync, runs in <head> before paint. Reads 'baziu-theme' from localStorage
@@ -115,6 +116,7 @@ function RootComponent() {
           <AttentionCountProvider enabled={!isLogin && pathname !== '/welcome'}>
             <DesktopNotifier />
             <RosterWatcher />
+            <StaleBuildReloader />
             <PageTitleProvider>
               {isLogin ? (
                 <Outlet />

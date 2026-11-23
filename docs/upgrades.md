@@ -7,6 +7,11 @@ npm install -g bazilion@latest     # or run npx bazilion@latest dashboard
 Bazilion needs Node.js 26.12.1 or a later 26.x release; the CLI refuses any other Node before it
 starts. A refusal caused by the Node version means upgrading Node, never resetting the home.
 
+A browser tab left open across an upgrade still runs the page it loaded. When it next needs a part
+of the web UI it had not loaded yet (the Connections map, a dialog), that part is gone from the
+new release, so the tab reloads itself once to get the new version; if that cannot help, the page
+says so and offers **Reload**. Reloading open tabs after an upgrade avoids the hiccup.
+
 The database has no migrations. A release opens a home only when its schema matches the one that
 release ships (`apps/daemon/src/core/db/schema.sql`); otherwise the daemon refuses to start and
 leaves the home untouched. To move to such a release:
