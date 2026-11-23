@@ -223,7 +223,8 @@ export function ListRow({
             {chip}
           </div>
           {meta && (
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted-foreground">
+            // A link among the facts is underlined: its colour alone would not set it apart.
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted-foreground [&_a]:underline [&_a]:underline-offset-2">
               {meta}
             </div>
           )}

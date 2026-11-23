@@ -119,23 +119,20 @@ export function ResultTile({
     return (
       <figure className={`m-0 ${frame}`}>
         {onPick ? (
+          // Named by words read out, not aria-label: the face shows text of its own (a kind, a
+          // file's first lines), and a name should hold what is seen.
           <button
             type="button"
             onClick={onPick}
-            aria-label={`Choose ${result.name}`}
             aria-pressed={selected}
             className="unstyled block w-full"
           >
+            <span className="sr-only">Choose {result.name}</span>
             {face}
           </button>
         ) : open ? (
-          <Link
-            to="/"
-            search={open}
-            aria-label={`Open ${result.name}`}
-            aria-current={selected ? 'true' : undefined}
-            className="block"
-          >
+          <Link to="/" search={open} aria-current={selected ? 'true' : undefined} className="block">
+            <span className="sr-only">Open {result.name}</span>
             {face}
           </Link>
         ) : (
@@ -236,8 +233,12 @@ export function ResultTile({
 /** A file shown by its kind: an icon and "PDF", "ZIP". */
 function KindFace({ result }: { result: AgentResult }) {
   return (
-    <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 bg-card text-mocha">
-      <FileText className="size-7" aria-hidden="true" />
+    // The tile's link or button names the file; this face only shows its kind.
+    <span
+      aria-hidden="true"
+      className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 bg-card text-mocha"
+    >
+      <FileText className="size-7" />
       <span className="max-w-full truncate px-2 font-mono text-xs font-medium uppercase tracking-wide">
         {kindLabel(result.mimeType, result.name)}
       </span>
@@ -258,17 +259,14 @@ function TextFace({ result }: { result: AgentResult }) {
   }, [result.id])
   if (start === null) return <KindFace result={result} />
   return (
-    <span className="relative block aspect-[4/3] w-full overflow-hidden bg-card text-left">
-      <pre
-        aria-hidden="true"
-        className="m-0 h-full overflow-hidden whitespace-pre-wrap break-words p-2.5 font-mono text-[10px] leading-[1.45] text-mocha"
-      >
+    <span
+      aria-hidden="true"
+      className="relative block aspect-[4/3] w-full overflow-hidden bg-card text-left"
+    >
+      <pre className="m-0 h-full overflow-hidden whitespace-pre-wrap break-words p-2.5 font-mono text-[10px] leading-[1.45] text-mocha">
         {start}
       </pre>
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent"
-      />
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent" />
       <span className="absolute bottom-1.5 right-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-mocha">
         {kindLabel(result.mimeType, result.name)}
       </span>

@@ -87,7 +87,7 @@
   --secondary: #faf8f4; /* ivory */
   --secondary-foreground: #342820;
   --muted: #faf8f4;
-  --muted-foreground: #776a60; /* mocha-light */
+  --muted-foreground: #6f6054; /* mocha: 4.5:1 on the tinted rows too (a selected Agent, a diff) */
   --accent: rgba(53, 110, 143, 0.12); /* sapphire-glow */
   --accent-foreground: #2f617d; /* sapphire-deep */
   --destructive: #a34e52;
@@ -145,7 +145,7 @@
   --secondary: #211a13;
   --secondary-foreground: #f5f0e8;
   --muted: #211a13;
-  --muted-foreground: #a89789;
+  --muted-foreground: #baa99b; /* 4.5:1 on the tinted rows too (a selected Agent, a diff) */
   --accent: rgba(123, 180, 210, 0.18);
   --accent-foreground: #a0cee3;
   --destructive: #d87878;
@@ -230,7 +230,8 @@
     background: var(--color-frost);
     padding: 0.15em 0.4em;
     border-radius: var(--radius-sm);
-    color: var(--color-mocha);
+    /* The ink, not mocha: on frost, mocha is 4.2:1. */
+    color: var(--color-chocolate);
   }
   a {
     color: var(--color-sapphire);
@@ -592,6 +593,7 @@
   .md-content th {
     background: var(--color-frost);
     font-weight: 600;
+    color: var(--color-chocolate);
   }
   .md-content img {
     max-width: 100%;

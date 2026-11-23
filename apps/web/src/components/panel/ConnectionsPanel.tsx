@@ -117,7 +117,7 @@ export function ConnectionsPanel({ team }: { team: Team }) {
                             : `${entry.name} can message ${member.name}`
                       }
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-                        entry.out ? 'bg-accent text-accent-foreground' : 'bg-frost text-mocha'
+                        entry.out ? 'bg-accent text-accent-foreground' : 'bg-frost text-foreground'
                       }`}
                     >
                       {entry.out && entry.back ? (

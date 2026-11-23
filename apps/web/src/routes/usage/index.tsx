@@ -40,16 +40,24 @@ const PERIODS = [
 type Period = (typeof PERIODS)[number]['id']
 
 interface UsageSearch {
-  days?: Period
+  /** Days counted (a number in the address: `?days=7`), or `all`. */
+  days?: 1 | 7 | 30 | 90 | 'all'
   agent?: string
   team?: string
 }
 
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined)
 
+/** The address's period: `?days=7` reads as the number 7, `?days=all` as text. */
+function parseDays(value: unknown): UsageSearch['days'] {
+  const period = PERIODS.find((entry) => entry.id === String(value))?.id
+  if (!period) return undefined
+  return period === 'all' ? 'all' : (Number(period) as 1 | 7 | 30 | 90)
+}
+
 export const Route = createFileRoute('/usage/')({
   validateSearch: (search: Record<string, unknown>): UsageSearch => ({
-    days: PERIODS.some((period) => period.id === search.days) ? (search.days as Period) : undefined,
+    days: parseDays(search.days),
     agent: text(search.agent),
     team: text(search.team),
   }),
@@ -60,7 +68,7 @@ export const Route = createFileRoute('/usage/')({
 function useUsage(search: UsageSearch) {
   const [report, setReport] = useState<UsageReport | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const days = search.days ?? '30'
+  const days = String(search.days ?? 30)
   useEffect(() => {
     const controller = new AbortController()
     const query = new URLSearchParams({
@@ -85,7 +93,7 @@ function UsagePage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/usage/' })
   const { report, error } = useUsage(search)
-  const period = search.days ?? '30'
+  const period = String(search.days ?? 30) as Period
 
   return (
     <ManagePage
@@ -96,7 +104,9 @@ function UsagePage() {
           label="Period"
           value={period}
           options={PERIODS}
-          onChange={(days) => void navigate({ search: (prev) => ({ ...prev, days }) })}
+          onChange={(days) =>
+            void navigate({ search: (prev) => ({ ...prev, days: parseDays(days) }) })
+          }
         />
       }
     >
@@ -214,7 +224,7 @@ function UsageBody({ report, period }: { report: UsageReport; period: Period }) 
             rows={report.byTeam.map((team) => ({
               key: team.teamId,
               title: (
-                <Link to="/usage" search={{ days: period, team: team.teamId }}>
+                <Link to="/usage" search={{ days: parseDays(period), team: team.teamId }}>
                   {team.teamName}
                 </Link>
               ),
@@ -229,7 +239,7 @@ function UsageBody({ report, period }: { report: UsageReport; period: Period }) 
             rows={report.byAgent.map((agent) => ({
               key: agent.agentId,
               title: (
-                <Link to="/usage" search={{ days: period, agent: agent.agentId }}>
+                <Link to="/usage" search={{ days: parseDays(period), agent: agent.agentId }}>
                   {agent.agentName}
                 </Link>
               ),
