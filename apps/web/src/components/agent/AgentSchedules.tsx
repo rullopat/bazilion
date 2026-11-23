@@ -52,6 +52,20 @@ export function AgentSchedules({ agent }: { agent: Agent }) {
   )
 }
 
+/** "Next run in 5 min", "Next run Mon 24 Nov, 09:00": when a schedule runs next, in words. */
+export function nextRunWords(at: number, now: number): string {
+  const wait = at - now
+  if (wait < 60_000) return 'Next run now'
+  if (wait < 3_600_000) return `Next run in ${Math.round(wait / 60_000)} min`
+  return `Next run ${new Date(at).toLocaleString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
+}
+
 const RUN: Record<TriggerDispatch['status'], { label: string; tone: Tone }> = {
   pending: { label: 'Waiting for the Agent', tone: 'neutral' },
   running: { label: 'Running', tone: 'success' },
@@ -66,6 +80,8 @@ export function SchedulesView({
   agentName = 'The Agent',
   triggers,
   dispatches,
+  nextRuns,
+  schedulerOff,
   onChanged,
 }: ListTriggersResponse & {
   agentId: string
@@ -120,6 +136,13 @@ export function SchedulesView({
             </Notice>
           </div>
         )}
+        {schedulerOff && triggers.length > 0 && (
+          <div className="border-t border-border px-4 py-3 sm:px-5">
+            <Notice title="No schedule runs on this daemon">
+              It was started with <code>BAZILION_SCHEDULER=off</code>.
+            </Notice>
+          </div>
+        )}
         {triggers.length === 0 ? (
           <CardEmpty
             icon={<CalendarClock className="size-5" />}
@@ -156,11 +179,16 @@ export function SchedulesView({
                     )
                   }
                   meta={
-                    <span>
-                      {trigger.lastFiredAt
-                        ? `Last ran ${when(trigger.lastFiredAt)}`
-                        : 'Has not run yet'}
-                    </span>
+                    <>
+                      {hydrated && typeof nextRuns[trigger.id] === 'number' && (
+                        <span>{nextRunWords(nextRuns[trigger.id] as number, Date.now())}</span>
+                      )}
+                      <span>
+                        {trigger.lastFiredAt
+                          ? `Last ran ${when(trigger.lastFiredAt)}`
+                          : 'Has not run yet'}
+                      </span>
+                    </>
                   }
                   actions={
                     <>

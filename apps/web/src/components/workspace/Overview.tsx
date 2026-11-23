@@ -15,7 +15,7 @@ import { ResultTile } from '../files/ResultTile'
 import { useResults } from '../files/use-results'
 import { SpawnDialog } from '../SpawnDialog'
 import { useWorkspace } from './context'
-import { STATE_DOT, STATE_TEXT } from './Rail'
+import { STATE_DOT, STATE_TEXT } from './state-style'
 
 const HEADING =
   'm-0 mb-2 mt-7 font-body text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground'

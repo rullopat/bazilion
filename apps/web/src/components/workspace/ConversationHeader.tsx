@@ -1,10 +1,16 @@
 // The bar above a conversation: who it is with, in which Team, on which model, which of the
 // Agent's conversations it is, and the switch for the side panel.
 
-import type { Conversation, ConversationListResponse, ResolvedAgent } from '@bazilion/api-types'
+import {
+  type Conversation,
+  type ConversationListResponse,
+  type ResolvedAgent,
+  usageSummary,
+} from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
 import {
   ArrowLeft,
+  BarChart3,
   Check,
   ChevronDown,
   MessageSquare,
@@ -64,7 +70,8 @@ export function ConversationHeader({
         <ArrowLeft className="size-4" aria-hidden="true" />
       </Link>
       <AgentAvatar identity={agent.agent.identity} size={32} />
-      <h1 className="m-0 min-w-0 truncate font-display text-xl leading-tight text-charcoal">
+      {/* The Agent's name gives way last: the conversation's title shortens first. */}
+      <h1 className="m-0 min-w-0 max-w-[14rem] shrink-0 truncate font-display text-xl leading-tight text-charcoal">
         {agent.agent.name}
       </h1>
       <Link to="/" search={to({ panel: 'team', section: undefined })} className={CHIP}>
@@ -84,9 +91,9 @@ export function ConversationHeader({
         <Link
           to="/"
           search={to({ panel: panel === 'none' ? lastPanel : 'none', section: undefined })}
+          // A link, so no "pressed" state: its name says what it does next.
           aria-label={panel === 'none' ? 'Show the side panel' : 'Hide the side panel'}
           title={panel === 'none' ? 'Show the side panel' : 'Hide the side panel'}
-          aria-pressed={panel !== 'none'}
           className={`flex size-8 shrink-0 items-center justify-center rounded-[10px] border ${
             panel === 'none'
               ? 'border-border bg-card text-mocha hover:text-sapphire'
@@ -172,7 +179,8 @@ function ConversationMenu({ agentId, chat }: { agentId: string; chat?: ChatContr
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            aria-label="Conversations"
+            // The title it shows comes first in its name (what is seen is what is said).
+            aria-label={shown ? `${shown.title}: conversations` : 'Conversations'}
             className="unstyled inline-flex h-8 min-w-0 max-w-[15rem] items-center gap-1.5 rounded-[10px] border border-border bg-card px-2.5 text-sm font-semibold text-foreground hover:border-sapphire-light"
           >
             <MessageSquare className="size-[15px] shrink-0 text-mocha" aria-hidden="true" />
@@ -213,6 +221,7 @@ function ConversationMenu({ agentId, chat }: { agentId: string; chat?: ChatContr
             {conversations.map((conversation) => {
               const active = conversation.id === activeId
               const reading = conversation.id === shownId
+              const used = list.data?.usage[conversation.id]
               return (
                 <DropdownMenu.Item key={conversation.id} asChild className={MENU_ITEM}>
                   <Link
@@ -221,8 +230,13 @@ function ConversationMenu({ agentId, chat }: { agentId: string; chat?: ChatContr
                     aria-current={reading ? 'true' : undefined}
                     className={reading ? 'bg-accent/70 text-accent-foreground' : ''}
                   >
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {conversation.title}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{conversation.title}</span>
+                      {used && (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {usageSummary(used)}
+                        </span>
+                      )}
                     </span>
                     {active ? (
                       <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-success">
@@ -264,6 +278,12 @@ function ConversationMenu({ agentId, chat }: { agentId: string; chat?: ChatContr
                 Rename “{shown.title.length > 24 ? `${shown.title.slice(0, 24)}…` : shown.title}”
               </DropdownMenu.Item>
             )}
+            <DropdownMenu.Item asChild className={MENU_ITEM}>
+              <Link to="/usage" search={{ agent: agentId }}>
+                <BarChart3 className="size-3.5" aria-hidden="true" />
+                This Agent's usage
+              </Link>
+            </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>

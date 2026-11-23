@@ -17,6 +17,7 @@
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "pictures:accept": "tsx scripts/accept-pictures.ts",
     "site-pictures": "tsx scripts/site-pictures.ts"
   },
   "devDependencies": {
@@ -25,7 +26,11 @@
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "1.61.0",
     "@types/node": "^26.0.0",
+    "@types/pngjs": "6.0.5",
+    "axe-core": "4.14.1",
+    "pixelmatch": "8.0.0",
     "playwright": "1.61.0",
+    "pngjs": "7.0.0",
     "tsup": "^8.5.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",

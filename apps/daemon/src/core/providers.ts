@@ -28,6 +28,13 @@ export interface ProviderDef {
   endpoint?: { env?: string; fallback?: string }
   /** A server on the operator's machine: always available, models come only from it. */
   local?: { key: string; authHeader: boolean }
+  /**
+   * Paid by a subscription, not per use: Usage counts its tokens apart and no cost for them, even
+   * where Pi's catalog prices the model.
+   */
+  plan?: boolean
+  /** When this variable is set, the provider is used through a subscription (a Claude token). */
+  planEnv?: string
   /** OpenAI-compatible `GET /models` listing, used to offer the provider's own model ids. */
   modelsUrl?: string
   /** Listed first under "Add a provider" and on the first-run screen. */
@@ -43,12 +50,19 @@ function apiKey(
   id: string,
   displayName: string,
   envVar: string,
-  options: { hint?: string; placeholder?: string; label?: string; modelsUrl?: string } = {},
+  options: {
+    hint?: string
+    placeholder?: string
+    label?: string
+    modelsUrl?: string
+    plan?: boolean
+  } = {},
 ): ProviderDef {
   return {
     id,
     displayName,
     ...(options.hint ? { hint: options.hint } : {}),
+    ...(options.plan ? { plan: true } : {}),
     keyEnv: [envVar],
     ...(options.modelsUrl ? { modelsUrl: options.modelsUrl } : {}),
     fields: [
@@ -93,6 +107,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     hint: 'Use your ChatGPT Plus, Pro or Team plan. No API key.',
     // Credentials come from the OAuth flow (/api/auth/openai), not from fields.
     fields: [],
+    plan: true,
     popular: true,
     suggested: ['gpt-6.2-sol', 'gpt-6-luna'],
   },
@@ -109,6 +124,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     displayName: 'Anthropic',
     hint: 'Claude models · console.anthropic.com',
     keyEnv: ['ANTHROPIC_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'],
+    planEnv: 'ANTHROPIC_OAUTH_TOKEN',
     fields: [
       { envVar: 'ANTHROPIC_API_KEY', kind: 'secret', label: 'API key', placeholder: 'sk-ant-...' },
       {
@@ -191,6 +207,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     displayName: 'GitHub Copilot',
     hint: 'Use a GitHub Copilot subscription to call Claude/GPT/Gemini via Copilot',
     keyEnv: ['COPILOT_GITHUB_TOKEN'],
+    plan: true,
     fields: [
       {
         envVar: 'COPILOT_GITHUB_TOKEN',
@@ -246,35 +263,40 @@ export const PROVIDERS: readonly ProviderDef[] = [
   // Each plan has its own key; Pi also reads the older shared QWEN_TOKEN_PLAN_API_KEY.
   apiKey('qwen-token-plan', 'Qwen Token Plan Team', 'QWEN_TOKEN_PLAN_TEAM_API_KEY', {
     hint: 'Team coding-model subscription · international endpoint',
+    plan: true,
   }),
   apiKey('qwen-token-plan-cn', 'Qwen Token Plan Team (CN)', 'QWEN_TOKEN_PLAN_TEAM_CN_API_KEY', {
     hint: 'Team coding-model subscription · China endpoint',
+    plan: true,
   }),
   apiKey(
     'qwen-token-plan-individual',
     'Qwen Token Plan Individual',
     'QWEN_TOKEN_PLAN_INDIVIDUAL_API_KEY',
-    { hint: 'Individual subscription · international endpoint' },
+    { hint: 'Individual subscription · international endpoint', plan: true },
   ),
   apiKey(
     'qwen-token-plan-individual-cn',
     'Qwen Token Plan Individual (CN)',
     'QWEN_TOKEN_PLAN_INDIVIDUAL_CN_API_KEY',
-    { hint: 'Individual subscription · China endpoint' },
+    { hint: 'Individual subscription · China endpoint', plan: true },
   ),
   apiKey('xiaomi', 'Xiaomi MiMo', 'XIAOMI_API_KEY', {
     hint: 'API billing endpoint · platform.xiaomimimo.com',
   }),
   apiKey('xiaomi-token-plan-ams', 'Xiaomi MiMo Token Plan (AMS)', 'XIAOMI_TOKEN_PLAN_AMS_API_KEY', {
     hint: 'MiMo token-plan endpoint in Amsterdam',
+    plan: true,
     modelsUrl: 'https://token-plan-ams.xiaomimimo.com/v1',
   }),
   apiKey('xiaomi-token-plan-cn', 'Xiaomi MiMo Token Plan (CN)', 'XIAOMI_TOKEN_PLAN_CN_API_KEY', {
     hint: 'MiMo token-plan endpoint in China',
+    plan: true,
     modelsUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
   }),
   apiKey('xiaomi-token-plan-sgp', 'Xiaomi MiMo Token Plan (SGP)', 'XIAOMI_TOKEN_PLAN_SGP_API_KEY', {
     hint: 'MiMo token-plan endpoint in Singapore',
+    plan: true,
     modelsUrl: 'https://token-plan-sgp.xiaomimimo.com/v1',
   }),
   apiKey('ant-ling', 'Ant Ling', 'ANT_LING_API_KEY', {

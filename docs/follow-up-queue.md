@@ -50,6 +50,9 @@ message that fails, is cancelled or is removed gets a short reply in the topic.
 
 - A follow-up that was running when the daemon stopped is marked failed and not run again, and the
   Agent's queue is paused; **Attention** shows it until you resume.
+- A follow-up that fails for any other reason (a refused key, a rate limit) is listed in
+  **Attention** as a failed turn, with the failures of the same cause for that Agent
+  ([Attention](attention-notifications.md)); retrying or removing it takes it off.
 - Restoring a backup behaves like a restart at the moment the backup was taken: follow-ups still
   waiting in the backup run again, even if they already ran after the backup was made.
 - Up to 20 waiting or running follow-ups per Agent, 64 KiB of text and 16 attachments (25 MiB) each,

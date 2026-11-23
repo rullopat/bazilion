@@ -50,8 +50,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      # The runner's Google Chrome drives the built web UI against a stand-in model server.
+      # The runner's Google Chrome drives the built web UI against a stand-in model server, and
+      # compares its pictures with the references in e2e/pictures/.
       - run: pnpm test:e2e
+      # The pictures that differ, with their references and the difference marked in red;
+      # `pnpm pictures:accept` takes them as the new references when the change is meant.
+      - name: Keep the pictures that differ
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pictures
+          path: e2e/pictures-out/
+          if-no-files-found: ignore
 
   docker:
     name: Docker sandbox tests

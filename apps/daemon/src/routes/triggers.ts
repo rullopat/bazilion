@@ -10,6 +10,7 @@ import type {
 import { triggerDispatchRepo, triggerRepo } from '../core/index.ts'
 import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { nextRunAt } from '../lib/scheduler.ts'
 import { jsonBody, newRouter, routeAgent } from './http.ts'
 
 export const triggersRouter = newRouter()
@@ -53,11 +54,17 @@ export const agentTriggersRouter = newRouter()
 agentTriggersRouter.get('/:id/triggers', (c) => {
   const { db } = getCtx()
   const triggers = triggerRepo.listForAgent(db, routeAgent(c).id)
+  const schedulerOff = process.env.BAZILION_SCHEDULER === 'off'
+  const now = Date.now()
   return c.json({
     triggers,
     dispatches: triggers.flatMap((trigger) =>
       triggerDispatchRepo.listForTrigger(db, trigger.id, 10),
     ),
+    nextRuns: Object.fromEntries(
+      triggers.map((trigger) => [trigger.id, schedulerOff ? null : nextRunAt(trigger, now)]),
+    ),
+    schedulerOff,
   } satisfies ListTriggersResponse)
 })
 

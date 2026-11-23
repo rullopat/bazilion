@@ -173,7 +173,7 @@ const STATUS_TONE: Record<ReviewChange['status'], string> = {
   type_changed: 'bg-accent text-accent-foreground',
   deleted: 'bg-danger/15 text-danger',
   unmerged: 'bg-warning/15 text-warning',
-  unknown: 'bg-frost text-mocha',
+  unknown: 'bg-frost text-foreground',
 }
 
 /** The one-letter mark of a change: A added, M modified, D deleted… */

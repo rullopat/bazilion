@@ -317,45 +317,50 @@ function Handoffs({ steps }: { steps: Step[] }) {
         const message = typeof args?.text === 'string' ? args.text : ''
         const state = recipient ? activity?.stateOf(recipient.id) : undefined
         return (
+          // The Open link sits over the fold's line, not inside its <summary> (a control in one).
           // biome-ignore lint/suspicious/noArrayIndexKey: steps only append within a turn.
-          <details key={index} className="group border-t border-frost/70">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2.5 px-3 py-1.5 [&::-webkit-details-marker]:hidden">
-              <AgentAvatar identity={recipient?.identity} size={24} />
-              <span className="shrink-0 font-semibold text-foreground">
-                {recipient?.name ?? (to ? to.slice(0, 8) : 'Teammate')}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-mocha group-open:invisible">
+          <div key={index} className="relative border-t border-frost/70">
+            <details className="group">
+              <summary
+                className={`flex min-h-11 cursor-pointer list-none items-center gap-2.5 py-1.5 pl-3 [&::-webkit-details-marker]:hidden ${workspace && recipient ? 'pr-[4.5rem]' : 'pr-3'}`}
+              >
+                <AgentAvatar identity={recipient?.identity} size={24} />
+                <span className="shrink-0 font-semibold text-foreground">
+                  {recipient?.name ?? (to ? to.slice(0, 8) : 'Teammate')}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-mocha group-open:invisible">
+                  {message}
+                </span>
+                {step.status === 'failed' ? (
+                  <span className="shrink-0 text-xs font-semibold text-danger">not sent</span>
+                ) : step.status === 'running' ? (
+                  <span className="shrink-0 text-xs text-mocha">sending…</span>
+                ) : (
+                  state && <span className="shrink-0 text-xs text-mocha">{state.text}</span>
+                )}
+              </summary>
+              <p className="m-0 whitespace-pre-wrap break-words px-3 pb-2.5 pl-[3.1rem] text-chocolate">
                 {message}
-              </span>
-              {step.status === 'failed' ? (
-                <span className="shrink-0 text-xs font-semibold text-danger">not sent</span>
-              ) : step.status === 'running' ? (
-                <span className="shrink-0 text-xs text-mocha">sending…</span>
-              ) : (
-                state && <span className="shrink-0 text-xs text-mocha">{state.text}</span>
-              )}
-              {workspace && recipient && (
-                <Link
-                  to="/"
-                  search={{
-                    agent: recipient.id,
-                    ...(workspace.search.panel ? { panel: workspace.search.panel } : {}),
-                  }}
-                  className="flex h-7 shrink-0 items-center rounded-[10px] border border-border bg-card px-2.5 text-xs font-semibold text-foreground hover:border-sapphire-light hover:text-sapphire"
-                >
-                  Open
-                </Link>
-              )}
-            </summary>
-            <p className="m-0 whitespace-pre-wrap break-words px-3 pb-2.5 pl-[3.1rem] text-chocolate">
-              {message}
-            </p>
-            {step.status === 'failed' && (
-              <p className="m-0 break-words px-3 pb-2.5 pl-[3.1rem] text-xs text-danger">
-                {step.output}
               </p>
+              {step.status === 'failed' && (
+                <p className="m-0 break-words px-3 pb-2.5 pl-[3.1rem] text-xs text-danger">
+                  {step.output}
+                </p>
+              )}
+            </details>
+            {workspace && recipient && (
+              <Link
+                to="/"
+                search={{
+                  agent: recipient.id,
+                  ...(workspace.search.panel ? { panel: workspace.search.panel } : {}),
+                }}
+                className="absolute right-3 top-2 flex h-7 items-center rounded-[10px] border border-border bg-card px-2.5 text-xs font-semibold text-foreground hover:border-sapphire-light hover:text-sapphire"
+              >
+                Open<span className="sr-only"> {recipient.name}</span>
+              </Link>
             )}
-          </details>
+          </div>
         )
       })}
     </div>

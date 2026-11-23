@@ -34,12 +34,14 @@
 
 import type { AgentTrigger, Message, TriggerDispatch } from '@bazilion/api-types'
 import { agentRepo, messageRepo, triggerDispatchRepo, triggerRepo } from '../core/index.ts'
+import { forgetTurnFailure, rememberTurnFailure } from '../core/turn-failures.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { selectCausalParent } from './agent-loop-guard.ts'
 import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
 import { resolveConversationTarget } from './conversation-target.ts'
-import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
+import { matchesCron, nextCronMatch, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
+import { signalLiveChange } from './live-signal.ts'
 import { dispatchPendingReviews } from './review-dispatcher.ts'
 import { turnFailureReason, turnFrameFailure } from './turn-outcome.ts'
 
@@ -106,6 +108,33 @@ function isDue(t: AgentTrigger, now: number, cronCache: Map<string, ParsedCron>)
     return matchesCron(parsed, new Date(nowFloor))
   }
   return false
+}
+
+/**
+ * When a trigger next runs: the next matching minute (a cron) or the end of the interval, now
+ * when that is already past; null when it is paused or its expression never matches. A busy Agent
+ * runs it once its turn ends.
+ */
+export function nextRunAt(t: AgentTrigger, now = Date.now()): number | null {
+  if (!t.enabled) return null
+  if (t.kind === 'interval') {
+    const every = (t.intervalSec ?? 0) * 1000
+    if (every <= 0) return null
+    return Math.max((t.lastFiredAt ?? t.createdAt) + every, now)
+  }
+  if (!t.cronExpr) return null
+  let parsed: ParsedCron
+  try {
+    parsed = parseCron(t.cronExpr)
+  } catch {
+    return null
+  }
+  // A minute it already ran in does not count again.
+  const from =
+    t.lastFiredAt && floorToMinute(t.lastFiredAt) === floorToMinute(now)
+      ? floorToMinute(now) + 60_000
+      : floorToMinute(now)
+  return nextCronMatch(parsed, from)
 }
 
 function scheduledOccurrence(t: AgentTrigger, now: number): number {
@@ -330,12 +359,28 @@ async function fireInboxWake(agentId: string): Promise<void> {
     }
     turnStarted = true
     s.inboxBackoff.delete(agentId)
-    for await (const frame of runAgentTurn(preparedTurn)) {
-      if (frame.kind === 'fatal') {
-        console.warn(
-          JSON.stringify({ event: 'inbox_wake_failed', agentId, failure: 'turn_failed' }),
-        )
+    if (forgetTurnFailure(`inbox-start:${agentId}`)) signalLiveChange()
+    let failure: string | null = null
+    try {
+      for await (const frame of runAgentTurn(preparedTurn)) {
+        const frameFailure = turnFrameFailure(frame)
+        if (frameFailure) failure ??= turnFailureReason(frameFailure)
       }
+    } catch (error) {
+      failure ??= turnFailureReason(error)
+    }
+    // Stopped by the operator (or the Agent archived): cancelled, not failed.
+    if (failure && !controller.signal.aborted) {
+      console.warn(JSON.stringify({ event: 'inbox_wake_failed', agentId, failure: 'turn_failed' }))
+      // The mail was read by a turn that failed: Attention says so, as for a failed follow-up.
+      rememberTurnFailure({
+        id: attemptId,
+        agentId,
+        origin: 'inbox',
+        at: Date.now(),
+        reason: failure,
+      })
+      signalLiveChange()
     }
   } catch (err) {
     if (!handoffStarted && registered) unregisterAgent(agentId)
@@ -343,6 +388,15 @@ async function fireInboxWake(agentId: string): Promise<void> {
     if (!turnStarted) {
       retryInMs = backoff ? Math.min(backoff.delayMs * 2, INBOX_RETRY_MAX_MS) : INBOX_RETRY_BASE_MS
       s.inboxBackoff.set(agentId, { delayMs: retryInMs, nextAttemptAt: Date.now() + retryInMs })
+      // The mail stays unread and is tried again; one item says why it cannot start.
+      rememberTurnFailure({
+        id: `inbox-start:${agentId}`,
+        agentId,
+        origin: 'inbox',
+        at: Date.now(),
+        reason: turnFailureReason(err),
+      })
+      signalLiveChange()
     }
     console.warn(
       JSON.stringify({

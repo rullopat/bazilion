@@ -35,7 +35,7 @@ import { JumpPalette } from './JumpPalette'
 import { ShortcutsDialog } from './ShortcutsDialog'
 
 /** The pages each place covers, for marking it as the current one. */
-const MANAGE_PATHS = ['/agents', '/teams', '/templates', '/skills']
+const MANAGE_PATHS = ['/agents', '/teams', '/templates', '/skills', '/usage']
 const SETUP_PATHS = ['/config']
 
 const under = (pathname: string, roots: readonly string[]) =>
@@ -101,15 +101,21 @@ export function TopBar() {
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
-          aria-label="Jump to an agent, team or page, or run an action"
+          aria-describedby="jump-to-description"
           aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'}
           className="unstyled order-last flex h-9 min-w-0 basis-full items-center gap-2 rounded-[10px] border border-border bg-muted px-2.5 text-left text-sm text-mocha transition-colors hover:border-sapphire-light sm:order-none sm:ml-3 sm:max-w-sm sm:flex-1 sm:basis-60"
         >
           <Search className="size-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">Jump to or do anything</span>
-          <kbd className="hidden rounded-md border border-border bg-card px-1.5 py-px font-mono text-xs sm:inline">
-            {mac ? '⌘K' : 'Ctrl K'}
-          </kbd>
+          <span id="jump-to-description" className="sr-only">
+            An Agent, a Team, a page, words from a conversation, or an action
+          </span>
+          {/* The shortcut is in aria-keyshortcuts; read out here it would break the name. */}
+          <span aria-hidden="true" className="hidden sm:inline">
+            <kbd className="rounded-md border border-border bg-card px-1.5 py-px font-mono text-xs">
+              {mac ? '⌘K' : 'Ctrl K'}
+            </kbd>
+          </span>
         </button>
       )}
 

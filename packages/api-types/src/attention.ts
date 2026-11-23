@@ -5,6 +5,7 @@ export type AttentionRecordedKind =
   | 'trigger_failure'
   | 'agent_loop_break'
   | 'queue_interrupted'
+  | 'turn_failure'
 
 /** An Agent waiting on the operator right now: it lasts while the Agent's turn waits. */
 export type AttentionWaitingKind = 'agent_question' | 'command_approval'

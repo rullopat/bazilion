@@ -30,6 +30,7 @@ import { telegramCommand } from './commands/telegram.ts'
 import { tokenCommand } from './commands/token.ts'
 import { triggerCommand } from './commands/trigger.ts'
 import { uninstallCommand } from './commands/uninstall.ts'
+import { usageCommand } from './commands/usage.ts'
 import { exitCodeForError, printError } from './errors.ts'
 
 const VERSION = pkg.version
@@ -48,6 +49,7 @@ const main = defineCommand({
     agent: agentCommand,
     activity: activityCommand,
     attention: attentionCommand,
+    usage: usageCommand,
     result: resultCommand,
     conversation: conversationCommand,
     queue: queueCommand,
@@ -106,6 +108,7 @@ const HELP_GROUPS: Record<string, string[]> = {
   catalog: ['profile', 'team-template', 'team', 'skill', 'provider', 'config', 'auth', 'mcp'],
   agents: [
     'attention',
+    'usage',
     'agent',
     'conversation',
     'result',

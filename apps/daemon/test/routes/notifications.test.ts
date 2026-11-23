@@ -57,6 +57,7 @@ test('notification settings need authentication and start switched off', async (
       'trigger_failure',
       'agent_loop_break',
       'queue_interrupted',
+      'turn_failure',
     ],
     timezone: 'UTC',
     quietHours: null,

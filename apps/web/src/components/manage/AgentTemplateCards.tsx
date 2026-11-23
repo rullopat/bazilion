@@ -66,7 +66,7 @@ export function TemplateSettingsCard({
 
   async function save(event: React.FormEvent) {
     event.preventDefault()
-    if (!dirty || busy || !model) return
+    if (!dirty || busy || !model || !name.trim()) return
     setBusy(true)
     setError(null)
     try {
@@ -119,8 +119,10 @@ export function TemplateSettingsCard({
             label="Name"
             value={name}
             disabled={busy}
+            required
             placeholder={profile.id}
             className="max-w-none"
+            problem={name.trim() ? undefined : 'A template needs a name.'}
             onChange={(value) => {
               touched()
               setName(value)
@@ -154,7 +156,7 @@ export function TemplateSettingsCard({
         />
         <SaveBar
           busy={busy}
-          disabled={!dirty || !model}
+          disabled={!dirty || !model || !name.trim()}
           status={saveStatus({
             error,
             dirty,

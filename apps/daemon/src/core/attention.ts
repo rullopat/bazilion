@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type {
   AttentionDegradedSource,
   AttentionItem,
@@ -9,7 +10,9 @@ import type {
 } from '@bazilion/api-types'
 import type { BazilionDb } from './db/client.ts'
 import { DomainError } from './errors.ts'
+import { classifyProviderFailure } from './provider-failure-kind.ts'
 import { INTERRUPTED_BY_RESTART } from './repos/user-queue.ts'
+import { rememberedTurnFailures } from './turn-failures.ts'
 
 /** Kinds kept in the database until they are dealt with; Telegram can notify about these. */
 export const RECORDED_ATTENTION_KINDS = [
@@ -18,6 +21,7 @@ export const RECORDED_ATTENTION_KINDS = [
   'trigger_failure',
   'agent_loop_break',
   'queue_interrupted',
+  'turn_failure',
 ] as const satisfies readonly AttentionRecordedKind[]
 
 /** An Agent waiting on the operator: held in memory while its turn waits (lib/attention-waiting). */
@@ -74,6 +78,139 @@ function agentHref(agentId: string | undefined, section?: 'learning' | 'schedule
   const query = new URLSearchParams({ agent: agentId ?? '' })
   if (section) query.set('section', section)
   return `/?${query}`
+}
+
+type TurnOrigin = 'http' | 'telegram' | 'inbox'
+interface TurnFailureRow {
+  id: string
+  agentId: string
+  agentName: string
+  teamId: string
+  teamName: string
+  origin: TurnOrigin
+  at: number
+  reason: string | null
+}
+
+const CAUSE_LEAD: Record<ReturnType<typeof classifyProviderFailure>, string> = {
+  credentials: 'The provider refused the credentials',
+  limit: 'A usage or rate limit was reached',
+  unreachable: 'The model could not be reached',
+  model: 'The model is not available',
+  other: 'The turn failed',
+}
+const ORIGIN_TITLE: Record<TurnOrigin, string> = {
+  http: 'Follow-up failed',
+  telegram: 'Telegram message failed',
+  inbox: 'Turn for new mail failed',
+}
+const ORIGIN_COUNT: Record<TurnOrigin, [one: string, many: string]> = {
+  http: ['follow-up', 'follow-ups'],
+  telegram: ['Telegram message', 'Telegram messages'],
+  inbox: ['turn for new mail', 'turns for new mail'],
+}
+
+/** Failures with the same cause share one item: a provider kind, or the same message. */
+export function turnFailureCause(reason: string): string {
+  const kind = classifyProviderFailure(reason)
+  if (kind !== 'other') return kind
+  // Ids differ in each failure (a request id such as req_011CXyz…, a hex run): they do not count.
+  const shape = reason
+    .toLowerCase()
+    .replace(/\b(?=[\w-]*\d)[\w-]{8,}\b|[0-9a-f]{8,}|\d+/g, '#')
+    .replace(/\s+/g, ' ')
+    .slice(0, 120)
+  return `other-${createHash('sha256').update(shape).digest('hex').slice(0, 12)}`
+}
+
+/**
+ * Background turns that failed, one item per Agent and cause: failed follow-ups (sent from the
+ * web, a terminal or Telegram) and turns for new mail. An acknowledged item opens again when a
+ * failure of the same cause follows; a follow-up retried or removed leaves it.
+ */
+function turnFailures(db: BazilionDb): RawItem[] {
+  const queued = db.raw
+    .query<TurnFailureRow, [string]>(
+      `SELECT q.id, q.agent_id agentId, a.name agentName, a.team_id teamId, t.name teamName,
+        q.source origin, COALESCE(q.finished_at, q.updated_at) at, q.diagnostic reason
+        FROM user_queue_items q JOIN agents a ON a.id = q.agent_id JOIN teams t ON t.id = a.team_id
+        WHERE q.status = 'failed' AND (q.diagnostic IS NULL OR q.diagnostic != ?)`,
+    )
+    .all(INTERRUPTED_BY_RESTART)
+  const agents = new Map(
+    db.raw
+      .query<{ id: string; name: string; teamId: string; teamName: string }, []>(
+        'SELECT a.id, a.name, a.team_id teamId, t.name teamName FROM agents a JOIN teams t ON t.id = a.team_id',
+      )
+      .all()
+      .map((agent) => [agent.id, agent]),
+  )
+  const remembered = rememberedTurnFailures().flatMap((failure): TurnFailureRow[] => {
+    const agent = agents.get(failure.agentId)
+    return agent
+      ? [
+          {
+            id: failure.id,
+            agentId: agent.id,
+            agentName: agent.name,
+            teamId: agent.teamId,
+            teamName: agent.teamName,
+            origin: failure.origin,
+            at: failure.at,
+            reason: failure.reason,
+          },
+        ]
+      : []
+  })
+  const acknowledged = new Map(
+    db.raw
+      .query<{ source_id: string; acknowledged_at: number }, []>(
+        "SELECT source_id, acknowledged_at FROM attention_acknowledgements WHERE source_kind = 'turn_failure'",
+      )
+      .all()
+      .map((row) => [row.source_id, row.acknowledged_at]),
+  )
+  const groups = new Map<string, TurnFailureRow[]>()
+  for (const failure of [...queued, ...remembered]) {
+    const id = `${failure.agentId}:${turnFailureCause(failure.reason ?? '')}`
+    groups.set(id, [...(groups.get(id) ?? []), failure])
+  }
+  return [...groups].map(([sourceId, all]): RawItem => {
+    const ack = acknowledged.get(sourceId) ?? null
+    const since = all.filter((failure) => ack === null || failure.at > ack)
+    const counted = (since.length > 0 ? since : all).toSorted((a, b) => a.at - b.at)
+    const first = counted[0] as TurnFailureRow
+    const latest = counted.at(-1) as TurnFailureRow
+    const reason = bounded(latest.reason, 'The turn ended without a reply.')
+    const origins = new Map<TurnOrigin, number>()
+    for (const failure of counted)
+      origins.set(failure.origin, (origins.get(failure.origin) ?? 0) + 1)
+    const breakdown = [...origins]
+      .map(([origin, n]) => `${n} ${ORIGIN_COUNT[origin][n === 1 ? 0 : 1]}`)
+      .join(', ')
+    return {
+      kind: 'turn_failure',
+      severity: 'error',
+      sourceId,
+      occurredAt: first.at,
+      updatedAt: latest.at,
+      agentId: latest.agentId,
+      agentName: latest.agentName,
+      teamId: latest.teamId,
+      teamName: latest.teamName,
+      title:
+        counted.length === 1
+          ? ORIGIN_TITLE[latest.origin]
+          : `${counted.length} background turns failed`,
+      diagnostic: `${CAUSE_LEAD[classifyProviderFailure(reason)]}: ${reason}${counted.length > 1 ? ` (${breakdown})` : ''}`,
+      href: agentHref(
+        latest.agentId,
+        origins.size === 1 && origins.has('inbox') ? 'mailbox' : undefined,
+      ),
+      acknowledgeable: true,
+      acknowledged_at: since.length > 0 ? null : ack,
+    }
+  })
 }
 
 const sources: Source[] = [
@@ -209,6 +346,7 @@ const sources: Source[] = [
           }),
         ),
   },
+  { kind: 'turn_failure', query: turnFailures },
 ]
 
 function normalize(row: RawItem): AttentionItem {
@@ -312,7 +450,7 @@ export function acknowledgeAttention(
     throw new DomainError(409, 'action-required items must be resolved at their source')
   if (acknowledged)
     db.raw.run(
-      `INSERT INTO attention_acknowledgements (source_kind, source_id, acknowledged_at) VALUES (?, ?, ?) ON CONFLICT(source_kind, source_id) DO NOTHING`,
+      `INSERT INTO attention_acknowledgements (source_kind, source_id, acknowledged_at) VALUES (?, ?, ?) ON CONFLICT(source_kind, source_id) DO UPDATE SET acknowledged_at = excluded.acknowledged_at`,
       [parsed.kind, parsed.sourceId, Date.now()],
     )
   else
@@ -337,7 +475,7 @@ export function acknowledgeAllAttention(db: BazilionDb): number {
     const now = Date.now()
     for (const item of items)
       db.raw.run(
-        `INSERT INTO attention_acknowledgements (source_kind, source_id, acknowledged_at) VALUES (?, ?, ?) ON CONFLICT(source_kind, source_id) DO NOTHING`,
+        `INSERT INTO attention_acknowledgements (source_kind, source_id, acknowledged_at) VALUES (?, ?, ?) ON CONFLICT(source_kind, source_id) DO UPDATE SET acknowledged_at = excluded.acknowledged_at`,
         [item.kind, item.sourceId, now],
       )
     return items.length

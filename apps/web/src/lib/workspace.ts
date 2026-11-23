@@ -34,6 +34,10 @@ export interface WorkspaceSearch {
   result?: string
   /** An earlier conversation being read. */
   conversation?: string
+  /** Words from a search: the conversation opens on a message holding them… */
+  find?: string
+  /** …the one at this place among those that do, oldest first (from 0). */
+  match?: number
   /** A sheet opened over the workspace: one of the Agent's or the Team's deeper pages. */
   section?: Section
   /** The Team memory note the memory sheet opens on. */
@@ -65,6 +69,12 @@ export const isTeamSection = (value: unknown): value is TeamSection => isOneOf(T
 const text = (value: unknown): string | undefined =>
   typeof value === 'string' && value.length > 0 ? value : undefined
 
+/** A whole number from 0, as the router reads it from the address (a number or its text). */
+const count = (value: unknown): number | undefined => {
+  const number = typeof value === 'string' ? Number(value) : value
+  return typeof number === 'number' && Number.isInteger(number) && number >= 0 ? number : undefined
+}
+
 /** The search params the workspace understands; anything else is dropped. */
 export function parseWorkspaceSearch(search: Record<string, unknown>): WorkspaceSearch {
   const panel = search.panel
@@ -76,6 +86,8 @@ export function parseWorkspaceSearch(search: Record<string, unknown>): Workspace
     file: text(search.file),
     result: text(search.result),
     conversation: text(search.conversation),
+    find: text(search.find),
+    match: count(search.match),
     section: isOneOf(SECTIONS, search.section) ? search.section : undefined,
     note: text(search.note),
   }

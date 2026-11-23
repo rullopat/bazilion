@@ -73,10 +73,7 @@ export function parseCron(expr: string): ParsedCron {
   return parsed
 }
 
-export function matchesCron(parsed: ParsedCron, date: Date): boolean {
-  if (!parsed.minute.has(date.getMinutes())) return false
-  if (!parsed.hour.has(date.getHours())) return false
-  if (!parsed.month.has(date.getMonth() + 1)) return false
+function dayMatches(parsed: ParsedCron, date: Date): boolean {
   const domMatch = parsed.dom.has(date.getDate())
   const dowMatch = parsed.dow.has(date.getDay())
   if (parsed.domRestricted && parsed.dowRestricted) {
@@ -85,6 +82,43 @@ export function matchesCron(parsed: ParsedCron, date: Date): boolean {
   if (parsed.domRestricted) return domMatch
   if (parsed.dowRestricted) return dowMatch
   return true
+}
+
+export function matchesCron(parsed: ParsedCron, date: Date): boolean {
+  if (!parsed.minute.has(date.getMinutes())) return false
+  if (!parsed.hour.has(date.getHours())) return false
+  if (!parsed.month.has(date.getMonth() + 1)) return false
+  return dayMatches(parsed, date)
+}
+
+/** Years looked ahead for a match: an expression that never matches (`0 0 31 2 *`) has none. */
+const LOOKAHEAD_YEARS = 5
+
+/**
+ * The first minute at or after `from` (in this computer's time, like matching) the expression
+ * matches, or null within the next few years. Whole months, days and hours that cannot match are
+ * skipped at once.
+ */
+export function nextCronMatch(parsed: ParsedCron, from: number): number | null {
+  const date = new Date(Math.ceil(from / 60_000) * 60_000)
+  const limit = new Date(date)
+  limit.setFullYear(limit.getFullYear() + LOOKAHEAD_YEARS)
+  while (date <= limit) {
+    if (!parsed.month.has(date.getMonth() + 1)) {
+      date.setMonth(date.getMonth() + 1, 1)
+      date.setHours(0, 0, 0, 0)
+    } else if (!dayMatches(parsed, date)) {
+      date.setDate(date.getDate() + 1)
+      date.setHours(0, 0, 0, 0)
+    } else if (!parsed.hour.has(date.getHours())) {
+      date.setHours(date.getHours() + 1, 0, 0, 0)
+    } else if (!parsed.minute.has(date.getMinutes())) {
+      date.setTime(date.getTime() + 60_000)
+    } else {
+      return date.getTime()
+    }
+  }
+  return null
 }
 
 /** Validates an expression — throws on syntax errors. Used by API write paths. */

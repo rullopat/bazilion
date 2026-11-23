@@ -1,13 +1,14 @@
 import { join } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { projectAttention } from '../../src/core/attention.ts'
+import { acknowledgeAttention, projectAttention } from '../../src/core/attention.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as conversations from '../../src/core/repos/conversations.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as triggerDispatchRepo from '../../src/core/repos/triggerDispatches.ts'
 import * as triggerRepo from '../../src/core/repos/triggers.ts'
+import { forgetTurnFailures } from '../../src/core/turn-failures.ts'
 import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 import { seedConversationTarget, seedRegisteredConversation } from '../fixtures/conversation.ts'
@@ -96,6 +97,7 @@ describe('scheduler', () => {
   })
 
   afterEach(() => {
+    forgetTurnFailures()
     scheduler._resetSchedulerForTest()
     unregisterAgent('a1')
     env.cleanup()
@@ -202,6 +204,11 @@ describe('scheduler', () => {
     expect(messageRepo.get(env.db, message.id)?.readAt).toBeNull()
     expect(messageRepo.listRecipientsWithUnread(env.db)).toEqual(['a1'])
     expect(retryDelays()).toEqual([10_000])
+    const failures = () =>
+      projectAttention(env.db, { state: 'open', kind: 'turn_failure' }).items.filter(
+        (item) => item.agentId === 'a1',
+      )
+    expect(failures()).toMatchObject([{ title: 'Turn for new mail failed' }])
 
     // A lasting failure backs off instead of retrying on every tick, doubling each time.
     vi.setSystemTime(failedAt + 9_999)
@@ -216,10 +223,14 @@ describe('scheduler', () => {
     vi.setSystemTime(failedAt + 29_999)
     await scheduler._tickOnce()
     expect(turnCalls).toEqual([])
+    // Retried, it is still one item.
+    expect(failures()).toHaveLength(1)
     vi.setSystemTime(failedAt + 30_000)
     await scheduler._tickOnce()
     expect(turnCalls).toHaveLength(1)
     expect(messageRepo.get(env.db, message.id)?.readAt).not.toBeNull()
+    // Once the wake-up starts, the item that said it could not is gone.
+    expect(failures()).toEqual([])
 
     // A started turn clears the backoff: the next message is delivered on the next tick.
     const next = messageRepo.send(env.db, {
@@ -230,6 +241,94 @@ describe('scheduler', () => {
     await scheduler._tickOnce()
     expect(turnCalls).toHaveLength(2)
     expect(messageRepo.get(env.db, next.id)?.readAt).not.toBeNull()
+  })
+
+  test('an inbox turn that fails is listed in Attention: the mail was read', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    messageRepo.send(env.db, { from: 'a2', to: 'a1', payload: JSON.stringify({ text: 'go' }) })
+    turnPlans.push({
+      frames: [
+        { kind: 'event', event: { type: 'error', error: '401 Unauthorized: invalid x-api-key' } },
+        { kind: 'done', messages: [] },
+      ] as ChatFrame[],
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await scheduler._tickOnce()
+    const items = projectAttention(env.db, { state: 'open', kind: 'turn_failure' }).items.filter(
+      (item) => item.agentId === 'a1',
+    )
+    expect(items).toMatchObject([
+      {
+        title: 'Turn for new mail failed',
+        diagnostic: 'The provider refused the credentials: 401 Unauthorized: invalid x-api-key',
+        href: `/?agent=a1&section=mailbox`,
+      },
+    ])
+  })
+
+  test('an inbox turn stopped by the operator is not a failure; one that throws after it starts is', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const failures = () =>
+      projectAttention(env.db, { state: 'open', kind: 'turn_failure' }).items.filter(
+        (item) => item.agentId === 'a1',
+      )
+    messageRepo.send(env.db, { from: 'a2', to: 'a1', payload: JSON.stringify({ text: 'one' }) })
+    turnPlans.push({
+      abort: true,
+      frames: [{ kind: 'event', event: { type: 'error', error: 'cancelled' } }] as ChatFrame[],
+    })
+    await scheduler._tickOnce()
+    expect(failures()).toEqual([])
+
+    messageRepo.send(env.db, { from: 'a2', to: 'a1', payload: JSON.stringify({ text: 'two' }) })
+    turnPlans.push({ error: new Error('ChatGPT sign-in expired') })
+    await scheduler._tickOnce()
+    expect(failures()).toMatchObject([{ title: 'Turn for new mail failed' }])
+    expect(failures()[0]?.diagnostic).toContain('ChatGPT sign-in expired')
+  })
+
+  test('an acknowledged wake-up that cannot start stays acknowledged while it is retried', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    messageRepo.send(env.db, { from: 'a2', to: 'a1', payload: JSON.stringify({ text: 'one' }) })
+    prepareError = new Error('BAZILION_BASH_SANDBOX must be "off" or "docker", received: bogus')
+    const failedAt = Date.now()
+    await scheduler._tickOnce()
+    const open = () =>
+      projectAttention(env.db, { state: 'open', kind: 'turn_failure' }).items.filter(
+        (item) => item.agentId === 'a1',
+      )
+    const key = open()[0]?.key ?? ''
+    vi.setSystemTime(failedAt + 1_000)
+    acknowledgeAttention(env.db, key, true)
+    vi.setSystemTime(failedAt + 10_000)
+    await scheduler._tickOnce()
+    expect(open()).toEqual([])
   })
 
   test('archived Agents get no scheduled or inbox turns until they are unarchived', async () => {

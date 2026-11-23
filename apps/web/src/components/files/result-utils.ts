@@ -1,17 +1,21 @@
-import type { AgentResult } from '@bazilion/api-types'
+import { type AgentResult, isTextPreview } from '@bazilion/api-types'
 
 const PREVIEW_IMAGE = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
-const PREVIEW_TEXT = ['text/plain', 'text/markdown']
 
 /** The daemon previews these images up to 10 MiB. */
 export function isPreviewImage(result: Pick<AgentResult, 'mimeType' | 'byteLength'>): boolean {
   return PREVIEW_IMAGE.includes(result.mimeType) && result.byteLength <= 10 * 1024 * 1024
 }
 
-/** The daemon previews plain text and Markdown up to 256 KiB. */
-export function isPreviewText(result: Pick<AgentResult, 'mimeType' | 'byteLength'>): boolean {
-  return PREVIEW_TEXT.includes(result.mimeType) && result.byteLength <= 256 * 1024
+/** The daemon previews text up to 256 KiB: by its type, or by its name when sent untyped. */
+export function isPreviewText(
+  result: Pick<AgentResult, 'mimeType' | 'name' | 'byteLength'>,
+): boolean {
+  return isTextPreview(result)
 }
+
+/** How much of a text file a grid tile shows. */
+export const TILE_TEXT_BYTES = 1200
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -31,6 +35,9 @@ export function kindLabel(mimeType: string, name: string): string {
 
 export const resultPath = (id: string, action?: 'download' | 'preview') =>
   `/api/results/${encodeURIComponent(id)}${action ? `/${action}` : ''}`
+
+/** The start of a text file, for a tile. */
+export const tileTextPath = (id: string) => `${resultPath(id, 'preview')}?bytes=${TILE_TEXT_BYTES}`
 
 /** The archive of a Team's, an Agent's or a conversation's saved files. */
 export function archivePath(filter: {

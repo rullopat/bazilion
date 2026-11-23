@@ -1,4 +1,5 @@
 import type { ChatCompactResponse, ChatContextResponse } from '@bazilion/api-types'
+import { api, errorMessage } from '../../lib/api'
 
 export const SLASH_HELP = [
   'slash commands:',
@@ -61,4 +62,63 @@ export function formatContext(context: ChatContextResponse): string {
 
 export function formatCompaction(result: ChatCompactResponse): string {
   return `/compact: ${result.before} → ${result.after} entries (${result.summarized} summarized, ${result.keptTail} kept verbatim; ~${result.tokensBefore.toLocaleString()} → ~${result.tokensAfter.toLocaleString()} tok). reloading…`
+}
+
+/** What a slash command needs from the chat it runs in. */
+export interface SlashCommandChat {
+  /** The Agent's API path. */
+  base: string
+  /** Messages in the saved history: /compact needs two. */
+  messageCount: number
+  pushNote: (content: string) => void
+  onOpenLibrary: () => void
+  /** /compact holds the chat as a turn does, from its request until the answer. */
+  setCompacting: (compacting: boolean) => void
+}
+
+async function compact(rest: string, chat: SlashCommandChat) {
+  if (chat.messageCount < 2) {
+    chat.pushNote('/compact: need ≥2 messages to compact')
+    return
+  }
+  chat.setCompacting(true)
+  try {
+    const result = await api<ChatCompactResponse>(`${chat.base}/chat/compact`, {
+      body: { keepTail: parseKeepTail(rest) },
+    })
+    chat.pushNote(formatCompaction(result))
+    setTimeout(() => window.location.reload(), 400)
+  } catch (error) {
+    chat.pushNote(`/compact failed: ${errorMessage(error)}`)
+  } finally {
+    chat.setCompacting(false)
+  }
+}
+
+/** True when `command` is a slash command, which then ran. */
+export async function runSlashCommand(
+  command: string,
+  rest: string,
+  chat: SlashCommandChat,
+): Promise<boolean> {
+  switch (command) {
+    case '/help':
+      chat.pushNote(SLASH_HELP)
+      return true
+    case '/context':
+      try {
+        chat.pushNote(formatContext(await api<ChatContextResponse>(`${chat.base}/chat/context`)))
+      } catch (error) {
+        chat.pushNote(`/context failed: ${errorMessage(error)}`)
+      }
+      return true
+    case '/new':
+      chat.onOpenLibrary()
+      return true
+    case '/compact':
+      await compact(rest, chat)
+      return true
+    default:
+      return false
+  }
 }

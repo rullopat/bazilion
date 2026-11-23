@@ -8,8 +8,16 @@ import type { FileEntry } from '@earendil-works/pi-coding-agent'
 const MAX_SESSION_BYTES = 64 * 1024 * 1024
 const MAX_HEADER_BYTES = 64 * 1024
 
-/** The first `limit` bytes of a session file (a regular file, never a symlink), and its size. */
-function readStart(directory: string, id: string, limit: number): { bytes: Buffer; size: number } {
+/**
+ * The first `limit` bytes of a session file (a regular file, never a symlink), and its size; with
+ * `refuseOver`, a larger file is refused before anything is read.
+ */
+function readStart(
+  directory: string,
+  id: string,
+  limit: number,
+  refuseOver?: number,
+): { bytes: Buffer; size: number } {
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Invalid conversation id')
   const fd = openSync(
     join(directory, `${id}.jsonl`),
@@ -18,6 +26,8 @@ function readStart(directory: string, id: string, limit: number): { bytes: Buffe
   try {
     const stat = fstatSync(fd)
     if (!stat.isFile()) throw new Error('Session file is not a regular file')
+    if (refuseOver !== undefined && stat.size > refuseOver)
+      throw new Error('Session file is larger than 64 MiB')
     const bytes = Buffer.alloc(Math.min(stat.size, limit))
     let count = 0
     while (count < bytes.length) {
@@ -36,18 +46,26 @@ function checkHeader(entry: FileEntry | undefined, id: string): void {
     throw new Error('Session file does not belong to this conversation')
 }
 
-/** Every entry of a conversation's transcript. A line still being appended is left out. */
-export function readSessionFile(directory: string, id: string): FileEntry[] {
-  const { bytes, size } = readStart(directory, id, MAX_SESSION_BYTES)
-  if (size > MAX_SESSION_BYTES) throw new Error('Session file is larger than 64 MiB')
+/** A transcript's complete lines as text; a line still being appended is left out. */
+export function readSessionText(directory: string, id: string): string {
+  const { bytes } = readStart(directory, id, MAX_SESSION_BYTES, MAX_SESSION_BYTES)
   const text = bytes.toString('utf8')
+  return text.slice(0, text.lastIndexOf('\n') + 1)
+}
+
+/** The entries of a transcript's text, its header checked against the conversation's id. */
+export function parseSessionText(text: string, id: string): FileEntry[] {
   const entries = text
-    .slice(0, text.lastIndexOf('\n') + 1)
     .split('\n')
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line) as FileEntry)
   checkHeader(entries[0], id)
   return entries
+}
+
+/** Every entry of a conversation's transcript. A line still being appended is left out. */
+export function readSessionFile(directory: string, id: string): FileEntry[] {
+  return parseSessionText(readSessionText(directory, id), id)
 }
 
 /** Whether anything follows the header: false for a conversation no turn has written to. */

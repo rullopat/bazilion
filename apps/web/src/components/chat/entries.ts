@@ -40,6 +40,20 @@ export function shellApprovalsUrl(agentId: string): string {
 
 export const isImageMime = (mimeType: string) => mimeType.startsWith('image/')
 
+/** The message being sent, shown at once: the `done` frame replaces it with the saved history. */
+export function draftEntry(text: string, attachments: Attachment[]): RenderEntry {
+  const images = attachments.filter((file) => isImageMime(file.mimeType))
+  const files = attachments
+    .filter((file) => !isImageMime(file.mimeType))
+    .map((file) => ({ name: file.name ?? 'file' }))
+  return {
+    type: 'user',
+    content: text,
+    ...(images.length > 0 ? { images } : {}),
+    ...(files.length > 0 ? { files } : {}),
+  }
+}
+
 /**
  * Persisted messages as entries: assistant text, then its tool calls and the tool results that
  * answer them grouped into one tool box. Saved results and images are deliverables, so they stand

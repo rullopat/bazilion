@@ -1,17 +1,41 @@
-import type { NewConversationInput } from '@bazilion/api-types'
+import type {
+  ConversationListResponse,
+  ConversationSearchResponse,
+  ConversationUsage,
+  NewConversationInput,
+} from '@bazilion/api-types'
 import { resolveAgent } from '../core/agent/resolve.ts'
 import { mergeSecretsIntoEnv } from '../core/index.ts'
 import * as conversations from '../core/repos/conversations.ts'
 import { runAgentLifecycleMutation } from '../lib/agent-cancel.ts'
+import { searchConversations } from '../lib/conversation-search.ts'
 import { selectConversation, startConversation } from '../lib/conversation-target.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { conversationUsage, planProviders } from '../lib/usage.ts'
 import { loadInitialMessages, piMessagesToProviderView } from '../runtime/index.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
-import { jsonBody, newRouter, routeAgent } from './http.ts'
+import { jsonBody, newRouter, routeAgent, routeAgentRef } from './http.ts'
 
 // The conversation library: list, start, read, rename and switch an Agent's conversations.
 
 export const conversationsRouter = newRouter<{ Variables: { agentId: string } }>()
+
+/** `GET /api/conversations/search?q=…[&agent=…][&limit=…]`: messages holding every word. */
+export const conversationSearchRouter = newRouter()
+
+conversationSearchRouter.get('/search', async (c) => {
+  const { db, paths, authToken } = getCtx()
+  const agent = c.req.query('agent')
+  return c.json(
+    (await searchConversations(db, paths, {
+      signal: c.req.raw.signal,
+      query: c.req.query('q') ?? '',
+      ...(agent ? { agentId: routeAgentRef(agent).id } : {}),
+      limit: Number(c.req.query('limit') ?? 20) || 20,
+      secrets: envSecretValues(mergeSecretsIntoEnv(db, authToken)),
+    })) satisfies ConversationSearchResponse,
+  )
+})
 
 conversationsRouter.use('/:agentId/conversations/*', async (c, next) => {
   // Accepts an Agent id, unique name or id prefix; everything below uses the full id.
@@ -19,16 +43,26 @@ conversationsRouter.use('/:agentId/conversations/*', async (c, next) => {
   await next()
 })
 
-conversationsRouter.get('/:agentId/conversations', (c) =>
-  c.json(
-    conversations.list(
-      getCtx().db,
-      c.get('agentId'),
-      Number(c.req.query('limit') ?? 20),
-      Number(c.req.query('offset') ?? 0),
-    ),
-  ),
-)
+conversationsRouter.get('/:agentId/conversations', (c) => {
+  const { db, paths } = getCtx()
+  const list = conversations.list(
+    db,
+    c.get('agentId'),
+    Number(c.req.query('limit') ?? 20),
+    Number(c.req.query('offset') ?? 0),
+  )
+  const used = conversationUsage(
+    paths,
+    c.get('agentId'),
+    planProviders(mergeSecretsIntoEnv(db, getCtx().authToken)),
+  )
+  const usage: Record<string, ConversationUsage> = {}
+  for (const conversation of list.conversations) {
+    const found = used.get(conversation.id)
+    if (found) usage[conversation.id] = found
+  }
+  return c.json({ ...list, usage } satisfies ConversationListResponse)
+})
 
 /** Start a new conversation and make it the one new turns write to. */
 conversationsRouter.post('/:agentId/conversations', async (c) => {
@@ -53,7 +87,11 @@ conversationsRouter.get('/:agentId/conversations/:id', (c) => {
       loadInitialMessages(resolveAgent(db, paths, agentId), paths, { id }),
       envSecretValues(mergeSecretsIntoEnv(db, authToken)),
     )
-    return c.json({ conversation, messages })
+    const usage =
+      conversationUsage(paths, agentId, planProviders(mergeSecretsIntoEnv(db, authToken))).get(
+        id,
+      ) ?? null
+    return c.json({ conversation, messages, usage })
   } catch {
     return c.json(
       {

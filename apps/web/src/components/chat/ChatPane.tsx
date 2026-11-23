@@ -3,8 +3,11 @@
 // workspace, which knows about Teams, panels and other conversations.
 
 import type { Attachment, ProviderMessage, SessionHeadResponse } from '@bazilion/api-types'
+import { useNavigate } from '@tanstack/react-router'
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react'
 import { useActivityOptional } from '../../lib/activity'
+import { useFindInTranscript } from '../../lib/find-in-transcript'
+import { useWorkspaceOptional } from '../workspace/context'
 import { AgentQuestions } from './AgentQuestions'
 import { Composer, encodeFiles, MAX_ATTACHMENTS } from './Composer'
 import { FollowUps } from './FollowUps'
@@ -71,6 +74,19 @@ function AgentChat({
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const logRef = useRef<HTMLDivElement | null>(null)
   const nearBottomRef = useRef(true)
+
+  // Opened from a search: go to the message found, and stop following the end.
+  const workspace = useWorkspaceOptional()
+  const navigate = useNavigate()
+  useFindInTranscript(logRef, workspace?.search.find, workspace?.search.match, () => {
+    nearBottomRef.current = false
+    if (workspace)
+      void navigate({
+        to: '/',
+        search: workspace.to({ find: undefined, match: undefined }),
+        replace: true,
+      })
+  })
 
   // Follow new output while the reader is at the bottom; leave them alone once they scroll up.
   useLayoutEffect(() => {

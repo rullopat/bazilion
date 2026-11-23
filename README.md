@@ -79,7 +79,7 @@ Most commands talk to the daemon over HTTP; `serve` and `dashboard` start it, an
 | --- | --- |
 | Setup | `serve`, `dashboard`, `doctor`, `backup`, `uninstall`, `completion` |
 | Catalog | `profile`, `team`, `team-template`, `skill`, `provider`, `config`, `auth`, `mcp` |
-| Agents | `agent`, `activity`, `conversation`, `queue`, `question`, `result`, `memory`, `send`, `inbox`, `trigger`, `attention` |
+| Agents | `agent`, `activity`, `usage`, `conversation`, `queue`, `question`, `result`, `memory`, `send`, `inbox`, `trigger`, `attention` |
 | Integrations | `telegram`, `notification` |
 | Remote | `login`, `token`, `session` |
 

@@ -18,7 +18,8 @@ export interface DiffProps {
   onRemoveComment?: (id: number) => void
 }
 
-const NUMBER = 'select-none px-2 text-right text-xs leading-[1.6] text-mocha-light tabular-nums'
+const NUMBER =
+  'select-none px-2 text-right text-xs leading-[1.6] text-muted-foreground tabular-nums'
 const TEXT = 'whitespace-pre-wrap px-2 leading-[1.6] [overflow-wrap:anywhere]'
 
 /** The line number of a commentable line: click to comment on it. */

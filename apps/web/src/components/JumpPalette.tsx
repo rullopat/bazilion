@@ -1,12 +1,15 @@
 // "Jump to": one box that opens any Agent, Team, conversation, view or page, or runs an action.
 // Opened from the top bar or with ⌘K / Ctrl+K; it loads what it lists when it opens, so it works
-// on every page. What waits for you comes first, then what is working, then the actions.
+// on every page. What waits for you comes first, then what is working, then the actions; words
+// typed also find the messages of every conversation that hold them, listed last.
 
 import type {
   ActivityResponse,
   Agent,
   AgentActivity,
   ConversationListResponse,
+  ConversationSearchHit,
+  ConversationSearchResponse,
   Profile,
   Team,
 } from '@bazilion/api-types'
@@ -31,6 +34,7 @@ type Group =
   | 'Teams'
   | 'Go to'
   | 'Manage'
+  | 'In conversations'
 
 interface Destination {
   key: string
@@ -43,6 +47,25 @@ interface Destination {
   search?: WorkspaceSearch
   path?: string
   run?: () => void
+  /** Words a search found in the label, shown stronger. */
+  found?: string[]
+}
+
+/** The label with the words a search found in it set apart. */
+export function markWords(label: string, words: readonly string[]): ReactNode[] {
+  const wanted = words.map((word) => word.toLowerCase()).filter(Boolean)
+  if (wanted.length === 0) return [label]
+  const escaped = wanted.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  return label.split(new RegExp(`(${escaped.join('|')})`, 'gi')).map((part, index) =>
+    index % 2 === 1 ? (
+      // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one label never reorder.
+      <strong key={index} className="font-semibold text-foreground">
+        {part}
+      </strong>
+    ) : (
+      part
+    ),
+  )
 }
 
 const PAGES: Array<[label: string, hint: string, path: string]> = [
@@ -52,12 +75,17 @@ const PAGES: Array<[label: string, hint: string, path: string]> = [
   ['Agent templates', 'What a new Agent starts with', '/templates/agents'],
   ['Team templates', 'Rosters that spawn a whole Team', '/templates/teams'],
   ['Skills', 'Import, review and remove prompt skills', '/skills'],
+  ['Usage', 'Tokens and money spent, per Team, Agent, model and day', '/usage'],
   ['Setup', 'Models, tools, MCP, Telegram, access, system', '/config'],
 ]
 
 /** How many Agents' conversations are looked at for "Recent conversations", and how many shown. */
 const RECENT_AGENTS = 3
 const RECENT_CONVERSATIONS = 5
+/** Messages are searched once this much is typed, after a pause; this many are listed. */
+const SEARCH_MIN_CHARACTERS = 3
+const SEARCH_PAUSE_MS = 250
+const SEARCH_HITS = 8
 
 /** Destinations whose label or hint holds every word of the query. */
 export function filterDestinations<T extends { label: string; hint: string }>(
@@ -123,6 +151,37 @@ export function JumpPalette({
   // The lists arrive after the palette opens; an Enter typed before then waits for them.
   const [loaded, setLoaded] = useState(false)
   const [enterPending, setEnterPending] = useState(false)
+  const [hits, setHits] = useState<{ query: string; hits: ConversationSearchHit[] } | null>(null)
+  const [searching, setSearching] = useState(false)
+  const trimmed = query.trim()
+
+  // The conversations are searched after a pause in typing; an older answer is dropped.
+  useEffect(() => {
+    if (!open || trimmed.replace(/\s+/g, '').length < SEARCH_MIN_CHARACTERS) {
+      setHits(null)
+      setSearching(false)
+      return
+    }
+    const controller = new AbortController()
+    setSearching(true)
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ q: trimmed, limit: String(SEARCH_HITS) })
+      api<ConversationSearchResponse>(`/api/conversations/search?${params}`, {
+        signal: controller.signal,
+      })
+        .then((found) => setHits({ query: trimmed, hits: found.hits }))
+        .catch(() => {
+          if (!controller.signal.aborted) setHits({ query: trimmed, hits: [] })
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearching(false)
+        })
+    }, SEARCH_PAUSE_MS)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [open, trimmed])
 
   useEffect(() => {
     if (!open) return
@@ -304,7 +363,25 @@ export function JumpPalette({
     return list
   }, [agents, teams, activity, recent, location, dark, onShowShortcuts])
 
-  const shown = filterDestinations(destinations, query)
+  const found = useMemo<Destination[]>(() => {
+    if (!hits || hits.query !== trimmed) return []
+    const agentById = new Map(agents.map((agent) => [agent.id, agent]))
+    return hits.hits.map((hit, index) => ({
+      key: `found:${hit.conversationId}:${index}`,
+      group: 'In conversations',
+      label: hit.snippet,
+      hint: `${hit.agentName} · ${hit.conversationTitle}`,
+      found: hits.query.split(/\s+/),
+      agent: agentById.get(hit.agentId),
+      search: {
+        agent: hit.agentId,
+        ...(hit.active ? {} : { conversation: hit.conversationId }),
+        find: hits.query,
+        match: hit.nth,
+      },
+    }))
+  }, [hits, trimmed, agents])
+  const shown = [...filterDestinations(destinations, query), ...found]
   const current = Math.min(active, Math.max(shown.length - 1, 0))
   const hereTeam =
     location.pathname === '/'
@@ -351,7 +428,7 @@ export function JumpPalette({
                 aria-controls="jump-results"
                 aria-activedescendant={shown[current] ? `jump-${shown[current].key}` : undefined}
                 value={query}
-                placeholder="An Agent, a Team, a page, or something to do"
+                placeholder="An Agent, a Team, a page, words from a conversation, or something to do"
                 onChange={(event) => {
                   setQuery(event.target.value)
                   setActive(0)
@@ -385,7 +462,16 @@ export function JumpPalette({
             >
               {shown.length === 0 && (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  {loaded ? `Nothing matches “${query}”.` : 'Loading…'}
+                  {!loaded
+                    ? 'Loading…'
+                    : searching
+                      ? 'Searching the conversations…'
+                      : `Nothing matches “${query}”.`}
+                </p>
+              )}
+              {shown.length > 0 && searching && (
+                <p role="status" className="m-0 px-2.5 pb-1 pt-2 text-xs text-muted-foreground">
+                  Searching the conversations…
                 </p>
               )}
               {shown.map((destination, index) => (
@@ -419,7 +505,13 @@ export function JumpPalette({
                         {destination.icon}
                       </span>
                     ) : null}
-                    <span className="min-w-0 truncate font-semibold">{destination.label}</span>
+                    {destination.found ? (
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {markWords(destination.label, destination.found)}
+                      </span>
+                    ) : (
+                      <span className="min-w-0 truncate font-semibold">{destination.label}</span>
+                    )}
                     <span className="ml-auto min-w-0 shrink truncate pl-3 text-xs text-muted-foreground">
                       {destination.hint}
                     </span>

@@ -10,3 +10,10 @@ export function validateSlug(s: string): void {
     )
   }
 }
+
+/** A template's name, trimmed; a blank one is refused (leaving the name out gives the id). */
+export function templateName(value: string): string {
+  const name = value.trim()
+  if (!name) throw new DomainError(400, 'A template needs a name')
+  return name
+}

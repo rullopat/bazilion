@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'vitest'
+import { turnFailureCause } from '../../src/core/attention.ts'
 import {
   acknowledgeAllAttention,
   acknowledgeAttention,
@@ -8,6 +9,12 @@ import {
   projectAttention,
 } from '../../src/core/index.ts'
 import * as conversations from '../../src/core/repos/conversations.ts'
+import { INTERRUPTED_BY_RESTART } from '../../src/core/repos/user-queue.ts'
+import {
+  forgetTurnFailure,
+  forgetTurnFailures,
+  rememberTurnFailure,
+} from '../../src/core/turn-failures.ts'
 
 const databases: ReturnType<typeof openInMemoryDb>[] = []
 afterEach(() => {
@@ -87,4 +94,103 @@ test('a failed source degrades independently', () => {
   const list = projectAttention(db, { state: 'open', limit: 100 })
   expect(list.degraded).toEqual([expect.objectContaining({ kind: 'trigger_failure' })])
   expect(list.items.some((item) => item.kind === 'lesson_proposal')).toBe(true)
+})
+
+function failedFollowUp(
+  db: ReturnType<typeof openInMemoryDb>,
+  id: string,
+  at: number,
+  diagnostic: string | null,
+  source: 'http' | 'telegram' = 'http',
+) {
+  db.raw.run(
+    `INSERT INTO user_queue_items (id,agent_id,conversation_id,source,status,text,diagnostic,created_at,updated_at,finished_at)
+     VALUES (?,'agent','11111111-1111-4111-8111-111111111111',?,'failed','hi',?,?,?,?)`,
+    [id, source, diagnostic, at, at, at],
+  )
+}
+
+test('failed background turns: one item per Agent and cause, reopened by a later failure', () => {
+  const db = fixture()
+  forgetTurnFailures()
+  failedFollowUp(db, 'q1', 100, '401 Unauthorized: invalid x-api-key')
+  failedFollowUp(db, 'q2', 200, '401: {"error":"invalid_api_key"}', 'telegram')
+  failedFollowUp(db, 'q3', 150, 'Worker exited with code 3')
+  // A follow-up the restart interrupted is the paused queue's item, not this one.
+  failedFollowUp(db, 'q4', 160, INTERRUPTED_BY_RESTART)
+  rememberTurnFailure({
+    id: 'inbox:m1',
+    agentId: 'agent',
+    origin: 'inbox',
+    at: 300,
+    reason: '429 rate limit',
+  })
+  rememberTurnFailure({
+    id: 'inbox:m2',
+    agentId: 'gone',
+    origin: 'inbox',
+    at: 300,
+    reason: '429 rate limit',
+  })
+
+  const items = () => projectAttention(db, { state: 'all', kind: 'turn_failure', limit: 100 }).items
+  const byCause = (cause: string) => items().find((item) => item.sourceId === `agent:${cause}`)
+  expect(items()).toHaveLength(3)
+  expect(byCause('credentials')).toMatchObject({
+    title: '2 background turns failed',
+    severity: 'error',
+    occurredAt: 100,
+    updatedAt: 200,
+    acknowledgeable: true,
+    acknowledgedAt: null,
+    href: '/?agent=agent',
+  })
+  expect(byCause('credentials')?.diagnostic).toBe(
+    'The provider refused the credentials: 401: {"error":"invalid_api_key"} (1 follow-up, 1 Telegram message)',
+  )
+  expect(byCause('limit')).toMatchObject({
+    title: 'Turn for new mail failed',
+    href: '/?agent=agent&section=mailbox',
+  })
+  const other = items().find((item) => item.diagnostic.startsWith('The turn failed'))
+  expect(other?.title).toBe('Follow-up failed')
+
+  const credentials = byCause('credentials')?.key ?? ''
+  expect(acknowledgeAttention(db, credentials, true).acknowledgedAt).not.toBeNull()
+  // A later failure of the same cause opens it again, counting only what came after.
+  failedFollowUp(db, 'q5', Date.now() + 1000, '401 Unauthorized')
+  expect(byCause('credentials')).toMatchObject({ title: 'Follow-up failed', acknowledgedAt: null })
+  // Retrying or removing the failed follow-ups leaves the item.
+  db.raw.run("DELETE FROM user_queue_items WHERE id IN ('q1','q2','q5')")
+  expect(byCause('credentials')).toBeUndefined()
+  forgetTurnFailures()
+  expect(byCause('limit')).toBeUndefined()
+})
+
+test('a wake-up that cannot start is one item, gone once it starts', () => {
+  forgetTurnFailures()
+  const db = fixture()
+  rememberTurnFailure({
+    id: 'inbox-start:agent',
+    agentId: 'agent',
+    origin: 'inbox',
+    at: 1,
+    reason: 'bad shell',
+  })
+  rememberTurnFailure({
+    id: 'inbox-start:agent',
+    agentId: 'agent',
+    origin: 'inbox',
+    at: 2,
+    reason: 'bad shell',
+  })
+  const list = () => projectAttention(db, { state: 'open', kind: 'turn_failure' }).items
+  expect(list()).toHaveLength(1)
+  expect(list()[0]?.title).toBe('Turn for new mail failed')
+  expect(forgetTurnFailure('inbox-start:agent')).toBe(true)
+  expect(list()).toEqual([])
+  expect(turnFailureCause('Worker 1234 exited')).toBe(turnFailureCause('Worker 99 exited'))
+  expect(turnFailureCause('500 overloaded_error (request req_011CXyzAbc)')).toBe(
+    turnFailureCause('500 overloaded_error (request req_022QwErTyu)'),
+  )
 })

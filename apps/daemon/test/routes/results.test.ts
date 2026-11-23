@@ -115,6 +115,44 @@ test('previews allow bounded plain text and verified raster signatures, never ac
   expect((await request(`/${big}/preview`)).status).toBe(415)
 })
 
+test('text of any kind is previewed, by its type or its name, and a tile gets its start', async () => {
+  const publishFile = (name: string, mimeType: string, bytes: Buffer, toolCallId: string) =>
+    results.publish(env.db, {
+      teamId: env.teamId,
+      agentId,
+      sessionId: 'session',
+      toolCallId,
+      name,
+      mimeType,
+      bytes,
+    }).id
+  const json = publishFile('data.json', 'application/json', Buffer.from('{"a": 1}'), 'json')
+  expect(await (await request(`/${json}/preview`)).text()).toBe('{"a": 1}')
+  const script = publishFile(
+    'build.py',
+    'application/octet-stream',
+    Buffer.from('print("héllo")\n'.repeat(200)),
+    'py',
+  )
+  const whole = await request(`/${script}/preview`)
+  expect(whole.status).toBe(200)
+  expect(whole.headers.get('x-content-type-options')).toBe('nosniff')
+  // Cut inside "é" (two bytes): the half character is dropped.
+  const start = await (await request(`/${script}/preview?bytes=9`)).text()
+  expect(start).toBe('print("h')
+  const binary = publishFile(
+    'blob.py',
+    'application/octet-stream',
+    Buffer.from([0, 159, 146, 150]),
+    'bin',
+  )
+  expect((await request(`/${binary}/preview`)).status).toBe(415)
+  const archive = publishFile('files.zip', 'application/zip', Buffer.from('PK'), 'zip')
+  expect((await request(`/${archive}/preview`)).status).toBe(415)
+  const svg = publishFile('logo.svg', 'image/svg+xml', Buffer.from('<svg/>'), 'svg')
+  expect((await request(`/${svg}/preview`)).status).toBe(415)
+})
+
 test('an archive holds the saved files of a Team, an Agent or a conversation as one zip', async () => {
   publish('first')
   results.publish(env.db, {

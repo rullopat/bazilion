@@ -7,6 +7,7 @@
 import { expect as pw } from '@playwright/test'
 import type { Browser } from 'playwright'
 import { afterAll, afterEach, beforeAll, expect, test } from 'vitest'
+import { accessibilityProblems } from './accessibility.ts'
 import { launchBrowser, type Session, signIn } from './browser.ts'
 import {
   createLaunchSite,
@@ -57,6 +58,36 @@ async function open(options: Parameters<typeof signIn>[2] = {}): Promise<Session
   return session
 }
 
+// The focused element, and whether something shows it: an outline, a ring (a box shadow) or a
+// change of border or background against the same element without the focus. Run in the page.
+const FOCUSED = `(() => {
+  const el = document.activeElement
+  if (!el || el === document.body) return null
+  // A field may show the focus on the box around it (focus-within), so two levels up count too.
+  const boxes = [el, el.parentElement, el.parentElement?.parentElement].filter(Boolean)
+  const look = () =>
+    boxes.map((box) => {
+      const style = getComputedStyle(box)
+      return [
+        style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0,
+        style.boxShadow,
+        style.borderColor,
+        style.backgroundColor,
+      ].join('|')
+    })
+  const focused = look()
+  el.blur()
+  const unfocused = look()
+  el.focus()
+  const ownOutline = focused[0].startsWith('true')
+  const marked = ownOutline || focused.some((value, index) => value !== unfocused[index])
+  const path = []
+  for (let node = el; node && node !== document.body; node = node.parentElement)
+    path.unshift(node.tagName + ':' + Array.prototype.indexOf.call(node.parentElement?.children ?? [], node))
+  const name = (el.getAttribute('aria-label') || el.textContent || el.tagName).replace(/\\s+/g, ' ').trim().slice(0, 60)
+  return { key: path.join('/'), name: el.tagName.toLowerCase() + ' "' + name + '"', marked }
+})()`
+
 function pages(): string[] {
   return [
     '/',
@@ -81,6 +112,8 @@ function pages(): string[] {
     '/config/telegram',
     '/config/access',
     '/config/system',
+    '/usage',
+    `/usage?days=7&agent=${ids.mira}`,
   ]
 }
 
@@ -97,6 +130,43 @@ test('every page renders without errors in another language and time zone', asyn
   // Times written on the server in its zone and again in the browser in another: React #418.
   const session = await open({ locale: 'de-DE', timezoneId: 'Pacific/Auckland' })
   for (const path of pages()) await session.go(path)
+  expect(session.problems).toEqual([])
+})
+
+test('every page passes the automatic accessibility checks, light and dark', async () => {
+  const problems: string[] = []
+  for (const dark of [false, true]) {
+    const session = await open({ dark })
+    for (const path of pages()) {
+      await session.go(path)
+      problems.push(...(await accessibilityProblems(session.page, `${dark ? 'dark ' : ''}${path}`)))
+    }
+    expect(session.problems).toEqual([])
+  }
+  expect(problems).toEqual([])
+})
+
+test('the keyboard reaches the controls of the main pages, and each shows it has the focus', async () => {
+  const session = await open()
+  const unmarked: string[] = []
+  for (const path of ['/', `/?agent=${ids.mira}`, '/usage', '/attention', '/agents', '/config']) {
+    await session.go(path)
+    await session.page.locator('body').click({ position: { x: 1, y: 1 } })
+    const seen = new Set<string>()
+    for (let step = 0; step < 80; step++) {
+      await session.page.keyboard.press('Tab')
+      const focused = (await session.page.evaluate(FOCUSED)) as {
+        key: string
+        name: string
+        marked: boolean
+      } | null
+      if (!focused || seen.has(focused.key)) break
+      seen.add(focused.key)
+      if (!focused.marked) unmarked.push(`${path}: ${focused.name}`)
+    }
+    expect(seen.size, path).toBeGreaterThan(3)
+  }
+  expect(unmarked).toEqual([])
   expect(session.problems).toEqual([])
 })
 
@@ -202,6 +272,53 @@ test('desktop notifications are turned on and off from the session menu', async 
   await page.getByRole('menuitem', { name: /Turn off desktop notifications/ }).click()
   await menu.click()
   await pw(page.getByRole('menuitem', { name: /Notify me on this computer/ })).toBeVisible()
+  expect(session.problems).toEqual([])
+})
+
+test('Usage counts the model calls, per Agent and per day, and the chart is read by keyboard', async () => {
+  const session = await open()
+  await session.go('/usage')
+  const page = session.page
+  const totals = page.getByRole('region', { name: 'Spent' })
+  await pw(totals).toContainText('$0.00')
+  // The stand-in model is a local server: tokens, no money.
+  await pw(totals.getByRole('definition').nth(2)).not.toHaveText('0')
+  await page.getByRole('region', { name: 'By Agent' }).getByRole('link', { name: 'Dev' }).click()
+  await pw(page).toHaveURL(new RegExp(`agent=${ids.dev}`))
+  await pw(page.getByText('Only Dev')).toBeVisible()
+  await page.getByRole('button', { name: '7 days' }).click()
+  await pw(page).toHaveURL(/days=7(&|$)/)
+  await pw(page.getByRole('button', { name: '7 days' })).toHaveAttribute('aria-pressed', 'true')
+  const chart = page.getByRole('slider')
+  await chart.focus()
+  const today = await chart.getAttribute('aria-valuetext')
+  await page.keyboard.press('ArrowLeft')
+  await pw(chart).not.toHaveAttribute('aria-valuetext', today ?? '')
+  await page.getByRole('button', { name: 'Show every Agent' }).click()
+  await pw(page.getByText('Only Dev')).toHaveCount(0)
+  expect(session.problems).toEqual([])
+})
+
+test('words typed in Jump to find a message and open its conversation on it', async () => {
+  const session = await open()
+  await session.go('/')
+  const page = session.page
+  await page.keyboard.press('Control+k')
+  await page.keyboard.type('warmer headline')
+  const found = page.getByRole('option', { name: /headline is plain/ })
+  await pw(found).toBeVisible({ timeout: 5_000 })
+  await found.click()
+  await pw(page).toHaveURL(new RegExp(`agent=${ids.quill}`))
+  await pw(page.locator('.found-message')).toContainText('I can make it warmer')
+  // Found: the words leave the address.
+  await pw(page).not.toHaveURL(/find=/)
+  expect(session.problems).toEqual([])
+})
+
+test('a text file shows its first lines on its tile in Files', async () => {
+  const session = await open()
+  await session.go(`/?agent=${ids.quill}&view=files`)
+  await pw(session.page.locator('figure pre').first()).toContainText('# Paperboat 2.0 is here')
   expect(session.problems).toEqual([])
 })
 

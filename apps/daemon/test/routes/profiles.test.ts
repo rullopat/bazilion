@@ -49,3 +49,28 @@ test('profile file GET and PUT reject HEARTBEAT.md', async () => {
   await expect(putResponse.json()).resolves.toEqual({ error: 'unsupported file: HEARTBEAT.md' })
   expect(existsSync(join(profile.dir, 'HEARTBEAT.md'))).toBe(false)
 })
+
+test('a template name may be left out (the id is used) but never blank', async () => {
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const { profilesRouter } = await import('../../src/routes/profiles.ts')
+  const ctx = getCtx()
+  const send = (path: string, method: string, body: unknown) =>
+    profilesRouter.request(path, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  const blank = await send('/', 'POST', { id: 'blank', name: '   ', defaultModel: 'm' })
+  expect(blank.status).toBe(400)
+  await expect(blank.json()).resolves.toEqual({ error: 'A template needs a name' })
+  // Refused before anything was written.
+  expect(existsSync(ctx.paths.profileDir('blank'))).toBe(false)
+
+  expect((await send('/', 'POST', { id: 'writer', defaultModel: 'm' })).status).toBe(201)
+  const named = await send('/', 'POST', { id: 'editor', name: '  Editor ', defaultModel: 'm' })
+  await expect(named.json()).resolves.toMatchObject({ name: 'Editor' })
+  const cleared = await send('/writer', 'PATCH', { name: '' })
+  expect(cleared.status).toBe(400)
+  const renamed = await send('/writer', 'PATCH', { name: ' Writer ' })
+  await expect(renamed.json()).resolves.toMatchObject({ name: 'Writer' })
+})

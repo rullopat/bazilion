@@ -2,6 +2,7 @@ import type { Profile, SkillsMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import { DomainError } from '../errors.ts'
 import * as profileRepo from '../repos/profiles.ts'
+import { templateName } from './validate.ts'
 
 export interface UpdateProfileInput {
   name?: string
@@ -18,7 +19,7 @@ export function updateProfile(db: BazilionDb, id: string, input: UpdateProfileIn
   const nextSkillsMode: SkillsMode = input.skillsMode ?? existing.skillsMode
 
   const next = {
-    name: input.name ?? existing.name,
+    name: input.name === undefined ? existing.name : templateName(input.name),
     defaultModel: input.defaultModel ?? existing.defaultModel,
     skillsMode: nextSkillsMode,
   }

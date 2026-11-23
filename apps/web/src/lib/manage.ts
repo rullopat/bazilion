@@ -319,6 +319,7 @@ export const ATTENTION_KINDS: Record<AttentionItem['kind'], string> = {
   trigger_failure: 'Schedule failures',
   agent_loop_break: 'Loop breaks',
   queue_interrupted: 'Paused queues',
+  turn_failure: 'Failed turns',
 }
 
 export function severityLabel(severity: AttentionItem['severity']): Label {

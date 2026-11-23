@@ -52,6 +52,7 @@ export const MANAGE_TABS = [
   ['/templates/agents', 'Agent templates'],
   ['/templates/teams', 'Team templates'],
   ['/skills', 'Skills'],
+  ['/usage', 'Usage'],
 ] as const
 
 export const CONFIG_TABS = [

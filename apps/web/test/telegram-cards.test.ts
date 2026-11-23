@@ -5,7 +5,8 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
 import { NotificationsCard } from '../src/components/setup/NotificationsCard.tsx'
-import { BotCard, PreflightCard } from '../src/components/setup/TelegramCards.tsx'
+import { BotCard } from '../src/components/setup/telegram/BotCard.tsx'
+import { PreflightCard } from '../src/components/setup/telegram/PreflightCard.tsx'
 
 const done = async () => {}
 const nothing = () => {}
@@ -189,7 +190,7 @@ test('the notifications card waits for its settings, then shows them with their 
     }),
   )
   expect(on).toMatch(/>On<\/span>/)
-  expect(on.match(/type="checkbox"/g)).toHaveLength(5)
+  expect(on.match(/type="checkbox"/g)).toHaveLength(6)
   expect(on.match(/type="checkbox"[^>]*checked=""/g)).toHaveLength(1)
   expect(on).toContain('type="time"')
   expect(on).toContain('value="Europe/Warsaw"')

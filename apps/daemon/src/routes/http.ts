@@ -32,7 +32,11 @@ export function onRouteError(error: Error, c: Context): Response {
 
 /** The Agent a path param names by id, unique name or id prefix; 404 otherwise. */
 export function routeAgent(c: Context, param = 'id'): Agent {
-  const ref = c.req.param(param) ?? ''
+  return routeAgentRef(c.req.param(param) ?? '')
+}
+
+/** The Agent an id, unique name or id prefix names; 404 otherwise. */
+export function routeAgentRef(ref: string): Agent {
   const { db } = getCtx()
   const agent = agentRepo.get(db, ref)
   if (agent) return agent

@@ -63,6 +63,7 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-chart-bar: var(--chart-bar);
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -86,7 +87,7 @@
   --secondary: #faf8f4; /* ivory */
   --secondary-foreground: #342820;
   --muted: #faf8f4;
-  --muted-foreground: #776a60; /* mocha-light */
+  --muted-foreground: #6f6054; /* mocha: 4.5:1 on the tinted rows too (a selected Agent, a diff) */
   --accent: rgba(53, 110, 143, 0.12); /* sapphire-glow */
   --accent-foreground: #2f617d; /* sapphire-deep */
   --destructive: #a34e52;
@@ -94,6 +95,8 @@
   --input: #ded7cd;
   --ring: #356e8f; /* sapphire focus ring */
   --radius: 16px;
+  /* A chart's one series: sapphire with enough chroma to read as a hue (checked, not guessed). */
+  --chart-bar: #2f6fa0;
 }
 
 /* Dark theme — "Mask & Moonlight".
@@ -138,10 +141,11 @@
   --popover-foreground: #f5f0e8;
   --primary: #7bb4d2;
   --primary-foreground: #0f0a07;
+  --chart-bar: #4a98d0;
   --secondary: #211a13;
   --secondary-foreground: #f5f0e8;
   --muted: #211a13;
-  --muted-foreground: #a89789;
+  --muted-foreground: #baa99b; /* 4.5:1 on the tinted rows too (a selected Agent, a diff) */
   --accent: rgba(123, 180, 210, 0.18);
   --accent-foreground: #a0cee3;
   --destructive: #d87878;
@@ -226,7 +230,8 @@
     background: var(--color-frost);
     padding: 0.15em 0.4em;
     border-radius: var(--radius-sm);
-    color: var(--color-mocha);
+    /* The ink, not mocha: on frost, mocha is 4.2:1. */
+    color: var(--color-chocolate);
   }
   a {
     color: var(--color-sapphire);
@@ -588,6 +593,7 @@
   .md-content th {
     background: var(--color-frost);
     font-weight: 600;
+    color: var(--color-chocolate);
   }
   .md-content img {
     max-width: 100%;
@@ -629,4 +635,15 @@
     font-size: 0.92em;
     margin-bottom: 1rem;
   }
+}
+
+/* The message a search opened the conversation on, marked for a moment. */
+[data-message] {
+  border-radius: 12px;
+  transition: box-shadow 0.4s ease;
+}
+.found-message {
+  box-shadow:
+    0 0 0 2px var(--ring),
+    0 0 0 6px var(--accent);
 }

@@ -229,10 +229,14 @@ the running ones and waits for them before closing browsers, MCP connections and
   succeeded, failed or cancelled, and nothing is retried. While one is open, later interval
   occurrences coalesce, and a minute missed while the daemon was down is not caught up. A run cut
   short by a daemon stop is marked failed at the next start. Failures show in Attention and in
-  `bazilion trigger history <id>`.
+  `bazilion trigger history <id>`. The Schedules sheet and `bazilion trigger list` say when each
+  trigger runs next (`nextRuns` in `GET /api/agents/:id/triggers`; none while it is paused or
+  the scheduler is off, which both also say).
 - **Inbox wakes.** An idle Agent with unread mail gets one turn whose prompt contains the
   messages, marked read in the same transaction. If that turn cannot start, the messages go back to
-  unread and the Agent's wakes back off from 10 s, doubling up to 5 minutes.
+  unread and the Agent's wakes back off from 10 s, doubling up to 5 minutes. A wake that fails,
+  or cannot start, is listed in Attention as a failed turn
+  ([Attention](attention-notifications.md#failed-background-turns)).
 - **Learning reviews.** Agents with reviewed learning on and enough new turns get a review in a
   restricted worker with a minimal environment, whose only tool is `propose_lesson`.
 
