@@ -52,6 +52,7 @@ const PAGES: Array<[label: string, hint: string, path: string]> = [
   ['Agent templates', 'What a new Agent starts with', '/templates/agents'],
   ['Team templates', 'Rosters that spawn a whole Team', '/templates/teams'],
   ['Skills', 'Import, review and remove prompt skills', '/skills'],
+  ['Usage', 'Tokens and money spent, per Team, Agent, model and day', '/usage'],
   ['Setup', 'Models, tools, MCP, Telegram, access, system', '/config'],
 ]
 

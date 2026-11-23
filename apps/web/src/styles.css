@@ -63,6 +63,7 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-chart-bar: var(--chart-bar);
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -94,6 +95,8 @@
   --input: #ded7cd;
   --ring: #356e8f; /* sapphire focus ring */
   --radius: 16px;
+  /* A chart's one series: sapphire with enough chroma to read as a hue (checked, not guessed). */
+  --chart-bar: #2f6fa0;
 }
 
 /* Dark theme — "Mask & Moonlight".
@@ -138,6 +141,7 @@
   --popover-foreground: #f5f0e8;
   --primary: #7bb4d2;
   --primary-foreground: #0f0a07;
+  --chart-bar: #4a98d0;
   --secondary: #211a13;
   --secondary-foreground: #f5f0e8;
   --muted: #211a13;

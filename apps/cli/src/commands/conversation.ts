@@ -1,4 +1,10 @@
-import type { Conversation, ConversationListResponse, ProviderMessage } from '@bazilion/api-types'
+import {
+  type Conversation,
+  type ConversationListResponse,
+  type ConversationUsage,
+  type ProviderMessage,
+  usageSummary,
+} from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
@@ -22,12 +28,16 @@ const list = defineCommand({
     if (args.json) return printJson(body)
     if (!body.total) return console.log('(no conversations)')
     for (const line of columnize([
-      ['id', 'title', 'active'],
-      ...body.conversations.map((item) => [
-        item.id,
-        item.title,
-        item.id === body.selectedId ? 'yes' : '',
-      ]),
+      ['id', 'title', 'active', 'used'],
+      ...body.conversations.map((item) => {
+        const used = body.usage[item.id]
+        return [
+          item.id,
+          item.title,
+          item.id === body.selectedId ? 'yes' : '',
+          used ? usageSummary(used) : '',
+        ]
+      }),
     ]))
       console.log(line)
   },
@@ -40,9 +50,14 @@ const show = defineCommand({
     const body = await createClient().get<{
       conversation: Conversation
       messages: ProviderMessage[]
+      usage: ConversationUsage | null
     }>(apiPath('agents', args.agent, 'conversations', args.id))
     if (args.json) return printJson(body)
-    console.log(body.conversation.title)
+    console.log(
+      body.usage
+        ? `${body.conversation.title} (${usageSummary(body.usage)})`
+        : body.conversation.title,
+    )
     for (const message of body.messages) console.log(`[${message.role}] ${message.content}`)
   },
 })

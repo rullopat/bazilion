@@ -37,7 +37,7 @@ export function list(
   agentId: string,
   limit = 20,
   offset = 0,
-): ConversationListResponse {
+): Omit<ConversationListResponse, 'usage'> {
   if (
     !Number.isSafeInteger(limit) ||
     limit < 1 ||

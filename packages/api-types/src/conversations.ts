@@ -1,3 +1,5 @@
+import type { ConversationUsage } from './usage.ts'
+
 /** Conversation metadata. Pi's session file `<id>.jsonl` holds the transcript. */
 export interface Conversation {
   id: string
@@ -14,6 +16,8 @@ export interface ConversationListResponse {
   total: number
   offset: number
   limit: number
+  /** What each listed conversation used, by id; one no model call was made in is left out. */
+  usage: Record<string, ConversationUsage>
 }
 
 export interface NewConversationInput {

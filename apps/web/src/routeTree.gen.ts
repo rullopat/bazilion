@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as UsageIndexRouteImport } from './routes/usage/index'
 import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
 import { Route as TeamsIndexRouteImport } from './routes/teams/index'
 import { Route as SkillsIndexRouteImport } from './routes/skills/index'
@@ -42,6 +43,11 @@ const LoginRoute = LoginRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UsageIndexRoute = UsageIndexRouteImport.update({
+  id: '/usage/',
+  path: '/usage/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
@@ -141,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/skills/': typeof SkillsIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
+  '/usage/': typeof UsageIndexRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
   '/templates/teams/': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id/': typeof TemplatesAgentsIdIndexRoute
@@ -162,6 +169,7 @@ export interface FileRoutesByTo {
   '/skills': typeof SkillsIndexRoute
   '/teams': typeof TeamsIndexRoute
   '/templates': typeof TemplatesIndexRoute
+  '/usage': typeof UsageIndexRoute
   '/templates/agents': typeof TemplatesAgentsIndexRoute
   '/templates/teams': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id': typeof TemplatesAgentsIdIndexRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/skills/': typeof SkillsIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
+  '/usage/': typeof UsageIndexRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
   '/templates/teams/': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id/': typeof TemplatesAgentsIdIndexRoute
@@ -207,6 +216,7 @@ export interface FileRouteTypes {
     | '/skills/'
     | '/teams/'
     | '/templates/'
+    | '/usage/'
     | '/templates/agents/'
     | '/templates/teams/'
     | '/templates/agents/$id/'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/skills'
     | '/teams'
     | '/templates'
+    | '/usage'
     | '/templates/agents'
     | '/templates/teams'
     | '/templates/agents/$id'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/skills/'
     | '/teams/'
     | '/templates/'
+    | '/usage/'
     | '/templates/agents/'
     | '/templates/teams/'
     | '/templates/agents/$id/'
@@ -271,6 +283,7 @@ export interface RootRouteChildren {
   SkillsIndexRoute: typeof SkillsIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
   TemplatesIndexRoute: typeof TemplatesIndexRoute
+  UsageIndexRoute: typeof UsageIndexRoute
   TemplatesAgentsIndexRoute: typeof TemplatesAgentsIndexRoute
   TemplatesTeamsIndexRoute: typeof TemplatesTeamsIndexRoute
   TemplatesAgentsIdIndexRoute: typeof TemplatesAgentsIdIndexRoute
@@ -298,6 +311,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/usage/': {
+      id: '/usage/'
+      path: '/usage'
+      fullPath: '/usage/'
+      preLoaderRoute: typeof UsageIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/templates/': {
@@ -431,6 +451,7 @@ const rootRouteChildren: RootRouteChildren = {
   SkillsIndexRoute: SkillsIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,
   TemplatesIndexRoute: TemplatesIndexRoute,
+  UsageIndexRoute: UsageIndexRoute,
   TemplatesAgentsIndexRoute: TemplatesAgentsIndexRoute,
   TemplatesTeamsIndexRoute: TemplatesTeamsIndexRoute,
   TemplatesAgentsIdIndexRoute: TemplatesAgentsIdIndexRoute,

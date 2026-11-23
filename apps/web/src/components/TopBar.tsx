@@ -35,7 +35,7 @@ import { JumpPalette } from './JumpPalette'
 import { ShortcutsDialog } from './ShortcutsDialog'
 
 /** The pages each place covers, for marking it as the current one. */
-const MANAGE_PATHS = ['/agents', '/teams', '/templates', '/skills']
+const MANAGE_PATHS = ['/agents', '/teams', '/templates', '/skills', '/usage']
 const SETUP_PATHS = ['/config']
 
 const under = (pathname: string, roots: readonly string[]) =>

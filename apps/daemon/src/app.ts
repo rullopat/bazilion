@@ -30,6 +30,7 @@ import { teamTemplatesRouter } from './routes/team-templates.ts'
 import { teamsRouter } from './routes/teams.ts'
 import { agentTelegramRouter, teamTelegramRouter, telegramRouter } from './routes/telegram.ts'
 import { agentTriggersRouter, triggersRouter } from './routes/triggers.ts'
+import { usageRouter } from './routes/usage.ts'
 import { userQueueRouter } from './routes/user-queue.ts'
 
 export function createApp(): Hono {
@@ -67,6 +68,7 @@ export function createApp(): Hono {
   app.route('/api/results', resultsRouter)
   app.route('/api/attention', attentionRouter)
   app.route('/api/activity', activityRouter)
+  app.route('/api/usage', usageRouter)
   app.route('/api/events', eventsRouter)
   app.route('/api/notifications', notificationsRouter)
   app.route('/api/shell-approvals', shellApprovalsRouter)
