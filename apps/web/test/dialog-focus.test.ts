@@ -46,6 +46,18 @@ describe('dialog focus restoration', () => {
     expect(focus).not.toHaveBeenCalled()
   })
 
+  test('leaves the focus with a dialog opened meanwhile', () => {
+    const { doc, focus, target } = focusFixture()
+    // ⌘K pressed straight after Escape: Jump to has the focus when the closed dialog gives it back.
+    const paletteInput = {
+      closest: (selector: string) => (selector.includes('dialog') ? {} : null),
+    }
+    Object.defineProperty(doc, 'activeElement', { value: paletteInput })
+
+    restoreDialogFocus(target, doc)
+    expect(focus).not.toHaveBeenCalled()
+  })
+
   test('does not focus an element owned by another document', () => {
     const { focus, target } = focusFixture()
     const otherDocument = { body: {}, documentElement: {} } as unknown as Document

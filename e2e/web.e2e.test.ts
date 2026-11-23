@@ -389,6 +389,31 @@ test('a Team and an Agent made outside the page show up without a reload', async
   expect(session.problems).toEqual([])
 })
 
+test('an open Team says its members need no connections, and what saved ones are for', async () => {
+  // Research is open; two connections between its members are saved anyway.
+  await instance.api('/api/teams/research/policy', {
+    method: 'PATCH',
+    body: {
+      edges: [
+        { from: ids.scout, to: ids.sage },
+        { from: ids.sage, to: ids.scout },
+      ],
+    },
+  })
+  try {
+    const session = await open()
+    await session.go(`/?agent=${ids.scout}&panel=connections`)
+    const card = session.page.getByText('Open Team').locator('..')
+    await pw(card).toContainText('with no connections needed')
+    await pw(card).toContainText(
+      '2 connections between teammates are saved; they apply once the Team is restricted.',
+    )
+    expect(session.problems).toEqual([])
+  } finally {
+    await instance.api('/api/teams/research/policy', { method: 'PATCH', body: { edges: [] } })
+  }
+})
+
 test('a page opened before an upgrade reloads for the new build instead of failing', async () => {
   const session = await open()
   await session.go(`/?agent=${ids.mira}&panel=connections`)

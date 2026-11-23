@@ -25,7 +25,7 @@ import { TeamPolicyFlow } from './TeamPolicyFlow'
 import { TeamPolicyMatrix } from './TeamPolicyMatrix'
 
 const MODE_HELP: Record<TeamPolicyMode, string> = {
-  open: 'Members message each other freely; connections only matter for messages to and from other Teams.',
+  open: 'Every member can message every other member, with no connections needed; connections only matter for messages to and from other Teams, or if the Team is made restricted.',
   restricted: 'Members message each other only along connections.',
 }
 

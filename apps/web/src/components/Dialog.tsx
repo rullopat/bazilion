@@ -22,8 +22,13 @@ export function getDialogFocusRestoreTarget(doc: Document): FocusTarget | null {
   return target as FocusTarget
 }
 
+/**
+ * Give the focus back to what had it before a dialog opened, unless another dialog has the focus
+ * now: one opened meanwhile (⌘K pressed straight after Escape) keeps it.
+ */
 export function restoreDialogFocus(target: FocusTarget | null, doc: Document): void {
   if (!target?.isConnected || target.ownerDocument !== doc) return
+  if (doc.activeElement?.closest?.('[role="dialog"], [role="alertdialog"]')) return
   target.focus({ preventScroll: true })
 }
 

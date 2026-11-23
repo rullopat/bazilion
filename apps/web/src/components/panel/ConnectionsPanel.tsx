@@ -44,6 +44,9 @@ export function ConnectionsPanel({ team }: { team: Team }) {
   const traffic = trafficByPair(messages.data ?? [])
   const allows = (from: string, target: string) =>
     edges.some((edge) => edge.from === from && edge.to === target)
+  // Connections between teammates, which an open Team keeps but does not use.
+  const memberIds = new Set(members.map((member) => member.id))
+  const saved = edges.filter((edge) => memberIds.has(edge.from) && memberIds.has(edge.to)).length
 
   return (
     <div>
@@ -53,7 +56,11 @@ export function ConnectionsPanel({ team }: { team: Team }) {
         </p>
         <p className="m-0 mt-0.5 text-xs leading-relaxed text-mocha">
           {mode === 'open'
-            ? 'Members message each other freely. A connection is only needed to reach other Teams.'
+            ? `Every member can message every other member, with no connections needed. Connections here only matter for messages to and from other Teams, or if you make the Team restricted.${
+                saved > 0
+                  ? ` ${saved} ${saved === 1 ? 'connection between teammates is' : 'connections between teammates are'} saved; ${saved === 1 ? 'it applies' : 'they apply'} once the Team is restricted.`
+                  : ''
+              }`
             : 'A member can message a teammate only along a connection.'}{' '}
           You can always talk to every Agent.
         </p>
