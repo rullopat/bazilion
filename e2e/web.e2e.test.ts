@@ -8,7 +8,7 @@ import { expect as pw } from '@playwright/test'
 import type { Browser } from 'playwright'
 import { afterAll, afterEach, beforeAll, expect, test } from 'vitest'
 import { accessibilityProblems } from './accessibility.ts'
-import { launchBrowser, type Session, signIn } from './browser.ts'
+import { closeBrowser, launchBrowser, type Session, signIn } from './browser.ts'
 import {
   createLaunchSite,
   DEMO_MODEL,
@@ -47,9 +47,10 @@ afterEach(async () => {
 })
 
 afterAll(async () => {
-  await browser?.close()
+  // The servers first: a browser that hangs on closing must not leave them running.
   await instance?.stop()
   await model?.close()
+  await closeBrowser(browser)
 })
 
 async function open(options: Parameters<typeof signIn>[2] = {}): Promise<Session> {
