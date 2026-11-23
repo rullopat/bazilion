@@ -91,7 +91,7 @@ export function ConversationHeader({
         to="/"
         search={to({ panel: 'agent', section: undefined })}
         title={`Model: ${agent.model}`}
-        className={cn(CHIP, 'hidden font-mono font-normal sm:inline-flex')}
+        className={cn(CHIP, 'hidden min-w-[4.5rem] shrink-[4] font-mono font-normal sm:inline-flex')}
       >
         <span className="min-w-0 truncate">{shortModel(agent.model)}</span>
         <ChevronDown className="size-[11px] shrink-0" aria-hidden="true" />
