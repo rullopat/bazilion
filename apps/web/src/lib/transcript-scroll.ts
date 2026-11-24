@@ -3,7 +3,7 @@
 // pixel offset, it holds when messages above it render to another height. Kept for this page
 // only: a reload opens every conversation at its end, as before.
 
-import { type RefObject, useEffect, useId, useLayoutEffect, useRef } from 'react'
+import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react'
 
 /** A reader at the end follows new output; otherwise they are at a message. */
 export type TranscriptPlace = { atEnd: true } | { atEnd: false; index: number; offset: number }
@@ -62,29 +62,17 @@ export function rememberedPlace(key: string): TranscriptPlace | undefined {
   return places.get(key)
 }
 
-/** What the log element takes from `useTranscriptPlace`. */
-export interface TranscriptLogProps {
-  'data-scroll-restoration-id': string
-}
-
 /**
  * Remember where the reader is in `log`, under `key()` as it is when they scroll, and put them
  * back there once `ready` (the messages are on screen), unless `skip` (a search result opens the
  * conversation at its message instead). `onRestored` hears of a place put back that is not the
- * end, so the caller stops following new output. Call it before the effect that follows the end,
- * and spread what it returns on the log.
- *
- * The router keeps the pixel offset of every element it saw scroll, by its id or else by where it
- * stands in the page, and puts it back after each navigation, after this hook has. Every
- * conversation stands in the same place, so one Agent's offset would land on the next one's log.
- * An id of this log's own, new for every pane, means the router never finds it again.
+ * end, so the caller stops following new output. Call it before the effect that follows the end.
  */
 export function useTranscriptPlace(
   log: RefObject<HTMLElement | null>,
   key: () => string,
   { ready, skip, onRestored }: { ready: boolean; skip: boolean; onRestored?: () => void },
-): TranscriptLogProps {
-  const id = useId()
+): void {
   const keyRef = useRef(key)
   keyRef.current = key
   const restored = useRef(false)
@@ -126,5 +114,4 @@ export function useTranscriptPlace(
     },
     [],
   )
-  return { 'data-scroll-restoration-id': `conversation${id}` }
 }

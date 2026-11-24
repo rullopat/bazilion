@@ -108,7 +108,7 @@ function AgentChat({
   })
 
   // Back at this Agent: where the reader was. Before the effect below, so it does not jump to the end.
-  const logProps = useTranscriptPlace(logRef, () => placeKey(agentId, chat.conversationId()), {
+  useTranscriptPlace(logRef, () => placeKey(agentId, chat.conversationId()), {
     ready: true,
     skip: Boolean(workspace?.search.find),
     onRestored: () => {
@@ -239,7 +239,6 @@ function AgentChat({
 
       <div
         ref={logRef}
-        {...logProps}
         onScroll={(event) => {
           nearBottomRef.current = isAtEnd(event.currentTarget)
         }}
