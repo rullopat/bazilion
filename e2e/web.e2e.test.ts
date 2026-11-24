@@ -339,8 +339,19 @@ test('going to another Agent and back keeps where you were in the conversation',
   const rail = page.getByRole('navigation', { name: 'Teams and agents' })
   await rail.getByRole('link').filter({ hasText: 'Dev' }).first().click()
   await pw(page.getByPlaceholder('Message Dev')).toBeVisible()
+  // Dev opens at its own end, not where Mira was; scrolled to its top, it is somewhere else again.
+  const devLog = page.getByRole('log', { name: 'Conversation with Dev' })
+  await page.waitForTimeout(200)
+  expect(await devLog.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(200)
+  const devLeft = await devLog.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)
+  expect(devLeft).toBeLessThan(40)
+  await devLog.evaluate((el) => {
+    el.scrollTop = 0
+  })
+  await page.waitForTimeout(200)
   await rail.getByRole('link').filter({ hasText: 'Mira' }).first().click()
   await pw(page.getByPlaceholder('Message Mira')).toBeVisible()
+  await page.waitForTimeout(200)
   const back = await log.evaluate((el) => el.scrollTop)
   expect(Math.abs(back - 120)).toBeLessThan(30)
   expect(session.problems).toEqual([])
