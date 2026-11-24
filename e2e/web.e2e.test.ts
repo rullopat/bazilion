@@ -354,6 +354,20 @@ test('going to another Agent and back keeps where you were in the conversation',
   await page.waitForTimeout(200)
   const back = await log.evaluate((el) => el.scrollTop)
   expect(Math.abs(back - 120)).toBeLessThan(30)
+  // A reload forgets the places, and nothing kept in the tab puts an offset back on a
+  // conversation: each opens at its end.
+  await page.reload()
+  await pw(page.getByPlaceholder('Message Mira')).toBeVisible()
+  await page.waitForTimeout(300)
+  expect(await log.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(
+    40,
+  )
+  await rail.getByRole('link').filter({ hasText: 'Dev' }).first().click()
+  await pw(page.getByPlaceholder('Message Dev')).toBeVisible()
+  await page.waitForTimeout(300)
+  expect(
+    await devLog.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop),
+  ).toBeLessThan(40)
   expect(session.problems).toEqual([])
 })
 

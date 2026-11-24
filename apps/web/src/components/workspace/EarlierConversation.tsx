@@ -56,7 +56,7 @@ export function EarlierConversation({
     [path],
   )
   // Back at this conversation: where the reader was (it opens at its start otherwise).
-  const logProps = useTranscriptPlace(logRef, () => placeKey(agentId, conversationId), {
+  useTranscriptPlace(logRef, () => placeKey(agentId, conversationId), {
     ready: opened.data !== undefined,
     skip: Boolean(search.find),
   })
@@ -108,7 +108,7 @@ export function EarlierConversation({
           {error}
         </p>
       )}
-      <div ref={logRef} {...logProps} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <div className="mx-auto max-w-[50rem]">
           {opened.error && (
             <p role="alert" className="text-sm text-danger">
