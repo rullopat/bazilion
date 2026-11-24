@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.58.1
+
+### Patch Changes
+
+- [#113](https://github.com/rullopat/bazilion/pull/113) [`4b3cd40`](https://github.com/rullopat/bazilion/commit/4b3cd4061cccda164e15d797eb34866c70be9552) Thanks [@rullopat](https://github.com/rullopat)! - **Going to another Agent and back keeps where you were in the conversation.** The router's own scroll restoration put the last conversation's scroll position on the next one, after Bazilion had restored the right place. So an Agent opened where the previous one had been scrolled to, and coming back opened where the other Agent had been left. Each conversation now keeps only its own place.
+
 ## 0.58.0
 
 ### Minor Changes
