@@ -242,10 +242,11 @@ const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
  * Loop prevention: we differentiate by `replyTo`. A NEW message (no
  * `replyTo`) opens a thread, and the sender is waiting for an answer — the
  * agent must respond at least once. A REPLY (`replyTo` set) is already
- * closing a round-trip, so the agent may acknowledge silently. This single
+ * closing a round-trip, so the agent sends nothing back. This single
  * asymmetry is enough to terminate conversations after one exchange instead
  * of ping-ponging forever ("you have to answer me" → "no you have to
- * answer me" → …).
+ * answer me" → …). The wake runs in the conversation the user reads, so what
+ * a reply brought back is told to the user there, with the files it names.
  */
 function buildInboxPrompt(
   agentId: string,
@@ -283,10 +284,19 @@ function buildInboxPrompt(
   }
   const replies = messages.filter((m) => m.replyTo)
   if (replies.length > 0) {
+    const which =
+      newThread.length > 0
+        ? `The other message${replies.length === 1 ? ' is a reply' : 's are replies'}`
+        : replies.length === 1
+          ? 'This message is a reply'
+          : 'These messages are replies'
     lines.push(
-      `The other message${replies.length === 1 ? ' is a reply' : 's are replies'} to something you previously sent. ` +
-        'Read, absorb, and move on — no response is required. Only send a follow-up if there is a ' +
-        'genuinely new question or action that requires it; otherwise this thread is closed.',
+      `${which} to something you sent. Do not message the sender back: that thread is closed, ` +
+        'unless the reply raises a genuinely new question or action. ' +
+        'The user reads this conversation, so your answer here is for them. ' +
+        'When a reply brings back the result of something you handed out, tell the user in a few lines what came back, ' +
+        'and send them with `deliver_file` each file it names that they should see. ' +
+        'When it is only an acknowledgement, one line is enough.',
     )
   }
   // reference the recipient id so the agent knows which mailbox this is for
