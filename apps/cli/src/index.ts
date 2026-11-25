@@ -2,6 +2,7 @@ import { defineCommand, runCommand, showUsage } from 'citty'
 import pkg from '../package.json' with { type: 'json' }
 import { activityCommand } from './commands/activity.ts'
 import { agentCommand } from './commands/agent.ts'
+import { appCommand } from './commands/app.ts'
 import { attentionCommand } from './commands/attention.ts'
 import { authCommand } from './commands/auth.ts'
 import { backupCommand } from './commands/backup.ts'
@@ -15,6 +16,7 @@ import { loginCommand } from './commands/login.ts'
 import { mcpCommand } from './commands/mcp.ts'
 import { memoryCommand } from './commands/memory.ts'
 import { notificationCommand } from './commands/notification.ts'
+import { openCommand } from './commands/open.ts'
 import { profileCommand } from './commands/profile.ts'
 import { providerCommand } from './commands/provider.ts'
 import { questionCommand } from './commands/question.ts'
@@ -65,6 +67,8 @@ const main = defineCommand({
     config: configCommand,
     serve: serveCommand,
     dashboard: dashboardCommand,
+    open: openCommand,
+    app: appCommand,
     doctor: doctorCommand,
     backup: backupCommand,
     trigger: triggerCommand,
@@ -104,7 +108,7 @@ async function resolveSubCommand(
 // Top-level `bazilion --help` groups the commands by their own descriptions; `bazilion <command>
 // --help` uses citty's renderer. A command missing from these groups is listed under "other".
 const HELP_GROUPS: Record<string, string[]> = {
-  setup: ['serve', 'dashboard', 'doctor', 'backup', 'uninstall'],
+  setup: ['serve', 'dashboard', 'open', 'app', 'doctor', 'backup', 'uninstall'],
   catalog: ['profile', 'team-template', 'team', 'skill', 'provider', 'config', 'auth', 'mcp'],
   agents: [
     'attention',

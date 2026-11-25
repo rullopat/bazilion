@@ -196,3 +196,54 @@ test('browser login exchanges the bootstrap or a device token for session cookie
     await fetch(`${server.url}/api/auth/whoami`, { headers: { cookie: cookies } }),
   ).toHaveProperty('status', 401)
 })
+
+test('a one-time sign-in link signs a browser in once, for a token that is still active', async () => {
+  const ask = (token: string) =>
+    fetch(`${server.url}/api/auth/sign-in-link`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    })
+  const open = (path: string) => fetch(`${server.url}${path}`, { redirect: 'manual' })
+
+  const asked = await ask(server.token)
+  expect(asked.status).toBe(200)
+  const { path, expiresAt } = (await asked.json()) as { path: string; expiresAt: number }
+  expect(path).toMatch(/^\/api\/login\/link\?code=[\w-]{40,}$/)
+  expect(expiresAt - Date.now()).toBeGreaterThan(60_000)
+  expect(expiresAt - Date.now()).toBeLessThanOrEqual(120_000)
+
+  const opened = await open(path)
+  expect(opened.status).toBe(302)
+  expect(opened.headers.get('location')).toMatch(/^\/(welcome)?$/)
+  const setCookies = opened.headers.getSetCookie().join('\n')
+  expect(setCookies).not.toContain(server.token)
+  const session = /bz_session_dev=([^;]+)/.exec(setCookies)?.[1]
+  const csrf = /bz_csrf_dev=([^;]+)/.exec(setCookies)?.[1]
+  expect(session && csrf).toBeTruthy()
+  const cookie = `bz_session_dev=${session}; bz_csrf_dev=${csrf}`
+  const whoami = await fetch(`${server.url}/api/auth/whoami`, { headers: { cookie } })
+  expect(await whoami.json()).toMatchObject({ principal: { kind: 'session', label: 'bootstrap' } })
+
+  // Used once: again, and an unknown code, lead to the login page, which says why.
+  for (const again of [path, '/api/login/link?code=unknown', '/api/login/link']) {
+    const refused = await open(again)
+    expect(refused.status).toBe(302)
+    expect(refused.headers.get('location')).toBe('/login?error=link')
+    expect(refused.headers.getSetCookie()).toEqual([])
+  }
+
+  // A browser session may not ask for one; a token is needed.
+  const fromSession = await fetch(`${server.url}/api/auth/sign-in-link`, {
+    method: 'POST',
+    headers: { cookie, 'x-bazilion-csrf': csrf as string },
+  })
+  expect(fromSession.status).toBe(403)
+
+  // A link of a token revoked before it is opened signs nobody in.
+  const created = await server.cli(['token', 'create', 'laptop'])
+  const device = created.stdout.match(/token:\s+([0-9a-f]+)/)?.[1] as string
+  const id = created.stdout.match(/id:\s+(\S+)/)?.[1] as string
+  const devicePath = ((await (await ask(device)).json()) as { path: string }).path
+  expect((await server.cli(['token', 'revoke', id])).exitCode).toBe(0)
+  expect((await open(devicePath)).headers.get('location')).toBe('/login?error=link')
+})

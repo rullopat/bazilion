@@ -11,7 +11,16 @@ machine owns all state in `~/.bazilion`.
 
 ## Quickstart
 
-Bazilion needs Node.js `^26.12.1`.
+On macOS or Linux, with nothing installed first:
+
+```sh
+curl -fsSL https://bazilion.com/install.sh | bash
+```
+
+It brings its own Node.js and installs Bazilion for your user only. On a Mac it also adds the
+**Bazilion** app to Applications, keeps Bazilion running in the background from login on, and
+opens it in your browser, signed in ([installing](docs/install.md)). With Node.js `^26.12.1`
+already installed, npm works too:
 
 ```sh
 npm install -g bazilion         # or run each command below as `npx bazilion …`
@@ -19,9 +28,10 @@ bazilion dashboard
 ```
 
 `dashboard` starts the daemon on `127.0.0.1:4321` and the web UI on `127.0.0.1:4322` and opens
-your browser. On first start the daemon creates `~/.bazilion` (or `$BAZILION_HOME`) with its
-database and a bootstrap token in `auth.json`. Sign in to the web UI with that token
-(`bazilion token show-local` prints it); the CLI reads it by itself.
+your browser, signed in with a one-time link. On first start the daemon creates `~/.bazilion`
+(or `$BAZILION_HOME`) with its database and a bootstrap token in `auth.json`; `bazilion open`
+signs a browser in again, and another device signs in with a token
+(`bazilion token show-local` prints this one). The CLI reads it by itself.
 
 Until one provider works, every page leads to the first-run screen: choose a provider, sign in
 with ChatGPT or paste an API key (or pick a model server running on this computer), and press
@@ -77,7 +87,7 @@ Most commands talk to the daemon over HTTP; `serve` and `dashboard` start it, an
 
 | Area | Commands |
 | --- | --- |
-| Setup | `serve`, `dashboard`, `doctor`, `backup`, `uninstall`, `completion` |
+| Setup | `serve`, `dashboard`, `open`, `app`, `doctor`, `backup`, `uninstall`, `completion` |
 | Catalog | `profile`, `team`, `team-template`, `skill`, `provider`, `config`, `auth`, `mcp` |
 | Agents | `agent`, `activity`, `usage`, `conversation`, `queue`, `question`, `result`, `memory`, `send`, `inbox`, `trigger`, `attention` |
 | Integrations | `telegram`, `notification` |

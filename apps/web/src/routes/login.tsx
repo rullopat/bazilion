@@ -8,8 +8,11 @@ import { usePageTitle } from '../lib/page-title'
 export const Route = createFileRoute('/login')({
   // Failed form submissions return to this branded page with a specific,
   // actionable reason. The field stays optional for normal auth redirects.
-  validateSearch: (search: Record<string, unknown>): { error?: 'token' | 'origin' } => ({
-    error: search.error === 'token' || search.error === 'origin' ? search.error : undefined,
+  validateSearch: (search: Record<string, unknown>): { error?: 'token' | 'origin' | 'link' } => ({
+    error:
+      search.error === 'token' || search.error === 'origin' || search.error === 'link'
+        ? search.error
+        : undefined,
   }),
   component: LoginPage,
 })
@@ -63,8 +66,15 @@ function LoginPage() {
           </div>
           <h2 className="font-display text-3xl text-charcoal">Open Bazilion</h2>
           <p className="mt-2 text-sm leading-6 text-mocha-light">
-            Sign in with the bootstrap token from <code>auth.json</code> or a device token.
+            On the computer Bazilion runs on, open the <strong>Bazilion</strong> app, or run{' '}
+            <code>bazilion open</code>: it signs this browser in. Elsewhere, sign in with a token.
           </p>
+          {error === 'link' && (
+            <div className="err mt-5" role="alert">
+              That sign-in link was already used or has expired. Open the Bazilion app again, or run{' '}
+              <code>bazilion open</code>, for a new one.
+            </div>
+          )}
           {error === 'token' && (
             <div className="err mt-5" role="alert">
               That token was not accepted. Use the bootstrap token from <code>auth.json</code> or an

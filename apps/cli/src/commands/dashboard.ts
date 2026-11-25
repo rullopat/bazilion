@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import { defineCommand } from 'citty'
-import { resolveCliPaths } from '../paths.ts'
+import { openBrowser, signInUrl } from '../sign-in.ts'
 import { daemonEntry, nodeArgs } from './serve.ts'
 
 const bundledWebServerEntry = join(import.meta.dirname, 'web-server.js')
@@ -16,7 +16,7 @@ const bundledWebDist = join(import.meta.dirname, 'web')
 const sourceWebDist = join(import.meta.dirname, '..', '..', '..', 'web', 'dist')
 const webDist = existsSync(bundledWebDist) ? bundledWebDist : sourceWebDist
 
-async function responds(url: string): Promise<boolean> {
+export async function responds(url: string): Promise<boolean> {
   try {
     const res = await fetch(url)
     return res.status >= 200 && res.status < 500
@@ -80,18 +80,13 @@ async function bazilionWebRunning(url: string, port: string): Promise<boolean> {
   )
 }
 
-async function waitFor(url: string, label: string, timeoutMs = 20_000): Promise<void> {
+export async function waitFor(url: string, label: string, timeoutMs = 20_000): Promise<void> {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     if (await responds(url)) return
     await new Promise((r) => setTimeout(r, 150))
   }
   throw new Error(`timed out waiting for ${label} at ${url}`)
-}
-
-function openBrowser(url: string): void {
-  const cmd = process.platform === 'darwin' ? 'open' : process.env.BROWSER || 'xdg-open'
-  spawn(cmd, [url], { detached: true, stdio: 'ignore' }).unref()
 }
 
 function spawnProcess(label: string, entry: string, env: NodeJS.ProcessEnv): ChildProcess {
@@ -127,7 +122,6 @@ export const dashboardCommand = defineCommand({
     const daemonPort = args['daemon-port'] ?? '4321'
     const daemonUrl = `http://${daemonHost}:${daemonPort}`
     const webUrl = `http://${webHost}:${webPort}`
-    const authFile = resolveCliPaths().authFile
 
     if (webHost !== '127.0.0.1' && webHost !== 'localhost' && webHost !== '::1') {
       console.error('')
@@ -197,8 +191,14 @@ export const dashboardCommand = defineCommand({
 
       console.log('')
       console.log(`dashboard: ${webUrl}`)
-      console.log(`sign in:   the token in ${authFile} (print it: bazilion token show-local)`)
-      if (args.open) openBrowser(webUrl)
+      // The browser opens signed in. Another one, or a later visit, signs in with a new link from
+      // `bazilion open`, or with the token.
+      if (args.open) {
+        openBrowser(await signInUrl(webUrl, daemonUrl))
+        console.log('sign in:   opened in your browser, signed in')
+      } else {
+        console.log('sign in:   bazilion open (or the token: bazilion token show-local)')
+      }
     } catch (err) {
       terminateChildren()
       throw err

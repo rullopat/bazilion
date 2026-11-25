@@ -35,7 +35,8 @@ import type { ToolResultPart } from '../../src/runtime/tools/types.ts'
 import { createInstrumentedOrigin, type InstrumentedOrigin } from '../fixtures/browser-managed.ts'
 
 const root = mkdtempSync(join(tmpdir(), 'baz-browser-attach-'))
-afterAll(() => rmSync(root, { recursive: true, force: true }))
+// Retries, because a browser's helper processes can still write while it is removed.
+afterAll(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
 
 test('a DevToolsActivePort file gives the endpoint; anything else gives none', () => {
   expect(parseDevToolsActivePort('9222\n/devtools/browser/abc-123\n')).toBe(
@@ -183,8 +184,17 @@ describe.skipIf(!available)('agents in a running browser', () => {
 
   afterAll(async () => {
     await shutdownResources()
-    chrome?.kill('SIGKILL')
     await origin?.close()
+    // Chrome writes its last journals into the profile as it closes, so its profile is removed
+    // only once it has ended. A SIGKILL without waiting left a file behind now and then, and
+    // removing the scratch root then failed.
+    if (chrome && chrome.exitCode === null && chrome.signalCode === null) {
+      const ended = new Promise((resolve) => chrome.once('exit', resolve))
+      chrome.kill('SIGTERM')
+      const timer = setTimeout(() => chrome.kill('SIGKILL'), 10_000)
+      await ended
+      clearTimeout(timer)
+    }
   })
 
   test('the running browser is found from its profile directory', async () => {

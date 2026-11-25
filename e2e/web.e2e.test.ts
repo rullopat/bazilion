@@ -4,6 +4,7 @@
 // question answered in the conversation, dropdowns, shortcuts, the phone layout and the
 // notifications switch. Run with `pnpm build && pnpm test:e2e`.
 
+import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect as pw } from '@playwright/test'
@@ -128,6 +129,58 @@ test('every page renders without errors', async () => {
     await pw(session.page.locator('main')).toBeVisible()
   }
   expect(session.problems).toEqual([])
+})
+
+test('`bazilion open` signs a browser in without a token, once per link', async () => {
+  const cli = join(import.meta.dirname, '..', 'apps', 'cli', 'dist', 'cli.js')
+  const link = () => {
+    const printed = spawnSync(
+      process.execPath,
+      [
+        cli,
+        'open',
+        '--print',
+        '--port',
+        new URL(instance.web).port,
+        '--daemon-port',
+        new URL(instance.daemon).port,
+      ],
+      { env: { ...process.env, BAZILION_HOME: instance.home }, encoding: 'utf8' },
+    )
+    expect(printed.status, printed.stderr).toBe(0)
+    return printed.stdout.trim()
+  }
+  const url = link()
+  expect(url.startsWith(`${instance.web}/api/login/link?code=`)).toBe(true)
+  const context = await browser.newContext()
+  try {
+    const page = await context.newPage()
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(String(error)))
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text())
+    })
+    await page.goto(url)
+    await page.waitForLoadState('load')
+    expect(new URL(page.url()).pathname).toBe('/')
+    await pw(page.locator('main')).toBeVisible()
+
+    // The same link again, in a browser that is not signed in, leads to the login page, which
+    // says what happened and how to sign in without a token.
+    const other = await browser.newContext()
+    try {
+      const again = await other.newPage()
+      await again.goto(url)
+      expect(new URL(again.url()).pathname).toBe('/login')
+      await pw(again.getByRole('alert')).toContainText('already used or has expired')
+      await pw(again.getByText('it signs this browser in')).toBeVisible()
+    } finally {
+      await other.close()
+    }
+    expect(errors).toEqual([])
+  } finally {
+    await context.close()
+  }
 })
 
 test('every page renders without errors in another language and time zone', async () => {

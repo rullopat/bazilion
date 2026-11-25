@@ -10,8 +10,11 @@ import { isSetupComplete, webSessionRepo, webTokenRepo } from '../core/index.ts'
 import { authenticateToken, extractBearer } from './auth.ts'
 import { getCtx } from './ctx.ts'
 
-/** Reachable without a token. The login route mints sessions; health is a probe. */
-const PUBLIC_PATHS = new Set(['/api/login', '/api/health'])
+/**
+ * Reachable without a token. The login route and a one-time sign-in link mint sessions; health
+ * is a probe.
+ */
+const PUBLIC_PATHS = new Set(['/api/login', '/api/login/link', '/api/health'])
 
 /**
  * Once authenticated, these paths still pass through the first-run gate so
