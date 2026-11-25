@@ -42,6 +42,7 @@ import { containerWorkdir, homeContainerPrefix } from '../shell/docker.ts'
 import { createSessionShellTools, type DockerTurn } from '../shell/tooling.ts'
 import type { AskUser } from '../tools/ask-user.ts'
 import type { FileSink } from '../tools/deliver-file.ts'
+import type { RecallSource } from '../tools/recall.ts'
 import type {
   AgentContact,
   BrowserHost,
@@ -204,8 +205,11 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
 
 type TurnOptions = Omit<CreateBazilionSessionOptions, 'conversation'>
 
-/** The tools and prompt a turn of this Agent gets, given the hosts in `opts`. */
-function turnSurface(opts: TurnOptions) {
+/**
+ * The tools and prompt a turn of this Agent gets, given the hosts in `opts`; `recall` reads the
+ * conversation the turn continues.
+ */
+function turnSurface(opts: TurnOptions, recall: RecallSource) {
   const { agent, paths, env } = opts
   const cwd = agent.team.path
   const promptSkills = loadPromptSkills(paths.skillsDir, agent.skills)
@@ -220,6 +224,7 @@ function turnSurface(opts: TurnOptions) {
   const customTools = createBazilionCustomTools({
     agent,
     memory: opts.memory,
+    recall,
     messagingHost: opts.messagingHost,
     userMdHost: opts.userMdHost,
     browserHost: opts.browserHost,
@@ -267,7 +272,12 @@ export async function createBazilionSession(
   if (!existsSync(agent.team.path)) mkdirSync(agent.team.path, { recursive: true })
   mkdirSync(join(paths.agentDir(agent.agent.id), 'sessions'), { recursive: true })
   const sessionManager = openConversation(agent, paths, opts.conversation)
-  const turn = turnSurface(opts)
+  // One list: a ChatGPT token refreshed during the turn joins it, and recall leaves it out too.
+  const redactionSecrets = [...new Set(envSecretValues(opts.env).filter(Boolean))]
+  const turn = turnSurface(opts, {
+    branch: () => sessionManager.getBranch(),
+    secrets: redactionSecrets,
+  })
   return openPiSession({
     model: {
       providerName,
@@ -286,7 +296,7 @@ export async function createBazilionSession(
     })),
     tools: turn.tools,
     hostToolNames: turn.hostToolNames,
-    redactionSecrets: [...new Set(envSecretValues(opts.env).filter(Boolean))],
+    redactionSecrets,
     refreshApiKey: opts.refreshApiKey,
   })
 }
@@ -313,7 +323,7 @@ export function describeTurn(opts: TurnOptions): {
   promptSections: PromptSection[]
   tools: ToolDescription[]
 } {
-  const turn = turnSurface(opts)
+  const turn = turnSurface(opts, { branch: () => [], secrets: [] })
   const hostTools = turn.hostToolNames.flatMap((name) => {
     const define = HOST_TOOL_DEFINITIONS[name]
     return define ? [define(turn.modelCwd)] : []
@@ -325,12 +335,12 @@ export function describeTurn(opts: TurnOptions): {
   }
 }
 
-/** Counts and Pi's token estimate (chars / 4) for what a conversation's branch sends the model. */
 /** How full the model's window is with this conversation (see contextUse). */
 export function conversationWindow(conversation: SessionManager, model: string): ContextUse {
   return contextUse(conversation.getBranch(), turnContextWindow(model))
 }
 
+/** Counts and Pi's token estimate (chars / 4) for what a conversation's branch sends the model. */
 export function conversationUsage(conversation: SessionManager): {
   messageEntries: number
   compactionEntries: number

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { Api, AssistantMessage, Model } from '@earendil-works/pi-ai'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
-import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
+import { SessionManager, type ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import { afterEach, describe, expect, test } from 'vitest'
 import { resolvePaths } from '../../src/core/paths.ts'
@@ -228,10 +228,48 @@ describe('session prompt boundary', () => {
         handle.session.agent.state.tools.map((tool) => tool.name).sort(),
       )
       expect(described.tools.map((tool) => tool.name)).toEqual(
-        expect.arrayContaining(['read', 'bash', 'memory_write', 'web_search']),
+        expect.arrayContaining(['read', 'bash', 'memory_write', 'recall', 'web_search']),
       )
       expect(handle.session.systemPrompt).toContain(described.systemPrompt)
       expect(described.promptSections.map((section) => section.id)).toContain('search-guide')
+    } finally {
+      handle.dispose()
+    }
+  })
+
+  test("a session's recall reads its own conversation, without the turn's credentials", async () => {
+    const root = temporaryRoot()
+    const paths = resolvePaths(root)
+    const agentDir = paths.agentDir('agent-1')
+    const teamDir = paths.teamDir('team-1')
+    for (const path of [join(agentDir, 'sessions'), join(teamDir, 'memory')])
+      mkdirSync(path, { recursive: true })
+    const sessions = join(agentDir, 'sessions')
+    const conversation = seedConversationTarget(sessions, teamDir)
+    const file = SessionManager.open(join(sessions, `${conversation.id}.jsonl`), sessions, teamDir)
+    const say = (text: string) =>
+      file.appendMessage({ role: 'user', content: [{ type: 'text', text }], timestamp: 1 })
+    say('Use the key recall-session-fixture-key for the launch upload.')
+    const kept = say('Now write the post.')
+    file.appendCompaction('The user gave a key for the upload.', kept, 9_000)
+    const handle = await createBazilionSession({
+      agent: { ...resolvedAgent(agentDir, teamDir), skills: [] },
+      paths,
+      conversation,
+      env: {
+        BAZILION_BASH_SANDBOX: 'off',
+        BAZILION_BASH_APPROVAL: 'off',
+        LAUNCH_API_KEY: 'recall-session-fixture-key',
+      },
+      memory: memoryBackend(),
+      apiKey: 'session-prompt-access-token',
+    })
+    try {
+      const recall = handle.session.agent.state.tools.find((tool) => tool.name === 'recall')
+      const result = await recall?.execute('call-1', { query: 'launch upload' })
+      const text = result?.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
+      expect(text).toContain('#1 · user')
+      expect(text).toContain('Use the key [REDACTED] for the launch upload.')
     } finally {
       handle.dispose()
     }
