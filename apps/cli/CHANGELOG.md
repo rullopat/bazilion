@@ -1,5 +1,26 @@
 # bazilion
 
+## 0.59.0
+
+### Minor Changes
+
+- [#117](https://github.com/rullopat/bazilion/pull/117) [`3d70668`](https://github.com/rullopat/bazilion/commit/3d706684eb76fbbbb742428333a716780a80391a) Thanks [@rullopat](https://github.com/rullopat)! - **Long conversations keep working.** When a conversation nears the model's window, a turn summarizes older messages and keeps the recent ones as they are. Before, compaction ran only on `/compact`, so a full conversation cut every reply to a few words. A reply the full window would have cut is redone after the summary.
+
+  **The whole conversation stays on the page.** Summarized messages stay above a divider: **Show the summary** shows what the Agent reads in their place. They also stay in an earlier conversation's view and in search. Editing the last message after a summary keeps the summary.
+
+  **How full the window is.** The conversation bar shows `41K / 272K`, amber past 80%. `bazilion agent chat-context` prints the same figure.
+
+  **Hand-offs that did not go out say so.** The hand-off card counts only messages that were sent, and marks a refused one `not sent`. It also finds a teammate addressed by name.
+
+### Patch Changes
+
+- [#117](https://github.com/rullopat/bazilion/pull/117) [`3d70668`](https://github.com/rullopat/bazilion/commit/3d706684eb76fbbbb742428333a716780a80391a) Thanks [@rullopat](https://github.com/rullopat)! - **Your own Chrome keeps its downloads while Agents work in it.** With browser attach on, your own tabs' downloads silently went nowhere: nothing was saved and nothing showed in Chrome's downloads list.
+
+  - Playwright took the whole browser's downloads over, sending them to a temporary folder of its own that was deleted when the connection closed.
+  - The refusal Bazilion set in an Agent's tab also applied to every other tab.
+
+  Now only a download that starts in an Agent's tab is cancelled, and deleted if it finished first. Your tabs also keep their own color scheme: Playwright no longer emulates light mode and focus in them, only focus in the Agent's tabs.
+
 ## 0.58.2
 
 ### Patch Changes
