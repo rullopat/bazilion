@@ -305,7 +305,7 @@ export function buildSystemPromptSections(
 
   parts.push({
     id: 'memory',
-    text: '# Memory\n\nYou share a persistent memory backend with every other agent in this team. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. This memory is for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead. Always check memory at the start of a session: another agent in the team may have already learned something useful. **Do NOT send peer messages announcing memory writes — every agent has access to the same store via `memory_search` and will find your note when they need it.**',
+    text: '# Memory\n\nYou share a persistent memory backend with every other agent in this team. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. This memory is for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead. Always check memory at the start of a session: another agent in the team may have already learned something useful. **Do NOT send peer messages announcing memory writes — every agent has access to the same store via `memory_search` and will find your note when they need it.**\n\nWhen a conversation grows long, its older messages are replaced by a summary. They stay saved: when the summary leaves out a detail you need, find it with `recall` instead of guessing or asking again.',
   })
 
   return parts

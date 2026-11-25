@@ -39,8 +39,10 @@ failed.`, in the conversation and in its history.
 A conversation that nears the model's window is summarized during a turn: older messages become
 one summary the Agent reads in their place, and the last 20,000 tokens or so stay as they are. It
 stays one conversation, with its files and follow-ups; the summarized messages stay in its file
-and on the page, above a line with **Show the summary**, and are found by search. `/compact`
-does the same at once. The bar above the conversation says how full the window is, and
+and on the page, above a line with **Show the summary**, and are found by search. The Agent can
+reread them too: when the summary leaves out a detail it needs, such as an exact value, a link or
+your own words, it searches and reads them with `recall`, a step that shows as **Searched older
+messages for …** or **Reread older messages**. `/compact` does the same at once. The bar above the conversation says how full the window is, and
 `bazilion agent chat-context <agent>` prints the same figure. A reply the full window would have
 cut short is redone after the summary.
 

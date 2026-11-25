@@ -609,7 +609,7 @@ test('the live feed comes back after the daemon restarts', async () => {
   expect(session.problems.filter((problem) => problem.startsWith('page error'))).toEqual([])
 })
 
-test('a compacted conversation keeps its earlier messages under a divider, and a meter says how full it is', async () => {
+test('a compacted conversation keeps its earlier messages under a divider, the Agent can reread them, and a meter says how full it is', async () => {
   // The first two messages summarized, the rest kept.
   const firstText = (
     await seedCompaction(
@@ -647,6 +647,17 @@ test('a compacted conversation keeps its earlier messages under a divider, and a
   // The summary opened above is still open: the divider, its summary and the meter, checked.
   await pw(log.getByText('Hide the summary')).toBeVisible()
   expect(await accessibilityProblems(page, 'a compacted conversation')).toEqual([])
+
+  // The Agent rereads what the summary replaced: the step says so, and its output is the
+  // summarized messages themselves, by number.
+  await composer.fill('What did I first ask you here?')
+  await composer.press('Enter')
+  await pw(log.getByText('From before the summary: your first ask was')).toBeVisible({
+    timeout: 15_000,
+  })
+  await log.getByRole('button', { name: /Searched older messages for dark-mode/ }).click()
+  await pw(log).toContainText(/summarized messages holds? every word of "dark-mode"/)
+  await pw(log).toContainText('#1 · user')
 
   // Beside the side panel, the meter shows where the bar has room for it, and never pushes the
   // panel button out of the bar.

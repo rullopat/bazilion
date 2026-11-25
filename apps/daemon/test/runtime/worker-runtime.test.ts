@@ -303,6 +303,7 @@ describe('minimal worker runtime', () => {
     const base = {
       agent: spec.agent,
       memory,
+      recall: { branch: () => [], secrets: [] },
       messagingHost: hosts.messagingHost,
       userMdHost: hosts.userMdHost,
       fileSink: async () => ({ resultId: 'fixture-result' }),
@@ -312,6 +313,8 @@ describe('minimal worker runtime', () => {
 
     expect(names).toContain('web_fetch')
     expect(names).toContain('deliver_file')
+    // Every turn can reread what a summary replaced.
+    expect(names).toContain('recall')
     // Discovery is daemon-owned: absent without the host, present only with it.
     expect(names).not.toContain('web_search')
     expect(names).not.toContain('propose_lesson')

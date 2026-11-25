@@ -222,6 +222,16 @@ I have messaged all three. I will tell you as soon as something needs your decis
       ],
     },
     {
+      // In a summarized conversation: the Agent rereads what the summary replaced.
+      match: /what did i first ask/i,
+      steps: () => [
+        { tools: [{ name: 'recall', args: { query: 'dark-mode' } }] },
+        {
+          text: 'From before the summary: your first ask was **the dark-mode toggle** for the landing page.',
+        },
+      ],
+    },
+    {
       match: /dark-mode toggle/i,
       steps: () => [
         {

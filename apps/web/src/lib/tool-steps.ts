@@ -204,6 +204,24 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
         icon: 'note',
         kind: 'other',
       }
+    case 'recall':
+      // The summarized messages, a lookup like grep: a search names its words; a read's numbers
+      // mean nothing to a person.
+      return str(args?.query)
+        ? {
+            doing: 'searching older messages',
+            verb: 'Searched older messages for',
+            target: clip(String(args?.query)),
+            icon: 'search',
+            kind: 'read',
+          }
+        : {
+            doing: 'rereading older messages',
+            verb: 'Reread older messages',
+            target: null,
+            icon: 'read',
+            kind: 'read',
+          }
     case 'user_md_get':
       return {
         doing: 'reading USER.md',

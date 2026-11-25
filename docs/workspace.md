@@ -34,7 +34,8 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   left it (at the end if you were at the end), for as long as the page is open. When a
   conversation nears the model's window, older messages are summarized to make room: they stay
   on the page, above a line that says so, and **Show the summary** shows what the Agent reads in
-  their place.
+  their place. The Agent can still search and reread them
+  ([conversations](conversations.md)).
 - **The bar above it** names the Agent, its Team and its model, says how full the model's window
   is (`41K / 272K`, amber past 80%; just the window until the first reply after a summary), and
   holds the conversation menu:

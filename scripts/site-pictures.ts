@@ -150,8 +150,9 @@ async function demoPictures(browser: Browser): Promise<void> {
     await shoot(phone.page, 'phone-chat')
     await phone.close()
 
-    // Last, as it changes Dev's conversation: older messages summarized, and a reply since.
-    if (wanted('compacted-conversation')) {
+    // Last, as they change Dev's conversation: older messages summarized, a reply since, and
+    // Dev rereading what the summary replaced.
+    if (wanted('compacted-conversation') || wanted('recall')) {
       await seedCompaction(
         instance,
         ids.dev,
@@ -160,6 +161,8 @@ async function demoPictures(browser: Browser): Promise<void> {
           'choice; it is in review.',
       )
       await instance.chat(ids.dev, 'Thanks, that is all for now.')
+    }
+    if (wanted('compacted-conversation')) {
       const compacted = await session(browser, instance, { cookies })
       await compacted.go(`/?agent=${ids.dev}&panel=none`, 1500)
       const log = compacted.page.getByRole('log', { name: 'Conversation with Dev' })
@@ -172,6 +175,21 @@ async function demoPictures(browser: Browser): Promise<void> {
       })()`)
       await shoot(compacted.page, 'compacted-conversation')
       await compacted.close()
+    }
+    if (wanted('recall')) {
+      await instance.chat(ids.dev, 'What did I first ask you here?')
+      const recalled = await session(browser, instance, { cookies })
+      await recalled.go(`/?agent=${ids.dev}&panel=none`, 1500)
+      const log = recalled.page.getByRole('log', { name: 'Conversation with Dev' })
+      // The step opened: what Dev searched for and the summarized messages it found.
+      await log.getByRole('button', { name: /Searched older messages for/ }).click()
+      await recalled.page.evaluate(`(() => {
+        const log = document.querySelector('[role="log"]')
+        if (log) log.scrollTop = log.scrollHeight
+      })()`)
+      await recalled.page.waitForTimeout(600)
+      await shoot(recalled.page, 'recall')
+      await recalled.close()
     }
 
     await cancel(instance, [ids.scout, ids.quill])
@@ -458,6 +476,7 @@ try {
     'agent-template',
     'common-connections',
     'compacted-conversation',
+    'recall',
     'workspace-dark',
     'phone-waiting',
     'phone-chat',

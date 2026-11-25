@@ -15,6 +15,7 @@ import { imageGenerateTool } from '../tools/image-generate.ts'
 import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
+import { type RecallSource, recallTool } from '../tools/recall.ts'
 import { agentCreateTool } from '../tools/team.ts'
 import type { ToolHandler, ToolResultPart } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
@@ -60,6 +61,8 @@ function toPiPart(
 export interface BazilionCustomToolsOpts {
   agent: ResolvedAgent
   memory: MemoryBackend
+  /** The conversation the turn continues, for `recall`. */
+  recall: RecallSource
   // Each optional host enables its tools.
   messagingHost?: MessagingHost
   userMdHost?: UserMdHost
@@ -78,10 +81,13 @@ export interface BazilionCustomToolsOpts {
   env?: NodeJS.ProcessEnv
 }
 
-/** Bazilion's tools for one session: memory, home, web, plus those whose host is present. */
+/**
+ * Bazilion's tools for one session: memory, recall, home, web, plus those whose host is present.
+ */
 export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDefinition[] {
   const handlers: ToolHandler[] = [
     ...memoryTools(opts.memory),
+    recallTool(opts.recall),
     ...homeTools(opts.agent.agent.dir),
     bootstrapTool(opts.agent.agent.dir),
     webFetchTool({ env: opts.env }),

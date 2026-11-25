@@ -66,7 +66,8 @@ is an error, never a silent fresh start) and builds a Pi `AgentSession` with:
   turn summarizes older messages when the conversation comes within 16,384 tokens of the model's
   window, keeping about the last 20,000 verbatim, and redoes a reply the full window cut short. The
   window is Pi's catalog's, or 32,768 for a local server's model and one the catalog lacks
-  (`turnContextWindow`);
+  (`turnContextWindow`). The summarized messages stay in the file, and `recall` reads them
+  (section 5);
 - a resource loader with every discovery switched off (no extensions, skills, prompt templates,
   themes or context files), so a repository's `.pi/` cannot run code;
 - the system prompt from section 3, appended to Pi's own;
@@ -100,7 +101,8 @@ and refreshes from the secrets table; only the access token comes back.
 7. **About the User**: the Team's USER.md, and how to update it with `user_md_get` /
    `user_md_write`.
 8. **Reviewed lessons**: private lessons you approved, up to 8,000 characters.
-9. **Memory**: the Team-shared memory and when to use it.
+9. **Memory**: the Team-shared memory and when to use it, and `recall` for a detail a summary of
+   the conversation left out.
 
 ## 4. The turn loop
 
@@ -128,6 +130,12 @@ can reconcile its view. The JSONL file is the only record of the conversation.
 
 - `memory_write|read|search|list`: the Team's shared qmd (BM25) store in `<team>/memory/`; keys
   are Markdown paths such as `notes/topic.md`.
+- `recall`: the messages of the conversation that its latest compaction summarized, read from
+  the session file as it stands, so a compaction made during the turn counts at once
+  (`runtime/tools/recall.ts`). `query` lists the latest 12 that hold every word, tool calls and
+  results included, with their numbers; `from` and `count` (at most 20) read them in full, about
+  20,000 characters a call, cutting a long message less when fewer are read. Stored credentials
+  are taken out. Before any compaction it says there is nothing to recall.
 - `home_read|write|list`: the Agent's own documents, by name only; `BOOTSTRAP.md` is read-only.
 - `bootstrap_done`: removes `BOOTSTRAP.md`.
 - `web_fetch`: a guarded page fetch (no private addresses, also after redirects) turned into

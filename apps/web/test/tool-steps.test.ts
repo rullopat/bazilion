@@ -36,6 +36,17 @@ test('a tool call reads as what was done and to what', () => {
     verb: 'In the browser:',
     target: 'click',
   })
+  // Recall searches or rereads the messages a summary replaced.
+  expect(describeStep('recall', { query: 'launch date' })).toMatchObject({
+    verb: 'Searched older messages for',
+    target: 'launch date',
+    kind: 'read',
+  })
+  expect(describeStep('recall', { from: 12 })).toMatchObject({
+    verb: 'Reread older messages',
+    target: null,
+    doing: 'rereading older messages',
+  })
   // A tool it has no words for still says which tool ran.
   expect(describeStep('mcp__files__search', null)).toMatchObject({
     verb: 'Used',
