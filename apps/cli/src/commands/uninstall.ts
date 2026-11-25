@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { defineCommand } from 'citty'
 import { assertDaemonStopped, DAEMON_PID_FILE } from '../../../daemon/src/lib/daemon-liveness.ts'
 import { confirm } from '../command-helpers.ts'
+import { appLayout } from '../mac-app.ts'
 import { canonicalPath, requestedHome } from '../paths.ts'
 
 // The reset deletes these and keeps installed skills; --all deletes the skills too.
@@ -48,6 +49,12 @@ export const uninstallCommand = defineCommand({
     if (!existsSync(join(home, 'bazilion.db')) && unmanaged.length > 0) {
       throw new Error(
         `${home} is not a Bazilion home: no bazilion.db, and it holds ${unmanaged.join(', ')}`,
+      )
+    }
+    // The Bazilion app's service would start the daemon again: it goes first.
+    if (process.platform === 'darwin' && existsSync(appLayout(home).plist)) {
+      throw new Error(
+        'Bazilion runs in the background as the Bazilion app: remove it first with `bazilion app remove`, then run this again',
       )
     }
     assertDaemonStopped(home)

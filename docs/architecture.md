@@ -89,7 +89,13 @@ cannot be revoked.
 - The browser logs in with any active token and receives a session cookie and a session-bound
   CSRF cookie; the token itself is not stored. A session ends after 30 days without use, or when
   its token is revoked.
-- Without a token only `POST /api/login` and a minimal `GET /api/health` answer. Until an
+- A token (not a session) can ask `POST /api/auth/sign-in-link` for a one-time link,
+  `GET /api/login/link?code=…`, that gives a browser such a session. The code is random, works
+  once, for two minutes, while its token is active, and lives only in the daemon's memory
+  (`lib/sign-in-links.ts`). `bazilion open` and `bazilion dashboard` open one
+  ([installing](install.md#signing-in)).
+- Without a token only `POST /api/login`, `GET /api/login/link` and a minimal `GET /api/health`
+  answer. Until an
   enabled provider has a saved model, the API answers 409 except for configuration, auth, token,
   session and provider-test routes, and the web UI shows `/welcome`. Crossing that line creates the
   `default` Profile and the `default` Team.

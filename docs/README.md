@@ -1,6 +1,7 @@
 # Documentation
 
 Start with the [README](../README.md): install, first run and the CLI.
+[Installing](install.md) covers the one-line installer, the Bazilion app on macOS and signing in.
 
 ## How it works
 
@@ -15,7 +16,7 @@ Start with the [README](../README.md): install, first run and the CLI.
   page, each card saved whole
 - [Private gateway](private-gateway.md): reach the web UI from other devices over Tailscale
 - [Backup, restore and reset](backup.md)
-- [Upgrades](upgrades.md)
+- [Installing](install.md) and [upgrades](upgrades.md)
 - [What grows in a home](growth-and-retention.md)
 
 ## Working with Agents

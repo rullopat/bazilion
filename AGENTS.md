@@ -113,6 +113,11 @@ Daemon paths are again relative to `apps/daemon/`.
   scratch home and a free port when you start a daemon by hand.
 - CLI tests boot the real daemon from source on a free port.
 - Opt-in suite: `BAZILION_TEST_DOCKER=1` (Docker sandbox).
+- `scripts/install.sh` is the one-line installer that bazilion.com serves (copy it to the website
+  when it changes). `bash scripts/install-check.sh <packed .tgz>` runs it in a scratch HOME and
+  checks the result, the Bazilion app on macOS included; CI runs it on a Mac and on Linux. On a Mac
+  you use, set `SKIP_OPENING_APP=1`: the app opens your browser, and its 127.0.0.1 session
+  cookie would replace the one of your own Bazilion.
 - `e2e/` drives the built package in Chrome on a scratch home against a stand-in model server
   (`model-server.ts`, scripted per conversation), with the Paperboat demo (`demo.ts`). A test
   fails on any page error, console error or failed request. Every page also passes axe-core's

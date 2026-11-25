@@ -1,7 +1,17 @@
 # Upgrading Bazilion
 
+Installed with the one-line installer, run it again: it updates Bazilion and, on a Mac,
+restarts it ([installing](install.md)).
+
+```sh
+curl -fsSL https://bazilion.com/install.sh | bash
+```
+
+Installed with npm:
+
 ```sh
 npm install -g bazilion@latest     # or run npx bazilion@latest dashboard
+bazilion app install               # macOS, when you use the Bazilion app: restarts it
 ```
 
 Bazilion needs Node.js 26.12.1 or a later 26.x release; the CLI refuses any other Node before it

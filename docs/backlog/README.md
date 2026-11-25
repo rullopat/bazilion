@@ -50,5 +50,6 @@ are never reused, so the gaps below are deliberate.
 | [BAZ-080](done/BAZ-080-say-what-it-does.md) | Say what it does: connections, roles, names, a Team's day, common connections | 0.58.0 | [MCP](../mcp.md#common-connections), [Team Policy](../team-policy.md), [manage](../manage.md#agents), [workspace](../workspace.md) |
 | [BAZ-081](done/BAZ-081-full-conversations.md) | Full conversations: automatic compaction, the whole history, a window meter | 0.59.0 | [conversations](../conversations.md), [agent engine](../agent-engine.md#2-the-worker) |
 | [BAZ-082](done/BAZ-082-recall.md) | Recall: the Agent rereads what a summary replaced | 0.60.0 | [conversations](../conversations.md), [agent engine](../agent-engine.md#5-tools) |
+| [BAZ-083](done/BAZ-083-mac-app-install.md) | Install without Node: one line, then the Bazilion app | 0.61.0 | [installing](../install.md) |
 
 No story is in draft or in progress.

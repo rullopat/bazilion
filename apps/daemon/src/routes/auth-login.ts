@@ -1,6 +1,7 @@
 // /api/auth/openai/* — ChatGPT OAuth provider connection state.
 // /api/providers/test — model smoke-test.
 // /api/login — token exchange for browser session cookies.
+// /api/auth/sign-in-link, /api/login/link — a one-time link that signs a browser in.
 
 import {
   type AuthenticatedOwnerResponse,
@@ -8,13 +9,16 @@ import {
   type ProviderTestRequest,
   type ProviderTestResponse,
   publicOriginConfig,
+  type SignInLinkResponse,
 } from '@bazilion/api-types'
+import type { Context } from 'hono'
 import { deleteCookie, setCookie } from 'hono/cookie'
 import {
   ensureSetupSeeded,
   isSetupComplete,
   mergeSecretsIntoEnv,
   webSessionRepo,
+  webTokenRepo,
 } from '../core/index.ts'
 import { parseModelString } from '../core/providers.ts'
 import { assertProviderReady } from '../lib/api-key.ts'
@@ -28,6 +32,7 @@ import {
   webOpenAILoginError,
 } from '../lib/openai-oauth-prompt.ts'
 import { recordProviderTest } from '../lib/provider-setup.ts'
+import { consumeSignInCode, createSignInCode } from '../lib/sign-in-links.ts'
 import {
   clearOpenAICodexCredentials,
   getOpenAICodexStatus,
@@ -200,7 +205,6 @@ authRouter.post('/login', async (c) => {
     if (typeof v === 'string') token = v
   }
 
-  const ctx = getCtx()
   const principal = token ? authenticateToken(token) : null
   if (!principal) {
     if (ct.startsWith('application/json')) {
@@ -209,7 +213,17 @@ authRouter.post('/login', async (c) => {
     return c.redirect('/login?error=token', 302)
   }
 
-  const created = webSessionRepo.create(ctx.db, principal.tokenId)
+  startSession(c, principal.tokenId)
+
+  if (ct.startsWith('application/json')) {
+    return c.json({ ok: true })
+  }
+  return c.redirect(firstPage(), 302)
+})
+
+/** A browser session for this token: the session cookie and its CSRF cookie. */
+function startSession(c: Context, tokenId: string): void {
+  const created = webSessionRepo.create(getCtx().db, tokenId)
   const origin = publicOriginConfig(process.env.BAZILION_PUBLIC_ORIGIN)
   const cookie = {
     path: '/',
@@ -219,14 +233,47 @@ authRouter.post('/login', async (c) => {
   }
   setCookie(c, origin.sessionCookie, created.cookieValue, { ...cookie, httpOnly: true })
   setCookie(c, origin.csrfCookie, created.csrfToken, { ...cookie, httpOnly: false })
+}
 
-  if (ct.startsWith('application/json')) {
-    return c.json({ ok: true })
+/**
+ * Where a new session lands. Skip an avoidable redirect through the locked root on a fresh
+ * install. Setup mutations seed the defaults synchronously, so completed installs can still
+ * enter the workspace directly.
+ */
+function firstPage(): string {
+  return isSetupComplete(getCtx().db) ? '/' : '/welcome'
+}
+
+/**
+ * A one-time link that signs a browser in as the calling token, for the CLI (`bazilion open`,
+ * `bazilion dashboard`): it opens the link so nobody pastes a token. Only a token may ask, not
+ * a browser session. The link is a path on the web UI, which forwards it here.
+ */
+authRouter.post('/auth/sign-in-link', (c) => {
+  const principal = c.get('authPrincipal')
+  if (principal.kind === 'session') {
+    return c.json({ error: 'a sign-in link is asked for with a token, not a browser session' }, 403)
   }
-  // Skip an avoidable redirect through the locked root on a fresh install.
-  // Setup mutations seed the defaults synchronously, so completed installs
-  // can still enter the workspace directly.
-  return c.redirect(isSetupComplete(ctx.db) ? '/' : '/welcome', 302)
+  const { code, expiresAt } = createSignInCode(principal.tokenId)
+  return c.json({
+    path: `/api/login/link?code=${encodeURIComponent(code)}`,
+    expiresAt,
+  } satisfies SignInLinkResponse)
+})
+
+/**
+ * Opening a sign-in link: a used, expired or unknown code, or one whose token was revoked
+ * meanwhile, goes to the login page, which says so.
+ */
+authRouter.get('/login/link', (c) => {
+  const code = c.req.query('code')
+  const tokenId = code ? consumeSignInCode(code) : null
+  const token = tokenId ? webTokenRepo.get(getCtx().db, tokenId) : null
+  const active =
+    token && token.revokedAt === null && (token.expiresAt === null || token.expiresAt > Date.now())
+  if (!token || !active) return c.redirect('/login?error=link', 302)
+  startSession(c, token.id)
+  return c.redirect(firstPage(), 302)
 })
 
 authRouter.post('/logout', (c) => {

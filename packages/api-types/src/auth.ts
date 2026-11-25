@@ -16,6 +16,13 @@ export interface ListTokensResponse {
   tokens: WebToken[]
 }
 
+/** `POST /api/auth/sign-in-link`: a one-time link that signs a browser in. */
+export interface SignInLinkResponse {
+  /** A path on the web UI, used once: open it in the browser before `expiresAt`. */
+  path: string
+  expiresAt: number
+}
+
 export interface ListSessionsResponse {
   sessions: WebSession[]
 }

@@ -32,6 +32,8 @@ export default defineConfig({
     )
     // The published package ships the repository's licence text.
     copyFileSync(join(process.cwd(), '../../LICENSE'), join(distDir, 'LICENSE'))
+    // The Bazilion app's icon on macOS (`bazilion app install`), made by scripts/app-icon.sh.
+    cpSync(join(process.cwd(), 'assets'), join(distDir, 'assets'), { recursive: true })
 
     // Copy the production TanStack Start build into the published CLI package.
     // `bazilion dashboard` spawns dist/web-server.js with BAZILION_WEB_DIST
