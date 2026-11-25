@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-NODE_VERSION=26.12.1
+INSTALL_NODE_VERSION=26.12.1
 INSTALL_DIR="${HOME}/.local/share/bazilion"
 BIN_DIR="${HOME}/.local/bin"
 WRAPPER_MARK='# Made by the Bazilion installer.'
@@ -53,16 +53,23 @@ NODE="${INSTALL_DIR}/node/bin/node"
 NPM="${INSTALL_DIR}/node/bin/npm"
 CLI="${INSTALL_DIR}/lib/node_modules/bazilion/dist/cli.js"
 
+# Bazilion's own Node is kept while it is a version Bazilion supports: 26.12.1 or a later 26.x.
+# Only that Node is asked, never another one on the PATH.
+has_supported_node() {
+  [ -x "$NODE" ] &&
+    PATH="${INSTALL_DIR}/node/bin:/usr/bin:/bin" node -e 'const v = process.versions.node; const m = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(v); const p = m ? m.slice(1).map(Number) : []; process.exit(v === v.trim() && m && p.every(Number.isSafeInteger) && p[0] === 26 && (p[1] > 12 || (p[1] === 12 && p[2] >= 1)) ? 0 : 1)' 2>/dev/null
+}
+
 install_node() {
-  if [ -x "$NODE" ] && [ "$("$NODE" -p process.versions.node 2>/dev/null || true)" = "$NODE_VERSION" ]; then
-    say "Node.js ${NODE_VERSION} is already installed for Bazilion"
+  if has_supported_node; then
+    say "Node.js $("$NODE" -v) is already installed for Bazilion"
     return
   fi
-  local name="node-v${NODE_VERSION}-${os}-${arch}"
-  local base="https://nodejs.org/dist/v${NODE_VERSION}"
+  local name="node-v${INSTALL_NODE_VERSION}-${os}-${arch}"
+  local base="https://nodejs.org/dist/v${INSTALL_NODE_VERSION}"
   local work
   work="$(mktemp -d)"
-  say "Downloading Node.js ${NODE_VERSION} for Bazilion (about 50 MB)"
+  say "Downloading Node.js ${INSTALL_NODE_VERSION} for Bazilion (about 50 MB)"
   curl -fsSL "${base}/SHASUMS256.txt" -o "${work}/SHASUMS256.txt" ||
     fail "could not reach nodejs.org. Check the internet connection and try again."
   curl -fL --progress-bar "${base}/${name}.tar.gz" -o "${work}/${name}.tar.gz" ||
