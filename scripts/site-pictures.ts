@@ -28,6 +28,7 @@ import {
   DEMO_MODEL,
   type DemoIds,
   demoScripts,
+  seedCompaction,
   seedDemoBase,
   seedDemoHistory,
   seedDemoManage,
@@ -148,6 +149,30 @@ async function demoPictures(browser: Browser): Promise<void> {
     await phone.go(`/?agent=${ids.dev}`, 1500)
     await shoot(phone.page, 'phone-chat')
     await phone.close()
+
+    // Last, as it changes Dev's conversation: older messages summarized, and a reply since.
+    if (wanted('compacted-conversation')) {
+      await seedCompaction(
+        instance,
+        ids.dev,
+        'Dev added a dark-mode toggle to the landing page: a small script, a button in the ' +
+          'header and the colours moved to variables. Mira asked for the toggle to remember the ' +
+          'choice; it is in review.',
+      )
+      await instance.chat(ids.dev, 'Thanks, that is all for now.')
+      const compacted = await session(browser, instance, { cookies })
+      await compacted.go(`/?agent=${ids.dev}&panel=none`, 1500)
+      const log = compacted.page.getByRole('log', { name: 'Conversation with Dev' })
+      await log.getByText('Show the summary').click()
+      // The divider near the top of the conversation, with what came before it above.
+      await compacted.page.evaluate(`(() => {
+        const log = document.querySelector('[role="log"]')
+        const line = [...log.querySelectorAll('summary')].find((s) => s.textContent.includes('summarized'))
+        if (log && line) log.scrollTop += line.getBoundingClientRect().top - log.getBoundingClientRect().top - 230
+      })()`)
+      await shoot(compacted.page, 'compacted-conversation')
+      await compacted.close()
+    }
 
     await cancel(instance, [ids.scout, ids.quill])
   } finally {
@@ -432,6 +457,7 @@ try {
     'manage-agents',
     'agent-template',
     'common-connections',
+    'compacted-conversation',
     'workspace-dark',
     'phone-waiting',
     'phone-chat',

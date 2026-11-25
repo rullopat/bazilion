@@ -16,6 +16,7 @@ import {
   DEMO_MODEL,
   type DemoIds,
   demoScripts,
+  seedCompaction,
   seedDemoBase,
   seedDemoHistory,
 } from './demo.ts'
@@ -609,44 +610,14 @@ test('the live feed comes back after the daemon restarts', async () => {
 })
 
 test('a compacted conversation keeps its earlier messages under a divider, and a meter says how full it is', async () => {
-  // A compaction as a turn would write it: the first two messages summarized, the rest kept.
-  const head = await instance.api<{ file: string | null }>(`/api/agents/${ids.dev}/sessions/head`)
-  if (!head.file) throw new Error('Dev has no conversation')
-  const file = join(instance.home, 'agents', ids.dev, 'sessions', head.file)
-  const entries = readFileSync(file, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map(
-      (line) =>
-        JSON.parse(line) as {
-          type: string
-          id: string
-          message?: { role: string; content: unknown }
-        },
-    )
-  // As the page counts them: Pi's system-prompt entries are not messages to read.
-  const messages = entries.filter(
-    (entry) => entry.type === 'message' && entry.message?.role !== 'system',
-  )
-  const kept = messages[2]
-  const last = entries.at(-1)
-  if (!kept || !last) throw new Error("Dev's conversation is too short")
-  const first = messages[0]?.message?.content
+  // The first two messages summarized, the rest kept.
   const firstText = (
-    typeof first === 'string' ? first : ((first as { text?: string }[])[0]?.text ?? '')
+    await seedCompaction(
+      instance,
+      ids.dev,
+      'Dev and Mira agreed on the dark-mode release checklist.',
+    )
   ).slice(0, 40)
-  writeFileSync(
-    file,
-    `${readFileSync(file, 'utf8')}${JSON.stringify({
-      type: 'compaction',
-      id: 'compaction-e2e',
-      parentId: last.id,
-      timestamp: new Date().toISOString(),
-      summary: 'Dev and Mira agreed on the dark-mode release checklist.',
-      firstKeptEntryId: kept.id,
-      tokensBefore: 24_000,
-    })}\n`,
-  )
 
   const session = await open()
   await session.go(`/?agent=${ids.dev}`)
