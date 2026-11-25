@@ -176,6 +176,57 @@ describe('scheduler', () => {
     expect(messageRepo.get(env.db, message.id)?.readAt).not.toBeNull()
   })
 
+  test('a reply is told to the user with the files it names, and is not answered back', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Producer',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    const asked = messageRepo.send(env.db, {
+      from: 'a1',
+      to: 'a2',
+      payload: JSON.stringify({ text: 'Review the LinkedIn cuts.' }),
+    })
+    messageRepo.markRead(env.db, asked.id)
+    messageRepo.send(env.db, {
+      from: 'a2',
+      to: 'a1',
+      replyTo: asked.id,
+      payload: JSON.stringify({ text: 'Reviewed. Notes: `drafts/review/brand-qa.md`.' }),
+    })
+    await scheduler._tickOnce()
+    const wake = turnCalls.at(-1)?.message ?? ''
+    expect(wake).toContain(`--- from Producer (a2) (message `)
+    expect(wake).toContain(`, reply to ${asked.id}) ---`)
+    expect(wake).toContain('This message is a reply to something you sent.')
+    expect(wake).toContain('Do not message the sender back')
+    expect(wake).toContain('your answer here is for them')
+    expect(wake).toContain('tell the user in a few lines what came back')
+    expect(wake).toContain('`deliver_file` each file it names')
+    expect(wake).not.toContain('You MUST reply')
+
+    // Beside a new message, which must still be answered, the reply is "the other" one.
+    messageRepo.send(env.db, {
+      from: 'a2',
+      to: 'a1',
+      replyTo: asked.id,
+      payload: JSON.stringify({ text: 'One more frame fixed.' }),
+    })
+    messageRepo.send(env.db, {
+      from: 'a2',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'Which CTA for the Polish cut?' }),
+    })
+    await scheduler._tickOnce()
+    const mixed = turnCalls.at(-1)?.message ?? ''
+    expect(mixed).toContain('You MUST reply to the 1 new message above')
+    expect(mixed).toContain('The other message is a reply to something you sent.')
+  })
+
   test('a failed inbox turn preparation leaves the messages unread and retries with backoff', async () => {
     agentRepo.insert(env.db, {
       id: 'a2',

@@ -264,7 +264,10 @@ the running ones and waits for them before closing browsers, MCP connections and
   trigger runs next (`nextRuns` in `GET /api/agents/:id/triggers`; none while it is paused or
   the scheduler is off, which both also say).
 - **Inbox wakes.** An idle Agent with unread mail gets one turn whose prompt contains the
-  messages, marked read in the same transaction. If that turn cannot start, the messages go back to
+  messages, marked read in the same transaction, in the Agent's current conversation. The
+  Agent must answer a new message with `send_message`. A reply is not answered back: the Agent
+  tells you what it brought back and delivers the files it names (`buildInboxPrompt` in
+  `lib/scheduler.ts`). If that turn cannot start, the messages go back to
   unread and the Agent's wakes back off from 10 s, doubling up to 5 minutes. A wake that fails,
   or cannot start, is listed in Attention as a failed turn
   ([Attention](attention-notifications.md#failed-background-turns)).
