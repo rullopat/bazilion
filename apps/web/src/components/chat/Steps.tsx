@@ -1,6 +1,7 @@
 // What an Agent did between two pieces of text: its tool calls as short sentences, the messages
 // it handed to teammates as cards, and a way to the diff when it wrote files.
 
+import { type Agent, chosenName } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
 import {
   ArrowLeftRight,
@@ -31,7 +32,7 @@ import {
   summarizeSteps,
 } from '../../lib/tool-steps'
 import { AgentAvatar } from '../AgentAvatar'
-import { useWorkspaceOptional } from '../workspace/context'
+import { useWorkspaceOptional, type WorkspaceValue } from '../workspace/context'
 import { pairSteps, type Step, type ToolItem } from './entries'
 
 const ICONS: Record<StepIcon, LucideIcon> = {
@@ -287,18 +288,44 @@ function LiveOutput({ output }: { output: string }) {
   )
 }
 
+/**
+ * The teammate a message went to: `to` is an id, the name in the list or the name the teammate
+ * gave itself, as send_message takes them (in the open Agent's Team, whatever the case).
+ */
+function recipientOf(workspace: WorkspaceValue | null, to: string): Agent | undefined {
+  if (!workspace || !to) return undefined
+  const byId = workspace.agentById(to)
+  if (byId) return byId
+  const key = to.trim().toLowerCase()
+  const team = workspace.agent?.agent.teamId
+  const named = (match: (agent: Agent) => boolean) => {
+    const found = workspace.agents.filter((agent) => agent.teamId === team && match(agent))
+    return found.length === 1 ? found[0] : undefined
+  }
+  return (
+    named((agent) => agent.name.trim().toLowerCase() === key) ??
+    named((agent) => chosenName(agent)?.toLowerCase() === key)
+  )
+}
+
 /** Messages to teammates: who got what, and what that teammate is doing now. */
 function Handoffs({ steps }: { steps: Step[] }) {
   const workspace = useWorkspaceOptional()
   const activity = useActivityOptional()
+  // A refused call (its arguments cut off, say) handed nothing off: it is listed as not sent.
+  const sent = steps.filter((step) => step.status !== 'failed').length
   return (
     <div className="my-3 overflow-hidden rounded-[10px] border border-border bg-muted text-sm">
       <div className="flex min-h-9 items-center gap-2 px-3 py-1.5 text-mocha">
         <ArrowLeftRight className="size-[15px] shrink-0" aria-hidden="true" />
         <span className="font-semibold text-foreground">
-          {steps.length === 1
-            ? 'Handed off to a teammate'
-            : `Handed off to ${steps.length} teammates`}
+          {sent === 0
+            ? steps.length === 1
+              ? 'Not handed off'
+              : 'Nothing handed off'
+            : sent === 1
+              ? 'Handed off to a teammate'
+              : `Handed off to ${sent} teammates`}
         </span>
         {workspace?.team && (
           <Link
@@ -313,7 +340,7 @@ function Handoffs({ steps }: { steps: Step[] }) {
       {steps.map((step, index) => {
         const args = parseArgs(step.args)
         const to = typeof args?.to === 'string' ? args.to : ''
-        const recipient = workspace?.agentById(to)
+        const recipient = recipientOf(workspace, to)
         const message = typeof args?.text === 'string' ? args.text : ''
         const state = recipient ? activity?.stateOf(recipient.id) : undefined
         return (

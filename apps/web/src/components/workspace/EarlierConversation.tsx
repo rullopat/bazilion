@@ -1,7 +1,7 @@
 // An earlier conversation of the Agent, to read. Messages still go to the active one until the
 // operator continues this one.
 
-import type { Conversation, ProviderMessage } from '@bazilion/api-types'
+import type { CompactionMark, Conversation, ProviderMessage } from '@bazilion/api-types'
 import { Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { type ReactNode, useRef, useState } from 'react'
 import { ApiError, api, errorMessage } from '../../lib/api'
@@ -17,6 +17,7 @@ interface Opened {
   conversation: Conversation | null
   /** Null when the history cannot be read. */
   messages: ProviderMessage[] | null
+  compactions?: CompactionMark[]
 }
 
 export function EarlierConversation({
@@ -126,7 +127,10 @@ export function EarlierConversation({
                 This conversation's history is unavailable, so it cannot be read or continued.
               </p>
             ) : opened.data.messages.length > 0 ? (
-              <ReadOnlyTranscript messages={opened.data.messages} />
+              <ReadOnlyTranscript
+                messages={opened.data.messages}
+                compactions={opened.data.compactions}
+              />
             ) : (
               <p className="py-12 text-center italic text-mocha-light">
                 This conversation is empty.

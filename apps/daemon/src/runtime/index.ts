@@ -11,8 +11,10 @@ export { qmdBackend } from './memory/qmd.ts'
 export { piMessagesToProviderView } from './pi/events.ts'
 export {
   conversationUsage,
+  conversationWindow,
   createBazilionSession,
   describeTurn,
+  loadConversation,
   loadInitialMessages,
   loadSessionHead,
   loadSessionMessages,

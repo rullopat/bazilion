@@ -4,7 +4,15 @@
 // when no browser is installed.
 
 import { type ChildProcess, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -104,6 +112,7 @@ describe.skipIf(!available)('agents in a running browser', () => {
   const home = join(root, 'home')
   const paths = resolvePaths(home)
   const profile = join(root, 'operator-profile')
+  const downloads = join(root, 'operator-downloads')
   let chrome: ChildProcess
   let origin: InstrumentedOrigin
   let config: BrowserConfig
@@ -124,6 +133,13 @@ describe.skipIf(!available)('agents in a running browser', () => {
       .map((page) => page.url())
 
   beforeAll(async () => {
+    // The operator's browser saves downloads where its settings say: a folder of the test's.
+    mkdirSync(downloads)
+    mkdirSync(join(profile, 'Default'), { recursive: true })
+    writeFileSync(
+      join(profile, 'Default', 'Preferences'),
+      JSON.stringify({ download: { default_directory: downloads, prompt_for_download: false } }),
+    )
     origin = await createInstrumentedOrigin()
     // The operator's browser, with one tab of their own open.
     chrome = spawn(
@@ -136,6 +152,8 @@ describe.skipIf(!available)('agents in a running browser', () => {
         '--no-default-browser-check',
         '--use-mock-keychain',
         '--password-store=basic',
+        // The operator's own setting, which the connection must leave to their tabs.
+        '--force-dark-mode',
         `${origin.origin}/operator-tab`,
       ],
       { stdio: 'ignore', env: { PATH: process.env.PATH ?? '', HOME: join(root, 'operator-home') } },
@@ -203,6 +221,20 @@ describe.skipIf(!available)('agents in a running browser', () => {
     expect(status.browser?.mode).toBe('attached')
   })
 
+  test("the operator's tabs keep their colour scheme", { timeout: 60_000 }, async () => {
+    try {
+      await run('attach-scheme', 'navigate', { url: `${origin.origin}/agent-a` })
+      const own = resources()
+        .browsers.get('attach-scheme')
+        ?.browser.context.pages()
+        .find((page) => page.url().endsWith('/operator-tab'))
+      if (!own) throw new Error("the operator's tab is not there")
+      expect(await own.evaluate("matchMedia('(prefers-color-scheme: dark)').matches")).toBe(true)
+    } finally {
+      await closeBrowserSession('attach-scheme')
+    }
+  })
+
   test("stopping a session closes the agent's tabs and leaves the browser running", {
     timeout: 60_000,
   }, async () => {
@@ -239,12 +271,35 @@ describe.skipIf(!available)('agents in a running browser', () => {
       run('attach-guard', 'navigate', { url: `${origin.origin}/direct` }, { allowPrivate: false }),
     ).rejects.toThrow(/navigation blocked/)
     await closeBrowserSession('attach-guard')
+  })
 
+  test("downloads are refused in the agent's tabs and left to the browser in the operator's", {
+    timeout: 60_000,
+  }, async () => {
+    origin.hits.length = 0
     await run('attach-dl', 'navigate', { url: `${origin.origin}/download-page` })
     const tab = resources().browsers.get('attach-dl')?.browser.pages()[0]
     if (!tab) throw new Error('the agent has no tab')
-    const download = tab.waitForEvent('download')
     await tab.click('#dl')
-    expect(await (await download).failure()).toBeTruthy()
+    await vi.waitFor(() => expect(origin.hits).toContain('/file.bin'))
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    expect(readdirSync(downloads)).toEqual([])
+
+    // The operator's tab saves where their browser saves, while an agent works in it too: the
+    // connection must take over neither the browser's downloads (Playwright's default sends them
+    // to a temporary folder of its own) nor refuse them for every tab.
+    const own = resources()
+      .browsers.get('attach-dl')
+      ?.browser.context.pages()
+      .find((page) => page.url().endsWith('/operator-tab'))
+    if (!own) throw new Error("the operator's tab is not there")
+    await own.goto(`${origin.origin}/download-page`)
+    await own.bringToFront()
+    await own.click('#dl')
+    await vi.waitFor(() => expect(readdirSync(downloads)).toEqual(['probe.bin']), {
+      timeout: 10_000,
+    })
+    await own.goto(`${origin.origin}/operator-tab`)
+    await closeBrowserSession('attach-dl')
   })
 })

@@ -3,6 +3,7 @@
 // renders the contained `SessionEvent`s. `ProviderMessage` is the shape both
 // the worker (in `done` frames) and clients (when displaying history) speak.
 
+import type { CompactionMark, ContextUse } from './chat.ts'
 import type { AgentQuestion } from './questions.ts'
 import type { ResultReference } from './results.ts'
 
@@ -27,6 +28,8 @@ export interface ProviderMessage {
   toolName?: string
   /** for role='tool': images the tool emitted (browser screenshots, MCP image results). */
   images?: ToolResultImage[]
+  /** for role='tool': the call failed or was refused, so nothing it asked for happened. */
+  isError?: boolean
   /** for role='assistant': the reply ended there, stopped by the operator or failed. */
   stopped?: 'cancelled' | 'failed'
 }
@@ -129,6 +132,11 @@ export type SessionEvent =
       output: string
     }
   | { type: 'error'; error: string }
+  /**
+   * The conversation neared the model's window, or a reply was cut short by it: older messages
+   * are being summarized (`running`), then were (`done`), or could not be (`failed`).
+   */
+  | { type: 'compaction'; state: 'running' | 'done' | 'failed'; error?: string }
 
 /**
  * The wire envelope the worker emits on stdout (NDJSON, one per line) and
@@ -143,5 +151,11 @@ export type SessionEvent =
  */
 export type ChatFrame =
   | { kind: 'event'; event: SessionEvent }
-  | { kind: 'done'; messages: ProviderMessage[] }
+  | {
+      kind: 'done'
+      /** The whole conversation after the turn, as `GET …/sessions/messages` gives it. */
+      messages: ProviderMessage[]
+      compactions?: CompactionMark[]
+      context?: ContextUse
+    }
   | { kind: 'fatal'; error: string }

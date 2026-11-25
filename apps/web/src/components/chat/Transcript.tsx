@@ -1,8 +1,9 @@
-import type { CommandApproval, ProviderMessage } from '@bazilion/api-types'
+import type { CommandApproval, CompactionMark, ProviderMessage } from '@bazilion/api-types'
 import { FileText } from 'lucide-react'
 import { type ReactNode, useState, useSyncExternalStore } from 'react'
 import { inboxUpdateLabel } from '../../lib/inbox-presentation'
 import { renderMd } from '../../lib/md'
+import { formatContext } from '../../lib/model-facts'
 import { ResultTile } from '../files/ResultTile'
 import { useWorkspaceOptional } from '../workspace/context'
 import { CommandApprovalCard } from './CommandApprovalCard'
@@ -10,7 +11,6 @@ import { groupEntries, projectMessages, type RenderEntry, type TranscriptBlock }
 import { StepsBlock } from './Steps'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
-const COMPACTION_REPLAY_PREFIX = '[conversation summary]'
 
 const noSubscription = () => () => {}
 
@@ -112,25 +112,6 @@ export function Bubble({
         </div>
       )
     case 'assistant':
-      if (entry.content.startsWith(COMPACTION_REPLAY_PREFIX)) {
-        const summary = entry.content.slice(COMPACTION_REPLAY_PREFIX.length).trim()
-        return (
-          <div
-            className={`my-3 border-y border-dashed border-frost py-2 text-[0.85em] italic text-mocha-light ${dropClass}`}
-          >
-            <details>
-              <summary className="cursor-pointer select-none text-center [&::-webkit-details-marker]:hidden">
-                — conversation summary (click to expand) —
-              </summary>
-              <div
-                className="md-content mt-2 rounded-sm bg-frost/40 p-2 not-italic"
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: marked output sanitized by DOMPurify.
-                dangerouslySetInnerHTML={{ __html: renderMd(summary, markdownReady) }}
-              />
-            </details>
-          </div>
-        )
-      }
       return (
         <div data-message="" className={`my-4 flex flex-col items-start ${dropClass}`}>
           <span className="sr-only">agent</span>
@@ -183,7 +164,68 @@ export function Bubble({
           {entry.content}
         </div>
       )
+    case 'compacted':
+      return <CompactedDivider mark={entry.mark} markdownReady={markdownReady} />
+    case 'compacting':
+      return entry.state === 'failed' ? (
+        <div
+          role="alert"
+          className="my-3 rounded-r-sm border-l-[3px] border-danger bg-danger/10 px-3 py-1 text-[0.92em] text-danger"
+        >
+          Could not summarize older messages: {entry.error}
+        </div>
+      ) : (
+        <p role="status" className="my-2 flex items-center gap-2 px-1 text-[0.85em] text-mocha">
+          {entry.state === 'running' && (
+            <span className="size-[7px] animate-pulse rounded-full bg-success" aria-hidden="true" />
+          )}
+          {entry.state === 'running'
+            ? 'Summarizing older messages to make room…'
+            : 'Older messages summarized to make room.'}
+        </p>
+      )
   }
+}
+
+/**
+ * Where a compaction summarized the conversation. The messages above stay for the reader; the
+ * Agent reads the summary in their place.
+ */
+function CompactedDivider({
+  mark,
+  markdownReady,
+}: {
+  mark: CompactionMark
+  markdownReady: boolean
+}) {
+  const size = formatContext(mark.tokensBefore)
+  return (
+    <details className="group my-5 text-[0.85em] text-mocha">
+      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-md [&::-webkit-details-marker]:hidden">
+        <span className="h-px flex-1 bg-fawn" aria-hidden="true" />
+        <span className="min-w-0 text-center">
+          Older messages summarized to make room{size ? ` (${size} tokens)` : ''} ·{' '}
+          <span className="font-semibold text-sapphire-deep group-open:hidden">
+            Show the summary
+          </span>
+          <span className="hidden font-semibold text-sapphire-deep group-open:inline">
+            Hide the summary
+          </span>
+        </span>
+        <span className="h-px flex-1 bg-fawn" aria-hidden="true" />
+      </summary>
+      <div className="mt-2 rounded-[10px] border border-frost bg-muted px-3 py-2 text-chocolate">
+        <p className="m-0 mb-1.5 text-[0.92em] text-mocha">
+          The Agent reads this summary in place of the messages above; they stay here for you.
+        </p>
+        <div
+          className="md-content"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: marked output sanitized by DOMPurify.
+          dangerouslySetInnerHTML={{ __html: renderMd(mark.summary, markdownReady) }}
+        />
+      </div>
+    </details>
+  )
 }
 
 const LONG_LINES = 14
@@ -325,11 +367,20 @@ export function TranscriptBlocks({
 }
 
 /** A conversation's messages, read-only (an earlier conversation). */
-export function ReadOnlyTranscript({ messages }: { messages: ProviderMessage[] }) {
+export function ReadOnlyTranscript({
+  messages,
+  compactions,
+}: {
+  messages: ProviderMessage[]
+  compactions?: CompactionMark[]
+}) {
   const markdownReady = useMarkdownReady()
   return (
     <section aria-label="Conversation history">
-      <TranscriptBlocks entries={projectMessages(messages)} markdownReady={markdownReady} />
+      <TranscriptBlocks
+        entries={projectMessages(messages, compactions)}
+        markdownReady={markdownReady}
+      />
     </section>
   )
 }

@@ -607,3 +607,74 @@ test('the live feed comes back after the daemon restarts', async () => {
   // Requests failed while the daemon was down, as they should; the page itself did not.
   expect(session.problems.filter((problem) => problem.startsWith('page error'))).toEqual([])
 })
+
+test('a compacted conversation keeps its earlier messages under a divider, and a meter says how full it is', async () => {
+  // A compaction as a turn would write it: the first two messages summarized, the rest kept.
+  const head = await instance.api<{ file: string | null }>(`/api/agents/${ids.dev}/sessions/head`)
+  if (!head.file) throw new Error('Dev has no conversation')
+  const file = join(instance.home, 'agents', ids.dev, 'sessions', head.file)
+  const entries = readFileSync(file, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          type: string
+          id: string
+          message?: { role: string; content: unknown }
+        },
+    )
+  // As the page counts them: Pi's system-prompt entries are not messages to read.
+  const messages = entries.filter(
+    (entry) => entry.type === 'message' && entry.message?.role !== 'system',
+  )
+  const kept = messages[2]
+  const last = entries.at(-1)
+  if (!kept || !last) throw new Error("Dev's conversation is too short")
+  const first = messages[0]?.message?.content
+  const firstText = (
+    typeof first === 'string' ? first : ((first as { text?: string }[])[0]?.text ?? '')
+  ).slice(0, 40)
+  writeFileSync(
+    file,
+    `${readFileSync(file, 'utf8')}${JSON.stringify({
+      type: 'compaction',
+      id: 'compaction-e2e',
+      parentId: last.id,
+      timestamp: new Date().toISOString(),
+      summary: 'Dev and Mira agreed on the dark-mode release checklist.',
+      firstKeptEntryId: kept.id,
+      tokensBefore: 24_000,
+    })}\n`,
+  )
+
+  const session = await open()
+  await session.go(`/?agent=${ids.dev}`)
+  const page = session.page
+  const log = page.getByRole('log', { name: 'Conversation with Dev' })
+  const divider = log.getByText(/Older messages summarized to make room \(24K tokens\)/)
+  await pw(divider).toBeVisible()
+  // The summarized messages are still there to read.
+  await pw(log).toContainText(firstText)
+  await log.getByText('Show the summary').click()
+  await pw(log).toContainText('Dev and Mira agreed on the dark-mode release checklist.')
+  // The model has not replied since: only the window is known.
+  await pw(page.getByText('33K window')).toBeVisible()
+
+  const composer = page.getByPlaceholder('Message Dev')
+  await composer.fill('Thanks, that is all for now.')
+  await composer.press('Enter')
+  await pw(log.getByText('Noted. Tell me what you would like me to do next.')).toBeVisible({
+    timeout: 15_000,
+  })
+  // The turn's end keeps the divider, and the meter has the model's own count.
+  await pw(divider).toBeVisible()
+  await pw(page.getByRole('meter', { name: 'Conversation size' })).toHaveAttribute(
+    'aria-valuetext',
+    '1K / 33K tokens',
+  )
+  // The summary opened above is still open: the divider, its summary and the meter, checked.
+  await pw(log.getByText('Hide the summary')).toBeVisible()
+  expect(await accessibilityProblems(page, 'a compacted conversation')).toEqual([])
+  expect(session.problems).toEqual([])
+})

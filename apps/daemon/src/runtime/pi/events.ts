@@ -45,6 +45,21 @@ export function translatePiEvent(
   secrets: readonly string[] = [],
 ): SessionEvent[] {
   switch (e.type) {
+    case 'compaction_start':
+      return [{ type: 'compaction', state: 'running' }]
+
+    case 'compaction_end':
+      if (e.aborted) return []
+      return e.result
+        ? [{ type: 'compaction', state: 'done' }]
+        : [
+            {
+              type: 'compaction',
+              state: 'failed',
+              error: redactExactValues(e.errorMessage ?? 'no summary came back', secrets),
+            },
+          ]
+
     case 'message_start': {
       if (e.message.role === 'user') {
         return [{ type: 'user_message', text: stringifyContent(e.message.content) }]
@@ -295,7 +310,12 @@ export function piMessagesToProviderView(
         break
       }
       case 'toolResult': {
-        const tr = m as { content: unknown; toolCallId?: string; toolName?: string }
+        const tr = m as {
+          content: unknown
+          toolCallId?: string
+          toolName?: string
+          isError?: boolean
+        }
         const images = extractToolResultImages({ content: tr.content })
         out.push({
           role: 'tool',
@@ -304,6 +324,7 @@ export function piMessagesToProviderView(
           toolName: tr.toolName,
           results: extractResultReferences(m),
           ...(images.length > 0 ? { images } : {}),
+          ...(tr.isError ? { isError: true } : {}),
         })
         break
       }

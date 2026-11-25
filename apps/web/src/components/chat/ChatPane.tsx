@@ -2,7 +2,13 @@
 // The state lives in useChatSession; this file lays it out. The bar above it comes from the
 // workspace, which knows about Teams, panels and other conversations.
 
-import type { Attachment, ProviderMessage, SessionHeadResponse } from '@bazilion/api-types'
+import type {
+  Attachment,
+  CompactionMark,
+  ContextUse,
+  ProviderMessage,
+  SessionHeadResponse,
+} from '@bazilion/api-types'
 import { useNavigate } from '@tanstack/react-router'
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useActivityOptional } from '../../lib/activity'
@@ -21,6 +27,8 @@ export interface ChatControls {
   agentBusy: boolean
   /** Load the selected conversation again, e.g. after switching to another one. */
   reload: () => Promise<void>
+  /** How full the model's window is; null before the daemon has said. */
+  context: ContextUse | null
   /** `/new` asks for the list of conversations. */
   conversationsOpen: boolean
   setConversationsOpen: (open: boolean) => void
@@ -30,6 +38,9 @@ export interface ChatPaneProps {
   agentId: string
   agentName: string
   initialMessages: ProviderMessage[]
+  /** Where compactions summarized the conversation. */
+  initialCompactions?: CompactionMark[]
+  initialContext?: ContextUse | null
   /** SSR snapshot of the conversation file; the stale banner compares against it. */
   initialSessionHead?: SessionHeadResponse
   /** The bar above the conversation; the Agent's name alone without it. */
@@ -55,6 +66,8 @@ function AgentChat({
   agentId,
   agentName,
   initialMessages,
+  initialCompactions,
+  initialContext,
   initialSessionHead,
   header,
   onViewConversation,
@@ -66,6 +79,8 @@ function AgentChat({
   const chat = useChatSession({
     agentId,
     initialMessages,
+    ...(initialCompactions ? { initialCompactions } : {}),
+    ...(initialContext !== undefined ? { initialContext } : {}),
     initialSessionHead,
     onOpenLibrary: () => setConversationsOpen(true),
     onConversation: onConversationChange,
@@ -191,6 +206,7 @@ function AgentChat({
       {header ? (
         header({
           agentBusy: chat.agentBusy,
+          context: chat.context,
           reload: chat.refreshHistory,
           conversationsOpen,
           setConversationsOpen,

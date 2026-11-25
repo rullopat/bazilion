@@ -5,6 +5,8 @@
 import type {
   Attachment,
   ChatFrame,
+  CompactionMark,
+  ContextUse,
   ProviderMessage,
   SessionHeadResponse,
 } from '@bazilion/api-types'
@@ -35,12 +37,17 @@ export type SystemNote = TranscriptNote
 export function useChatSession({
   agentId,
   initialMessages,
+  initialCompactions = [],
+  initialContext = null,
   initialSessionHead,
   onOpenLibrary,
   onConversation,
 }: {
   agentId: string
   initialMessages: ProviderMessage[]
+  /** Where compactions summarized the conversation; dividers in the transcript. */
+  initialCompactions?: CompactionMark[]
+  initialContext?: ContextUse | null
   /** The SSR head of the conversation file; the stale poll compares against it. */
   initialSessionHead?: SessionHeadResponse
   onOpenLibrary: () => void
@@ -49,6 +56,8 @@ export function useChatSession({
 }) {
   const base = `/api/agents/${encodeURIComponent(agentId)}`
   const [messages, setMessages] = useState(initialMessages)
+  const [compactions, setCompactions] = useState(initialCompactions)
+  const [context, setContext] = useState(initialContext)
   const [live, setLive] = useState<RenderEntry[]>([])
   const [notes, setNotes] = useState<SystemNote[]>([])
   const [thinking, setThinking] = useState(false)
@@ -78,7 +87,9 @@ export function useChatSession({
     streamingRef,
     pushNote,
     onHistory: (saved) => {
-      setMessages(saved)
+      setMessages(saved.messages)
+      setCompactions(saved.compactions ?? [])
+      setContext(saved.context ?? null)
       setLive([])
       setEditing(false)
     },
@@ -114,6 +125,8 @@ export function useChatSession({
     if (frame.kind === 'done') {
       approvalTurnRef.current = false
       setMessages(frame.messages)
+      if (frame.compactions) setCompactions(frame.compactions)
+      if (frame.context) setContext(frame.context)
       setLive([])
       setRecoveredTurn(false)
       resetApprovals()
@@ -178,6 +191,7 @@ export function useChatSession({
         return draft
       }
       setMessages((current) => current.slice(0, keepCount))
+      setCompactions((current) => current.filter((mark) => mark.index < keepCount))
       setEditing(false)
     }
 
@@ -265,7 +279,7 @@ export function useChatSession({
     return messages[index]?.content ?? null
   }
 
-  const history = projectMessages(messages)
+  const history = projectMessages(messages, compactions)
   const entries = [...history, ...live]
   entryCountRef.current = entries.length
   const lastUserEntry = history.findLastIndex((entry) => entry.type === 'user')
@@ -280,6 +294,8 @@ export function useChatSession({
     thinking,
     turnBusy,
     agentBusy,
+    /** How full the model's window is; null before the daemon has said. */
+    context,
     editing,
     stale: sync.stale,
     recoveredTurn,

@@ -39,9 +39,10 @@ import { searchRoute } from '../lib/web-search.ts'
 import { hasCredentials } from '../runtime/auth/openai-codex.ts'
 import {
   conversationUsage,
+  conversationWindow,
   createBazilionSession,
   describeTurn,
-  loadInitialMessages,
+  loadConversation,
   loadSessionHead,
   openConversation,
   type PromptSection,
@@ -112,17 +113,21 @@ agentChatRouter.get('/:id/sessions/messages', (c) => {
   const target = selectedConversationTarget(db, resolved.agent.id)
   const conversationId = target?.id ?? null
   try {
-    const messages = piMessagesToProviderView(
-      loadInitialMessages(resolved, paths, target),
-      envSecretValues(mergeSecretsIntoEnv(db, authToken)),
-    )
+    const { messages, compactions, context } = loadConversation(resolved, paths, target)
     return c.json({
-      messages,
+      messages: piMessagesToProviderView(
+        messages,
+        envSecretValues(mergeSecretsIntoEnv(db, authToken)),
+      ),
+      compactions,
+      context,
       head: { ...loadSessionHead(resolved, paths, target), conversationId },
     } satisfies SessionMessagesResponse)
   } catch {
     return c.json({
       messages: [],
+      compactions: [],
+      context: { tokens: null, window: null },
       head: unavailableHead(target, conversationId),
     } satisfies SessionMessagesResponse)
   }
@@ -369,7 +374,8 @@ agentChatRouter.get('/:id/chat/context', (c) =>
       path: resolved.team.path,
       userMdChars: resolved.team.userMd.length,
     }
-    const history = conversationUsage(openConversation(resolved, paths, target))
+    const conversation = openConversation(resolved, paths, target)
+    const history = conversationUsage(conversation)
     const historyChars = history.tokens * 4
 
     const cap = c.req.query('detail') === '1' ? Number.POSITIVE_INFINITY : 30
@@ -402,6 +408,7 @@ agentChatRouter.get('/:id/chat/context', (c) =>
         tokensEstimate: history.tokens,
       },
       totals: { chars: totalsChars, tokens: estimateTokens(totalsChars) },
+      window: conversationWindow(conversation, resolved.model),
     } satisfies ChatContextResponse)
   }),
 )
@@ -421,14 +428,16 @@ agentChatRouter.post('/:id/chat/truncate', async (c) => {
     const { db, paths } = getCtx()
     const conversation = openConversation(resolveAgent(db, paths, id), paths, target)
     // The messages a client shows: Pi's system-prompt entries are not among them.
-    const messageEntries = conversation
-      .getBranch()
-      .filter((e) => e.type === 'message' && e.message.role !== 'system')
+    const branch = conversation.getBranch()
+    const messageEntries = branch.filter((e) => e.type === 'message' && e.message.role !== 'system')
     const before = messageEntries.length
     const after = Math.max(0, Math.min(keep, before))
     if (after === before) return c.json({ before, after } satisfies TruncateChatResponse)
 
-    const lastKept = messageEntries[after - 1]
+    // Back to just before the first message dropped, so what came between it and the last one
+    // kept stays: a compaction made after a reply, a change of model.
+    const firstDropped = messageEntries[after]
+    const lastKept = firstDropped ? branch[branch.indexOf(firstDropped) - 1] : undefined
     if (lastKept) conversation.branch(lastKept.id)
     else conversation.resetLeaf()
     // Moving the leaf only lasts in memory; an appended marker makes it the file's last entry,

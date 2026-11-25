@@ -12,7 +12,7 @@ import { searchConversations } from '../lib/conversation-search.ts'
 import { selectConversation, startConversation } from '../lib/conversation-target.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { conversationUsage, planProviders } from '../lib/usage.ts'
-import { loadInitialMessages, piMessagesToProviderView } from '../runtime/index.ts'
+import { loadConversation, piMessagesToProviderView } from '../runtime/index.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
 import { jsonBody, newRouter, routeAgent, routeAgentRef } from './http.ts'
 
@@ -83,15 +83,16 @@ conversationsRouter.get('/:agentId/conversations/:id', (c) => {
   const conversation = conversations.get(db, agentId, id)
   if (!conversation) return c.json({ error: 'Conversation not found' }, 404)
   try {
+    const history = loadConversation(resolveAgent(db, paths, agentId), paths, { id })
     const messages = piMessagesToProviderView(
-      loadInitialMessages(resolveAgent(db, paths, agentId), paths, { id }),
+      history.messages,
       envSecretValues(mergeSecretsIntoEnv(db, authToken)),
     )
     const usage =
       conversationUsage(paths, agentId, planProviders(mergeSecretsIntoEnv(db, authToken))).get(
         id,
       ) ?? null
-    return c.json({ conversation, messages, usage })
+    return c.json({ conversation, messages, compactions: history.compactions, usage })
   } catch {
     return c.json(
       {
