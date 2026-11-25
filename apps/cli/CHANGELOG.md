@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.60.0
+
+### Minor Changes
+
+- [#119](https://github.com/rullopat/bazilion/pull/119) [`0e72b3b`](https://github.com/rullopat/bazilion/commit/0e72b3b2a9a43f70f7af8d6a176b68e4b18af088) Thanks [@rullopat](https://github.com/rullopat)! - **The Agent can reread what a summary replaced.** When a long conversation is summarized, the summary is all the Agent reads of its older messages. A new `recall` tool lets it search those messages and read them in full, tool output included, when the summary leaves out a detail it needs: an exact value, a link, your own words. In the conversation the step shows as **Searched older messages for …** or **Reread older messages**.
+
 ## 0.59.0
 
 ### Minor Changes
