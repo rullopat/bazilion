@@ -647,5 +647,23 @@ test('a compacted conversation keeps its earlier messages under a divider, and a
   // The summary opened above is still open: the divider, its summary and the meter, checked.
   await pw(log.getByText('Hide the summary')).toBeVisible()
   expect(await accessibilityProblems(page, 'a compacted conversation')).toEqual([])
+
+  // Beside the side panel, the meter shows where the bar has room for it, and never pushes the
+  // panel button out of the bar.
+  for (const [width, meter] of [
+    [1440, true],
+    [1280, false],
+  ] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    await session.go(`/?agent=${ids.dev}&panel=team`)
+    const bar = page.getByRole('heading', { name: 'Dev', level: 1 }).locator('xpath=..')
+    const button = page.getByRole('link', { name: 'Hide the side panel' })
+    const [barBox, buttonBox] = [await bar.boundingBox(), await button.boundingBox()]
+    if (!barBox || !buttonBox) throw new Error(`no bar at ${width}`)
+    expect(buttonBox.x + buttonBox.width, `width ${width}`).toBeLessThanOrEqual(
+      barBox.x + barBox.width,
+    )
+    await pw(page.getByRole('meter', { name: 'Conversation size' })).toHaveCount(meter ? 1 : 0)
+  }
   expect(session.problems).toEqual([])
 })

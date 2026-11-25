@@ -64,7 +64,7 @@ export function ConversationHeader({
   const { to } = useWorkspace()
   return (
     // One line from a tablet up: the conversation's title gives way before anything wraps.
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-frost px-3 py-2.5 sm:flex-nowrap sm:px-4">
+    <div className="@container flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-frost px-3 py-2.5 sm:flex-nowrap sm:px-4">
       <Link
         to="/"
         search={{}}
@@ -158,7 +158,9 @@ function WindowMeter({ context }: { context: ContextUse | null }) {
   return (
     <span
       title={title}
-      className="hidden h-[26px] shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs text-mocha sm:inline-flex"
+      // Only in a bar with room for it, and it gives way: the menu and the panel button always
+      // stay in the bar.
+      className="hidden h-[26px] min-w-0 shrink-[2] items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs text-mocha @min-[36rem]:inline-flex"
       {...(share === null
         ? {}
         : {
@@ -171,14 +173,17 @@ function WindowMeter({ context }: { context: ContextUse | null }) {
           })}
     >
       {share !== null && (
-        <span className="h-1.5 w-8 overflow-hidden rounded-full bg-frost" aria-hidden="true">
+        <span
+          className="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-frost"
+          aria-hidden="true"
+        >
           <span
             className={`block h-full rounded-full ${share >= 0.8 ? 'bg-warning' : 'bg-sapphire'}`}
             style={{ width: `${Math.max(4, share * 100)}%` }}
           />
         </span>
       )}
-      <span className="font-mono">{label}</span>
+      <span className="min-w-0 truncate font-mono">{label}</span>
     </span>
   )
 }
