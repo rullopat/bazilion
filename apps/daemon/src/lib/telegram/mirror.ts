@@ -226,6 +226,12 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
       return mode === 'verbose' ? `✓ ${ev.name} → ${clip(ev.result, 200)}` : null
     case 'tool_error':
       return mode === 'verbose' ? `✕ ${ev.name}: ${ev.error}` : null
+    case 'compaction':
+      if (ev.state === 'failed') return `⚠️ Could not summarize older messages: ${ev.error ?? ''}`
+      if (mode !== 'verbose') return null
+      return ev.state === 'running'
+        ? 'Summarizing older messages to make room…'
+        : 'Older messages summarized to make room.'
     case 'command_approval':
       // A waiting command gets its own prompt (approvals.ts); its outcome needs no line.
       return null

@@ -176,6 +176,16 @@ export function printEvent(e: SessionEvent, state: PrintState): void {
       closeDeltaLine(state)
       console.log(`  [error: ${e.error}]`)
       break
+    case 'compaction':
+      closeDeltaLine(state)
+      console.log(
+        e.state === 'running'
+          ? '  [summarizing older messages to make room…]'
+          : e.state === 'done'
+            ? '  [older messages summarized]'
+            : `  [could not summarize older messages: ${terminalSafe(e.error ?? '', true)}]`,
+      )
+      break
   }
 }
 

@@ -64,8 +64,33 @@ export interface SessionHeadResponse {
 }
 
 /** `GET /api/agents/:id/sessions/messages`: the selected conversation for the chat's first paint. */
+/**
+ * Where a compaction summarized a conversation: the messages before `index` became `summary`. The
+ * model reads that summary in their place; people still read them.
+ */
+export interface CompactionMark {
+  /** Position in the conversation's messages; the ones before it were summarized. */
+  index: number
+  summary: string
+  /** How large the conversation was, in tokens, when it was summarized. */
+  tokensBefore: number
+  /** When, in milliseconds since the epoch. */
+  at: number
+}
+
+/** How full the model's window is when the next turn starts. */
+export interface ContextUse {
+  /** Null until the model replies after the latest compaction (it reports what it read). */
+  tokens: number | null
+  /** The model's window; null when Pi's catalog does not know the model. */
+  window: number | null
+}
+
 export interface SessionMessagesResponse {
+  /** Every message of the conversation, those a compaction summarized included. */
   messages: ProviderMessage[]
+  compactions: CompactionMark[]
+  context: ContextUse
   head: SessionHeadResponse
 }
 
@@ -147,6 +172,8 @@ export interface ChatContextResponse {
   history: ContextHistoryBreakdown
   /** Sum of system prompt + tool schemas + history, in chars + tokens. */
   totals: { chars: number; tokens: number }
+  /** How full the model's window is, as the model last reported it. */
+  window: ContextUse
 }
 
 export interface ChatCompactRequest {

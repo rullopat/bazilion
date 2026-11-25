@@ -36,11 +36,19 @@ composer while you look at another Agent, for as long as the page is open.
 A reply you stop with **Stop** ends with `Stopped.`, and one that failed with `This reply
 failed.`, in the conversation and in its history.
 
+A conversation that nears the model's window is summarized during a turn: older messages become
+one summary the Agent reads in their place, and the last 20,000 tokens or so stay as they are. It
+stays one conversation, with its files and follow-ups; the summarized messages stay in its file
+and on the page, above a line with **Show the summary**, and are found by search. `/compact`
+does the same at once. The bar above the conversation says how full the window is, and
+`bazilion agent chat-context <agent>` prints the same figure. A reply the full window would have
+cut short is redone after the summary.
+
 ## Search
 
 Search finds the messages, yours and the Agents' replies, that hold every word you give, in
-every Agent's conversations, newest first. It looks at what a conversation shows, as it reads:
-tool output, anything a summary replaced and a link's address are not searched. A stored credential is never found, and is
+every Agent's conversations, newest first. It looks at what a conversation shows, as it reads,
+summarized messages included: tool output and a link's address are not searched. A stored credential is never found, and is
 taken out of what a result shows.
 
 - **Web:** type three characters or more in **Jump to** (⌘K or Ctrl+K). **In conversations**

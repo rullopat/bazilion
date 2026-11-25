@@ -91,7 +91,11 @@ What changes in this mode:
 - There is no proxy between your browser and the network. Bazilion checks each request of an
   Agent's tab against the same rules and refuses loopback and private addresses, but a service
   worker's requests, the first request of a tab that a page opened, and a host name whose address
-  changes after the check are not covered. Downloads are refused in the Agent's tabs only.
+  changes after the check are not covered.
+- A download that starts in an Agent's tab is cancelled, and deleted if it finished first. Yours go
+  where your browser saves them, and your tabs keep their own settings, such as dark mode. A
+  download that a page starts in a tab it has just opened can get through before Bazilion knows the
+  tab is the Agent's.
 - `BROWSER_HEADLESS` and `BROWSER_EXECUTABLE_PATH` are not used, and an Agent's saved profile is
   left as it is for when you turn the mode off.
 

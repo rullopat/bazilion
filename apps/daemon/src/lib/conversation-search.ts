@@ -5,11 +5,11 @@
 
 import { join } from 'node:path'
 import type { ConversationSearchHit, ConversationSearchResponse } from '@bazilion/api-types'
-import { buildSessionContext } from '@earendil-works/pi-coding-agent'
 import type { BazilionDb } from '../core/db/client.ts'
 import { DomainError } from '../core/errors.ts'
 import type { Paths } from '../core/paths.ts'
 import { piMessagesToProviderView } from '../runtime/index.ts'
+import { branchOf, type ConversationHistory, conversationHistory } from '../runtime/pi/history.ts'
 import { parseSessionText, readSessionText } from '../runtime/pi/session-file.ts'
 import { redactExactValues } from '../runtime/worker/runtime.ts'
 
@@ -110,10 +110,10 @@ export async function searchConversations(
     }
     const lower = text.toLowerCase()
     if (!raw.every((word) => lower.includes(word))) continue
-    let messages: ReturnType<typeof buildSessionContext>['messages']
+    // Every message, those a compaction summarized included: the conversation shows them all.
+    let messages: ConversationHistory['messages']
     try {
-      const entries = parseSessionText(text, row.id)
-      messages = buildSessionContext(entries.filter((entry) => entry.type !== 'session')).messages
+      messages = conversationHistory(branchOf(parseSessionText(text, row.id))).messages
     } catch {
       unreadable++
       continue

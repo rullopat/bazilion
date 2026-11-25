@@ -170,3 +170,67 @@ test('a stopped reply says so, from the history and live', () => {
     { type: 'error', content: '[error] rate limited' },
   ])
 })
+
+test('a compaction stands where its summary starts, and one that kept nothing at the end', () => {
+  const mark = (index: number) => ({ index, summary: `up to ${index}`, tokensBefore: 9_000, at: 1 })
+  const messages: ProviderMessage[] = [
+    { role: 'user', content: 'first' },
+    {
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 't1', name: 'bash', arguments: '{}' }],
+    },
+    { role: 'tool', content: 'ok', toolCallId: 't1', toolName: 'bash' },
+    { role: 'assistant', content: 'done' },
+    { role: 'user', content: 'second' },
+  ]
+  expect(projectMessages(messages, [mark(3), mark(5)]).map((entry) => entry.type)).toEqual([
+    'user',
+    'tool',
+    'compacted',
+    'assistant',
+    'user',
+    'compacted',
+  ])
+  // A divider inside a run of work ends its tool box: steps never straddle it.
+  const split = projectMessages(messages, [mark(2)])
+  expect(split.map((entry) => entry.type)).toEqual([
+    'user',
+    'tool',
+    'compacted',
+    'tool',
+    'assistant',
+    'user',
+  ])
+})
+
+test('a compaction during the turn shows while it runs and is replaced by how it ended', () => {
+  const running = applyEvent([], { type: 'compaction', state: 'running' })
+  expect(running).toEqual([{ type: 'compacting', state: 'running' }])
+  expect(applyEvent(running, { type: 'compaction', state: 'done' })).toEqual([
+    { type: 'compacting', state: 'done' },
+  ])
+  expect(applyEvent(running, { type: 'compaction', state: 'failed', error: 'no summary' })).toEqual(
+    [{ type: 'compacting', state: 'failed', error: 'no summary' }],
+  )
+})
+
+test('a tool call that was refused is a failed step, whatever its text says', () => {
+  const [box] = projectMessages([
+    {
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 's', name: 'send_message', arguments: '' }],
+    },
+    {
+      role: 'tool',
+      content: 'Tool call "send_message" was not executed: the response hit the output token limit',
+      toolCallId: 's',
+      toolName: 'send_message',
+      isError: true,
+    },
+  ])
+  expect(box?.type === 'tool' && pairSteps(box.items).map((step) => step.status)).toEqual([
+    'failed',
+  ])
+})

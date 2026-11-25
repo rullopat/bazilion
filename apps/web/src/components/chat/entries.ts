@@ -6,6 +6,7 @@ import type {
   ChatFrame,
   ChatRequest,
   CommandApproval,
+  CompactionMark,
   ProviderMessage,
   SessionEvent,
   ToolResultImage,
@@ -30,6 +31,10 @@ export type RenderEntry =
   | { type: 'error'; content: string }
   /** A reply that ended there: stopped by the operator, or failed. */
   | { type: 'stopped'; reason: 'cancelled' | 'failed' }
+  /** Where the messages above were summarized to make room in the model's window. */
+  | { type: 'compacted'; mark: CompactionMark }
+  /** A compaction during the turn on screen; the turn's end replaces it with its divider. */
+  | { type: 'compacting'; state: 'running' | 'done' | 'failed'; error?: string }
 
 /** A browser turn: risky shell commands and agent questions wait for the user in the chat. */
 export function interactiveChatRequest(message: string, attachments: Attachment[]): ChatRequest {
@@ -61,7 +66,10 @@ export function draftEntry(text: string, attachments: Attachment[]): RenderEntry
  * answer them grouped into one tool box. Saved results and images are deliverables, so they stand
  * outside the box.
  */
-export function projectMessages(messages: ProviderMessage[]): RenderEntry[] {
+export function projectMessages(
+  messages: ProviderMessage[],
+  compactions: readonly CompactionMark[] = [],
+): RenderEntry[] {
   const entries: RenderEntry[] = []
   let openTool: { type: 'tool'; items: ToolItem[] } | null = null
   const toolBox = () => {
@@ -71,7 +79,16 @@ export function projectMessages(messages: ProviderMessage[]): RenderEntry[] {
     }
     return openTool
   }
-  for (const message of messages) {
+  /** The dividers that stand before message `index`, in the order they happened. */
+  const dividersAt = (index: number) => {
+    for (const mark of compactions) {
+      if (mark.index !== index) continue
+      openTool = null
+      entries.push({ type: 'compacted', mark })
+    }
+  }
+  messages.forEach((message, index) => {
+    dividersAt(index)
     if (message.role === 'user') {
       openTool = null
       entries.push({
@@ -93,7 +110,7 @@ export function projectMessages(messages: ProviderMessage[]): RenderEntry[] {
       }
     } else if (message.role === 'tool') {
       toolBox().items.push({
-        kind: /^error:/i.test(message.content) ? 'error' : 'result',
+        kind: message.isError || /^error:/i.test(message.content) ? 'error' : 'result',
         id: message.toolCallId ?? '',
         name: message.toolName ?? '',
         body: message.content,
@@ -107,7 +124,9 @@ export function projectMessages(messages: ProviderMessage[]): RenderEntry[] {
         openTool = null
       }
     }
-  }
+  })
+  // A compaction that kept nothing verbatim stands after everything.
+  dividersAt(messages.length)
   return entries
 }
 
@@ -286,6 +305,17 @@ export function applyEvent(entries: RenderEntry[], event: SessionEvent): RenderE
     }
     case 'file':
       return [...entries, { type: 'result', resultId: event.result.resultId }]
+    case 'compaction': {
+      const entry: RenderEntry = {
+        type: 'compacting',
+        state: event.state,
+        ...(event.error ? { error: event.error } : {}),
+      }
+      const at = entries.findLastIndex((candidate) => candidate.type === 'compacting')
+      return at >= 0 && entries[at]?.type === 'compacting' && entries[at].state === 'running'
+        ? entries.map((candidate, index) => (index === at ? entry : candidate))
+        : [...entries, entry]
+    }
     case 'error':
       // Stopping a turn is not an error: the conversation says where it stopped.
       if (event.error === 'cancelled') return [...entries, { type: 'stopped', reason: 'cancelled' }]

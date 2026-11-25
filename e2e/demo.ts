@@ -505,6 +505,56 @@ export async function seedDemoBase(instance: Instance, launchSite: string): Prom
 }
 
 /** Memory notes and finished conversations, with a schedule for Mira. */
+/**
+ * A compaction as a turn writes it, appended to an Agent's conversation: its first `summarized`
+ * messages summarized, the rest kept. Returns the first message's text, which stays on the page.
+ */
+export async function seedCompaction(
+  instance: Instance,
+  agentId: string,
+  summary: string,
+  { summarized = 2, tokensBefore = 24_000 }: { summarized?: number; tokensBefore?: number } = {},
+): Promise<string> {
+  const head = await instance.api<{ file: string | null }>(`/api/agents/${agentId}/sessions/head`)
+  if (!head.file) throw new Error('the Agent has no conversation')
+  const file = join(instance.home, 'agents', agentId, 'sessions', head.file)
+  const entries = readFileSync(file, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          type: string
+          id: string
+          message?: { role: string; content: unknown }
+        },
+    )
+  // As the page counts them: Pi's system-prompt entries are not messages to read.
+  const messages = entries.filter(
+    (entry) => entry.type === 'message' && entry.message?.role !== 'system',
+  )
+  // Pi starts the kept part at a message of yours or the Agent's, never at a tool's result.
+  const kept = messages
+    .slice(summarized)
+    .find((entry) => entry.message?.role === 'user' || entry.message?.role === 'assistant')
+  const last = entries.at(-1)
+  if (!kept || !last) throw new Error('the conversation is too short to summarize')
+  appendFileSync(
+    file,
+    `${JSON.stringify({
+      type: 'compaction',
+      id: `compaction-${Date.now().toString(36)}`,
+      parentId: last.id,
+      timestamp: new Date().toISOString(),
+      summary,
+      firstKeptEntryId: kept.id,
+      tokensBefore,
+    })}\n`,
+  )
+  const first = messages[0]?.message?.content
+  return typeof first === 'string' ? first : ((first as { text?: string }[])[0]?.text ?? '')
+}
+
 export async function seedDemoHistory(instance: Instance, ids: DemoIds): Promise<void> {
   const memory = (key: string, content: string) =>
     instance.api(`/api/teams/launch/memory/${key}`, { method: 'PUT', body: { content } })

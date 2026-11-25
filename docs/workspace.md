@@ -24,14 +24,20 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   template, or registers a Team; the menu beside an Agent renames or archives it.
 - **The conversation** is the chat with the open Agent. Tool calls read as steps (`Ran`, `Read`,
   `Wrote` with the lines added and removed); click one for its input and output. A message to a
-  teammate is a hand-off card with what that teammate is doing now. Files an Agent delivers show
+  teammate is a hand-off card with what that teammate is doing now, or `not sent` when the call
+  failed. Files an Agent delivers show
   where they were delivered, pictures as pictures. When a turn wrote files, **Review changes**
   opens their diff. A question from the Agent has one button per choice. While an Agent waits on
   you, its step and the line under the conversation say `waiting for you` in amber, as the list
   does; green and `working` mean it is working. **Edit**, under your last message, appears on
   hover and replaces that turn. Going to another Agent and back opens the conversation where you
-  left it (at the end if you were at the end), for as long as the page is open.
-- **The bar above it** names the Agent, its Team and its model, and holds the conversation menu:
+  left it (at the end if you were at the end), for as long as the page is open. When a
+  conversation nears the model's window, older messages are summarized to make room: they stay
+  on the page, above a line that says so, and **Show the summary** shows what the Agent reads in
+  their place.
+- **The bar above it** names the Agent, its Team and its model, says how full the model's window
+  is (`41K / 272K`, amber past 80%; just the window until the first reply after a summary), and
+  holds the conversation menu:
   read an earlier conversation, continue it, start a new one, rename one. An Agent that gave
   itself another name in its IDENTITY.md shows it too (`Sally · Sales Director`);
   the Agent tab offers to make it its name. Within a Team every Agent has its own name.

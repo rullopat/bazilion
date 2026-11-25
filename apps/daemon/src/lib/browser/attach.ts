@@ -5,6 +5,7 @@
 // read or closed.
 
 import { readFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -98,6 +99,8 @@ export async function findRunningBrowser(dirs = runningBrowserDirs()): Promise<R
 interface Connection {
   browser: Browser
   context: BrowserContext
+  /** The frames of every agent's tab on this connection: downloads they start are cancelled. */
+  agentFrames: Map<Page, Set<string>>
 }
 
 interface Shared {
@@ -114,8 +117,13 @@ async function openConnection(url: string | undefined): Promise<Connection> {
   const { chromium } = await import('playwright')
   let browser: Browser
   try {
+    // noDefaults: without it Playwright treats the default context as its own and applies its
+    // test settings to the whole browser, the operator's tabs included: their downloads go to a
+    // temporary folder of its own, deleted when the connection closes, and focus and colour
+    // scheme are emulated. Agents' tabs get what they need one by one (setUpAgentTab).
     browser = await chromium.connectOverCDP(target.endpoint, {
       timeout: CONNECT_MS,
+      noDefaults: true,
       ...(url ? {} : { isLocal: true }),
     })
   } catch (error) {
@@ -129,7 +137,39 @@ async function openConnection(url: string | undefined): Promise<Connection> {
     await browser.close().catch(() => {})
     throw new Error(`${target.name} has no browser window to work in`)
   }
-  return { browser, context }
+  const agentFrames = new Map<Page, Set<string>>()
+  try {
+    await refuseAgentDownloads(browser, agentFrames)
+  } catch (error) {
+    await browser.close().catch(() => {})
+    throw error
+  }
+  return { browser, context, agentFrames }
+}
+
+/**
+ * Cancel each download that starts in an agent's tab, and delete one that finished before the
+ * cancel landed; every other download is left to the browser. The browser has no setting for
+ * one tab: Page.setDownloadBehavior applies to all of them, the operator's included. The
+ * session lives as long as the connection, and the browser forgets these events when it ends.
+ */
+async function refuseAgentDownloads(
+  browser: Browser,
+  agentFrames: Map<Page, Set<string>>,
+): Promise<void> {
+  const cdp = await browser.newBrowserCDPSession()
+  const refused = new Set<string>()
+  cdp.on('Browser.downloadWillBegin', ({ guid, frameId }) => {
+    if (![...agentFrames.values()].some((frames) => frames.has(frameId))) return
+    refused.add(guid)
+    cdp.send('Browser.cancelDownload', { guid }).catch(() => {})
+  })
+  cdp.on('Browser.downloadProgress', ({ guid, state, filePath }) => {
+    if (!refused.has(guid) || state === 'inProgress') return
+    refused.delete(guid)
+    if (state === 'completed' && filePath) rm(filePath, { force: true }).catch(() => {})
+  })
+  await cdp.send('Browser.setDownloadBehavior', { behavior: 'default', eventsEnabled: true })
 }
 
 function acquire(url: string | undefined): Shared {
@@ -173,10 +213,29 @@ async function refusePrivateRequests(page: Page): Promise<void> {
   })
 }
 
-/** Deny downloads in the agent's tab only; the operator's own tabs keep theirs. */
-async function refuseDownloads(context: BrowserContext, page: Page): Promise<void> {
+/**
+ * Settings for the agent's tab only; the operator's own tabs keep the browser's. Its frames are
+ * listed so that downloads they start are cancelled (refuseAgentDownloads), and the tab acts as
+ * focused, as Playwright's default would make every tab: a tab in the background otherwise never
+ * settles for a click.
+ */
+async function setUpAgentTab(
+  context: BrowserContext,
+  page: Page,
+  agentFrames: Map<Page, Set<string>>,
+): Promise<void> {
+  const frames = new Set<string>()
+  agentFrames.set(page, frames)
+  page.once('close', () => agentFrames.delete(page))
   const cdp = await context.newCDPSession(page)
-  await cdp.send('Page.setDownloadBehavior', { behavior: 'deny' })
+  cdp.on('Page.frameAttached', ({ frameId }) => frames.add(frameId))
+  await cdp.send('Page.enable')
+  const add = (tree: { frame: { id: string }; childFrames?: (typeof tree)[] }) => {
+    frames.add(tree.frame.id)
+    for (const child of tree.childFrames ?? []) add(child)
+  }
+  add((await cdp.send('Page.getFrameTree')).frameTree)
+  await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
 }
 
 export interface AttachOptions {
@@ -196,7 +255,7 @@ export async function attachBrowser(opts: AttachOptions): Promise<AgentBrowser> 
     await release(opts.url, shared)
     throw error
   }
-  const { browser, context } = connection
+  const { browser, context, agentFrames } = connection
   const owned = new Set<Page>()
 
   /** Take a tab as the agent's; `ready` resolves once its guards are in place. */
@@ -208,7 +267,7 @@ export async function attachBrowser(opts: AttachOptions): Promise<AgentBrowser> 
     page.setDefaultTimeout(10_000)
     return Promise.all([
       opts.allowPrivate ? undefined : refusePrivateRequests(page),
-      refuseDownloads(context, page),
+      setUpAgentTab(context, page, agentFrames),
     ]).catch(() => {}) // the tab closed first
   }
 

@@ -60,6 +60,10 @@ describe('session prompt boundary', () => {
       apiKey: 'session-prompt-access-token',
     })
     expect(handle.session.settingsManager.getCacheWarmingMode()).toBe('off')
+    // A turn compacts the conversation near the window, with Pi's own margins.
+    expect(handle.session.settingsManager.getCompactionEnabled()).toBe(true)
+    expect(handle.session.settingsManager.getCompactionReserveTokens()).toBe(16_384)
+    expect(handle.session.settingsManager.getCompactionKeepRecentTokens()).toBe(20_000)
     expect(
       handle.session
         .getAllTools()

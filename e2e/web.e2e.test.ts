@@ -16,6 +16,7 @@ import {
   DEMO_MODEL,
   type DemoIds,
   demoScripts,
+  seedCompaction,
   seedDemoBase,
   seedDemoHistory,
 } from './demo.ts'
@@ -606,4 +607,63 @@ test('the live feed comes back after the daemon restarts', async () => {
   ).toBeVisible({ timeout: 20_000 })
   // Requests failed while the daemon was down, as they should; the page itself did not.
   expect(session.problems.filter((problem) => problem.startsWith('page error'))).toEqual([])
+})
+
+test('a compacted conversation keeps its earlier messages under a divider, and a meter says how full it is', async () => {
+  // The first two messages summarized, the rest kept.
+  const firstText = (
+    await seedCompaction(
+      instance,
+      ids.dev,
+      'Dev and Mira agreed on the dark-mode release checklist.',
+    )
+  ).slice(0, 40)
+
+  const session = await open()
+  await session.go(`/?agent=${ids.dev}`)
+  const page = session.page
+  const log = page.getByRole('log', { name: 'Conversation with Dev' })
+  const divider = log.getByText(/Older messages summarized to make room \(24K tokens\)/)
+  await pw(divider).toBeVisible()
+  // The summarized messages are still there to read.
+  await pw(log).toContainText(firstText)
+  await log.getByText('Show the summary').click()
+  await pw(log).toContainText('Dev and Mira agreed on the dark-mode release checklist.')
+  // The model has not replied since: only the window is known.
+  await pw(page.getByText('33K window')).toBeVisible()
+
+  const composer = page.getByPlaceholder('Message Dev')
+  await composer.fill('Thanks, that is all for now.')
+  await composer.press('Enter')
+  await pw(log.getByText('Noted. Tell me what you would like me to do next.')).toBeVisible({
+    timeout: 15_000,
+  })
+  // The turn's end keeps the divider, and the meter has the model's own count.
+  await pw(divider).toBeVisible()
+  await pw(page.getByRole('meter', { name: 'Conversation size' })).toHaveAttribute(
+    'aria-valuetext',
+    '1K / 33K tokens',
+  )
+  // The summary opened above is still open: the divider, its summary and the meter, checked.
+  await pw(log.getByText('Hide the summary')).toBeVisible()
+  expect(await accessibilityProblems(page, 'a compacted conversation')).toEqual([])
+
+  // Beside the side panel, the meter shows where the bar has room for it, and never pushes the
+  // panel button out of the bar.
+  for (const [width, meter] of [
+    [1440, true],
+    [1280, false],
+  ] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    await session.go(`/?agent=${ids.dev}&panel=team`)
+    const bar = page.getByRole('heading', { name: 'Dev', level: 1 }).locator('xpath=..')
+    const button = page.getByRole('link', { name: 'Hide the side panel' })
+    const [barBox, buttonBox] = [await bar.boundingBox(), await button.boundingBox()]
+    if (!barBox || !buttonBox) throw new Error(`no bar at ${width}`)
+    expect(buttonBox.x + buttonBox.width, `width ${width}`).toBeLessThanOrEqual(
+      barBox.x + barBox.width,
+    )
+    await pw(page.getByRole('meter', { name: 'Conversation size' })).toHaveCount(meter ? 1 : 0)
+  }
+  expect(session.problems).toEqual([])
 })

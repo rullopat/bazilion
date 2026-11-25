@@ -2,6 +2,7 @@
 // Agent's conversations it is, and the switch for the side panel.
 
 import {
+  type ContextUse,
   type Conversation,
   type ConversationListResponse,
   chosenName,
@@ -23,6 +24,7 @@ import { DropdownMenu } from 'radix-ui'
 import { useEffect, useRef, useState } from 'react'
 import { shortTime, useActivity } from '../../lib/activity'
 import { api, errorMessage } from '../../lib/api'
+import { formatContext } from '../../lib/model-facts'
 import { NEW_CONVERSATION_EVENT } from '../../lib/shortcuts'
 import { useHydrated, useResource } from '../../lib/use-resource'
 import { cn } from '../../lib/utils'
@@ -62,7 +64,7 @@ export function ConversationHeader({
   const { to } = useWorkspace()
   return (
     // One line from a tablet up: the conversation's title gives way before anything wraps.
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-frost px-3 py-2.5 sm:flex-nowrap sm:px-4">
+    <div className="@container flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-frost px-3 py-2.5 sm:flex-nowrap sm:px-4">
       <Link
         to="/"
         search={{}}
@@ -107,6 +109,7 @@ export function ConversationHeader({
         <span className="min-w-0 truncate">{shortModel(agent.model)}</span>
         <ChevronDown className="size-[11px] shrink-0" aria-hidden="true" />
       </Link>
+      {chat && <WindowMeter context={chat.context} />}
       <div className="ml-auto flex min-w-[7.75rem] shrink-[20] items-center justify-end gap-1.5">
         <ConversationMenu agentId={agent.agent.id} chat={chat} />
         <Link
@@ -125,6 +128,63 @@ export function ConversationHeader({
         </Link>
       </div>
     </div>
+  )
+}
+
+/** Tokens as a short figure: 812, 41K, 1.2M. */
+function tokenFigure(tokens: number): string {
+  return tokens < 1_000 ? String(tokens) : (formatContext(tokens) ?? String(tokens))
+}
+
+/**
+ * How full the model's window is with this conversation: what the model read for its last reply.
+ * Unknown after a compaction until the next reply; nothing when the model's window is unknown too.
+ */
+function WindowMeter({ context }: { context: ContextUse | null }) {
+  if (!context) return null
+  const { tokens, window } = context
+  if (tokens === null && window === null) return null
+  const share = tokens !== null && window ? Math.min(1, tokens / window) : null
+  const label =
+    tokens === null
+      ? `${tokenFigure(window ?? 0)} window`
+      : window
+        ? `${tokenFigure(tokens)} / ${tokenFigure(window)}`
+        : tokenFigure(tokens)
+  const title =
+    share === null
+      ? 'The size of this conversation shows after the next reply. Near the end of the window, older messages are summarized to make room.'
+      : `This conversation fills ${Math.round(share * 100)}% of the model's window. Near the end, older messages are summarized to make room.`
+  return (
+    <span
+      title={title}
+      // Only in a bar with room for it, and it gives way: the menu and the panel button always
+      // stay in the bar.
+      className="hidden h-[26px] min-w-0 shrink-[2] items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs text-mocha @min-[36rem]:inline-flex"
+      {...(share === null
+        ? {}
+        : {
+            role: 'meter',
+            'aria-label': 'Conversation size',
+            'aria-valuemin': 0,
+            'aria-valuemax': 100,
+            'aria-valuenow': Math.round(share * 100),
+            'aria-valuetext': `${label} tokens`,
+          })}
+    >
+      {share !== null && (
+        <span
+          className="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-frost"
+          aria-hidden="true"
+        >
+          <span
+            className={`block h-full rounded-full ${share >= 0.8 ? 'bg-warning' : 'bg-sapphire'}`}
+            style={{ width: `${Math.max(4, share * 100)}%` }}
+          />
+        </span>
+      )}
+      <span className="min-w-0 truncate font-mono">{label}</span>
+    </span>
   )
 }
 

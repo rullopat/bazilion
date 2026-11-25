@@ -3,10 +3,12 @@
 // reaches every daemon-owned tool over Node IPC (`ipc-protocol.ts`). It never opens the database.
 
 import { randomUUID } from 'node:crypto'
+import type { ChatFrame } from '@bazilion/api-types'
 import type { AgentSession } from '@earendil-works/pi-coding-agent'
 import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
 import { paceToolProgress, piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
+import { conversationHistory } from '../pi/history.ts'
 import {
   type BazilionSessionHandle,
   createBazilionSession,
@@ -251,13 +253,7 @@ async function main(): Promise<void> {
     emit(
       review
         ? { kind: 'review_result', proposals: review.result() }
-        : {
-            kind: 'done',
-            messages: piMessagesToProviderView(
-              session.agent.state.messages,
-              handle.redactionSecrets,
-            ),
-          },
+        : finishedFrame(session, handle.redactionSecrets),
     )
   } catch (error) {
     const message = workerFailureMessage(
@@ -288,3 +284,21 @@ main().catch(async (error) => {
   emit({ kind: 'fatal', error: error instanceof Error ? error.message : String(error) })
   await exitWorker(1)
 })
+
+/**
+ * The end of a turn: the whole conversation as people read it (a compaction during the turn
+ * leaves its earlier messages there, with a mark), and how full the window now is.
+ */
+function finishedFrame(session: AgentSession, secrets: readonly string[]): ChatFrame {
+  const { messages, compactions } = conversationHistory(session.sessionManager.getBranch())
+  const usage = session.getContextUsage()
+  return {
+    kind: 'done',
+    messages: piMessagesToProviderView(messages, secrets),
+    compactions,
+    context: {
+      tokens: usage?.tokens ?? null,
+      window: usage && usage.contextWindow > 0 ? usage.contextWindow : null,
+    },
+  }
+}

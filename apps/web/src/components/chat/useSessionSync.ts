@@ -4,7 +4,6 @@
 
 import type {
   AgentActivity,
-  ProviderMessage,
   SessionHeadResponse,
   SessionMessagesResponse,
   UserQueueListResponse,
@@ -44,7 +43,8 @@ export function useSessionSync({
   streamingRef: RefObject<boolean>
   pushNote: (content: string) => void
   /** The saved history was loaded again. */
-  onHistory: (messages: ProviderMessage[]) => void
+  /** The conversation as the daemon has it now: messages, compactions, how full the window is. */
+  onHistory: (history: SessionMessagesResponse) => void
 }) {
   const [stale, setStale] = useState(false)
   const [historyUnavailable, setHistoryUnavailable] = useState(
@@ -73,7 +73,7 @@ export function useSessionSync({
     try {
       const body = await api<SessionMessagesResponse>(`${base}/sessions/messages`)
       setHistoryUnavailable(body.head.unavailable ?? false)
-      onHistory(body.messages)
+      onHistory(body)
       know(body.head)
       setStale(false)
     } catch {

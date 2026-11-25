@@ -2,6 +2,7 @@ import type {
   ChatCompactRequest,
   ChatCompactResponse,
   ChatContextResponse,
+  ContextUse,
   TruncateChatRequest,
   TruncateChatResponse,
 } from '@bazilion/api-types'
@@ -44,6 +45,18 @@ const chatTrimCmd = defineCommand({
   },
 })
 
+/** How full the model's window is, as the conversation bar's meter says it. */
+export function windowLine({ tokens, window }: ContextUse): string {
+  const size = window === null ? 'unknown' : window.toLocaleString()
+  if (tokens === null) {
+    return `${size} tokens; this conversation's size shows after the next reply`
+  }
+  const used = window
+    ? `${tokens.toLocaleString()} of ${size} tokens used (${Math.round((tokens / window) * 100)}%)`
+    : `${tokens.toLocaleString()} tokens used`
+  return `${used}; older messages are summarized near the end`
+}
+
 const chatContextCmd = defineCommand({
   meta: {
     name: 'chat-context',
@@ -70,6 +83,7 @@ const chatContextCmd = defineCommand({
 
     console.log(`🧠 context for ${ctx.agentId}`)
     console.log(`model: ${ctx.model}`)
+    console.log(`window: ${windowLine(ctx.window)}`)
     console.log('')
     console.log('## system prompt')
     console.log(`  total: ${fmt(systemPrompt.chars, systemPrompt.tokens)}`)

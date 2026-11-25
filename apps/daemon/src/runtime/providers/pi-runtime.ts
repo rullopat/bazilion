@@ -7,11 +7,13 @@ import { InMemoryCredentialStore } from '@earendil-works/pi-ai'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import {
   findProvider,
+  parseModelString,
   piProviderName,
   providerApiKey,
   providerCredentialEnv,
   providerEndpoint,
 } from '../../core/providers.ts'
+import { catalogContextWindow } from './catalog.ts'
 
 export interface PiModelSpec {
   providerName: string
@@ -22,6 +24,25 @@ export interface PiModelSpec {
   apiKey?: string
   /** Wins over the endpoint in `env`. */
   baseUrl?: string
+}
+
+/** The window Pi is told a model has when its catalog lacks it (a local server's model). */
+export const ENDPOINT_CONTEXT_WINDOW = 32_768
+
+/**
+ * The window a turn gives Pi for `provider:model`, which compaction and each reply's room are
+ * sized from: Pi's catalog, or ENDPOINT_CONTEXT_WINDOW for a local server's model or one the
+ * catalog does not list. Null for a model string that names none.
+ */
+export function turnContextWindow(model: string): number | null {
+  let providerName: string
+  try {
+    providerName = parseModelString(model).providerName
+  } catch {
+    return null
+  }
+  if (findProvider(providerName)?.local) return ENDPOINT_CONTEXT_WINDOW
+  return catalogContextWindow(model) ?? ENDPOINT_CONTEXT_WINDOW
 }
 
 /** A model Pi's catalog lacks, sent to an OpenAI-compatible endpoint. */
@@ -35,7 +56,7 @@ function endpointModel(providerName: string, modelId: string, baseUrl: string): 
     reasoning: false,
     input: ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 32_768,
+    contextWindow: ENDPOINT_CONTEXT_WINDOW,
     maxTokens: 4_096,
   }
 }

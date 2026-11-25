@@ -157,3 +157,40 @@ test('tool results, errors and history are redacted with the same secrets', () =
     { role: 'tool', toolName: 'bash', content: 'echo [REDACTED]\n[REDACTED]' },
   ])
 })
+
+test('a compaction during a turn is shown while it runs, then done or failed', () => {
+  const event = (value: unknown) => value as Parameters<typeof translatePiEvent>[0]
+  expect(translatePiEvent(event({ type: 'compaction_start', reason: 'threshold' }))).toEqual([
+    { type: 'compaction', state: 'running' },
+  ])
+  expect(
+    translatePiEvent(
+      event({
+        type: 'compaction_end',
+        reason: 'overflow',
+        result: {},
+        aborted: false,
+        willRetry: true,
+      }),
+    ),
+  ).toEqual([{ type: 'compaction', state: 'done' }])
+  expect(
+    translatePiEvent(
+      event({
+        type: 'compaction_end',
+        reason: 'threshold',
+        result: undefined,
+        aborted: false,
+        willRetry: false,
+        errorMessage: 'provider said sk-secret-value',
+      }),
+      ['sk-secret-value'],
+    ),
+  ).toEqual([{ type: 'compaction', state: 'failed', error: 'provider said [REDACTED]' }])
+  // Stopped with the turn: the turn's end says so.
+  expect(
+    translatePiEvent(
+      event({ type: 'compaction_end', reason: 'threshold', aborted: true, willRetry: false }),
+    ),
+  ).toEqual([])
+})

@@ -62,7 +62,11 @@ directly, as the qmd index inside `<team>/memory/`.
 is an error, never a silent fresh start) and builds a Pi `AgentSession` with:
 
 - the model from `createPiModel` (credentials in memory, see section 7);
-- Pi settings held in memory: cache warming off, compaction only on request, two provider retries;
+- Pi settings held in memory: cache warming off, two provider retries, and Pi's compaction: a
+  turn summarizes older messages when the conversation comes within 16,384 tokens of the model's
+  window, keeping about the last 20,000 verbatim, and redoes a reply the full window cut short. The
+  window is Pi's catalog's, or 32,768 for a local server's model and one the catalog lacks
+  (`turnContextWindow`);
 - a resource loader with every discovery switched off (no extensions, skills, prompt templates,
   themes or context files), so a repository's `.pi/` cannot run code;
 - the system prompt from section 3, appended to Pi's own;
@@ -161,13 +165,21 @@ These run in the daemon, not in a worker.
 - **Compact** (`POST /api/agents/:id/chat/compact`, `bazilion agent chat-compact <id>
   [--instructions "..."]`, `/compact` in the web chat) opens the session and calls Pi's
   `compact()`: older messages become one summary and the recent part stays verbatim. This is a
-  model call; the Agent counts as busy until it ends.
+  model call; the Agent counts as busy until it ends. Turns also compact on their own near the
+  window (section 4); a compaction during a turn streams as a `compaction` event.
+- **History** (`GET /api/agents/:id/sessions/messages`, the `done` frame of a turn, an earlier
+  conversation's `GET …/conversations/:id`): every message of the conversation's branch, those a
+  compaction summarized included, with `compactions` (where each summary starts and what it says)
+  and `context` (the tokens the model reported for its last reply after the latest compaction, and
+  the window). The model's own view is only the latest summary and what follows it
+  (`runtime/pi/history.ts`).
 - **Context** (`GET /api/agents/:id/chat/context[?detail=1]`, `bazilion agent chat-context <id>`,
   `/context`): the prompt sections, tool schemas, skills, USER.md and history size the next turn
-  would carry, computed by `describeTurn` without starting a model.
+  would carry, computed by `describeTurn` without starting a model, and how full the window is.
 - **Truncate** (`POST /api/agents/:id/chat/truncate`, `bazilion agent chat-trim <id> --keep N`, the
-  web chat's edit of the last message) keeps the first N messages for the next turn by moving the
-  conversation's leaf back and appending a `bazilion.truncate` marker; the file stays
+  web chat's edit of the last message) keeps the first N messages, counted as the history above
+  counts them, by moving the conversation's leaf back to just before the first one dropped (a
+  compaction in between stays) and appending a `bazilion.truncate` marker; the file stays
   append-only.
 - **New conversation** (`POST /api/agents/:id/conversations`, `bazilion conversation new <agent>`,
   `/new`) starts an empty history and keeps the old ones. See [conversations](conversations.md).

@@ -4,7 +4,12 @@
 
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { fetch as undiciFetch } from 'undici'
-import { piProviderName, providerApiKey, providerModelsUrl } from '../../core/providers.ts'
+import {
+  parseModelString,
+  piProviderName,
+  providerApiKey,
+  providerModelsUrl,
+} from '../../core/providers.ts'
 
 /** One model of Pi's catalog, with the facts worth showing when choosing one. */
 export interface CatalogEntry {
@@ -46,6 +51,17 @@ export function listCatalogEntries(providerName: string): CatalogEntry[] {
       ...(input > 0 || output > 0 ? { price: { input, output } } : {}),
     }
   })
+}
+
+/** A model's window (`provider:model`) from Pi's catalog; null for a model it does not list. */
+export function catalogContextWindow(model: string): number | null {
+  try {
+    const { providerName, modelId } = parseModelString(model)
+    const entry = listCatalogEntries(providerName).find((candidate) => candidate.id === modelId)
+    return entry && entry.contextWindow > 0 ? entry.contextWindow : null
+  } catch {
+    return null
+  }
 }
 
 /** Pi's bundled catalog for one provider, as model ids. */

@@ -6,7 +6,7 @@
 
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import type { ConversationTarget, ResolvedAgent } from '@bazilion/api-types'
+import type { ContextUse, ConversationTarget, ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import {
   type AgentSession,
@@ -29,7 +29,7 @@ import type { Paths } from '../../core/index.ts'
 import { parseModelString, piProviderName } from '../../core/providers.ts'
 import { resolveBrowserConfig } from '../../lib/browser/config.ts'
 import type { MemoryBackend } from '../memory/types.ts'
-import { createPiModel, type PiModelSpec } from '../providers/pi-runtime.ts'
+import { createPiModel, type PiModelSpec, turnContextWindow } from '../providers/pi-runtime.ts'
 import {
   type BuildSystemPromptOptions,
   buildSystemPrompt,
@@ -59,6 +59,7 @@ import type {
   ReviewProviderRuntime,
 } from '../worker/runtime.ts'
 import { envSecretValues, reviewRuntimeSecrets } from '../worker/runtime.ts'
+import { branchOf, type ConversationHistory, contextUse, conversationHistory } from './history.ts'
 import { readSessionFile, readSessionHeader } from './session-file.ts'
 import { createBazilionCustomTools } from './tools.ts'
 
@@ -141,10 +142,11 @@ interface PiSessionSpec {
 async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle> {
   const { runtime: modelRuntime, model } = await createPiModel(spec.model)
   const settingsManager = SettingsManager.inMemory({
-    // Provider requests happen only for turns: no cache warming, and compaction runs only on
-    // request (/compact).
+    // Provider requests happen only for turns: no cache warming. A turn compacts the
+    // conversation when it nears the model's window (Pi's defaults: within 16,384 tokens of it,
+    // keeping the last 20,000 verbatim), and redoes a reply the full window cut short.
     cacheWarming: 'off',
-    compaction: { enabled: false },
+    compaction: { enabled: true },
     retry: {
       enabled: true,
       maxRetries: 2,
@@ -324,6 +326,11 @@ export function describeTurn(opts: TurnOptions): {
 }
 
 /** Counts and Pi's token estimate (chars / 4) for what a conversation's branch sends the model. */
+/** How full the model's window is with this conversation (see contextUse). */
+export function conversationWindow(conversation: SessionManager, model: string): ContextUse {
+  return contextUse(conversation.getBranch(), turnContextWindow(model))
+}
+
 export function conversationUsage(conversation: SessionManager): {
   messageEntries: number
   compactionEntries: number
@@ -415,9 +422,31 @@ export function openConversation(
   )
 }
 
+/** A conversation as people read it, with how full the model's window is. */
+export interface LoadedConversation extends ConversationHistory {
+  context: ContextUse
+}
+
 /**
- * The resolved message view of an Agent's conversation, read straight from its file. Empty when
- * there is no conversation yet.
+ * An Agent's conversation as people read it, straight from its file: every message, those a
+ * compaction summarized included. Empty when there is no conversation yet.
+ */
+export function loadConversation(
+  agent: ResolvedAgent,
+  paths: Paths,
+  target?: ConversationTarget | null,
+): LoadedConversation {
+  const window = turnContextWindow(agent.model)
+  if (!target) return { messages: [], compactions: [], context: { tokens: null, window } }
+  const branch = branchOf(
+    readSessionFile(join(paths.agentDir(agent.agent.id), 'sessions'), target.id),
+  )
+  return { ...conversationHistory(branch), context: contextUse(branch, window) }
+}
+
+/**
+ * The model's view of an Agent's conversation, read straight from its file: after a compaction,
+ * its summary and what follows. Empty when there is no conversation yet.
  */
 export function loadInitialMessages(
   agent: ResolvedAgent,

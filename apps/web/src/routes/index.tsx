@@ -5,10 +5,13 @@
 import type {
   ActivityResponse,
   Agent,
+  CompactionMark,
+  ContextUse,
   Profile,
   ProviderMessage,
   ResolvedAgent,
   SessionHeadResponse,
+  SessionMessagesResponse,
   Team,
   TeamTemplate,
 } from '@bazilion/api-types'
@@ -60,6 +63,8 @@ const ConnectionsView = lazy(() =>
 interface SelectedAgent {
   resolved: ResolvedAgent
   messages: ProviderMessage[]
+  compactions: CompactionMark[]
+  context: ContextUse
   head: SessionHeadResponse
 }
 
@@ -95,11 +100,16 @@ const fetchWorkspace = createServerFn({ method: 'GET' })
         const resolved = await client.get<ResolvedAgent>(
           `/api/agents/${encodeURIComponent(data.agentId)}`,
         )
-        const history = await client.get<{
-          messages: ProviderMessage[]
-          head: SessionHeadResponse
-        }>(`/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`)
-        selected = { resolved, messages: history.messages, head: history.head }
+        const history = await client.get<SessionMessagesResponse>(
+          `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
+        )
+        selected = {
+          resolved,
+          messages: history.messages,
+          compactions: history.compactions,
+          context: history.context,
+          head: history.head,
+        }
       } catch (err) {
         // An unknown ?agent= id shows the list; other failures surface.
         if (!(err instanceof ApiClientError) || err.status !== 404) throw err
@@ -355,6 +365,8 @@ function WorkspacePage() {
                       agentId={open.agent.id}
                       agentName={open.agent.name}
                       initialMessages={selected.messages}
+                      initialCompactions={selected.compactions}
+                      initialContext={selected.context}
                       initialSessionHead={selected.head}
                       header={header}
                       onViewConversation={(id) =>
