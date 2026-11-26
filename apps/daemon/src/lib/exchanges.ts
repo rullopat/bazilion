@@ -23,6 +23,9 @@ export function endExchangeTurn(agentId: string): void {
   if (exchangeTurns.delete(agentId)) signalLiveChange()
 }
 
+/** How much older than an exchange a transcript may look and still be read for its use. */
+const UNTOUCHED_MARGIN_MS = 60_000
+
 /** The marker every inbox wake starts with; its prompt names each message as `(message <id>`. */
 const INBOX_WAKE = '[[bazilion:inbox-wake]]'
 const MESSAGE_ID = /\(message ([0-9a-f-]{36})/g
@@ -81,7 +84,9 @@ function exchangeUsage(
     for (const name of names) {
       const path = join(directory, name)
       try {
-        if (statSync(path).mtimeMs < since) continue
+        // A transcript untouched since well before the exchange began has nothing of it. File
+        // times can lag the clock by some milliseconds, hence the margin.
+        if (statSync(path).mtimeMs < since - UNTOUCHED_MARGIN_MS) continue
         const file: Parameters<typeof usageOfLine>[1] = { lastModel: null }
         let woken = false
         for (const line of readText(path).split('\n')) {

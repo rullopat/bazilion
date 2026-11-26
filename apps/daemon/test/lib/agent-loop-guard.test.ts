@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
@@ -191,8 +191,9 @@ test('an exchange going on lists its Agents, the turn working on it, and what it
         usage: { input: 100, output: 20, totalTokens: 120, cost: { total: cost } },
       },
     })
+  const transcript = join(sessions, '11111111-1111-4111-8111-111111111111.jsonl')
   writeFileSync(
-    join(sessions, '11111111-1111-4111-8111-111111111111.jsonl'),
+    transcript,
     [
       line({
         type: 'message',
@@ -218,6 +219,8 @@ test('an exchange going on lists its Agents, the turn working on it, and what it
       '',
     ].join('\n'),
   )
+  // A file's time can lag the clock: written just after the message, it may look a little older.
+  utimesSync(transcript, new Date(first.createdAt - 5), new Date(first.createdAt - 5))
   messageRepo.markRead(env.db, first.id)
   expect(activeExchanges(env.db, env.paths, env.teamId)).toEqual([])
 
