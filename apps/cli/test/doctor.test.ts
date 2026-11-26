@@ -2,6 +2,7 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HealthReport, PublicHealthResponse } from '@bazilion/api-types'
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import pkg from '../package.json' with { type: 'json' }
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
 let server: TestServer
@@ -35,8 +36,11 @@ test('actual doctor exits zero for a healthy install and states the runtime rule
   )) as PublicHealthResponse
   expect(publicReport).toEqual({ ok: true })
   expect((await fetch(`${server.url}/api/health/details`)).status).toBe(401)
+  // The release the daemon runs: the published package's version, behind a credential.
+  expect(report.version).toBe(pkg.version)
   const result = await server.cli(['doctor'])
   expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.stdout.split('\n')[0]).toBe(`bazilion ${pkg.version}`)
   expect(result.stdout).toContain('install is healthy ✓')
   expect(result.stdout).toContain('agent runtime (every turn: chat, Telegram, schedules, inbox)')
   expect(result.stdout).toContain('sandbox: off — bash and file tools run on the host')

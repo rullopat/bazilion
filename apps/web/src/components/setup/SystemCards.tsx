@@ -1,8 +1,8 @@
-// The cards of the System page: whether the installation is in order, how Agents run commands,
-// and a backup of everything.
+// The cards of the System page: the release it runs, whether the installation is in order, how
+// Agents run commands, and a backup of everything.
 
 import type { HealthReport, ServiceState } from '@bazilion/api-types'
-import { Archive, Download, HeartPulse, SquareTerminal } from 'lucide-react'
+import { Archive, Download, HeartPulse, SquareTerminal, Tag } from 'lucide-react'
 import type { Tone } from '../../lib/model-facts'
 import { CardBody, CardRow, Chip, Fact, Facts, Notice, SetupCard } from '../ui/parts'
 
@@ -10,6 +10,22 @@ const TONE: Record<ServiceState['tone'], Tone> = {
   on: 'success',
   warning: 'warning',
   off: 'neutral',
+}
+
+/** The Bazilion release this installation runs, as its daemon reports it. */
+export function VersionCard({ version }: { version: string }) {
+  return (
+    <SetupCard
+      labelledBy="system-version"
+      icon={<Tag className="size-5" />}
+      title="Version"
+      description="The Bazilion release this installation runs."
+    >
+      <Facts>
+        <Fact label="Bazilion">{version}</Fact>
+      </Facts>
+    </SetupCard>
+  )
 }
 
 /** Whether the home, the database and what they hold are in order, and if not, what is not. */

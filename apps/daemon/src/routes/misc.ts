@@ -23,6 +23,7 @@ import {
 import { isProviderConfigured, PROVIDERS } from '../core/providers.ts'
 import { createBackupArchive, createBackupSnapshot } from '../lib/backup.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { BAZILION_VERSION } from '../lib/version.ts'
 import { hasOpenAICodexCredentials } from '../runtime/index.ts'
 import { checkDockerImage } from '../runtime/shell/docker.ts'
 import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
@@ -145,6 +146,7 @@ miscRouter.get('/health/details', async (c) => {
   }
 
   const report: HealthReport = {
+    version: BAZILION_VERSION,
     // Structural install health; Docker readiness is reported separately under shellSecurity.
     ok:
       pathChecks.home &&
