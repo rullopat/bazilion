@@ -137,6 +137,19 @@ export function startLmStudioMock(): Promise<MockLlm> {
   let fallback: MockHandler = null
   let calls = 0
   const server = createServer((req, res) => {
+    const path = new URL(req.url ?? '/', 'http://localhost').pathname
+    if (req.method === 'GET' && path === '/v1/models') {
+      // The model server answers a model listing for every loaded model; no queue item
+      // is consumed and it never counts as a completion call.
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(
+        JSON.stringify({
+          object: 'list',
+          data: [{ id: 'test-model', object: 'model', created: 0, owned_by: 'lmstudio' }],
+        }),
+      )
+      return
+    }
     calls++
     const item = queue.length > 0 ? queue.shift() : fallback
     if (!item) {

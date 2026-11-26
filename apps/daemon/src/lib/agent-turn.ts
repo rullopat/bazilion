@@ -8,6 +8,7 @@ import { imageRoute } from '../core/image-generation-config.ts'
 import { agentReviewRepo, mergeSecretsIntoEnv } from '../core/index.ts'
 import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
+import { rememberLocalModelWindow } from '../runtime/providers/pi-runtime.ts'
 import { removeDockerContainers } from '../runtime/shell/docker.ts'
 import { toolEnvironment } from '../runtime/shell/security.ts'
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
@@ -105,7 +106,13 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           }),
         )
       })
-      if (frame.kind === 'done') completed = true
+      if (frame.kind === 'done') {
+        completed = true
+        // The worker reports the window Pi was given; seed the daemon's sync reads with it.
+        const window = frame.context?.window
+        if (typeof window === 'number' && window > 0)
+          rememberLocalModelWindow(turn.agent.model, window)
+      }
       noteTurnFrame(agentId, frame)
       yield frame
     }

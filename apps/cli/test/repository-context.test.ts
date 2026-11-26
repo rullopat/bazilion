@@ -8,6 +8,11 @@ import { startTestServer, type TestServer } from './server-fixture.ts'
 let server: TestServer
 const capturedPrompts: string[] = []
 const fake = createServer(async (request, response) => {
+  if (request.method === 'GET' && request.url?.split('?')[0] === '/v1/models') {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ object: 'list', data: [{ id: 'test-model', object: 'model' }] }))
+    return
+  }
   let input = ''
   for await (const chunk of request) input += chunk
   const body = JSON.parse(input) as { messages: Array<{ role: string }> }

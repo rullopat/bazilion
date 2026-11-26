@@ -27,6 +27,11 @@ const plan = [
   ],
 ] as const
 const fake = createServer(async (request, response) => {
+  if (request.method === 'GET' && request.url?.split('?')[0] === '/v1/models') {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ object: 'list', data: [{ id: 'test-model', object: 'model' }] }))
+    return
+  }
   try {
     let raw = ''
     for await (const bytes of request) raw += bytes

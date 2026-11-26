@@ -172,7 +172,7 @@ test('editing a message before the compaction takes the compaction away', async 
   expect(body.context.tokens).toBe(1_100)
 })
 
-test('the window is the one a turn gives Pi: its catalog, or 32,768 for a local model', () => {
+test('the window is the one a turn gives Pi: its catalog, or the report for a local model', () => {
   expect(turnContextWindow('openai-codex:gpt-6.2-astra')).toBe(272_000)
   expect(turnContextWindow('lmstudio:test')).toBe(32_768)
   expect(turnContextWindow('not a model')).toBeNull()
