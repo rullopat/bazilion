@@ -114,8 +114,8 @@ command to approve first. **Manage** holds the housekeeping pages, under one tab
 think with, the image model they draw with, and the providers behind them, each with whether it
 answers ([models and providers](docs/models-and-providers.md)). **Tools** holds web search, the
 browser and how commands run, one card each ([tools](docs/tools.md)); the other tabs are MCP,
-Telegram, Access (tokens and sessions) and System (health and backup). **Attention** lists what
-needs you.
+Telegram, Access (tokens and sessions) and System (the version it runs, health and backup).
+**Attention** lists what needs you.
 The web UI and the CLI offer the same management features.
 
 ## Configuration

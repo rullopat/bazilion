@@ -666,6 +666,22 @@ test('a model whose server does not say its window gets one set by hand, and its
   }
 })
 
+test('Setup → System says first which release the installation runs', async () => {
+  const { version } = JSON.parse(
+    readFileSync(join(import.meta.dirname, '../apps/cli/package.json'), 'utf8'),
+  ) as { version: string }
+  const session = await open()
+  await session.go('/config/system')
+  const card = session.page.getByRole('region', { name: 'Version' })
+  await pw(card).toContainText(`Bazilion${version}`)
+  // It is the first card of the page.
+  await pw(session.page.locator('main section').first()).toHaveAttribute(
+    'aria-labelledby',
+    'system-version',
+  )
+  expect(session.problems).toEqual([])
+})
+
 test('a page opened before an upgrade reloads for the new build instead of failing', async () => {
   const session = await open()
   await session.go(`/?agent=${ids.mira}&panel=connections`)
