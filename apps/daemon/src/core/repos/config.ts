@@ -20,9 +20,12 @@ import { SERVICES } from '../services.ts'
  */
 /** The outcome of each provider's last test, as JSON; core/provider-checks.ts reads and writes it. */
 export const PROVIDER_CHECKS_KEY = 'PROVIDER_CHECKS'
+/** The context windows set by hand, by `provider:model`, as JSON; core/model-windows.ts owns it. */
+export const MODEL_WINDOWS_KEY = 'MODEL_CONTEXT_WINDOWS'
 
 const INTERNAL_CONFIG_KEYS: readonly string[] = [
   PROVIDER_CHECKS_KEY,
+  MODEL_WINDOWS_KEY,
   // Telegram: polling watermark + derived topic/message ids.
   'TELEGRAM_LAST_UPDATE_ID',
   'TELEGRAM_SERVICE_TOPIC_ID',

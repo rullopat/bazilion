@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import type { BazilionDb } from './db/client.ts'
-import { openConfig, PROVIDER_CHECKS_KEY } from './repos/config.ts'
+import { MODEL_WINDOWS_KEY, openConfig, PROVIDER_CHECKS_KEY } from './repos/config.ts'
 import { openSecrets } from './repos/secrets.ts'
 
 export interface AuthFile {
@@ -49,6 +49,11 @@ export function mergeSecretsIntoEnv(
   password: string,
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  const { [PROVIDER_CHECKS_KEY]: _checks, ...config } = openConfig(db).getAll()
+  // Daemon state kept as JSON is not a setting a process reads from its environment.
+  const {
+    [PROVIDER_CHECKS_KEY]: _checks,
+    [MODEL_WINDOWS_KEY]: _windows,
+    ...config
+  } = openConfig(db).getAll()
   return { ...config, ...openSecrets(db, password).getAll(), ...env }
 }

@@ -2,17 +2,14 @@ import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import { answerListing } from './fixtures/mock-lmstudio.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
 let server: TestServer
 const capturedPrompts: string[] = []
 const fake = createServer(async (request, response) => {
-  if (request.method === 'GET' && request.url?.split('?')[0] === '/v1/models') {
-    response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ object: 'list', data: [{ id: 'test-model', object: 'model' }] }))
-    return
-  }
+  if (answerListing(request, response)) return
   let input = ''
   for await (const chunk of request) input += chunk
   const body = JSON.parse(input) as { messages: Array<{ role: string }> }

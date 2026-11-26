@@ -64,13 +64,17 @@ is an error, never a silent fresh start) and builds a Pi `AgentSession` with:
 - the model from `createPiModel` (credentials in memory, see section 7);
 - Pi settings held in memory: cache warming off, two provider retries, and Pi's compaction: a
   turn summarizes older messages when the conversation comes within 16,384 tokens of the model's
-  window, keeping about the last 20,000 verbatim, and redoes a reply the full window cut short. The
-  window is Pi's catalog's. For a local server's model it is the one the server says it was
-  started with, which llama.cpp reports as `meta.n_ctx` in `GET /models`, asked each turn with a
-  2-second limit; a server that does not say, and a model the catalog lacks, get 32,768. The
-  daemon keeps the window each turn's model was given for its own reads, such as the meter
-  (`turnContextWindow`). The summarized messages stay in the file, and `recall` reads them
-  (section 5);
+  window, keeping about the last 20,000 verbatim, and redoes a reply the full window cut short. A
+  window under 80,000 tokens keeps at most a quarter of it each way (`compactionFor`), so a
+  summary leaves room to grow and to reply. The window is Pi's catalog's. For a local server's
+  model it is the one the server says it loaded the model with, asked each turn with a 2-second
+  limit: llama.cpp's `meta.n_ctx` in `GET /v1/models`, LM Studio's
+  `loaded_instances[].config.context_length` in `GET /api/v1/models`, Ollama's `context_length`
+  in `GET /api/ps`. Otherwise it is the one set by hand (`ResolvedAgent.contextWindowSetting`,
+  from the `MODEL_CONTEXT_WINDOWS` config row), and with none the turn is refused. A reply may
+  use what the window leaves: Pi fits each request's limit into it. The daemon keeps the window
+  each turn's model was given for its own reads, such as the meter (`turnContextWindow`). The
+  summarized messages stay in the file, and `recall` reads them (section 5);
 - a resource loader with every discovery switched off (no extensions, skills, prompt templates,
   themes or context files), so a repository's `.pi/` cannot run code;
 - the system prompt from section 3, appended to Pi's own;
@@ -215,7 +219,9 @@ The daemon and the packed CLI pin `@earendil-works/pi-ai`, `pi-agent-core`, `pi-
   compaction and the provider test refuse a provider that is switched off, and one cannot be
   switched on without credentials. See [models and providers](models-and-providers.md).
 - **Model list.** Each provider's chat models (`bazilion provider models-set <id> <models>`)
-  feed the model pickers. Saving it without a model that an Agent template defaults to moves the
+  feed the model pickers. `PUT /api/config/models/window` (`bazilion provider window`) sets the
+  context window of one whose window neither the catalog nor its server says; taking a model out
+  of the list forgets it. Saving it without a model that an Agent template defaults to moves the
   template to the provider's first remaining model, or to the first available model of another
   provider when none remains; the save reports each move. A template on a model that was never
   listed and an Agent's own model override are left as they are.

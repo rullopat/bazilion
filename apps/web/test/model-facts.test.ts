@@ -1,4 +1,9 @@
-import type { CatalogModel, ChatModelEntry, ProviderConfigEntry } from '@bazilion/api-types'
+import type {
+  CatalogModel,
+  ChatModelEntry,
+  ModelWindow,
+  ProviderConfigEntry,
+} from '@bazilion/api-types'
 import { expect, test } from 'vitest'
 import { hostOf, localLine } from '../src/components/setup/AddProviderDialog.tsx'
 import {
@@ -15,6 +20,7 @@ import {
   priceLine,
   providerStatus,
   usedByLine,
+  windowLine,
 } from '../src/lib/model-facts.ts'
 
 const model = (id: string, more: Partial<CatalogModel> = {}): CatalogModel => ({
@@ -228,6 +234,7 @@ test('a model menu names models by provider, with the two facts that matter when
     selected: true,
     suggested: false,
     usedBy: { agents: 0, templates: [] },
+    window: { tokens: null, source: null, set: null, settable: true },
     ...more,
   })
   const claude = entry('anthropic:claude-fable-5-2', 'Anthropic', {
@@ -259,4 +266,33 @@ test('a model menu names models by provider, with the two facts that matter when
     ['Mistral', 'not working', ['new-model']],
   ])
   expect(menuGroups([])).toEqual([])
+})
+
+test('a model the catalog does not know says where its window comes from, or that none is known', () => {
+  const window = (more: Partial<ModelWindow>): ModelWindow => ({
+    tokens: null,
+    source: null,
+    set: null,
+    settable: true,
+    ...more,
+  })
+  expect(windowLine(window({ tokens: 200_000, source: 'catalog', settable: false }))).toBeNull()
+  expect(windowLine(window({ tokens: 40_960, source: 'server' }))).toEqual({
+    text: '41K context, from the server',
+    missing: false,
+  })
+  expect(windowLine(window({ tokens: 32_768, source: 'set', set: 32_768 }))).toEqual({
+    text: '33K context, set by you',
+    missing: false,
+  })
+  expect(windowLine(window({}))).toEqual({ text: 'Context window not known', missing: true })
+  // The model menu shows a window from wherever it comes.
+  expect(
+    menuFacts({
+      contextWindow: undefined,
+      images: false,
+      providerConnect: 'local',
+      window: window({ tokens: 40_960, source: 'server' }),
+    }),
+  ).toBe('41K · text only')
 })

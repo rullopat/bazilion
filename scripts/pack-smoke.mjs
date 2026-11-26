@@ -110,6 +110,21 @@ async function stop({ child, closed }) {
 // A stub OpenAI-compatible endpoint that streams one fixed assistant reply.
 const provider = createServer((request, response) => {
   request.resume()
+  if (request.method === 'GET' && request.url === '/api/v1/models') {
+    // LM Studio's own listing: the smoke model is loaded, with the window it says.
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(
+      JSON.stringify({
+        models: [
+          {
+            key: 'smoke-model',
+            loaded_instances: [{ id: 'smoke-model', config: { context_length: 32768 } }],
+          },
+        ],
+      }),
+    )
+    return
+  }
   if (request.method !== 'POST' || !request.url?.endsWith('/chat/completions')) {
     response.writeHead(404).end()
     return

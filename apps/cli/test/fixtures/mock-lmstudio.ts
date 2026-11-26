@@ -7,7 +7,7 @@ export interface MockLlm {
   push(responses: MockHandler[]): void
   /** Persistent handler used when the queue is empty (instead of a 500). */
   setFallback(handler: MockHandler): void
-  /** The window its model listing says the model was started with, as llama.cpp does. */
+  /** The window LM Studio says test-model is loaded with; null: it is not loaded. */
   setModelWindow(window: number | null): void
   reset(): void
   callCount(): number
@@ -35,6 +35,53 @@ export interface CannedResponse {
 /** A canned final assistant answer. */
 export function reply(content: string): CannedResponse {
   return { choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }] }
+}
+
+/** The window a stand-in LM Studio says its models are loaded with, unless a test says otherwise. */
+export const FIXTURE_WINDOW = 32_768
+
+/**
+ * LM Studio's two model listings for a stand-in server: the OpenAI one (`/v1/models`) and its
+ * own (`/api/v1/models`), which says the window each loaded model has (none when `window` is
+ * null). Null for any other request.
+ */
+export function lmStudioListing(
+  request: IncomingMessage,
+  models: ReadonlyArray<{ id: string; window: number | null }>,
+): string | null {
+  if (request.method !== 'GET') return null
+  const path = new URL(request.url ?? '/', 'http://localhost').pathname
+  if (path === '/v1/models') {
+    return JSON.stringify({
+      object: 'list',
+      data: models.map(({ id }) => ({ id, object: 'model', created: 0, owned_by: 'lmstudio' })),
+    })
+  }
+  if (path === '/api/v1/models') {
+    return JSON.stringify({
+      models: models.map(({ id, window }) => ({
+        type: 'llm',
+        key: id,
+        loaded_instances: window ? [{ id, config: { context_length: window } }] : [],
+      })),
+    })
+  }
+  return null
+}
+
+/** Answer a model listing, as `lmStudioListing` gives it; false when the request is not one. */
+export function answerListing(
+  request: IncomingMessage,
+  response: ServerResponse,
+  models: ReadonlyArray<{ id: string; window: number | null }> = [
+    { id: 'test-model', window: FIXTURE_WINDOW },
+  ],
+): boolean {
+  const listing = lmStudioListing(request, models)
+  if (listing === null) return false
+  response.writeHead(200, { 'content-type': 'application/json' })
+  response.end(listing)
+  return true
 }
 
 let toolCallCount = 0
@@ -137,30 +184,11 @@ export function sseFromCanned(res: ServerResponse, canned: CannedResponse): void
 export function startLmStudioMock(): Promise<MockLlm> {
   const queue: MockHandler[] = []
   let fallback: MockHandler = null
-  let modelWindow: number | null = null
+  let modelWindow: number | null = FIXTURE_WINDOW
   let calls = 0
   const server = createServer((req, res) => {
-    const path = new URL(req.url ?? '/', 'http://localhost').pathname
-    if (req.method === 'GET' && path === '/v1/models') {
-      // The model server answers a model listing for every loaded model; no queue item
-      // is consumed and it never counts as a completion call.
-      res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(
-        JSON.stringify({
-          object: 'list',
-          data: [
-            {
-              id: 'test-model',
-              object: 'model',
-              created: 0,
-              owned_by: 'lmstudio',
-              ...(modelWindow ? { meta: { n_ctx: modelWindow } } : {}),
-            },
-          ],
-        }),
-      )
-      return
-    }
+    // A model listing consumes no queue item and never counts as a completion call.
+    if (answerListing(req, res, [{ id: 'test-model', window: modelWindow }])) return
     calls++
     const item = queue.length > 0 ? queue.shift() : fallback
     if (!item) {
@@ -193,7 +221,7 @@ export function startLmStudioMock(): Promise<MockLlm> {
         reset() {
           queue.length = 0
           fallback = null
-          modelWindow = null
+          modelWindow = FIXTURE_WINDOW
           calls = 0
         },
         callCount: () => calls,

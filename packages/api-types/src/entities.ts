@@ -373,6 +373,11 @@ export interface ResolvedAgent {
   skills: string[]
   /** Human-approved, agent-private reviewed lessons injected on every normal turn. */
   privateLessons: string[]
+  /**
+   * The context window set by hand for `model` (Setup → Models), used when neither Pi's catalog
+   * nor the model's server says it; null when none is set.
+   */
+  contextWindowSetting: number | null
 }
 
 export type McpTransport = 'stdio' | 'http'

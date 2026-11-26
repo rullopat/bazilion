@@ -31,6 +31,9 @@ export interface ModelServer {
   close(): Promise<void>
 }
 
+/** The context window the stand-in says its models are loaded with, as LM Studio does. */
+const WINDOW = 32_768
+
 const WAKE = [
   'Got it. Starting on this now; I will report back when it is ready for review.',
   'Understood. I have what I need and will deliver before the checkpoint.',
@@ -79,7 +82,19 @@ export async function startModelServer(
         response.writeHead(request.url?.endsWith('/models') ? 200 : 404, {
           'content-type': 'application/json',
         })
-        response.end(JSON.stringify({ data: models.map((id) => ({ id })) }))
+        // LM Studio's own listing says the window each loaded model has.
+        response.end(
+          JSON.stringify(
+            request.url?.endsWith('/api/v1/models')
+              ? {
+                  models: models.map((id) => ({
+                    key: id,
+                    loaded_instances: [{ id, config: { context_length: WINDOW } }],
+                  })),
+                }
+              : { data: models.map((id) => ({ id })) },
+          ),
+        )
         return
       }
       const body = JSON.parse(raw) as { model: string; messages?: { role: string }[] }

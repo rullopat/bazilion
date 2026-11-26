@@ -335,6 +335,8 @@ describe('session prompt boundary', () => {
         reasoningLevel: 'low',
         apiKey: 'fireworks-static-fixture-key',
         baseUrl: `${provider.url}/v1`,
+        // The catalog does not know this model: the review takes the window set for it.
+        contextWindow: 131_072,
       },
       scratch,
       systemPrompt: 'Restricted reviewer instructions.',
@@ -432,6 +434,7 @@ function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
     },
     skills: ['audit-skill'],
     privateLessons: [],
+    contextWindowSetting: null,
   }
 }
 

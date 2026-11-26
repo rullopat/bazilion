@@ -271,6 +271,33 @@ export interface ChatModelEntry extends CatalogModel {
   providerState: ProviderState
   /** Who runs on it: Agents that are not archived, and Agent templates by name. */
   usedBy: { agents: number; templates: string[] }
+  window: ModelWindow
+}
+
+/** How many tokens a chat model reads in one request, and what says so. */
+export interface ModelWindow {
+  /** Null when nothing says it: turns on the model are refused until a window is set. */
+  tokens: number | null
+  /**
+   * Pi's bundled catalog; the model's server (a local server says what it loaded the model with);
+   * or the value set by hand. Null with `tokens`.
+   */
+  source: 'catalog' | 'server' | 'set' | null
+  /** The value set by hand: used when neither the catalog nor the server says the window. */
+  set: number | null
+  /** A value may be set by hand: the catalog does not know the model. */
+  settable: boolean
+}
+
+/** `PUT /api/config/models/window`: set a chat model's window by hand, or forget it (`null`). */
+export interface SetModelWindowRequest {
+  /** The `provider:model` string. */
+  model: string
+  tokens: number | null
+}
+
+export interface SetModelWindowResponse {
+  window: ModelWindow
 }
 
 /** One way to generate images: a model through one provider's account. */

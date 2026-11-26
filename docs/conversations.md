@@ -36,7 +36,7 @@ composer while you look at another Agent, for as long as the page is open.
 A reply you stop with **Stop** ends with `Stopped.`, and one that failed with `This reply
 failed.`, in the conversation and in its history.
 
-A conversation that nears the model's window is summarized during a turn: older messages become
+A conversation that nears the model's [window](models-and-providers.md#context-windows) is summarized during a turn: older messages become
 one summary the Agent reads in their place, and the last 20,000 tokens or so stay as they are. It
 stays one conversation, with its files and follow-ups; the summarized messages stay in its file
 and on the page, above a line with **Show the summary**, and are found by search. The Agent can

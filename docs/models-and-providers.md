@@ -65,14 +65,30 @@ sign-in; a key two providers share stays while the other one is on.
 **Add models** lists every model of the connected providers with its name, how much it can read,
 whether it takes images, whether it reasons, and its list price per million tokens. These facts
 come from the catalog bundled with Pi; models a provider reports that the catalog does not know
-are listed by id. A local server lists what it has loaded. A local model is given the window
-the server says it was started with: llama.cpp says so in its model listing, and LM Studio and
-Ollama do not, so their models are taken to read 32,768 tokens.
+are listed by id. A local server lists what it has loaded.
 
 ```sh
 bazilion provider models anthropic                         # in use, and offered
 bazilion provider models-set anthropic claude-fable-5-2,claude-haiku-5-5
 ```
+
+### Context windows
+
+How many tokens a model reads in one request sizes when a conversation is summarized and how
+long each reply may be, so Bazilion never assumes it:
+
+- **Pi's catalog** says it for the models it knows.
+- **A local server** says the window it loaded the model with, asked at each turn: llama.cpp in
+  its model listing, LM Studio (0.4 or later) and Ollama once the model is loaded.
+- **Set by hand** otherwise: the model's row on the Models page says **Context window not
+  known**, and **Set** takes the number of tokens; or `bazilion provider window
+  ollama:qwen3 32768` (`--clear` forgets it, no number shows it). What a server says wins over it,
+  so it matters only while the server does not say, such as before LM Studio or Ollama loads the
+  model. A model the catalog does not know on a hosted provider's endpoint takes one the same way.
+
+A turn on a model whose window nothing says is refused at once, with a message saying where to
+set it. Each row says where its window comes from: the catalog's shows in what it can do, the
+others as **from the server** or **set by you**.
 
 Wherever a model is chosen (an Agent's **Agent** tab, **Add an Agent**, an Agent template) the
 menu shows these names by provider, with how much each model reads and whether it sees images.

@@ -60,6 +60,7 @@ function agent(model = 'openai-codex:gpt-5.6-sol'): ResolvedAgent {
     },
     skills: [],
     privateLessons: [],
+    contextWindowSetting: null,
   }
 }
 
