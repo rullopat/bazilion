@@ -1,18 +1,22 @@
 // Agent mailbox: /api/agents/:id/messages lists an inbox and sends to it, /api/agents/:id/loop-breaks
-// shows stopped message chains, /api/messages/:id reads one message and marks it read, and
-// /api/teams/:id/messages is the whole Team's thread.
+// shows the stopped exchanges it was in, /api/messages/:id reads one message and marks it read,
+// /api/teams/:id/messages is the whole Team's thread and /api/teams/:id/exchanges the exchanges
+// between its Agents going on now, which /api/exchanges/:id/stop stops.
 
 import type {
   ListAgentLoopBreaksResponse,
+  ListExchangesResponse,
   ListInboxResponse,
   ListTeamMessagesResponse,
   SendMessageRequest,
+  StopExchangeResponse,
   UpdateMessageRequest,
 } from '@bazilion/api-types'
 import { agentRepo, messageRepo } from '../core/index.ts'
 import { listAgentLoopBreaks } from '../lib/agent-loop-guard.ts'
 import { sendAgentMessage } from '../lib/communication.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { activeExchanges, stopExchange } from '../lib/exchanges.ts'
 import { jsonBody, newRouter, routeAgent, routeTeam } from './http.ts'
 
 export const messagesRouter = newRouter()
@@ -25,6 +29,25 @@ teamMessagesRouter.get('/:id/messages', (c) => {
   return c.json({
     messages: messageRepo.listForTeam(getCtx().db, routeTeam(c).id, limit),
   } satisfies ListTeamMessagesResponse)
+})
+
+/** The exchanges between the Team's Agents going on now, with what each has used. */
+teamMessagesRouter.get('/:id/exchanges', (c) => {
+  const { db, paths } = getCtx()
+  return c.json({
+    exchanges: activeExchanges(db, paths, routeTeam(c).id),
+  } satisfies ListExchangesResponse)
+})
+
+export const exchangesRouter = newRouter()
+
+/** Stop an exchange: nothing in it wakes anyone again, and the turns it woke stop. */
+exchangesRouter.post('/:id/stop', (c) => {
+  const id = c.req.param('id')
+  if (messageRepo.listExchange(getCtx().db, id).length === 0) {
+    return c.json({ error: `exchange not found: ${id}` }, 404)
+  }
+  return c.json(stopExchange(getCtx().db, id) satisfies StopExchangeResponse)
 })
 
 messagesRouter.get('/:id', (c) => {

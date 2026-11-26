@@ -38,8 +38,25 @@ how many are saved, and they apply once the Team is restricted. Drawing a connec
 teammates of an open Team asks first whether to switch the Team to **Connections only**, since
 the connection would otherwise change nothing; a connection to or from `outside` needs no switch.
 
-The loop guard on message chains (the first message and eight replies, unless changed under
-**Setup → Tools**) is separate from policy: it bounds cost, not reach.
+## Exchanges between Agents
+
+A message an Agent sends in a turn someone started (you, a schedule) opens an exchange; every
+message sent in a turn that messages woke continues the exchange of the latest of them. An
+exchange has no length limit: it lasts as long as its Agents have work to hand each other.
+
+- **The Agents see it.** A woken Agent reads the exchange so far after its new messages: how it
+  began, and the latest messages. It is told to keep it going only while that moves the first
+  request forward, and otherwise to stop writing and tell you where it stands.
+- **Going round in circles stops it.** A message its sender already sent the same Agent in the
+  exchange (the same words, whatever the case, punctuation and spacing) is not delivered. The
+  sender is told so, and to say where the work stands; Attention shows it, and the Agents'
+  mailboxes list it under **Stopped exchanges**.
+- **You can stop it.** While an exchange goes on, the Connections tab shows it under **Going on
+  now**: its Agents, how many messages since when, what the turns it woke used, and **Stop**.
+  Stopping it stops the turns it woke, leaves its unread messages unread by anyone, and refuses
+  any further message in it.
+
+This is separate from policy, which says who may message whom.
 
 ## Surfaces
 
@@ -49,6 +66,8 @@ The loop guard on message chains (the first message and eight replies, unless ch
 | Open or restrict a Team | `bazilion team policy mode <team> open\|restricted` | **Who can message whom** in the Connections view: Everyone or Connections only |
 | Add or remove an edge | `bazilion team policy allow\|deny <team> <from> <to>` | Connections view: the map or the table |
 | See what Agents said to each other | `bazilion team messages <team>` | Connections: recent messages |
+| See and stop the exchanges going on | `bazilion inbox exchanges <team>`, `bazilion inbox stop <exchange>` | Connections: **Going on now** |
+| See the exchanges that stopped | `bazilion inbox stopped <agent>` | An Agent's mailbox: **Stopped exchanges** |
 | Manage templates | `bazilion team-template list\|show\|create\|export\|import\|rm` | Manage → Team templates |
 | Use a template for a Team | `bazilion team-template spawn <template> <team>` | **Use** on Team templates, or **Use this template** on its page |
 | Save a Team as a template | `bazilion team-template save <team> <template>` | Team tab → Settings → Save as a Team template |
@@ -60,7 +79,8 @@ connect them; select an Agent or a line to switch each direction and to read the
 Changes apply when you press **Save**. Where you drag the nodes is remembered in the browser.
 
 HTTP: `GET` and `PATCH /api/teams/:id/policy`, `POST /api/teams/:id/policy/save-as-template`,
-`GET /api/teams/:id/messages`, and `/api/team-templates` (`GET`, `POST`, `PUT /:id`,
+`GET /api/teams/:id/messages`, `GET /api/teams/:id/exchanges`, `POST /api/exchanges/:id/stop`,
+and `/api/team-templates` (`GET`, `POST`, `PUT /:id`,
 `DELETE /:id`, `POST /:id/spawn`).
 
 In a template, edges name slots by position (`0` is the first slot) or `outside`. Spawning into a

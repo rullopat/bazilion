@@ -59,7 +59,8 @@ interface DiagnosticSourceRow extends BaseSourceRow {
 }
 interface LoopSourceRow extends BaseSourceRow {
   attempted_hop: number
-  max_hops: number
+  reason: string
+  toName: string
 }
 interface QueueInterruptedSourceRow extends BaseSourceRow {
   interrupted_count: number
@@ -298,17 +299,27 @@ const sources: Source[] = [
           []
         >(`SELECT e.id sourceId, e.created_at occurredAt, e.created_at updatedAt,
         e.from_agent_id agentId, a.name agentName, e.source_team_id teamId, t.name teamName,
-        e.attempted_hop, e.max_hops, aa.acknowledged_at FROM agent_loop_break_events e
-        JOIN agents a ON a.id = e.from_agent_id JOIN teams t ON t.id = e.source_team_id
-        LEFT JOIN attention_acknowledgements aa ON aa.source_kind = 'agent_loop_break' AND aa.source_id = e.id`)
+        e.attempted_hop, e.reason, b.name toName, aa.acknowledged_at FROM agent_loop_break_events e
+        JOIN agents a ON a.id = e.from_agent_id JOIN agents b ON b.id = e.to_agent_id
+        JOIN teams t ON t.id = e.source_team_id
+        LEFT JOIN attention_acknowledgements aa ON aa.source_kind = 'agent_loop_break' AND aa.source_id = e.id
+        WHERE e.reason != 'stopped'`)
         .all()
         .map(
+          // An exchange the user stopped needs no word from Attention: they did it.
           (r): RawItem => ({
             ...r,
             kind: 'agent_loop_break',
             severity: 'warning',
-            title: 'Agent message loop stopped',
-            diagnostic: `Message chain stopped at hop ${r.attempted_hop} (limit ${r.max_hops}).`,
+            ...(r.reason === 'repeated_message'
+              ? {
+                  title: 'Agents went round in circles',
+                  diagnostic: `${r.agentName} sent ${r.toName} the same message again, so it was not delivered. ${r.agentName} was told to say where the work stands in its conversation.`,
+                }
+              : {
+                  title: 'Agent message loop stopped',
+                  diagnostic: `An exchange between Agents stopped at step ${r.attempted_hop} under the step limit of earlier versions.`,
+                }),
             href: agentHref(r.agentId, 'mailbox'),
             acknowledgeable: true,
           }),

@@ -5,6 +5,8 @@ export interface PublicHealthResponse {
 
 /** `GET /api/health/details`: what `bazilion doctor` and the web readiness card report. */
 export interface HealthReport {
+  /** The Bazilion release the daemon runs, such as `0.62.0`. */
+  version: string
   /** Structural install health; Docker readiness is reported under `shellSecurity.docker`. */
   ok: boolean
   home: string

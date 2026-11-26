@@ -316,7 +316,7 @@ export const ATTENTION_KINDS: Record<AttentionItem['kind'], string> = {
   lesson_proposal: 'Lesson proposals',
   review_failure: 'Review failures',
   trigger_failure: 'Schedule failures',
-  agent_loop_break: 'Loop breaks',
+  agent_loop_break: 'Exchanges in circles',
   queue_interrupted: 'Paused queues',
   turn_failure: 'Failed turns',
 }

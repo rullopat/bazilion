@@ -3,12 +3,14 @@ import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { runGit } from '../../daemon/test/fixtures/git.ts'
+import { answerListing } from './fixtures/mock-lmstudio.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
 let server: TestServer
 const received: string[] = []
 const fake = createServer(async (request, response) => {
+  if (answerListing(request, response)) return
   let raw = ''
   for await (const chunk of request) raw += chunk
   received.push(raw)

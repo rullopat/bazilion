@@ -1,7 +1,16 @@
-import type { ListAgentLoopBreaksResponse, ListInboxResponse, Message } from '@bazilion/api-types'
+import {
+  type Agent,
+  type AgentLoopBreakEvent,
+  type ListAgentLoopBreaksResponse,
+  type ListExchangesResponse,
+  type ListInboxResponse,
+  type Message,
+  type StopExchangeResponse,
+  usageSummary,
+} from '@bazilion/api-types'
 import { defineCommand } from 'citty'
-import { createClient } from '../client.ts'
-import { agentArg, apiPath, positional, printRows } from '../command-helpers.ts'
+import { type BazilionClient, createClient } from '../client.ts'
+import { agentArg, apiPath, positional, printRows, teamArg } from '../command-helpers.ts'
 
 const messageArg = positional('Message id')
 
@@ -62,36 +71,105 @@ const readCmd = defineCommand({
   },
 })
 
-const loopBreaksCmd = defineCommand({
-  meta: { name: 'loop-breaks', description: 'List stopped agent-message chains' },
+async function agentNames(client: BazilionClient): Promise<(id: string) => string> {
+  const names = new Map(
+    (await client.get<Agent[]>('/api/agents?includeArchived=true')).map((a) => [a.id, a.name]),
+  )
+  return (id) => names.get(id) ?? id.slice(0, 8)
+}
+
+const STOPPED: Record<AgentLoopBreakEvent['reason'], string> = {
+  repeated_message: 'repeated a message: not delivered',
+  stopped: 'stopped by you',
+  step_limit: 'step limit of earlier versions',
+}
+
+const stoppedCmd = defineCommand({
+  meta: { name: 'stopped', description: 'List the stopped exchanges an Agent was in' },
   args: {
     agent: agentArg,
-    limit: { type: 'string', description: 'Maximum events to show (default 25)' },
+    limit: { type: 'string', description: 'Maximum to show (default 50)' },
   },
   async run({ args }) {
+    const client = createClient()
     const limit = args.limit ? `?limit=${encodeURIComponent(args.limit)}` : ''
-    const { events } = await createClient().get<ListAgentLoopBreaksResponse>(
-      `${apiPath('agents', args.agent, 'loop-breaks')}${limit}`,
-    )
+    const [{ events }, name] = await Promise.all([
+      client.get<ListAgentLoopBreaksResponse>(
+        `${apiPath('agents', args.agent, 'loop-breaks')}${limit}`,
+      ),
+      agentNames(client),
+    ])
     printRows(
       events.map((event) => [
         new Date(event.createdAt).toISOString(),
-        `chain:${event.causalChainId.slice(0, 8)}`,
-        `${event.fromAgentId.slice(0, 8)}→${event.toAgentId.slice(0, 8)}`,
-        `hop:${event.attemptedHop}/${event.maxHops}`,
-        event.reason,
+        event.causalChainId,
+        `${name(event.fromAgentId)} → ${name(event.toAgentId)}`,
+        `step ${event.step}`,
+        STOPPED[event.reason],
       ]),
-      '(no agent-message chains stopped)',
+      '(no stopped exchanges)',
+    )
+  },
+})
+
+const exchangesCmd = defineCommand({
+  meta: {
+    name: 'exchanges',
+    description: "List the exchanges between a Team's Agents going on now, with what each used",
+  },
+  args: { team: teamArg },
+  async run({ args }) {
+    const client = createClient()
+    const [{ exchanges }, name] = await Promise.all([
+      client.get<ListExchangesResponse>(apiPath('teams', args.team, 'exchanges')),
+      agentNames(client),
+    ])
+    printRows(
+      exchanges.map((exchange) => [
+        exchange.id,
+        exchange.agentIds.map(name).join(' → '),
+        `${exchange.messages} message${exchange.messages === 1 ? '' : 's'}`,
+        `since ${new Date(exchange.startedAt).toISOString()}`,
+        exchange.used.calls > 0 ? usageSummary(exchange.used) : 'nothing used yet',
+        exchange.runningAgentIds.length > 0
+          ? `working: ${exchange.runningAgentIds.map(name).join(', ')}`
+          : 'waiting to be read',
+      ]),
+      '(no exchange going on)',
+    )
+  },
+})
+
+const stopCmd = defineCommand({
+  meta: {
+    name: 'stop',
+    description: 'Stop an exchange between Agents: its turns stop and nothing in it is delivered',
+  },
+  args: { exchange: positional('Exchange id (see: bazilion inbox exchanges <team>)') },
+  async run({ args }) {
+    const result = await createClient().post<StopExchangeResponse>(
+      apiPath('exchanges', args.exchange, 'stop'),
+    )
+    if (!result.stopped) {
+      console.log(`exchange ${args.exchange} was stopped already`)
+      return
+    }
+    const turns = result.cancelled.length
+    console.log(
+      `stopped exchange ${args.exchange}: ${turns} turn${turns === 1 ? '' : 's'} stopped, ` +
+        `${result.unread} unread message${result.unread === 1 ? '' : 's'} not delivered`,
     )
   },
 })
 
 export const inboxCommand = defineCommand({
-  meta: { name: 'inbox', description: 'Inspect agent inboxes' },
+  meta: { name: 'inbox', description: 'Inspect agent inboxes and the exchanges between Agents' },
   subCommands: {
     list: listCmd,
     show: showCmd,
     read: readCmd,
-    'loop-breaks': loopBreaksCmd,
+    exchanges: exchangesCmd,
+    stop: stopCmd,
+    stopped: stoppedCmd,
   },
 })

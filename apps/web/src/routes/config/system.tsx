@@ -2,7 +2,12 @@ import type { HealthReport, ToolsResponse } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { ConfigPage } from '../../components/ConfigPage'
-import { BackupCard, HealthCard, RuntimeCard } from '../../components/setup/SystemCards'
+import {
+  BackupCard,
+  HealthCard,
+  RuntimeCard,
+  VersionCard,
+} from '../../components/setup/SystemCards'
 import { daemonClient } from '../../lib/daemon-client'
 
 const fetchSystem = createServerFn({ method: 'GET' }).handler(async () => {
@@ -12,6 +17,7 @@ const fetchSystem = createServerFn({ method: 'GET' }).handler(async () => {
     daemon.get<ToolsResponse>('/api/config/tools'),
   ])
   return {
+    version: health.version,
     ok: health.ok,
     problems: health.problems ?? [],
     runtime: health.shellSecurity,
@@ -26,12 +32,13 @@ export const Route = createFileRoute('/config/system')({
 })
 
 function SystemPage() {
-  const { ok, problems, runtime, commands } = Route.useLoaderData()
+  const { version, ok, problems, runtime, commands } = Route.useLoaderData()
   return (
     <ConfigPage
       title="System"
-      description="The installation itself: its health, how Agents run commands, and a backup of everything."
+      description="The installation itself: its version, its health, how Agents run commands, and a backup of everything."
     >
+      <VersionCard version={version} />
       <HealthCard ok={ok} problems={problems} />
       <RuntimeCard shell={runtime} state={commands} />
       <BackupCard />

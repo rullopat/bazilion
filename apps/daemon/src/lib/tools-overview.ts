@@ -21,7 +21,7 @@ import { hasCredentials as codexSignedIn } from '../runtime/auth/openai-codex.ts
 import { checkDockerImage } from '../runtime/shell/docker.ts'
 import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
-import { effectiveValue, fieldStates, readStoredSettings } from './setting-fields.ts'
+import { fieldStates, readStoredSettings } from './setting-fields.ts'
 
 /** Docker is asked on every load of the page: it gets a moment, not the page. */
 const DOCKER_WAIT_MS = 3_000
@@ -183,12 +183,6 @@ async function describe(
       }
     case 'commands':
       return describeCommands(env)
-    case 'agent-messages': {
-      const limit = def.fields.find((field) => field.envVar === 'BAZILION_AGENT_LOOP_MAX_HOPS')
-      if (!limit?.input) return undefined
-      const hops = effectiveValue(limit.input, env.BAZILION_AGENT_LOOP_MAX_HOPS ?? '')
-      return { state: on(`Stops after ${hops} ${hops === '1' ? 'reply' : 'replies'}`) }
-    }
     default:
       return undefined
   }

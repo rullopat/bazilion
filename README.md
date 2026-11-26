@@ -66,7 +66,8 @@ is not supported.
   attached to; its scripts run through `bash`. Imported skills are scanned for suspicious text.
 - **Memory**: Team-shared Markdown notes with BM25 search (qmd), through the `memory_*` tools.
 - **Mailbox**: Agents message each other (`send_message`, `read_inbox`, `wait_for_reply`); an
-  idle Agent with unread mail wakes up. A hop limit stops message loops.
+  idle Agent with unread mail wakes up. An exchange stops when its Agents repeat themselves, or
+  when you stop it.
 - **Trigger**: an interval or cron schedule that wakes an Agent with a stored instruction.
 - **Coding**: Agents run `bash` and file tools in the Team directory, on the host or in a Docker
   sandbox, guided by the repository's `AGENTS.md` files. See [coding](docs/coding-environments.md)
@@ -114,8 +115,8 @@ command to approve first. **Manage** holds the housekeeping pages, under one tab
 think with, the image model they draw with, and the providers behind them, each with whether it
 answers ([models and providers](docs/models-and-providers.md)). **Tools** holds web search, the
 browser and how commands run, one card each ([tools](docs/tools.md)); the other tabs are MCP,
-Telegram, Access (tokens and sessions) and System (health and backup). **Attention** lists what
-needs you.
+Telegram, Access (tokens and sessions) and System (the version it runs, health and backup).
+**Attention** lists what needs you.
 The web UI and the CLI offer the same management features.
 
 ## Configuration

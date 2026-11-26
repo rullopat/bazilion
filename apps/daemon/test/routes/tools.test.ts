@@ -62,7 +62,7 @@ const optionNote = (card: ServiceCard, envVar: string, value: string) => {
     : undefined
 }
 
-test('five tools on a new home, each with what it is doing', async () => {
+test('four tools on a new home, each with what it is doing', async () => {
   const { tools: cards, functions } = await tools()
   expect(cards.map((card) => [card.id, card.displayName, card.state])).toEqual([
     // No key, no address and no OpenAI or ChatGPT model: nothing can search.
@@ -70,7 +70,6 @@ test('five tools on a new home, each with what it is doing', async () => {
     ['web-pages', 'Web pages', { label: 'Built-in reader', tone: 'on' }],
     ['browser', 'Browser', { label: 'On: a browser per Agent', tone: 'on' }],
     ['commands', 'Commands', { label: 'Runs on this computer', tone: 'on' }],
-    ['agent-messages', 'Messages between Agents', { label: 'Stops after 8 replies', tone: 'on' }],
   ])
   expect(functions.map((card) => card.id)).toEqual(['image-generation'])
   // Nothing is stored, and every setting says what is in effect.
@@ -129,12 +128,12 @@ test('a value is checked before it is stored', async () => {
   expect(((await (await set('BROWSER_ATTACH', 'yes')).json()) as ServiceFieldState).value).toBe(
     'true',
   )
-  expect((await set('BAZILION_AGENT_LOOP_MAX_HOPS', '0')).status).toBe(200)
+  expect((await set('BROWSER_MAX_SESSIONS', '8')).status).toBe(200)
   expect((await set('SEARXNG_URL', ' https://searx.example.com ')).status).toBe(200)
   expect(openConfig(env.db).getAll()).toEqual({
     BROWSER_ENABLED: 'false',
     BROWSER_ATTACH: 'true',
-    BAZILION_AGENT_LOOP_MAX_HOPS: '0',
+    BROWSER_MAX_SESSIONS: '8',
     SEARXNG_URL: 'https://searx.example.com',
   })
   // An empty value clears a setting, back to its default.
@@ -143,7 +142,6 @@ test('a value is checked before it is stored', async () => {
     set: false,
     effective: 'true',
   })
-  expect((await tool('agent-messages')).state?.label).toBe('Stops after 0 replies')
 })
 
 test('a card is saved whole or not at all', async () => {

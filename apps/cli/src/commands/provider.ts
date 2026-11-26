@@ -1,6 +1,8 @@
 import type {
   ConnectProviderRequest,
   ConnectProviderResponse,
+  ModelsResponse,
+  ModelWindow,
   ProviderCatalogResponse,
   ProviderCheck,
   ProviderConfigEntry,
@@ -8,6 +10,8 @@ import type {
   ProviderFailure,
   ProviderTestRequest,
   ProviderTestResponse,
+  SetModelWindowRequest,
+  SetModelWindowResponse,
   SetProviderEnabledResponse,
   SetProviderModelsRequest,
   SetProviderModelsResponse,
@@ -221,7 +225,17 @@ const modelsCmd = defineCommand({
 
     console.log('\n## in use')
     if (p.models.length === 0) console.log('  (none: `provider connect` or `provider models-set`)')
-    else for (const m of p.models) console.log(`  ${m}`)
+    else {
+      const { chat } = await client.get<ModelsResponse>('/api/config/models')
+      const windows = new Map(chat.map((entry) => [entry.value, entry.window]))
+      printRows(
+        p.models.map((m) => {
+          const window = windows.get(`${p.id}:${m}`)
+          return [`  ${m}`, window ? `context: ${windowText(window)}` : '']
+        }),
+        '',
+      )
+    }
 
     console.log('\n## offered')
     if (catalog.listError) console.log(`  (the provider's own list failed: ${catalog.listError})`)
@@ -260,6 +274,61 @@ const modelsSetCmd = defineCommand({
     console.log(`saved ${saved.models.length} model(s) for ${args.name}`)
     for (const m of saved.models) console.log(`  ${m}`)
     for (const t of saved.movedTemplates) console.log(`template ${t.id} now uses ${t.model}`)
+  },
+})
+
+/** A chat model's window and what says it. */
+export function windowText(window: ModelWindow): string {
+  if (window.tokens === null)
+    return 'not known, so turns on it are refused (set it with `provider window`)'
+  const from =
+    window.source === 'catalog'
+      ? "Pi's catalog"
+      : window.source === 'server'
+        ? 'the server'
+        : 'set by you'
+  const fallback =
+    window.source === 'server' && window.set
+      ? `; ${window.set.toLocaleString('en-US')} set for when it does not say`
+      : ''
+  return `${window.tokens.toLocaleString('en-US')} tokens (${from})${fallback}`
+}
+
+const windowCmd = defineCommand({
+  meta: {
+    name: 'window',
+    description:
+      "Show or set a chat model's context window, for one whose window neither Pi's catalog nor its server says",
+  },
+  args: {
+    model: positional('A model string such as ollama:qwen3'),
+    tokens: {
+      type: 'positional',
+      required: false,
+      description: 'The window in tokens, as the model was loaded with; leave out to show it',
+    },
+    clear: { type: 'boolean', description: 'Forget the window set by hand' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    if (args.clear || args.tokens) {
+      const tokens = args.clear ? null : Number(String(args.tokens).replace(/[,_]/g, ''))
+      if (tokens !== null && !(Number.isSafeInteger(tokens) && tokens > 0)) {
+        throw new Error(`not a whole number of tokens: ${args.tokens}`)
+      }
+      const body: SetModelWindowRequest = { model: args.model, tokens }
+      const { window } = await client.put<SetModelWindowResponse>('/api/config/models/window', body)
+      console.log(`${args.model}: ${windowText(window)}`)
+      return
+    }
+    const { chat } = await client.get<ModelsResponse>('/api/config/models')
+    const entry = chat.find((model) => model.value === args.model)
+    if (!entry) {
+      throw new Error(
+        `${args.model} is not a chat model (see: bazilion provider models <provider>)`,
+      )
+    }
+    console.log(`${args.model}: ${windowText(entry.window)}`)
   },
 })
 
@@ -328,6 +397,7 @@ export const providerCommand = defineCommand({
     test: testCmd,
     models: modelsCmd,
     'models-set': modelsSetCmd,
+    window: windowCmd,
     enable: enableCmd,
     disable: disableCmd,
   },

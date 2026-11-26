@@ -10,7 +10,6 @@ from the next turn on.
 | Web pages | The optional Firecrawl fallback of the page reader | [web research](web-research.md) |
 | Browser | Whether Agents get a browser, and whose | [managed browser](browser-research.md) |
 | Commands | Where shell commands run, and whether dangerous ones ask first | [coding](coding-environments.md) |
-| Messages between Agents | After how many replies a chain between Agents is stopped | [Team Policy](team-policy.md) |
 
 Each card says what is in effect now (`Using Brave`, `On: a browser per Agent`,
 `Runs in Docker, asks first`) and what a choice would meet on this machine before you save it:

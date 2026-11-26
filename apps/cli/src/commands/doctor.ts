@@ -9,6 +9,7 @@ export const doctorCommand = defineCommand({
     const check = (label: string, condition: boolean, hint?: string) =>
       console.log(checkLine(label, condition, hint))
 
+    console.log(`bazilion ${r.version}`)
     console.log(`bazilion home: ${r.home}`)
     console.log()
     console.log('paths')

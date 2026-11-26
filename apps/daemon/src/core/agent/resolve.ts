@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import { DomainError } from '../errors.ts'
+import { modelWindowSetting } from '../model-windows.ts'
 import type { Paths } from '../paths.ts'
 import { loadIdentityFromFile } from '../profile/identity.ts'
 import * as agentLessonProposalRepo from '../repos/agentLessonProposals.ts'
@@ -29,10 +30,11 @@ export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): Res
     throw new Error(`team not found for agent ${agentId}: ${agent.teamId}`)
   }
 
+  const model = agent.modelOverride ?? profile.defaultModel
   return {
     agent,
     profile,
-    model: agent.modelOverride ?? profile.defaultModel,
+    model,
     reasoningLevel: agent.reasoningLevel,
     team,
     skills: agentRepo.listAttachedSkills(db, agent.id),
@@ -40,5 +42,6 @@ export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): Res
       .listForAgent(db, agent.id, { status: 'approved', limit: 100 })
       .filter((proposal) => proposal.scope === 'private')
       .map((proposal) => proposal.text),
+    contextWindowSetting: modelWindowSetting(db, model),
   }
 }

@@ -14,7 +14,12 @@ import { configRouter } from './routes/config.ts'
 import { conversationSearchRouter, conversationsRouter } from './routes/conversations.ts'
 import { eventsRouter } from './routes/events.ts'
 import { mcpRouter } from './routes/mcp.ts'
-import { agentMessagesRouter, messagesRouter, teamMessagesRouter } from './routes/messages.ts'
+import {
+  agentMessagesRouter,
+  exchangesRouter,
+  messagesRouter,
+  teamMessagesRouter,
+} from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
 import { notificationsRouter } from './routes/notifications.ts'
 import { profilesRouter } from './routes/profiles.ts'
@@ -77,6 +82,7 @@ export function createApp(): Hono {
   app.route('/api/skills', skillsRouter)
   app.route('/api/triggers', triggersRouter)
   app.route('/api/messages', messagesRouter)
+  app.route('/api/exchanges', exchangesRouter)
   app.route('/api/mcp-servers', mcpRouter)
   // Mounted before /api/config so it claims /api/config/telegram*, which the generic
   // /fields/:envVar handler would otherwise shadow.

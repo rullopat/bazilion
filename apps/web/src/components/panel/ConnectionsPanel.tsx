@@ -1,5 +1,5 @@
-// The Connections tab: who may message whom in the Team, and what they said lately. The map
-// that edits the connections is the full-width view.
+// The Connections tab: the exchanges between the Team's Agents going on now, who may message
+// whom, and what they said lately. The map that edits the connections is the full-width view.
 
 import { OUTSIDE_TEAM, type Team, type TeamPolicy } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
@@ -10,6 +10,7 @@ import { pairKey, trafficByPair } from '../../lib/messages'
 import { MODE_SENTENCE } from '../../lib/team-policy'
 import { useResource } from '../../lib/use-resource'
 import { AgentAvatar } from '../AgentAvatar'
+import { ExchangesNow } from '../connections/ExchangesNow'
 import { TeamThread, useTeamMessages } from '../connections/TeamThread'
 import { useWorkspace } from '../workspace/context'
 import { PanelGroup, PanelHeading } from './SidePanel'
@@ -72,6 +73,8 @@ export function ConnectionsPanel({ team }: { team: Team }) {
           Open the map
         </Link>
       </div>
+
+      <ExchangesNow teamId={team.id} memberIds={members.map((member) => member.id)} />
 
       <PanelHeading>Who can message whom</PanelHeading>
       {members.length === 0 ? (

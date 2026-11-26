@@ -7,7 +7,6 @@ import {
   ChevronRight,
   FileText,
   type LucideIcon,
-  MessagesSquare,
   Search,
   SquareTerminal,
   Wrench,
@@ -39,7 +38,6 @@ const ICONS: Record<string, LucideIcon> = {
   'web-pages': FileText,
   browser: AppWindow,
   commands: SquareTerminal,
-  'agent-messages': MessagesSquare,
 }
 
 /** The daemon names the setting it refuses; under the setting itself, "It" reads better. */

@@ -227,6 +227,42 @@ describe('scheduler', () => {
     expect(mixed).toContain('The other message is a reply to something you sent.')
   })
 
+  test('a woken Agent reads the exchange its messages continue, and when to end it', async () => {
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Producer',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      teamId: env.teamId,
+    })
+    const asked = messageRepo.send(env.db, {
+      from: 'a1',
+      to: 'a2',
+      payload: JSON.stringify({ text: 'Make the demo.' }),
+    })
+    messageRepo.markRead(env.db, asked.id)
+    messageRepo.send(env.db, {
+      from: 'a2',
+      to: 'a1',
+      replyTo: asked.id,
+      causalChainId: asked.id,
+      causalHop: 1,
+      payload: JSON.stringify({ text: 'Done: demo.mp4' }),
+    })
+    await scheduler._tickOnce()
+    const wake = turnCalls.at(-1)?.message ?? ''
+    expect(wake).toContain(
+      "These messages continue an exchange between Agents that began with A's message to Producer. Before them:\n- A → Producer: Make the demo.",
+    )
+    expect(wake).toContain(
+      'Keep this exchange going only while it moves that first request forward.',
+    )
+    // It comes after the messages and what to do with them.
+    expect(wake.indexOf('Done: demo.mp4')).toBeLessThan(wake.indexOf('These messages continue'))
+  })
+
   test('a failed inbox turn preparation leaves the messages unread and retries with backoff', async () => {
     agentRepo.insert(env.db, {
       id: 'a2',

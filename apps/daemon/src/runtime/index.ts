@@ -22,13 +22,14 @@ export {
 } from './pi/session.ts'
 export type { CatalogEntry } from './providers/catalog.ts'
 export {
+  catalogContextWindow,
   datedCopies,
   listCatalogEntries,
   listCatalogModels,
   listCatalogModelsSync,
   listLiveModels,
 } from './providers/catalog.ts'
-export { testProviderModel } from './providers/pi-runtime.ts'
+export { serverContextWindow, testProviderModel } from './providers/pi-runtime.ts'
 export type { PromptSection } from './session/prompt.ts'
 export type {
   BrowserHost,

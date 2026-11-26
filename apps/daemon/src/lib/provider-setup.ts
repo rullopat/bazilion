@@ -9,12 +9,15 @@ import type {
   ConnectProviderResponse,
   LocalProvidersResponse,
   ModelsResponse,
+  ModelWindow,
   OpenAICodexStatus,
   ProviderCatalogResponse,
   ProviderCheck,
   ProviderConfigEntry,
   ProviderFailure,
   ProviderState,
+  SetModelWindowRequest,
+  SetModelWindowResponse,
   SetProviderModelsResponse,
   TestProviderResponse,
 } from '@bazilion/api-types'
@@ -27,7 +30,9 @@ import {
   type Paths,
   providerModelRepo,
   providerStateRepo,
+  readModelWindows,
   replaceCuratedModels,
+  writeModelWindow,
 } from '../core/index.ts'
 import { modelUsage } from '../core/model-usage.ts'
 import { readProviderChecks, writeProviderCheck } from '../core/provider-checks.ts'
@@ -36,17 +41,20 @@ import {
   isProviderConfigured,
   PROVIDERS,
   type ProviderDef,
+  parseModelString,
   providerEndpoint,
   providersUsingField,
 } from '../core/providers.ts'
 import {
   type CatalogEntry,
+  catalogContextWindow,
   clearOpenAICodexCredentials,
   datedCopies,
   getOpenAICodexStatus,
   listCatalogEntries,
   listLiveModels,
   loadOpenAICodexAccessToken,
+  serverContextWindow,
   testProviderModel,
 } from '../runtime/index.ts'
 import { describeProviderFailure } from './provider-failure.ts'
@@ -177,31 +185,54 @@ export function providerEntry(ctx: SetupCtx, id: string): ProviderConfigEntry {
 
 // ─── What Agents think and draw with ─────────────────────────────────────
 
-export function modelsOverview(ctx: SetupCtx): ModelsResponse {
+/**
+ * A chat model's window, and what says it: Pi's catalog, else the model's local server (its
+ * answer is reused a few minutes), else the value set by hand.
+ */
+async function modelWindow(
+  value: string,
+  env: NodeJS.ProcessEnv,
+  set: number | null,
+): Promise<ModelWindow> {
+  const catalogued = catalogContextWindow(value)
+  if (catalogued) return { tokens: catalogued, source: 'catalog', set, settable: false }
+  const { providerName, modelId } = parseModelString(value)
+  const server = findProvider(providerName)?.local
+    ? await serverContextWindow(providerName, modelId, env)
+    : null
+  if (server) return { tokens: server, source: 'server', set, settable: true }
+  return { tokens: set, source: set ? 'set' : null, set, settable: true }
+}
+
+export async function modelsOverview(ctx: SetupCtx): Promise<ModelsResponse> {
   const snap = snapshot(ctx)
   const usage = modelUsage(ctx.db)
-  const chat: ChatModelEntry[] = []
+  const windows = readModelWindows(ctx.db)
+  const chat: Array<Promise<ChatModelEntry>> = []
   for (const provider of PROVIDERS) {
     if (!snap.enabled.has(provider.id)) continue
     const entry = entryOf(provider, snap, ctx.db)
     const facts = new Map(chatCatalog(provider.id).map((model) => [model.id, model]))
     for (const id of entry.models) {
       const value = `${provider.id}:${id}`
-      chat.push({
-        ...catalogModel(id, facts.get(id)),
-        selected: true,
-        suggested: entry.suggested.includes(id),
-        value,
-        provider: provider.id,
-        providerName: provider.displayName,
-        providerConnect: entry.connect,
-        providerState: entry.state,
-        usedBy: usage.get(value) ?? { agents: 0, templates: [] },
-      })
+      chat.push(
+        modelWindow(value, snap.env, windows[value] ?? null).then((window) => ({
+          ...catalogModel(id, facts.get(id)),
+          selected: true,
+          suggested: entry.suggested.includes(id),
+          value,
+          provider: provider.id,
+          providerName: provider.displayName,
+          providerConnect: entry.connect,
+          providerState: entry.state,
+          usedBy: usage.get(value) ?? { agents: 0, templates: [] },
+          window,
+        })),
+      )
     }
   }
   return {
-    chat,
+    chat: await Promise.all(chat),
     images: {
       selected: snap.env.BAZILION_IMAGE_MODEL || 'off',
       routes: IMAGE_ROUTES.map((route) => {
@@ -218,6 +249,33 @@ export function modelsOverview(ctx: SetupCtx): ModelsResponse {
       }),
     },
   }
+}
+
+/** Set a chat model's window by hand, or forget it; only a model the catalog does not know. */
+export async function setModelWindow(
+  ctx: SetupCtx,
+  body: SetModelWindowRequest,
+): Promise<SetModelWindowResponse> {
+  let parsed: ReturnType<typeof parseModelString>
+  try {
+    parsed = parseModelString(body.model)
+  } catch {
+    throw new DomainError(400, 'model must be a provider:model string')
+  }
+  const { providerName, modelId } = parsed
+  const value = `${providerName}:${modelId}`
+  if (!providerModelRepo.list(ctx.db, providerName).includes(modelId)) {
+    throw new DomainError(404, `${value} is not a chat model: add it on the Models page first`)
+  }
+  if (catalogContextWindow(value)) {
+    throw new DomainError(400, `${value}'s context window comes from Pi's catalog`)
+  }
+  const tokens = body.tokens
+  if (tokens !== null && !(Number.isSafeInteger(tokens) && tokens > 0)) {
+    throw new DomainError(400, 'tokens must be a whole number of tokens above 0, or null')
+  }
+  writeModelWindow(ctx.db, value, tokens)
+  return { window: await modelWindow(value, effectiveEnv(ctx), tokens) }
 }
 
 function catalogModel(

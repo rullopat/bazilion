@@ -252,6 +252,7 @@ describe('the browser guide comes with the browser tools', () => {
       },
       skills: [],
       privateLessons: [],
+      contextWindowSetting: null,
     }) as ResolvedAgent
 
   const stubBrowserHost: BrowserHost = {

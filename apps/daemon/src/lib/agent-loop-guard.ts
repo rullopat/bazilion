@@ -1,9 +1,18 @@
-import { randomUUID } from 'node:crypto'
-import type { AgentLoopBreakEvent, Message } from '@bazilion/api-types'
-import { DomainError } from '../core/errors.ts'
-import { agentRepo, type BazilionDb, messageRepo, openConfig } from '../core/index.ts'
+// Messages between Agents form exchanges: the first message, sent in a turn someone started, opens
+// one, and every message sent in a turn its messages woke continues it, one step further. An
+// exchange has no length limit; it ends when its Agents stop writing. Two things stop it:
+//
+// - a message its sender already sent the same Agent in the exchange (the same words, whatever
+//   the case, punctuation and spacing): the Agents are going round in circles, so it is not
+//   delivered, and the sender is told to report to the user instead;
+// - the user stopping it, from the Connections tab or the CLI.
+//
+// Each stop is kept in agent_loop_break_events, which Attention and the mailbox read.
 
-const DEFAULT_MAX_HOPS = 8
+import { randomUUID } from 'node:crypto'
+import type { AgentLoopBreakEvent, ExchangeStopReason, Message } from '@bazilion/api-types'
+import { DomainError } from '../core/errors.ts'
+import { agentRepo, type BazilionDb, messageRepo } from '../core/index.ts'
 
 interface RawBreakEvent {
   id: string
@@ -14,10 +23,15 @@ interface RawBreakEvent {
   source_team_id: string
   target_team_id: string
   attempted_hop: number
-  max_hops: number
   reason: string
   origin: string
   created_at: number
+}
+
+/** The stored reason as the API says it; a stop by the step limit of 0.61 and earlier is kept. */
+function reasonOf(stored: string): ExchangeStopReason {
+  if (stored === 'repeated_message' || stored === 'stopped') return stored
+  return 'step_limit'
 }
 
 function toEvent(row: RawBreakEvent): AgentLoopBreakEvent {
@@ -29,28 +43,22 @@ function toEvent(row: RawBreakEvent): AgentLoopBreakEvent {
     toAgentId: row.to_agent_id,
     sourceTeamId: row.source_team_id,
     targetTeamId: row.target_team_id,
-    attemptedHop: row.attempted_hop,
-    maxHops: row.max_hops,
-    reason: row.reason,
+    step: row.attempted_hop,
+    reason: reasonOf(row.reason),
     origin: row.origin,
     createdAt: row.created_at,
   }
 }
 
-function agentLoopMaxHops(db?: BazilionDb, env: NodeJS.ProcessEnv = process.env): number {
-  const raw =
-    env.BAZILION_AGENT_LOOP_MAX_HOPS ??
-    (db ? openConfig(db).get('BAZILION_AGENT_LOOP_MAX_HOPS') : undefined)
-  const parsed = Number(raw)
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_MAX_HOPS
-}
-
-export class AgentLoopLimitError extends DomainError {
-  constructor(event: AgentLoopBreakEvent) {
+/** A message the exchange refused; its words are for the Agent that sent it. */
+export class ExchangeStoppedError extends DomainError {
+  constructor(reason: 'repeated_message' | 'stopped', recipient: string) {
     super(
-      429,
-      `agent message chain ${event.causalChainId} stopped at hop ${event.attemptedHop} ` +
-        `(limit ${event.maxHops})`,
+      409,
+      reason === 'repeated_message'
+        ? `Not delivered: you already sent ${recipient} this same message in this exchange, so you are going round in circles. Do not send it again: tell the user in a few lines where the work stands and what is missing.`
+        : 'Not delivered: the user stopped this exchange between Agents. Do not message about it again: tell the user in a few lines where the work stands.',
+      reason === 'repeated_message' ? 'exchange_repeated_message' : 'exchange_stopped',
     )
   }
 }
@@ -76,56 +84,113 @@ export function resolveMessageCausality(
   }
 }
 
-export function enforceMessageCausality(
+/** A message's words as compared for repetition: case, punctuation and spacing aside. */
+export function sameWords(text: string): string {
+  return text
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+/** Whether the user stopped this exchange. */
+export function isStoppedExchange(db: BazilionDb, chainId: string): boolean {
+  return (
+    db.raw
+      .query<{ one: number }, [string]>(
+        `SELECT 1 one FROM agent_loop_break_events WHERE causal_chain_id = ? AND reason = 'stopped' LIMIT 1`,
+      )
+      .get(chainId) !== null
+  )
+}
+
+function recordStop(
   db: BazilionDb,
-  input: {
-    from: string
-    to: string
-    origin: string
-    causality: MessageCausality
-  },
+  event: Omit<AgentLoopBreakEvent, 'id' | 'createdAt' | 'sourceTeamId' | 'targetTeamId'>,
 ): AgentLoopBreakEvent | null {
-  const attemptedHop = input.causality.causalHop ?? 0
-  const maxHops = agentLoopMaxHops(db)
-  if (attemptedHop <= maxHops) return null
-  const source = agentRepo.get(db, input.from)
-  const target = agentRepo.get(db, input.to)
+  const source = agentRepo.get(db, event.fromAgentId)
+  const target = agentRepo.get(db, event.toAgentId)
   if (!source || !target) return null
-  const event: AgentLoopBreakEvent = {
+  const stored: AgentLoopBreakEvent = {
+    ...event,
     id: randomUUID(),
-    causalChainId: input.causality.causalChainId ?? input.causality.parentMessageId ?? randomUUID(),
-    parentMessageId: input.causality.parentMessageId,
-    fromAgentId: input.from,
-    toAgentId: input.to,
     sourceTeamId: source.teamId,
     targetTeamId: target.teamId,
-    attemptedHop,
-    maxHops,
-    reason: 'causal_hop_limit_exceeded',
-    origin: input.origin,
     createdAt: Date.now(),
   }
   db.raw.run(
     `INSERT INTO agent_loop_break_events
        (id, causal_chain_id, parent_message_id, from_agent_id, to_agent_id,
         source_team_id, target_team_id, attempted_hop, max_hops, reason, origin, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     [
-      event.id,
-      event.causalChainId,
-      event.parentMessageId,
-      event.fromAgentId,
-      event.toAgentId,
-      event.sourceTeamId,
-      event.targetTeamId,
-      event.attemptedHop,
-      event.maxHops,
-      event.reason,
-      event.origin,
-      event.createdAt,
+      stored.id,
+      stored.causalChainId,
+      stored.parentMessageId,
+      stored.fromAgentId,
+      stored.toAgentId,
+      stored.sourceTeamId,
+      stored.targetTeamId,
+      stored.step,
+      stored.reason,
+      stored.origin,
+      stored.createdAt,
     ],
   )
-  return event
+  return stored
+}
+
+/**
+ * Refuse a message that continues an exchange the user stopped, or that repeats a message its
+ * sender already sent the same Agent in the exchange (that refusal is recorded). A message that
+ * opens an exchange is never refused here.
+ */
+export function guardExchange(
+  db: BazilionDb,
+  input: { from: string; to: string; payload: string; origin: string; causality: MessageCausality },
+): 'repeated_message' | 'stopped' | null {
+  const chainId = input.causality.causalChainId
+  if (!chainId) return null
+  if (isStoppedExchange(db, chainId)) return 'stopped'
+  const words = sameWords(messageRepo.messageText(input.payload))
+  const repeated = messageRepo
+    .listExchange(db, chainId)
+    .some(
+      (message) =>
+        message.fromAgentId === input.from &&
+        message.toAgentId === input.to &&
+        sameWords(messageRepo.messageText(message.payload)) === words,
+    )
+  if (!repeated) return null
+  recordStop(db, {
+    causalChainId: chainId,
+    parentMessageId: input.causality.parentMessageId,
+    fromAgentId: input.from,
+    toAgentId: input.to,
+    step: input.causality.causalHop ?? 0,
+    reason: 'repeated_message',
+    origin: input.origin,
+  })
+  return 'repeated_message'
+}
+
+/** Record that the user stopped an exchange; false when it has no message or was stopped. */
+export function recordExchangeStop(db: BazilionDb, chainId: string): boolean {
+  const messages = messageRepo.listExchange(db, chainId)
+  const first = messages[0]
+  const last = messages.at(-1)
+  if (!first || !last || isStoppedExchange(db, chainId)) return false
+  return (
+    recordStop(db, {
+      causalChainId: chainId,
+      parentMessageId: last.id,
+      fromAgentId: first.fromAgentId,
+      toAgentId: first.toAgentId,
+      step: last.causalHop,
+      reason: 'stopped',
+      origin: 'operator',
+    }) !== null
+  )
 }
 
 export function listAgentLoopBreaks(

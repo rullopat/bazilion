@@ -26,8 +26,11 @@ export interface ProviderDef {
    * `fallback` is where a model id missing from Pi's catalog goes (OpenAI-compatible).
    */
   endpoint?: { env?: string; fallback?: string }
-  /** A server on the operator's machine: always available, models come only from it. */
-  local?: { key: string; authHeader: boolean }
+  /**
+   * A server on the operator's machine: always available, models come only from it. `window`
+   * says where it reports the context window a model was loaded with.
+   */
+  local?: { key: string; authHeader: boolean; window: LocalWindowSource }
   /**
    * Paid by a subscription, not per use: Usage counts its tokens apart and no cost for them, even
    * where Pi's catalog prices the model.
@@ -76,12 +79,19 @@ function apiKey(
   }
 }
 
+/**
+ * Where a local server says a loaded model's context window: llama.cpp in its OpenAI model listing
+ * (`meta.n_ctx`), LM Studio in its own `GET /api/v1/models` (`loaded_instances[].config.
+ * context_length`), Ollama in `GET /api/ps` (`context_length` of a running model).
+ */
+export type LocalWindowSource = 'llamacpp' | 'lmstudio' | 'ollama'
+
 function localServer(
   provider: Pick<ProviderDef, 'id' | 'displayName' | 'hint'> & {
     urlEnv: string
     url: string
     keyEnv: string
-    local: { key: string; authHeader: boolean }
+    local: { key: string; authHeader: boolean; window: LocalWindowSource }
     keyField: Omit<ServiceField, 'envVar' | 'kind'>
   },
 ): ProviderDef {
@@ -385,7 +395,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     urlEnv: 'LMSTUDIO_URL',
     url: 'http://127.0.0.1:1234/v1',
     keyEnv: 'LMSTUDIO_API_KEY',
-    local: { key: 'lm-studio', authHeader: false },
+    local: { key: 'lm-studio', authHeader: false, window: 'lmstudio' },
     keyField: { label: 'API key (rarely needed)' },
   }),
   localServer({
@@ -395,7 +405,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     urlEnv: 'OLLAMA_URL',
     url: 'http://127.0.0.1:11434/v1',
     keyEnv: 'OLLAMA_API_KEY',
-    local: { key: 'ollama', authHeader: false },
+    local: { key: 'ollama', authHeader: false, window: 'ollama' },
     keyField: { label: 'API key (rarely needed)' },
   }),
   localServer({
@@ -405,7 +415,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     urlEnv: 'LLAMACPP_URL',
     url: 'http://127.0.0.1:9931/v1',
     keyEnv: 'LLAMACPP_API_KEY',
-    local: { key: 'no-key', authHeader: true },
+    local: { key: 'no-key', authHeader: true, window: 'llamacpp' },
     keyField: {
       label: 'API key (only if started with --api-key)',
       description:

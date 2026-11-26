@@ -408,7 +408,7 @@ agentChatRouter.get('/:id/chat/context', (c) =>
         tokensEstimate: history.tokens,
       },
       totals: { chars: totalsChars, tokens: estimateTokens(totalsChars) },
-      window: conversationWindow(conversation, resolved.model),
+      window: conversationWindow(conversation, resolved),
     } satisfies ChatContextResponse)
   }),
 )
