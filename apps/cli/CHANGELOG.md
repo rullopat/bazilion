@@ -1,5 +1,15 @@
 # bazilion
 
+## 0.62.0
+
+### Minor Changes
+
+- [#127](https://github.com/rullopat/bazilion/pull/127) [`24d6000`](https://github.com/rullopat/bazilion/commit/24d60003974322df03576a4287c9ce586971fae2) Thanks [@rullopat](https://github.com/rullopat)! - **Agents can work together as long as the work needs: exchanges between them have no length limit.** A chain of messages used to stop after eight replies, even when it was real work. Now an exchange stops only when its Agents go round in circles (one sends another the same message again: it is not delivered, and the Agent is told to tell you where things stand) or when you stop it. A woken Agent also reads the exchange so far and ends it when it no longer moves the first request forward. While an exchange goes on, the Connections tab shows it under **Going on now**, with how many messages, since when and what it has used, and a **Stop** button; `bazilion inbox exchanges <team>` and `bazilion inbox stop <exchange>` do the same. The **Messages between Agents** setting is gone, and `bazilion inbox loop-breaks` is now `bazilion inbox stopped`.
+
+- [#127](https://github.com/rullopat/bazilion/pull/127) [`24d6000`](https://github.com/rullopat/bazilion/commit/24d60003974322df03576a4287c9ce586971fae2) Thanks [@rullopat](https://github.com/rullopat)! - **A model's context window is never assumed: the server says it, or you set it.** Every local model was taken to read 32,768 tokens, whatever it was loaded with. On a 32k llama.cpp server that made Bazilion summarize the conversation again on every turn, so the engine's prompt cache never held, and replies stopped a few seconds in for lack of room. Now each turn asks the server: llama.cpp, LM Studio 0.4 or later and Ollama all say the window a loaded model has. When the server does not say (an LM Studio or Ollama model not loaded yet, or a hosted model the catalog does not know), set the window on the model's row on the Models page, or with `bazilion provider window <provider:model> <tokens>`. A turn on a model whose window nothing says is refused at once, saying where to set it. Summaries are sized to the window, keeping at most a quarter of a small one, and a reply may use what the window leaves instead of 4,096 tokens.
+
+- [#127](https://github.com/rullopat/bazilion/pull/127) [`24d6000`](https://github.com/rullopat/bazilion/commit/24d60003974322df03576a4287c9ce586971fae2) Thanks [@rullopat](https://github.com/rullopat)! - **Setup → System says which Bazilion release is running.** Its first card shows the version the daemon runs, and `bazilion doctor` prints it on its first line. After an upgrade, that is the version actually serving you, which may differ from the `bazilion` command until Bazilion restarts.
+
 ## 0.61.0
 
 ### Minor Changes
