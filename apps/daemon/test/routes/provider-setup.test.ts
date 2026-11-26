@@ -19,6 +19,7 @@ import {
   providerModelRepo,
   providerStateRepo,
 } from '../../src/core/index.ts'
+import { readModelWindows } from '../../src/core/model-windows.ts'
 import { readProviderChecks } from '../../src/core/provider-checks.ts'
 import { PROVIDERS } from '../../src/core/providers.ts'
 import { configRouter } from '../../src/routes/config.ts'
@@ -512,6 +513,75 @@ test('the models overview lists chat models with who uses them, and the image ro
       )
     ).status,
   ).toBe(400)
+})
+
+test('a chat model’s window comes from the catalog, its server, or the value set by hand', async () => {
+  mock = await startMockServer((request) =>
+    new URL(request.url).pathname === '/api/v1/models'
+      ? Response.json({
+          models: [
+            {
+              key: 'loaded',
+              loaded_instances: [{ id: 'loaded', config: { context_length: 40_960 } }],
+            },
+            { key: 'idle', loaded_instances: [] },
+          ],
+        })
+      : new Response('not found', { status: 404 }),
+  )
+  openConfig(env.db).set('LMSTUDIO_URL', `${mock.url}/v1`)
+  providerStateRepo.setEnabled(env.db, 'lmstudio', true)
+  providerModelRepo.replace(env.db, 'lmstudio', ['loaded', 'idle'])
+  openSecrets(env.db, 'test-only').set('ANTHROPIC_API_KEY', 'sk-ant-test')
+  providerStateRepo.setEnabled(env.db, 'anthropic', true)
+  providerModelRepo.replace(env.db, 'anthropic', ['claude-haiku-5-5'])
+
+  const windows = async () =>
+    Object.fromEntries(
+      (await get<ModelsResponse>('/models')).chat.map((model) => [model.value, model.window]),
+    )
+  const set = (model: string, tokens: unknown) =>
+    configRouter.request('/models/window', json('PUT', { model, tokens }))
+
+  expect(await windows()).toEqual({
+    'anthropic:claude-haiku-5-5': {
+      tokens: expect.any(Number),
+      source: 'catalog',
+      set: null,
+      settable: false,
+    },
+    'lmstudio:loaded': { tokens: 40_960, source: 'server', set: null, settable: true },
+    // Not loaded: LM Studio does not say, and nothing is assumed.
+    'lmstudio:idle': { tokens: null, source: null, set: null, settable: true },
+  })
+
+  const saved = await set('lmstudio:idle', 16_384)
+  expect(saved.status).toBe(200)
+  expect(await saved.json()).toEqual({
+    window: { tokens: 16_384, source: 'set', set: 16_384, settable: true },
+  })
+  // A window set for a model its server sizes waits for when the server does not say.
+  await set('lmstudio:loaded', 8_192)
+  expect(await windows()).toMatchObject({
+    'lmstudio:loaded': { tokens: 40_960, source: 'server', set: 8_192 },
+    'lmstudio:idle': { tokens: 16_384, source: 'set' },
+  })
+  // It reaches the Agents on the model.
+  expect(readModelWindows(env.db)).toEqual({ 'lmstudio:idle': 16_384, 'lmstudio:loaded': 8_192 })
+  expect(mergeSecretsIntoEnv(env.db, 'test-only').MODEL_CONTEXT_WINDOWS).toBeUndefined()
+
+  expect((await set('anthropic:claude-haiku-5-5', 50_000)).status).toBe(400)
+  expect((await set('lmstudio:not-in-chat', 50_000)).status).toBe(404)
+  for (const bad of [0, -1, 1.5, '4096', undefined]) {
+    expect((await set('lmstudio:idle', bad)).status).toBe(400)
+  }
+
+  expect(await (await set('lmstudio:idle', null)).json()).toEqual({
+    window: { tokens: null, source: null, set: null, settable: true },
+  })
+  // Taking a model out of Chat forgets its window.
+  await configRouter.request('/providers/lmstudio/models', json('PUT', { models: ['idle'] }))
+  expect(readModelWindows(env.db)).toEqual({})
 })
 
 test('every provider has a group; suggested models exist in the bundled catalog', async () => {

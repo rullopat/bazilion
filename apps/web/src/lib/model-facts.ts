@@ -3,6 +3,7 @@
 import type {
   CatalogModel,
   ChatModelEntry,
+  ModelWindow,
   ProviderConfigEntry,
   ProviderFailureKind,
 } from '@bazilion/api-types'
@@ -58,11 +59,28 @@ export function usedByLine(usedBy: ChatModelEntry['usedBy']): string {
   return parts.length > 0 ? parts.join(', ') : 'Not used yet'
 }
 
+/**
+ * Where a chat model's window comes from, for one the catalog does not know (the catalog's shows
+ * in its facts). `missing` when nothing says it: turns on it are refused until it is set.
+ */
+export function windowLine(window: ModelWindow): { text: string; missing: boolean } | null {
+  if (window.source === 'catalog') return null
+  const context = formatContext(window.tokens ?? undefined)
+  if (window.source === 'server' && context) {
+    return { text: `${context} context, from the server`, missing: false }
+  }
+  if (window.source === 'set' && context)
+    return { text: `${context} context, set by you`, missing: false }
+  return { text: 'Context window not known', missing: true }
+}
+
 /** The two facts that matter when choosing a model: how much it reads, whether it sees images. */
 export function menuFacts(
-  model: Pick<ChatModelEntry, 'contextWindow' | 'images' | 'providerConnect'>,
+  model: Pick<ChatModelEntry, 'contextWindow' | 'images' | 'providerConnect'> & {
+    window?: ModelWindow
+  },
 ): string {
-  const context = formatContext(model.contextWindow)
+  const context = formatContext(model.window?.tokens ?? model.contextWindow)
   if (!context) return model.providerConnect === 'local' ? 'on this computer' : ''
   return `${context} · ${model.images ? 'sees images' : 'text only'}`
 }

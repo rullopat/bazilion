@@ -1,5 +1,10 @@
 import type { ResolvedAgent } from '@bazilion/api-types'
-import { type BazilionDb, mergeSecretsIntoEnv, providerStateRepo } from '../core/index.ts'
+import {
+  type BazilionDb,
+  mergeSecretsIntoEnv,
+  modelWindowSetting,
+  providerStateRepo,
+} from '../core/index.ts'
 import {
   findProvider,
   parseModelString,
@@ -84,6 +89,9 @@ export async function resolveReviewProvider(
   if (!providerStateRepo.listEnabled(db).has(providerName)) {
     throw new ExecutionUnavailableError(`${providerName} is not enabled.`)
   }
+  // The review's model may not be the Agent's, so its window set by hand is looked up here.
+  const contextWindow = modelWindowSetting(db, agent.model)
+  const window = contextWindow ? { contextWindow } : {}
 
   if (providerName === 'openai-codex') {
     let resolution: Awaited<ReturnType<typeof resolveAgentApiKey>>
@@ -98,7 +106,7 @@ export async function resolveReviewProvider(
       )
     }
     return {
-      runtime: { providerName, modelId, reasoningLevel, apiKey: resolution.apiKey },
+      runtime: { providerName, modelId, reasoningLevel, apiKey: resolution.apiKey, ...window },
       refreshApiKey: resolution.refreshApiKey,
     }
   }
@@ -135,6 +143,7 @@ export async function resolveReviewProvider(
       ...(baseUrl ? { baseUrl } : {}),
       ...(credentialEnv.length > 0 ? { credentialEnv } : {}),
       ...(credentialFile ? { credentialFile } : {}),
+      ...window,
     },
   }
 }

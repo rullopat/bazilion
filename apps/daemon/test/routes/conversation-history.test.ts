@@ -11,6 +11,7 @@ import type {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createApp } from '../../src/app.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
+import { writeModelWindow } from '../../src/core/model-windows.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as providerModels from '../../src/core/repos/providerModels.ts'
 import * as providerState from '../../src/core/repos/providerState.ts'
@@ -31,6 +32,8 @@ beforeEach(() => {
   providerState.setEnabled(env.db, 'lmstudio', true)
   providerModels.replace(env.db, 'lmstudio', ['test'])
   createProfile(env.db, env.paths, { id: 'test', defaultModel: 'lmstudio:test' })
+  // No server answers here: the model's window is the one set by hand.
+  writeModelWindow(env.db, 'lmstudio:test', 32_768)
   agentId = spawnAgent(env.db, env.paths, { profileId: 'test', teamId: env.teamId }).id
 })
 afterEach(() => {
@@ -133,7 +136,7 @@ test('a compacted conversation keeps every message and marks where its summary s
       at: AT + 7_000,
     },
   ])
-  // The model's own report for its last reply; a local model's window is the one Pi is told.
+  // The model's own report for its last reply; a local model's window is the one set for it.
   expect(body.context).toEqual({ tokens: 1_300, window: 32_768 })
 
   const earlier = (await (await request(`/conversations/${conversation.id}`)).json()) as {
@@ -172,8 +175,9 @@ test('editing a message before the compaction takes the compaction away', async 
   expect(body.context.tokens).toBe(1_100)
 })
 
-test('the window is the one a turn gives Pi: its catalog, or 32,768 for a local model', () => {
-  expect(turnContextWindow('openai-codex:gpt-6.2-astra')).toBe(272_000)
-  expect(turnContextWindow('lmstudio:test')).toBe(32_768)
-  expect(turnContextWindow('not a model')).toBeNull()
+test('the window is the one a turn gives Pi: its catalog, or one set for a local model', () => {
+  expect(turnContextWindow('openai-codex:gpt-6.2-astra', null)).toBe(272_000)
+  expect(turnContextWindow('lmstudio:test', 32_768)).toBe(32_768)
+  expect(turnContextWindow('lmstudio:test', null)).toBeNull()
+  expect(turnContextWindow('not a model', null)).toBeNull()
 })

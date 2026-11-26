@@ -14,7 +14,7 @@ import {
   countSessionMessages,
   seedSessionMessages,
 } from '../../daemon/test/fixtures/conversation.ts'
-import { type MockLlm, startLmStudioMock } from './fixtures/mock-lmstudio.ts'
+import { type MockLlm, reply, startLmStudioMock } from './fixtures/mock-lmstudio.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
@@ -844,6 +844,43 @@ test('agent chat-context on an empty history returns zero history entries', asyn
   })
   // System prompt + tools still contribute to totals even on a fresh agent.
   expect(body.totals.chars).toBeGreaterThan(0)
+})
+
+test('a turn runs on the window LM Studio says or one set by hand, and is refused without one', async () => {
+  const agentId = await spawnLmStudioAgent()
+  const windowNow = async () => {
+    const r = await server.cli(['agent', 'chat-context', agentId, '--json'])
+    expect(r.exitCode).toBe(0)
+    return JSON.parse(r.stdout).window.window as number | null
+  }
+
+  // LM Studio says the window test-model is loaded with: the turn's model gets it, and the
+  // daemon's own reads of the window (the meter, chat-context) take it from that turn.
+  mock.setModelWindow(65_536)
+  mock.push([reply('first')])
+  expect((await server.cli(['agent', 'chat', agentId, '--message', 'hi'])).exitCode).toBe(0)
+  expect(await windowNow()).toBe(65_536)
+
+  // Not loaded, and no window set: the turn is refused before any request, saying what to do.
+  mock.setModelWindow(null)
+  const refused = await server.cli(['agent', 'chat', agentId, '--message', 'again'])
+  expect(refused.exitCode).not.toBe(0)
+  expect(refused.stdout + refused.stderr).toContain(
+    'LM Studio did not say the context window of test-model (it does once the model is loaded), and none is set for it. Set it in Setup → Models, or run `bazilion provider window lmstudio:test-model <tokens>`.',
+  )
+  expect(mock.callCount()).toBe(1)
+
+  const set = await server.cli(['provider', 'window', 'lmstudio:test-model', '24576'])
+  expect(set.stdout).toContain('lmstudio:test-model: 24,576 tokens (set by you)')
+  mock.push([reply('second')])
+  expect((await server.cli(['agent', 'chat', agentId, '--message', 'once more'])).exitCode).toBe(0)
+  expect(await windowNow()).toBe(24_576)
+  expect((await server.cli(['provider', 'window', 'lmstudio:test-model'])).stdout).toContain(
+    '24,576 tokens (set by you)',
+  )
+  expect(
+    (await server.cli(['provider', 'window', 'lmstudio:test-model', '--clear'])).stdout,
+  ).toContain('not known, so turns on it are refused')
 })
 
 test('agent chat-compact summarizes the old head and keeps the recent tail', async () => {

@@ -624,6 +624,48 @@ test('a common connection asks only for what it needs and keeps its secret', asy
   }
 })
 
+test('a model whose server does not say its window gets one set by hand, and its row says so', async () => {
+  const { providers } = await instance.api<{ providers: Array<{ id: string; models: string[] }> }>(
+    '/api/config/providers',
+  )
+  const before = providers.find((provider) => provider.id === 'lmstudio')?.models ?? []
+  // A model the stand-in has not loaded: LM Studio says no window for it.
+  await instance.api('/api/config/providers/lmstudio/models', {
+    method: 'PUT',
+    body: { models: [...before, 'unloaded-model'] },
+  })
+  try {
+    const session = await open()
+    await session.go('/config')
+    const chat = session.page.getByRole('region', { name: 'Chat' })
+    await pw(chat).toContainText('Context window not known')
+    await chat.getByRole('button', { name: 'Set the context window of unloaded-model' }).click()
+    const dialog = session.page.getByRole('dialog', { name: 'Context window of unloaded-model' })
+    await session.page.evaluate(
+      `Promise.allSettled(document.getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map((animation) => animation.finished))`,
+    )
+    expect(await accessibilityProblems(session.page, 'the context window dialog')).toEqual([])
+    const save = dialog.getByRole('button', { name: 'Save' })
+    await dialog.getByLabel('Tokens').fill('a lot')
+    await pw(save).toBeDisabled()
+    await dialog.getByLabel('Tokens').fill('24,576')
+    await save.click()
+    await pw(dialog).toBeHidden()
+    await pw(chat).toContainText('25K context, set by you')
+    // The stand-in's own model keeps the window its server says.
+    await pw(chat).toContainText('33K context, from the server')
+    expect(session.problems).toEqual([])
+  } finally {
+    // Taking the model out of Chat forgets its window too.
+    await instance.api('/api/config/providers/lmstudio/models', {
+      method: 'PUT',
+      body: { models: before },
+    })
+  }
+})
+
 test('a page opened before an upgrade reloads for the new build instead of failing', async () => {
   const session = await open()
   await session.go(`/?agent=${ids.mira}&panel=connections`)

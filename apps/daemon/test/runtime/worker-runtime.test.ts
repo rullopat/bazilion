@@ -652,6 +652,7 @@ function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
     },
     skills: [],
     privateLessons: [],
+    contextWindowSetting: null,
   }
 }
 

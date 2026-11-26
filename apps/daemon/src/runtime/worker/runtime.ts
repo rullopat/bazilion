@@ -28,6 +28,8 @@ export interface ReviewProviderRuntime {
   credentialEnv?: Array<{ name: string; value: string }>
   /** Explicit Google service-account/ADC JSON materialized only inside this review's scratch tree. */
   credentialFile?: { envName: 'GOOGLE_APPLICATION_CREDENTIALS'; content: string }
+  /** The model's context window set by hand, for when neither the catalog nor its server says. */
+  contextWindow?: number
 }
 
 /** Workspace AGENTS.md files read by the daemon; paths are relative to the Team root. */

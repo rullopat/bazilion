@@ -8,6 +8,7 @@ import type {
   ServiceFieldState,
   SetFieldsRequest,
   SetFieldsResponse,
+  SetModelWindowRequest,
   SetProviderEnabledResponse,
   SetProviderModelsRequest,
 } from '@bazilion/api-types'
@@ -23,6 +24,7 @@ import {
   providerCatalog,
   providerEntries,
   requireProvider,
+  setModelWindow,
   setProviderEnabled,
   setProviderModels,
   testProvider,
@@ -104,7 +106,21 @@ configRouter.put('/providers/:name/models', async (c) => {
 
 // What Agents think with (chat models with their names and facts, and who uses each) and draw
 // with (image routes). The Models page and the model menus of Agents and templates read this.
-configRouter.get('/models', (c) => c.json(modelsOverview(getCtx())))
+configRouter.get('/models', async (c) => c.json(await modelsOverview(getCtx())))
+
+// A chat model's context window set by hand, for one whose window neither Pi's catalog nor its
+// server says; `tokens: null` forgets it.
+configRouter.put('/models/window', async (c) => {
+  const body = await jsonBody<SetModelWindowRequest>(c)
+  const tokens = body?.tokens
+  if (typeof body?.model !== 'string' || (tokens !== null && typeof tokens !== 'number')) {
+    return c.json(
+      { error: 'body must be {"model": "provider:model", "tokens": number | null}' },
+      400,
+    )
+  }
+  return c.json(await setModelWindow(getCtx(), { model: body.model, tokens }))
+})
 
 // ─── Tools ───────────────────────────────────────────────────────────────
 

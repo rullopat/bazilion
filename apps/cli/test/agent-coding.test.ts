@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import { answerListing } from './fixtures/mock-lmstudio.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
@@ -27,6 +28,7 @@ const plan = [
   ],
 ] as const
 const fake = createServer(async (request, response) => {
+  if (answerListing(request, response)) return
   try {
     let raw = ''
     for await (const bytes of request) raw += bytes

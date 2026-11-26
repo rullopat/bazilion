@@ -15,10 +15,12 @@ import {
   priceLine,
   providerStatus,
   usedByLine,
+  windowLine,
 } from '../../lib/model-facts'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { Banner, Chip, CARD_ROW as ROW, SetupCard } from '../ui/parts'
+import { ModelWindowDialog } from './ModelWindowDialog'
 import { ProviderAvatar, StateChip } from './provider-parts'
 
 /** The line above the cards: whether everything Agents rely on answers, and what does not. */
@@ -130,6 +132,7 @@ export function ChatModelsCard({
   onChanged: () => Promise<void>
 }) {
   const [removing, setRemoving] = useState<ChatModelEntry | null>(null)
+  const [sizing, setSizing] = useState<ChatModelEntry | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function remove(model: ChatModelEntry) {
@@ -177,6 +180,7 @@ export function ChatModelsCard({
       )}
       {chat.map((model) => {
         const down = model.providerState === 'failing' || model.providerState === 'incomplete'
+        const window = windowLine(model.window)
         return (
           <div key={model.value} className={`${ROW} min-h-16 py-2.5`}>
             <div className="min-w-0 flex-[2.2] basis-52">
@@ -187,11 +191,23 @@ export function ChatModelsCard({
             </div>
             <div className="w-28 shrink-0 text-sm">{model.providerName}</div>
             <div
-              className={`min-w-0 flex-[2] basis-48 text-sm ${down ? 'font-semibold text-warning' : 'text-muted-foreground'}`}
+              className={`flex min-w-0 flex-[2] basis-48 flex-wrap items-center gap-x-2 gap-y-1 text-sm ${down || window?.missing ? 'font-semibold text-warning' : 'text-muted-foreground'}`}
             >
-              {down
-                ? `${model.providerName} is not working`
-                : factsLine(model, model.providerConnect)}
+              <span>
+                {down
+                  ? `${model.providerName} is not working`
+                  : (window?.text ?? factsLine(model, model.providerConnect))}
+              </span>
+              {model.window.settable && (
+                <Button
+                  variant="ghost"
+                  className="min-h-8 px-3 py-1 text-xs"
+                  aria-label={`${model.window.set ? 'Change' : 'Set'} the context window of ${modelName(model)}`}
+                  onClick={() => setSizing(model)}
+                >
+                  {model.window.set ? 'Change' : 'Set'}
+                </Button>
+              )}
             </div>
             <div className="w-40 shrink-0 text-sm">{priceLine(model, model.providerConnect)}</div>
             <div className="min-w-0 flex-[1.4] basis-36 text-sm text-muted-foreground">
@@ -220,6 +236,7 @@ export function ChatModelsCard({
           {error}
         </div>
       )}
+      <ModelWindowDialog model={sizing} onClose={() => setSizing(null)} onSaved={onChanged} />
       <ConfirmDialog
         open={removing !== null}
         onOpenChange={(open) => {

@@ -19,6 +19,7 @@ import {
   createLsToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
+  DEFAULT_COMPACTION_SETTINGS,
   DefaultResourceLoader,
   estimateTokens,
   SessionManager,
@@ -140,14 +141,33 @@ interface PiSessionSpec {
   refreshApiKey?: (providerName: string) => Promise<string>
 }
 
+/**
+ * Pi's compaction, sized to the model's window. Pi's defaults (compact within 16,384 tokens of the
+ * window, keep the last 20,000 verbatim) assume a large one: in a 32,768 window, the kept messages
+ * and the instructions alone are past that point, so every turn would compact again and Pi would
+ * leave the reply almost no room. A smaller window keeps at most a quarter of it each way.
+ */
+export function compactionFor(window: number): {
+  enabled: true
+  reserveTokens: number
+  keepRecentTokens: number
+} {
+  const quarter = Math.floor(window / 4)
+  return {
+    enabled: true,
+    reserveTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.reserveTokens, quarter),
+    keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, quarter),
+  }
+}
+
 async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle> {
   const { runtime: modelRuntime, model } = await createPiModel(spec.model)
   const settingsManager = SettingsManager.inMemory({
     // Provider requests happen only for turns: no cache warming. A turn compacts the
-    // conversation when it nears the model's window (Pi's defaults: within 16,384 tokens of it,
-    // keeping the last 20,000 verbatim), and redoes a reply the full window cut short.
+    // conversation when it nears the model's window (compactionFor), and redoes a reply the full
+    // window cut short.
     cacheWarming: 'off',
-    compaction: { enabled: true },
+    compaction: compactionFor(model.contextWindow),
     retry: {
       enabled: true,
       maxRetries: 2,
@@ -284,6 +304,7 @@ export async function createBazilionSession(
       modelId,
       env: opts.env,
       ...(opts.apiKey ? { apiKey: opts.apiKey } : {}),
+      ...(agent.contextWindowSetting ? { contextWindow: agent.contextWindowSetting } : {}),
     },
     reasoningLevel: agent.reasoningLevel,
     cwd: turn.modelCwd,
@@ -336,8 +357,14 @@ export function describeTurn(opts: TurnOptions): {
 }
 
 /** How full the model's window is with this conversation (see contextUse). */
-export function conversationWindow(conversation: SessionManager, model: string): ContextUse {
-  return contextUse(conversation.getBranch(), turnContextWindow(model))
+export function conversationWindow(
+  conversation: SessionManager,
+  agent: Pick<ResolvedAgent, 'model' | 'contextWindowSetting'>,
+): ContextUse {
+  return contextUse(
+    conversation.getBranch(),
+    turnContextWindow(agent.model, agent.contextWindowSetting),
+  )
 }
 
 /** Counts and Pi's token estimate (chars / 4) for what a conversation's branch sends the model. */
@@ -370,6 +397,7 @@ export async function createRestrictedReviewSession(
       env: reviewCredentialEnv(runtime, scratch),
       ...(runtime.apiKey ? { apiKey: runtime.apiKey } : {}),
       ...(runtime.baseUrl ? { baseUrl: runtime.baseUrl } : {}),
+      ...(runtime.contextWindow ? { contextWindow: runtime.contextWindow } : {}),
     },
     reasoningLevel: runtime.reasoningLevel,
     cwd: '/review',
@@ -446,7 +474,7 @@ export function loadConversation(
   paths: Paths,
   target?: ConversationTarget | null,
 ): LoadedConversation {
-  const window = turnContextWindow(agent.model)
+  const window = turnContextWindow(agent.model, agent.contextWindowSetting)
   if (!target) return { messages: [], compactions: [], context: { tokens: null, window } }
   const branch = branchOf(
     readSessionFile(join(paths.agentDir(agent.agent.id), 'sessions'), target.id),

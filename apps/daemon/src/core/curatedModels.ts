@@ -3,6 +3,7 @@
 import type { SetProviderModelsResponse } from '@bazilion/api-types'
 import { listAvailableModels } from './availableModels.ts'
 import type { BazilionDb } from './db/client.ts'
+import { writeModelWindow } from './model-windows.ts'
 import * as profileRepo from './repos/profiles.ts'
 import * as providerModelRepo from './repos/providerModels.ts'
 
@@ -25,6 +26,7 @@ export function replaceCuratedModels(
   const removed = new Set(
     before.filter((model) => !after.includes(model)).map((model) => `${provider}:${model}`),
   )
+  for (const model of removed) writeModelWindow(db, model, null)
   const target = after[0] ? `${provider}:${after[0]}` : listAvailableModels(db)[0]?.value
   const movedTemplates: SetProviderModelsResponse['movedTemplates'] = []
   if (target) {
