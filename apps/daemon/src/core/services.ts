@@ -340,21 +340,6 @@ export const SERVICES: ServiceDef[] = [
       },
     ],
   },
-  {
-    id: 'agent-messages',
-    displayName: 'Messages between Agents',
-    category: 'tool',
-    hint: 'Stops Agents from answering each other without end.',
-    fields: [
-      {
-        envVar: 'BAZILION_AGENT_LOOP_MAX_HOPS',
-        kind: 'config',
-        label: 'Stop a chain after',
-        description: 'The first message between two Agents and this many replies are delivered.',
-        input: { type: 'number', default: 8, min: 0, max: 100, unit: 'replies' },
-      },
-    ],
-  },
 
   // --- External integrations (chat bridges, etc) ---
   // Telegram has its own page (`/config/telegram`) with its own flow (preflight, pairing, …).

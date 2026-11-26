@@ -41,6 +41,7 @@ import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
 import { resolveConversationTarget } from './conversation-target.ts'
 import { matchesCron, nextCronMatch, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
+import { endExchangeTurn, exchangeSoFar, noteExchangeTurn } from './exchanges.ts'
 import { signalLiveChange } from './live-signal.ts'
 import { dispatchPendingReviews } from './review-dispatcher.ts'
 import { turnFailureReason, turnFrameFailure } from './turn-outcome.ts'
@@ -252,6 +253,7 @@ function buildInboxPrompt(
   agentId: string,
   messages: Message[],
   fromNames: Map<string, string>,
+  soFar: string | null = null,
 ): string {
   const lines: string[] = [INBOX_WAKE_PREFIX.trimEnd()]
   lines.push(
@@ -299,6 +301,7 @@ function buildInboxPrompt(
         'When it is only an acknowledgement, one line is enough.',
     )
   }
+  if (soFar) lines.push('', soFar)
   // reference the recipient id so the agent knows which mailbox this is for
   // in case it was spawned without persona context
   lines.push(`(recipient: ${agentId})`)
@@ -341,9 +344,15 @@ async function fireInboxWake(agentId: string): Promise<void> {
       const sender = agentRepo.get(ctx.db, fid)
       if (sender) fromNames.set(fid, sender.name)
     }
-    const message = buildInboxPrompt(agentId, msgs, fromNames)
-    const attemptId = `inbox:${msgs[0]?.id}`
     const causalParentMessageId = selectCausalParent(msgs)
+    const message = buildInboxPrompt(
+      agentId,
+      msgs,
+      fromNames,
+      exchangeSoFar(ctx.db, msgs, causalParentMessageId),
+    )
+    const attemptId = `inbox:${msgs[0]?.id}`
+    const exchange = msgs.find((m) => m.id === causalParentMessageId)?.causalChainId
     // Preparation now owns the registration.
     handoffStarted = true
     let preparedTurn: Awaited<ReturnType<typeof prepareAgentTurn>>
@@ -371,6 +380,8 @@ async function fireInboxWake(agentId: string): Promise<void> {
     s.inboxBackoff.delete(agentId)
     if (forgetTurnFailure(`inbox-start:${agentId}`)) signalLiveChange()
     let failure: string | null = null
+    // The Connections tab shows the exchange going on, and stopping it stops this turn.
+    if (exchange) noteExchangeTurn(agentId, exchange)
     try {
       for await (const frame of runAgentTurn(preparedTurn)) {
         const frameFailure = turnFrameFailure(frame)
@@ -378,6 +389,8 @@ async function fireInboxWake(agentId: string): Promise<void> {
       }
     } catch (error) {
       failure ??= turnFailureReason(error)
+    } finally {
+      endExchangeTurn(agentId)
     }
     // Stopped by the operator (or the Agent archived): cancelled, not failed.
     if (failure && !controller.signal.aborted) {

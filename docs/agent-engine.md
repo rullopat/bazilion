@@ -148,9 +148,11 @@ can reconcile its view. The JSONL file is the only record of the conversation.
 - `web_fetch`: a guarded page fetch (no private addresses, also after redirects) turned into
   Markdown. `web_search`, when a search backend is ready, runs in the daemon.
 - `send_message`, `read_inbox`, `wait_for_reply`: the mailbox. `to` is an id or a name, a
-  teammate's name first (`lib/messaging-host.ts:recipientOf`). Every message carries a causal chain
-  and hop count; the daemon refuses a send past `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) and
-  records the stop.
+  teammate's name first (`lib/messaging-host.ts:recipientOf`). Every message carries its exchange
+  (`causal_chain_id`) and step (`causal_hop`), with no limit on steps. The daemon refuses a message
+  its sender already sent the same Agent in the exchange, and any message in an exchange the user
+  stopped (`lib/agent-loop-guard.ts`), recording the stop; an inbox wake shows the exchange so far
+  (`lib/exchanges.ts`). See [Team Policy](team-policy.md#exchanges-between-agents).
 - `agent_create`: adds an Agent to the Agent's own Team (name, role, optional template and model,
   by default its own), only in a turn you started and at most six per turn
   (`lib/team-host.ts`). The new Agent's `AGENTS.md` starts with its role and who made it, it gets

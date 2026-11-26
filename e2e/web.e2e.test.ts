@@ -682,6 +682,30 @@ test('Setup → System says first which release the installation runs', async ()
   expect(session.problems).toEqual([])
 })
 
+test('an exchange between Agents going on shows in Connections, with what it used, and stops', async () => {
+  // The scheduler is off: the message waits to be read, and its exchange goes on.
+  await instance.api(`/api/agents/${ids.quill}/messages`, {
+    body: { from: ids.mira, payload: { text: 'Draft the launch FAQ, please.' } },
+  })
+  const session = await open()
+  await session.go(`/?agent=${ids.mira}&panel=connections`)
+  const now = session.page.getByRole('region', { name: 'Going on now' })
+  await pw(now).toContainText('Mira and Quill')
+  await pw(now).toContainText('1 message since')
+  // Nothing has used anything yet: no tokens to count.
+  await pw(now).not.toContainText('tokens')
+  await pw(now).toContainText('A message is waiting to be read')
+  expect(await accessibilityProblems(session.page, 'the exchanges going on')).toEqual([])
+  await now.getByRole('button', { name: 'Stop the exchange of Mira and Quill' }).click()
+  await pw(now).toBeHidden()
+  // It was stopped by you: Attention has nothing to say about it.
+  const { items } = await instance.api<{ items: Array<{ kind: string }> }>(
+    '/api/attention?state=open&limit=100',
+  )
+  expect(items.filter((item) => item.kind === 'agent_loop_break')).toEqual([])
+  expect(session.problems).toEqual([])
+})
+
 test('a page opened before an upgrade reloads for the new build instead of failing', async () => {
   const session = await open()
   await session.go(`/?agent=${ids.mira}&panel=connections`)

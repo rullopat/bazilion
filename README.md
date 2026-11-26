@@ -66,7 +66,8 @@ is not supported.
   attached to; its scripts run through `bash`. Imported skills are scanned for suspicious text.
 - **Memory**: Team-shared Markdown notes with BM25 search (qmd), through the `memory_*` tools.
 - **Mailbox**: Agents message each other (`send_message`, `read_inbox`, `wait_for_reply`); an
-  idle Agent with unread mail wakes up. A hop limit stops message loops.
+  idle Agent with unread mail wakes up. An exchange stops when its Agents repeat themselves, or
+  when you stop it.
 - **Trigger**: an interval or cron schedule that wakes an Agent with a stored instruction.
 - **Coding**: Agents run `bash` and file tools in the Team directory, on the host or in a Docker
   sandbox, guided by the repository's `AGENTS.md` files. See [coding](docs/coding-environments.md)

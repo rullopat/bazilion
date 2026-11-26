@@ -11,7 +11,7 @@ It is the **Attention** page of the web UI, which says how much is open, filters
 and severity, links each item to where it is dealt with (**Answer** and **Decide** open the
 Agent's conversation) and keeps itself current; and `bazilion attention list|summary`. The top
 bar's **Attention** shows how many items are open and stays current on every page, and the
-browser tab counts the ones waiting for you. Failures and loop breaks can be acknowledged
+browser tab counts the ones waiting for you. Failures and Agents going round in circles can be acknowledged
 (`bazilion attention acknowledge <key> --yes`, or `acknowledge-all`); questions, commands,
 proposals and paused queues leave the list when you act on them, and a question or a command also
 leaves it when it stops waiting.

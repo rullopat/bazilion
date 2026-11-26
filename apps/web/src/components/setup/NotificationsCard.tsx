@@ -18,7 +18,7 @@ const KINDS: Record<AttentionRecordedKind, string> = {
   lesson_proposal: 'Lesson proposals',
   review_failure: 'Review failures',
   trigger_failure: 'Scheduled trigger failures',
-  agent_loop_break: 'Agent message loop breaks',
+  agent_loop_break: 'Agents going round in circles',
   queue_interrupted: 'Queues paused after restart',
   turn_failure: 'Failed background turns',
 }

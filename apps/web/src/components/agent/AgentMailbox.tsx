@@ -216,11 +216,11 @@ export function MailboxView({
       <SetupCard
         labelledBy="agent-loop-breaks"
         icon={<OctagonX className="size-5" />}
-        title="Stopped chains"
-        description="When Agents keep answering each other past the limit, the chain stops and shows here."
+        title="Stopped exchanges"
+        description="An exchange between Agents stops when one sends another the same message again, or when you stop it in the Connections tab."
       >
         {loopBreaks.length === 0 ? (
-          <CardEmpty title="No chain has been stopped" />
+          <CardEmpty title="No exchange has been stopped" />
         ) : (
           <CardList>
             {loopBreaks.map((event) => (
@@ -230,9 +230,7 @@ export function MailboxView({
                 title={`${nameOf(event.fromAgentId)} → ${nameOf(event.toAgentId)}`}
                 meta={
                   <>
-                    <span>
-                      Stopped at message {event.attemptedHop}; the limit is {event.maxHops}
-                    </span>
+                    <span>{STOPPED[event.reason]}</span>
                     <span>{when(event.createdAt)}</span>
                   </>
                 }
@@ -248,6 +246,13 @@ export function MailboxView({
       )}
     </div>
   )
+}
+
+/** Why an exchange stopped, as its row says it. */
+const STOPPED: Record<AgentLoopBreakEvent['reason'], string> = {
+  repeated_message: 'The same message again: not delivered',
+  stopped: 'Stopped by you',
+  step_limit: 'Reached the step limit of earlier versions',
 }
 
 function SendMessage({

@@ -174,32 +174,41 @@ test('POST replyTo to missing message is rejected', async () => {
   expect(err.error).toContain('reply target not found')
 })
 
-test('inbox loop-breaks shows daemon-stopped causal chains', async () => {
+test('inbox lists the exchanges going on, stops one, and lists the stopped ones', async () => {
   const { a, b } = await spawnTwoAgents()
-  await server.cli(['config', 'set', 'BAZILION_AGENT_LOOP_MAX_HOPS', '0'])
-  const first = await server.cli(['send', a, b, 'start chain'])
+  const first = await server.cli(['send', a, b, 'start the exchange'])
   const firstId = firstIdFromSend(first.stdout)
+  const post = (body: unknown) =>
+    fetch(`${server.url}/api/agents/${a}/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${server.token}` },
+      body: JSON.stringify(body),
+    })
+  const again = { from: b, payload: { text: 'payload must not appear' }, replyTo: firstId }
+  expect((await post(again)).status).toBe(201)
+  // The same message to the same Agent in the exchange: not delivered.
+  expect((await post(again)).status).toBe(409)
 
-  const blocked = await fetch(`${server.url}/api/agents/${a}/messages`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${server.token}`,
-    },
-    body: JSON.stringify({
-      from: b,
-      payload: { text: 'payload must not appear in diagnostics' },
-      replyTo: firstId,
-    }),
-  })
-  expect(blocked.status).toBe(429)
+  const exchanges = await server.cli(['inbox', 'exchanges', 'default'])
+  expect(exchanges.exitCode, exchanges.stderr).toBe(0)
+  expect(exchanges.stdout).toContain(firstId)
+  expect(exchanges.stdout).toContain('2 messages')
+  expect(exchanges.stdout).toContain('waiting to be read')
 
-  const result = await server.cli(['inbox', 'loop-breaks', a])
-  expect(result.exitCode).toBe(0)
-  expect(result.stdout).toContain(`chain:${firstId.slice(0, 8)}`)
-  expect(result.stdout).toContain('hop:1/0')
-  expect(result.stdout).toContain('causal_hop_limit_exceeded')
-  expect(result.stdout).not.toContain('payload must not appear')
+  const stop = await server.cli(['inbox', 'stop', firstId])
+  expect(stop.stdout).toContain(
+    `stopped exchange ${firstId}: 0 turns stopped, 2 unread messages not delivered`,
+  )
+  expect((await server.cli(['inbox', 'exchanges', 'default'])).stdout).toContain(
+    '(no exchange going on)',
+  )
+  expect((await server.cli(['inbox', 'stop', firstId])).stdout).toContain('was stopped already')
+
+  const stopped = await server.cli(['inbox', 'stopped', a])
+  expect(stopped.exitCode).toBe(0)
+  expect(stopped.stdout).toContain('repeated a message: not delivered')
+  expect(stopped.stdout).toContain('stopped by you')
+  expect(stopped.stdout).not.toContain('payload must not appear')
 })
 
 test('send_message from a chat turn lands unread in the peer inbox without starting its turn', async () => {

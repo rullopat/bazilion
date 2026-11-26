@@ -1,11 +1,7 @@
-import type { AgentLoopBreakEvent, Message } from '@bazilion/api-types'
+import type { Message } from '@bazilion/api-types'
 import { DomainError } from '../core/errors.ts'
-import { type BazilionDb, mayMessage, messageRepo } from '../core/index.ts'
-import {
-  AgentLoopLimitError,
-  enforceMessageCausality,
-  resolveMessageCausality,
-} from './agent-loop-guard.ts'
+import { agentRepo, type BazilionDb, mayMessage, messageRepo } from '../core/index.ts'
+import { ExchangeStoppedError, guardExchange, resolveMessageCausality } from './agent-loop-guard.ts'
 
 /** A message Team Policy does not allow; the reason goes back to the tool or HTTP caller. */
 export class CommunicationDeniedError extends DomainError {
@@ -23,18 +19,24 @@ export interface SendAgentMessageInput {
   origin: string
 }
 
-/** Send one Agent-to-Agent message after the loop guard and Team Policy allow it. */
+/** Send one Agent-to-Agent message after its exchange and Team Policy allow it. */
 export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): Message {
   const outcome = db.raw.transaction(
-    (): { message?: Message; denied?: string; loopBreak?: AgentLoopBreakEvent } => {
+    (): {
+      message?: Message
+      denied?: string
+      refused?: 'repeated_message' | 'stopped'
+    } => {
       const causality = resolveMessageCausality(db, input)
-      const loopBreak = enforceMessageCausality(db, {
+      // A refusal for repetition is recorded, so the transaction ends normally.
+      const refused = guardExchange(db, {
         from: input.from,
         to: input.to,
+        payload: input.payload,
         origin: input.origin,
         causality,
       })
-      if (loopBreak) return { loopBreak }
+      if (refused) return { refused }
       const decision = mayMessage(db, input.from, input.to)
       if (!decision.allowed) return { denied: decision.reason }
       return {
@@ -46,7 +48,9 @@ export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): 
       }
     },
   )()
-  if (outcome.loopBreak) throw new AgentLoopLimitError(outcome.loopBreak)
+  if (outcome.refused) {
+    throw new ExchangeStoppedError(outcome.refused, agentRepo.get(db, input.to)?.name ?? input.to)
+  }
   if (outcome.denied !== undefined) {
     console.warn(
       JSON.stringify({

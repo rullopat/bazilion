@@ -132,7 +132,7 @@ token over IPC.
   See [coding](coding-environments.md).
 - **Teams and messages.** An Agent belongs to one Team: its workspace, USER.md, shared memory and
   policy. Agents message each other through the mailbox; [Team Policy](team-policy.md) limits who
-  may message whom, and a hop limit stops message loops.
+  may message whom; an exchange whose Agents repeat themselves stops, and you can stop one.
 - **Scheduling.** An in-process scheduler (5 s tick) fires interval and cron triggers and wakes
   Agents that have unread mail. Each trigger occurrence runs at most once and is never retried.
 - **Long-lived resources.** Browsers and MCP connections live in the daemon across turns and are

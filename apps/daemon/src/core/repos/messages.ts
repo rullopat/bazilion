@@ -62,6 +62,47 @@ export function send(
   }
 }
 
+/** A message's text: the `text` of its JSON payload, or the payload itself. */
+export function messageText(payload: string): string {
+  try {
+    const parsed = JSON.parse(payload) as { text?: unknown } | null
+    if (parsed && typeof parsed.text === 'string') return parsed.text
+  } catch {
+    // Not JSON: the payload is the text.
+  }
+  return payload
+}
+
+/** An exchange's messages in the order they were sent. */
+export function listExchange(db: BazilionDb, chainId: string): Message[] {
+  return db.raw
+    .query<RawMessage, [string]>(
+      'SELECT * FROM messages WHERE causal_chain_id = ? ORDER BY causal_hop ASC, created_at ASC, rowid ASC',
+    )
+    .all(chainId)
+    .map(toMessage)
+}
+
+/** The exchanges with a message no Agent has read yet: each will wake its recipient. */
+export function exchangesWithUnread(db: BazilionDb): string[] {
+  return db.raw
+    .query<{ causal_chain_id: string }, []>(
+      'SELECT DISTINCT causal_chain_id FROM messages WHERE read_at IS NULL',
+    )
+    .all()
+    .map((row) => row.causal_chain_id)
+}
+
+/** Mark an exchange's unread messages read, so they wake no one; how many there were. */
+export function markExchangeRead(db: BazilionDb, chainId: string): number {
+  return Number(
+    db.raw.run('UPDATE messages SET read_at = ? WHERE causal_chain_id = ? AND read_at IS NULL', [
+      Date.now(),
+      chainId,
+    ]).changes,
+  )
+}
+
 export function get(db: BazilionDb, id: string): Message | null {
   const row = db.raw.query<RawMessage, [string]>('SELECT * FROM messages WHERE id = ?').get(id)
   return row ? toMessage(row) : null

@@ -264,17 +264,25 @@ export interface Message {
   readAt: Timestamp | null
 }
 
+/**
+ * Why an exchange between Agents stopped: a message repeated one its sender already sent the same
+ * Agent in it, the user stopped it, or (0.61 and earlier) it reached the step limit.
+ */
+export type ExchangeStopReason = 'repeated_message' | 'stopped' | 'step_limit'
+
+/** An exchange between Agents that stopped. */
 export interface AgentLoopBreakEvent {
   id: string
   causalChainId: string
   parentMessageId: string | null
+  /** The Agent whose message was refused; for a stop by the user, the exchange's first sender. */
   fromAgentId: string
   toAgentId: string
   sourceTeamId: string
   targetTeamId: string
-  attemptedHop: number
-  maxHops: number
-  reason: string
+  /** The step of the exchange it stopped at: 0 is its first message. */
+  step: number
+  reason: ExchangeStopReason
   origin: string
   createdAt: Timestamp
 }

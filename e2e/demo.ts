@@ -603,6 +603,16 @@ export async function seedDemoHistory(instance: Instance, ids: DemoIds): Promise
       message: 'Morning check: what is blocked, what ships today?',
     },
   })
+  // The scheduler is off here, so no handed-out message woke its Agent: as in the history this
+  // tells, they were read, and no exchange between Agents is still going on.
+  for (const id of Object.values(ids)) {
+    const { messages } = await instance.api<{ messages: Array<{ id: string }> }>(
+      `/api/agents/${id}/messages?unread=1`,
+    )
+    for (const message of messages) {
+      await instance.api(`/api/messages/${message.id}`, { method: 'PATCH', body: { read: true } })
+    }
+  }
 }
 
 /**
