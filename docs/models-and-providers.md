@@ -65,7 +65,9 @@ sign-in; a key two providers share stays while the other one is on.
 **Add models** lists every model of the connected providers with its name, how much it can read,
 whether it takes images, whether it reasons, and its list price per million tokens. These facts
 come from the catalog bundled with Pi; models a provider reports that the catalog does not know
-are listed by id. A local server lists what it has loaded.
+are listed by id. A local server lists what it has loaded. A local model is given the window
+the server says it was started with: llama.cpp says so in its model listing, and LM Studio and
+Ollama do not, so their models are taken to read 32,768 tokens.
 
 ```sh
 bazilion provider models anthropic                         # in use, and offered

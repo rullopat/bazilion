@@ -65,7 +65,10 @@ is an error, never a silent fresh start) and builds a Pi `AgentSession` with:
 - Pi settings held in memory: cache warming off, two provider retries, and Pi's compaction: a
   turn summarizes older messages when the conversation comes within 16,384 tokens of the model's
   window, keeping about the last 20,000 verbatim, and redoes a reply the full window cut short. The
-  window is Pi's catalog's, or 32,768 for a local server's model and one the catalog lacks
+  window is Pi's catalog's. For a local server's model it is the one the server says it was
+  started with, which llama.cpp reports as `meta.n_ctx` in `GET /models`, asked each turn with a
+  2-second limit; a server that does not say, and a model the catalog lacks, get 32,768. The
+  daemon keeps the window each turn's model was given for its own reads, such as the meter
   (`turnContextWindow`). The summarized messages stay in the file, and `recall` reads them
   (section 5);
 - a resource loader with every discovery switched off (no extensions, skills, prompt templates,

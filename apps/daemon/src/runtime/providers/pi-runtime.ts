@@ -113,16 +113,13 @@ async function localModelContextWindow(
   return window
 }
 
-/** Read a cached window a local server reported; null when it has not been asked yet. */
+/**
+ * The latest window known for a local model, however old: the TTLs only say when to ask the
+ * server again, and the window the last turn was given stays the one shown until the next turn
+ * reports another. Null when it has not been asked yet, or did not say.
+ */
 function cachedLocalModelWindow(providerName: string, modelId: string): number | null {
-  const hit = localModelWindows.get(`${providerName}:${modelId}`)
-  if (!hit) return null
-  const ttl = hit.window === null ? LOCAL_WINDOW_MISS_TTL_MS : LOCAL_WINDOW_TTL_MS
-  if (Date.now() - hit.at > ttl) {
-    localModelWindows.delete(`${providerName}:${modelId}`)
-    return null
-  }
-  return hit.window
+  return localModelWindows.get(`${providerName}:${modelId}`)?.window ?? null
 }
 
 /**

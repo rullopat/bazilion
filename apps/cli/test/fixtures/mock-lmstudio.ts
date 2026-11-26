@@ -7,6 +7,8 @@ export interface MockLlm {
   push(responses: MockHandler[]): void
   /** Persistent handler used when the queue is empty (instead of a 500). */
   setFallback(handler: MockHandler): void
+  /** The window its model listing says the model was started with, as llama.cpp does. */
+  setModelWindow(window: number | null): void
   reset(): void
   callCount(): number
   stop(): Promise<void>
@@ -135,6 +137,7 @@ export function sseFromCanned(res: ServerResponse, canned: CannedResponse): void
 export function startLmStudioMock(): Promise<MockLlm> {
   const queue: MockHandler[] = []
   let fallback: MockHandler = null
+  let modelWindow: number | null = null
   let calls = 0
   const server = createServer((req, res) => {
     const path = new URL(req.url ?? '/', 'http://localhost').pathname
@@ -145,7 +148,15 @@ export function startLmStudioMock(): Promise<MockLlm> {
       res.end(
         JSON.stringify({
           object: 'list',
-          data: [{ id: 'test-model', object: 'model', created: 0, owned_by: 'lmstudio' }],
+          data: [
+            {
+              id: 'test-model',
+              object: 'model',
+              created: 0,
+              owned_by: 'lmstudio',
+              ...(modelWindow ? { meta: { n_ctx: modelWindow } } : {}),
+            },
+          ],
         }),
       )
       return
@@ -176,9 +187,13 @@ export function startLmStudioMock(): Promise<MockLlm> {
         setFallback(handler) {
           fallback = handler
         },
+        setModelWindow(window) {
+          modelWindow = window
+        },
         reset() {
           queue.length = 0
           fallback = null
+          modelWindow = null
           calls = 0
         },
         callCount: () => calls,

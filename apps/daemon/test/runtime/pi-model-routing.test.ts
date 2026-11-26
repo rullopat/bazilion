@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import {
   isProviderConfigured,
   parseModelString,
@@ -254,4 +254,16 @@ test('the window the worker reports is remembered for the sync reads', () => {
   // A hosted model keeps its catalog window; remembering one is a no-op.
   rememberLocalModelWindow('openai-codex:gpt-6.2-astra', 1)
   expect(turnContextWindow('openai-codex:gpt-6.2-astra')).toBe(272_000)
+})
+
+test('the window a turn reported is still the one shown after a quiet while', () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    rememberLocalModelWindow('lmstudio:quiet-model', 98_304)
+    // The meter and chat-context read it long after the turn, until the next turn reports one.
+    vi.setSystemTime(Date.now() + 60 * 60_000)
+    expect(turnContextWindow('lmstudio:quiet-model')).toBe(98_304)
+  } finally {
+    vi.useRealTimers()
+  }
 })

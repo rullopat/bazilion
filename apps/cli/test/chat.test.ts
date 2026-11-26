@@ -14,7 +14,7 @@ import {
   countSessionMessages,
   seedSessionMessages,
 } from '../../daemon/test/fixtures/conversation.ts'
-import { type MockLlm, startLmStudioMock } from './fixtures/mock-lmstudio.ts'
+import { type MockLlm, reply, startLmStudioMock } from './fixtures/mock-lmstudio.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
@@ -844,6 +844,27 @@ test('agent chat-context on an empty history returns zero history entries', asyn
   })
   // System prompt + tools still contribute to totals even on a fresh agent.
   expect(body.totals.chars).toBeGreaterThan(0)
+})
+
+test('a turn gives the model the window its local server reports, and it stays the one shown', async () => {
+  const agentId = await spawnLmStudioAgent()
+  const windowNow = async () => {
+    const r = await server.cli(['agent', 'chat-context', agentId, '--json'])
+    expect(r.exitCode).toBe(0)
+    return JSON.parse(r.stdout).window.window as number | null
+  }
+
+  // A server that does not say: the window a turn gives is the 32,768 fallback.
+  mock.push([reply('first')])
+  expect((await server.cli(['agent', 'chat', agentId, '--message', 'hi'])).exitCode).toBe(0)
+  expect(await windowNow()).toBe(32_768)
+
+  // llama.cpp says what it was started with: the turn's model gets it, and the daemon's own
+  // reads of the window (the meter, chat-context) take it from that turn.
+  mock.setModelWindow(65_536)
+  mock.push([reply('second')])
+  expect((await server.cli(['agent', 'chat', agentId, '--message', 'again'])).exitCode).toBe(0)
+  expect(await windowNow()).toBe(65_536)
 })
 
 test('agent chat-compact summarizes the old head and keeps the recent tail', async () => {
