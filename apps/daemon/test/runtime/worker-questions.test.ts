@@ -46,7 +46,10 @@ test.each([
       frames.push(frame)
       if (frame.kind === 'event' && frame.event.type === 'agent_question') {
         expect(frame.event.question).toMatchObject({ agentId: agent.id, conversationId: target.id })
-        registry.answer(agent.id, frame.event.question.id, { kind: 'choice', index: 1 })
+        registry.answer(agent.id, frame.event.question.id, {
+          kind: 'answers',
+          answers: [{ kind: 'choice', index: 1 }],
+        })
       }
     }
     if (mode === 'answered') {
@@ -63,7 +66,9 @@ test.each([
 })
 
 test('ask_user returns the outcome, including no answer, as JSON for the model', async () => {
-  const question = { prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] }
+  const question = {
+    questions: [{ prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] }],
+  }
   const ask = vi.fn(async () => ({
     questionId: 'daemon-id',
     question,

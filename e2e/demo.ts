@@ -144,15 +144,22 @@ export function demoScripts(ids: () => Partial<DemoIds>): Script[] {
             {
               name: 'ask_user',
               args: {
-                prompt: 'Which headline should the announcement use?',
-                choices: [
-                  { label: 'Paperboat 2.0 is here', description: 'Plain and direct, as drafted.' },
+                questions: [
                   {
-                    label: 'Your notes just got calmer',
-                    description: 'Leads with the feeling, not the version.',
+                    prompt: 'Which headline should the announcement use?',
+                    choices: [
+                      {
+                        label: 'Paperboat 2.0 is here',
+                        description: 'Plain and direct, as drafted.',
+                      },
+                      {
+                        label: 'Your notes just got calmer',
+                        description: 'Leads with the feeling, not the version.',
+                      },
+                    ],
+                    recommendedIndex: 0,
                   },
                 ],
-                recommendedIndex: 0,
               },
             },
           ],
@@ -320,15 +327,19 @@ Tell me which one goes on the announcement and I will export the social sizes.`,
             {
               name: 'ask_user',
               args: {
-                prompt: 'Where should the dark-mode build go first?',
-                choices: [
+                questions: [
                   {
-                    label: 'Staging',
-                    description: 'Deploy to staging.paperboat.example and wait for your check.',
+                    prompt: 'Where should the dark-mode build go first?',
+                    choices: [
+                      {
+                        label: 'Staging',
+                        description: 'Deploy to staging.paperboat.example and wait for your check.',
+                      },
+                      { label: 'Production', description: 'Ship straight to paperboat.example.' },
+                    ],
+                    recommendedIndex: 0,
                   },
-                  { label: 'Production', description: 'Ship straight to paperboat.example.' },
                 ],
-                recommendedIndex: 0,
               },
             },
           ],

@@ -3,6 +3,7 @@
 // of the database. Each lasts until it is answered, expires, or its turn ends.
 
 import type { AttentionItem } from '@bazilion/api-types'
+import { questionTitle } from '@bazilion/api-types'
 import { bounded } from '../core/attention.ts'
 import type { BazilionDb } from '../core/db/client.ts'
 import * as agentRepo from '../core/repos/agents.ts'
@@ -52,9 +53,12 @@ export function waitingAttention(db: BazilionDb): AttentionItem[] {
         sourceId: question.id,
         occurredAt: question.createdAt,
         updatedAt: question.createdAt,
-        expiresAt: question.expiresAt,
-        title: `${name(entry)} is waiting for your answer`,
-        diagnostic: bounded(question.question.prompt, 'A question'),
+        // An action waits until it is answered.
+        ...(question.expiresAt !== null ? { expiresAt: question.expiresAt } : {}),
+        title: question.question.action
+          ? `${name(entry)} needs you to do something`
+          : `${name(entry)} is waiting for your answer`,
+        diagnostic: bounded(questionTitle(question.question), 'A question'),
         href: href(question.agentId),
         acknowledgeable: false,
         acknowledgedAt: null,

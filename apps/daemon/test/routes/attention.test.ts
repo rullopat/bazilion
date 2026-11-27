@@ -178,8 +178,12 @@ test('a question or a command an Agent waits on comes first, and is answered, no
   const { question } = questionRegistry.ask(
     { agentId: 'agent', conversationId: 'conversation' },
     {
-      prompt: 'Which headline should the announcement use?',
-      choices: [{ label: 'A' }, { label: 'B' }],
+      questions: [
+        {
+          prompt: 'Which headline should the announcement use?',
+          choices: [{ label: 'A' }, { label: 'B' }],
+        },
+      ],
     },
     turn.signal,
   )

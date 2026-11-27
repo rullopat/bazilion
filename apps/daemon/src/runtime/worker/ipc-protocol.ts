@@ -23,6 +23,7 @@ import type { ToolResultPart } from '../tools/types.ts'
 export interface RpcMethods {
   askUser: { args: { question: AgentQuestionInput }; result: AgentQuestionToolResult }
   publishResult: { args: PublishResultArgs; result: ResultReference }
+  showResult: { args: { resultId: string }; result: ShownResult }
   generateImages: { args: ImageGenerationInput; result: ImageGenerationOutput }
   webSearch: { args: WebSearchArgs; result: WebSearchOutput }
   sendMessage: { args: SendMessageArgs; result: { messageId: string } }
@@ -57,6 +58,8 @@ export interface RpcMethods {
   jobOutput: { args: { id: string; waitSeconds?: number }; result: JobOutputResult }
   jobInput: { args: { id: string; text?: string; interrupt?: boolean }; result: Job }
   jobStop: { args: { id: string }; result: Job }
+  recallSearch: { args: { query: string }; result: string }
+  recallRead: { args: { conversationId: string; from: number; count?: number }; result: string }
 }
 
 /** A job with the output the Agent had not read yet. */
@@ -178,12 +181,18 @@ export interface ImageGenerationInput {
   prompt: string
   /** Display filename stem. */
   name?: string
+  /** Pictures to start from, as paths the Agent sees (workspace or uploads). */
+  references?: string[]
+  /** Answer at once; the picture is saved when it is ready and wakes the Agent. */
+  background?: boolean
 }
 
 /** The saved images; their bytes stay in the daemon's result store. */
 export interface ImageGenerationOutput {
   model: string
   files: Array<{ name: string; mimeType: string; result: ResultReference }>
+  /** Being made in the background: nothing is saved yet. */
+  pending?: boolean
 }
 
 export interface WebSearchArgs {
@@ -289,8 +298,17 @@ export interface QuestionHost {
   ): { question: AgentQuestion; result: Promise<AgentQuestionToolResult> }
 }
 
+/** A result already saved, to show again in the chat. */
+export interface ShownResult {
+  result: ResultReference
+  name: string
+  mimeType: string
+}
+
 export interface ResultHost {
   publish(input: PublishResultArgs): Promise<ResultReference>
+  /** One of the Agent's own saved results (a picture made in the background, say). */
+  show(resultId: string): Promise<ShownResult>
 }
 
 export interface ImageGenerationHost {
@@ -317,6 +335,12 @@ export interface JobHost {
   stop(input: { id: string }): Promise<Job>
 }
 
+/** The turn's Agent's other conversations, for `recall` with `everywhere`. */
+export interface RecallHost {
+  search(query: string): Promise<string>
+  read(conversationId: string, from: number, count?: number): Promise<string>
+}
+
 /** Search runs in the daemon, which holds the backend URL and credentials. */
 export interface WebSearchHost {
   search(args: WebSearchArgs): Promise<WebSearchOutput>
@@ -339,6 +363,7 @@ export interface WorkerHosts {
   /** Only in a turn the operator started: Agents add teammates when asked, not on their own. */
   teamHost?: TeamHost
   jobHost?: JobHost
+  recallHost?: RecallHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

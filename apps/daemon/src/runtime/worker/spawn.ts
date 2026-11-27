@@ -295,6 +295,7 @@ const RPC_HANDLERS: RpcHandlers = {
     return asked.result
   },
   publishResult: (args, { hosts }) => host(hosts.resultHost, 'result').publish(args),
+  showResult: ({ resultId }, { hosts }) => host(hosts.resultHost, 'result').show(resultId),
   generateImages: (args, { hosts }) =>
     host(hosts.imageGenerationHost, 'image generation').generate(args),
   webSearch: (args, { hosts }) => host(hosts.webSearchHost, 'web search').search(args),
@@ -326,6 +327,9 @@ const RPC_HANDLERS: RpcHandlers = {
   jobOutput: (args, ctx) => host(ctx.hosts.jobHost, 'job').output(args, ctx.signal),
   jobInput: (args, { hosts }) => host(hosts.jobHost, 'job').input(args),
   jobStop: (args, { hosts }) => host(hosts.jobHost, 'job').stop(args),
+  recallSearch: ({ query }, { hosts }) => host(hosts.recallHost, 'recall').search(query),
+  recallRead: ({ conversationId, from, count }, { hosts }) =>
+    host(hosts.recallHost, 'recall').read(conversationId, from, count),
   refreshApiKey: async ({ providerName }, ctx) => {
     const token = await refreshApiKeyForTurn(
       providerName,

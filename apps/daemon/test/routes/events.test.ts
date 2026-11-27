@@ -112,7 +112,7 @@ test('the event stream sends the current state, then a question the moment it is
       expect(attention?.type === 'attention' && attention.waiting).toEqual([])
       questionRegistry.ask(
         { agentId: 'agent', conversationId: 'c1' },
-        { prompt: 'Which headline?', choices: [{ label: 'A' }, { label: 'B' }] },
+        { questions: [{ prompt: 'Which headline?', choices: [{ label: 'A' }, { label: 'B' }] }] },
         turn.signal,
       )
     }

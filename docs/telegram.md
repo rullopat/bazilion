@@ -72,9 +72,11 @@ Replies, errors, images and delivered files are mirrored into the topic. An Agen
 (`bazilion agent edit <id> --mirror minimal|verbose`, or **Telegram** in the Agent's side panel)
 adds short tool-call lines in verbose mode; those are limited to 30 a minute per Agent.
 
-When an Agent asks a question (see [questions](questions.md)), it appears in its topic with one
-button per choice and **Skip**. Tap a button, or reply to the question message with your own
-answer. The question can be answered on the web or in the CLI just as well; the first answer wins.
+When an Agent asks questions (see [questions](questions.md)), each appears in its topic with one
+button per choice and **Skip**; a question that allows several choices is answered by replying
+with their numbers. Tap a button, or reply to the question's message with your own answer. When
+it asks you to do something, the message has **Done** and **Can't**. Cards can be answered on the
+web or in the CLI just as well; the first answer wins.
 
 A command that needs your approval in a chat you are watching, on the web or in a terminal (see
 [coding environments](coding-environments.md#dangerous-command-approval)) and is still waiting

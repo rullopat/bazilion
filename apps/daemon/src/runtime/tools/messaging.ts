@@ -32,6 +32,11 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
               type: 'string',
               description: 'Optional: id of the message you are replying to',
             },
+            wake: {
+              type: 'boolean',
+              description:
+                'false: deliver it without starting a turn for the recipient; it reads it at its next turn. For something it should know but need not act on now.',
+            },
           },
           required: ['to', 'text'],
         },
@@ -42,13 +47,16 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
         if (!to) throw new Error('send_message: "to" is required')
         if (!text) throw new Error('send_message: "text" is required')
         const replyTo = typeof args.reply_to === 'string' ? args.reply_to : null
+        const quiet = args.wake === false
         const { messageId } = await host.sendMessage({
           from: fromAgentId,
           to,
-          payload: JSON.stringify({ text }),
+          payload: JSON.stringify(quiet ? { text, wake: false } : { text }),
           replyTo,
         })
-        return `sent message ${messageId}`
+        return quiet
+          ? `sent message ${messageId}; it waits for the recipient's next turn`
+          : `sent message ${messageId}`
       },
     },
     {
@@ -81,13 +89,18 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
       def: {
         name: 'wait_for_reply',
         description:
-          'Block until a reply to a message you sent arrives, or until the timeout expires.',
+          'Block until the replies to messages you sent arrive, or until the timeout expires. With message_ids, it returns each reply as it comes and ends when all have answered.',
         parameters: {
           type: 'object',
           properties: {
             message_id: {
               type: 'string',
               description: 'id of the message you sent',
+            },
+            message_ids: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'ids of several messages you sent, to wait for all their replies',
             },
             timeout_ms: {
               type: 'number',
@@ -98,27 +111,37 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
               description: 'poll interval in milliseconds (default 200)',
             },
           },
-          required: ['message_id'],
         },
       },
       async invoke(args) {
-        const messageId = String(args.message_id ?? '')
-        if (!messageId) throw new Error('wait_for_reply: "message_id" is required')
+        const ids = [
+          ...(typeof args.message_id === 'string' && args.message_id ? [args.message_id] : []),
+          ...(Array.isArray(args.message_ids) ? args.message_ids.map(String).filter(Boolean) : []),
+        ]
+        if (ids.length === 0)
+          throw new Error('wait_for_reply: "message_id" or "message_ids" is required')
         const timeout = typeof args.timeout_ms === 'number' ? args.timeout_ms : 30000
         const poll = typeof args.poll_ms === 'number' ? args.poll_ms : 200
         const start = Date.now()
-        while (Date.now() - start < timeout) {
-          const replies = await host.findReplies(fromAgentId, messageId)
-          if (replies.length > 0) {
-            const r = replies[0]
-            if (r) {
-              if (!r.readAt) await host.markRead(r.id)
-              return `reply from ${r.fromAgentId} [${r.id}]: ${decodeText(r.payload)}`
-            }
+        const answered = new Map<string, string>()
+        while (answered.size < ids.length && Date.now() - start < timeout) {
+          for (const id of ids) {
+            if (answered.has(id)) continue
+            const r = (await host.findReplies(fromAgentId, id))[0]
+            if (!r) continue
+            if (!r.readAt) await host.markRead(r.id)
+            answered.set(
+              id,
+              `reply from ${r.fromAgentId} [${r.id}] to ${id}: ${decodeText(r.payload)}`,
+            )
           }
-          await new Promise((r) => setTimeout(r, poll))
+          if (answered.size < ids.length) await new Promise((r) => setTimeout(r, poll))
         }
-        return `no reply within ${timeout}ms`
+        const lines = ids.flatMap((id) => answered.get(id) ?? [])
+        const missing = ids.filter((id) => !answered.has(id))
+        if (ids.length === 1) return lines[0] ?? `no reply within ${timeout}ms`
+        if (missing.length > 0) lines.push(`no reply within ${timeout}ms to ${missing.join(', ')}`)
+        return lines.join('\n')
       },
     },
   ]

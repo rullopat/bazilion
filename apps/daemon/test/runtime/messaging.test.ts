@@ -152,3 +152,58 @@ test('send_message rejects unknown recipient', async () => {
   const send = findHandler(handlers, 'send_message')
   await expect(send.invoke({ to: 'nope', text: 'hi' })).rejects.toThrow()
 })
+
+test('a message sent with wake: false waits unread without waking its recipient', async () => {
+  const a = makeAgent(env, 'A')
+  const b = makeAgent(env, 'B')
+  const send = findHandler(
+    messagingTools(createDbMessagingHost(env.db), a.agent.id),
+    'send_message',
+  )
+  expect(
+    String(await send.invoke({ to: b.agent.id, text: 'FYI: the API moved', wake: false })),
+  ).toContain("waits for the recipient's next turn")
+  expect(messageRepo.listRecipientsWithUnread(env.db)).toEqual([])
+  expect(messageRepo.unreadCount(env.db, b.agent.id)).toBe(1)
+  // A message that does wake it does, and the quiet one is read with it.
+  await send.invoke({ to: b.agent.id, text: 'please review' })
+  expect(messageRepo.listRecipientsWithUnread(env.db)).toEqual([b.agent.id])
+  expect(
+    messageRepo
+      .drainUnreadForAgent(env.db, b.agent.id)
+      .map((m) => messageRepo.messageText(m.payload)),
+  ).toEqual(['FYI: the API moved', 'please review'])
+})
+
+test('wait_for_reply waits for the replies to several messages and names the missing ones', async () => {
+  const a = makeAgent(env, 'A')
+  const b = makeAgent(env, 'B')
+  const c = makeAgent(env, 'C')
+  const host = createDbMessagingHost(env.db)
+  const tools = messagingTools(host, a.agent.id)
+  const first = messageRepo.send(env.db, {
+    from: a.agent.id,
+    to: b.agent.id,
+    payload: '{"text":"q1"}',
+  })
+  const second = messageRepo.send(env.db, {
+    from: a.agent.id,
+    to: c.agent.id,
+    payload: '{"text":"q2"}',
+  })
+  messageRepo.send(env.db, {
+    from: b.agent.id,
+    to: a.agent.id,
+    payload: '{"text":"answer one"}',
+    replyTo: first.id,
+  })
+  const waited = String(
+    await findHandler(tools, 'wait_for_reply').invoke({
+      message_ids: [first.id, second.id],
+      timeout_ms: 300,
+      poll_ms: 20,
+    }),
+  )
+  expect(waited).toContain(`to ${first.id}: answer one`)
+  expect(waited).toContain(`no reply within 300ms to ${second.id}`)
+})

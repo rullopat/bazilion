@@ -316,7 +316,9 @@ test('interactive HTTP chat pauses a risky command and an allow decision execute
 
 test('a web chat question waits for an answer from the CLI and the model receives it', async () => {
   const agentId = await spawnLmStudioAgent()
-  const question = { prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] }
+  const question = {
+    questions: [{ prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] }],
+  }
   mock.push([
     {
       choices: [
@@ -379,7 +381,7 @@ test('a web chat question waits for an answer from the CLI and the model receive
   )
   expect(
     result?.kind === 'event' && result.event.type === 'tool_result' && result.event.result,
-  ).toContain('"answer":{"kind":"choice","index":1}')
+  ).toContain('"answers":[{"kind":"choice","index":1}]')
   expect(frames.at(-1)?.kind).toBe('done')
 })
 

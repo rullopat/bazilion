@@ -142,12 +142,18 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   (`runtime/tools/recall.ts`). `query` lists the latest 12 that hold every word, tool calls and
   results included, with their numbers; `from` and `count` (at most 20) read them in full, about
   20,000 characters a call, cutting a long message less when fewer are read. Stored credentials
-  are taken out. Before any compaction it says there is nothing to recall.
+  are taken out. Before any compaction it says there is nothing to recall. With
+  `everywhere: true`, `query` also searches every message of the Agent's other conversations, and
+  `conversation` with `from` reads one of them; only the Agent's own, read by the daemon
+  (`lib/recall-host.ts`).
 - `home_read|write|list`: the Agent's own documents, by name only; `BOOTSTRAP.md` is read-only.
 - `bootstrap_done`: removes `BOOTSTRAP.md`.
 - `web_fetch`: a guarded page fetch (no private addresses, also after redirects) turned into
   Markdown. `web_search`, when a search backend is ready, runs in the daemon.
-- `send_message`, `read_inbox`, `wait_for_reply`: the mailbox. `to` is an id or a name, a
+- `send_message`, `read_inbox`, `wait_for_reply`: the mailbox. `wake: false` sends a quiet
+  message, which waits in the inbox without starting a turn; the recipient's next turn is told
+  how many are unread. `wait_for_reply` takes several message ids and returns each reply as it
+  comes. `to` is an id or a name, a
   teammate's name first (`lib/messaging-host.ts:recipientOf`). Every message carries its exchange
   (`causal_chain_id`) and step (`causal_hop`), with no limit on steps. The daemon refuses a message
   its sender already sent the same Agent in the exchange, and any message in an exchange the user
@@ -158,7 +164,9 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   (`lib/team-host.ts`). The new Agent's `AGENTS.md` starts with its role and who made it, it gets
   no first-run ritual, and in a restricted Team it is connected with its creator both ways.
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and
-  `mcp__<server>__<tool>`: each present when its host is.
+  `mcp__<server>__<tool>`: each present when its host is. `deliver_file` with `result` shows one of
+  the Agent's saved results again. `ask_user` takes a card of `questions` or an `action` (see
+  [questions](questions.md)); an action returns at once and the owner's answer wakes the Agent.
 
 The coding tools depend on `BAZILION_BASH_SANDBOX` and `BAZILION_BASH_APPROVAL`
 (`runtime/shell/tooling.ts`):

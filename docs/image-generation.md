@@ -1,6 +1,7 @@
 # Image generation
 
-The `image_generate` tool lets an Agent create an image from a text prompt. The image is saved as
+The `image_generate` tool lets an Agent create an image from a text prompt, and from pictures to
+start from. The image is saved as
 a [Result](results.md): it appears in the chat, under **Files**, in `bazilion result list`
 and, for a bound Agent, in its Telegram topic. Image generation is off until you pick a model.
 
@@ -31,15 +32,27 @@ and inbox wakes) from the next turn on. Set spending limits in the provider's ow
 ## Use
 
 Ask for an image, for example: “Draw a square illustration of a balcony garden and save it as
-balcony-garden.” The Agent passes a prompt (up to 8 KiB) and an optional file name. Asking for a
-change (“make it brighter”) is a new generation, not an edit of the previous image.
+balcony-garden.” The Agent passes a prompt (up to 8 KiB) and an optional file name.
+
+- **From pictures:** the Agent can name pictures to start from (`references`): files in the Team
+  workspace or the Agent's uploads, such as one you attached. Use it for an edit (“make the logo
+  blue”), a variation, or a style to match. The OpenAI route sends them to OpenAI's edit endpoint,
+  ChatGPT and OpenRouter send them with the prompt. Whether an OpenRouter model makes use of them
+  depends on the model. A reference must be a PNG, JPEG or WebP file; in Docker mode the Agent
+  names it by its path in the container (`/workspace/…`, `/inputs/…`).
+- **In the background:** with `background: true` the call answers at once and the turn goes on.
+  When the picture is ready it is saved as a Result and the Agent is woken in the same
+  conversation, once it is idle, to show it to you. A failed picture wakes it with the error. A
+  picture asked for in the background is still made when the turn ends; a daemon restart before
+  it is ready loses it.
 
 The CLI chat saves a delivered image into the current directory unless a file of that name already
 exists; it then prints the result id for `bazilion result download <id> --output <path>`.
 
 ## Limits
 
-- At most four `image_generate` calls per turn; each call waits up to 180 seconds.
+- At most four `image_generate` calls per turn; each call waits up to 180 seconds. References are
+  read up to 25 MiB each.
 - The OpenAI and ChatGPT routes ask for one 1024×1024 PNG; OpenRouter uses the model's defaults
   and may return up to four images, each saved as its own result.
 - Only PNG, JPEG and WebP are accepted, from a provider response of at most 40 MiB. Results are

@@ -24,7 +24,13 @@ import { MIGRATED_CHAT_KEY, readServiceTopicId } from './config.ts'
 import { htmlEscape } from './html.ts'
 import { downloadMediaBytes, extractMedia } from './media.ts'
 import { isTelegramSenderAllowed } from './origin.ts'
-import { answerFromTelegram, questionCallback, questionReply } from './questions.ts'
+import {
+  answerActionFromTelegram,
+  answerFromTelegram,
+  questionCallback,
+  questionReply,
+  replyAnswer,
+} from './questions.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
@@ -174,12 +180,16 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
   }
 
   // A reply to a waiting question answers it instead of queueing behind the turn that asks.
-  const questionId = questionReply(m)
-  if (questionId && m.text && !parseCommand(m.text)) {
+  const replied = questionReply(m)
+  if (replied && m.text && !parseCommand(m.text)) {
     await reply(
       deps,
       threadId ?? undefined,
-      answerFromTelegram(questionId, { kind: 'text', text: m.text }),
+      answerFromTelegram(
+        replied.questionId,
+        replied.index,
+        replyAnswer(replied.questionId, replied.index, m.text),
+      ),
     )
     return { kind: 'question_answer' }
   }
@@ -446,9 +456,11 @@ async function routeCallback(deps: RouterDeps, q: CallbackQuery): Promise<RouteO
 
   const answer = questionCallback(data)
   if (answer) {
-    await deps.api
-      .answerCallbackQuery(q.id, { text: answerFromTelegram(answer.questionId, answer.answer) })
-      .catch(() => undefined)
+    const text =
+      'action' in answer
+        ? answerActionFromTelegram(answer.questionId, answer.action)
+        : answerFromTelegram(answer.questionId, answer.index, answer.answer)
+    await deps.api.answerCallbackQuery(q.id, { text }).catch(() => undefined)
     return { kind: 'question_answer' }
   }
 

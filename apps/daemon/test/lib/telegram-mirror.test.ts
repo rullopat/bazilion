@@ -137,7 +137,7 @@ describe('mirrorAgentTurnFrame', () => {
     const turn = new AbortController()
     const { question } = questionRegistry.ask(
       { agentId: a.id, conversationId: crypto.randomUUID() },
-      { prompt: 'Which one?', choices: [{ label: 'A' }, { label: 'B' }] },
+      { questions: [{ prompt: 'Which one?', choices: [{ label: 'A' }, { label: 'B' }] }] },
       turn.signal,
     )
     try {

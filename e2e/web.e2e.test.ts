@@ -445,7 +445,7 @@ test('a question asked and answered elsewhere comes and goes in the open convers
   const asked = waiting.questions[0]?.id ?? ''
   // Answered elsewhere (the terminal, Telegram): the card goes.
   await instance.api(`/api/agents/${ids.quill}/questions/${asked}/answer`, {
-    body: { answer: { kind: 'choice', index: 0 } },
+    body: { answer: { kind: 'answers', answers: [{ kind: 'choice', index: 0 }] } },
   })
   await pw(questions).toHaveCount(0, { timeout: 5_000 })
   expect(session.problems).toEqual([])

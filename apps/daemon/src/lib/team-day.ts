@@ -4,7 +4,12 @@
 
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
-import { messageText, type TeamDayEvent, type TeamDayResponse } from '@bazilion/api-types'
+import {
+  messageText,
+  questionTitle,
+  type TeamDayEvent,
+  type TeamDayResponse,
+} from '@bazilion/api-types'
 import type { BazilionDb } from '../core/db/client.ts'
 import type { Paths } from '../core/paths.ts'
 import * as agentRepo from '../core/repos/agents.ts'
@@ -111,7 +116,7 @@ export function teamDay(
       kind: 'question',
       agentId: question.agentId,
       agentName: name.get(question.agentId) ?? question.agentId,
-      text: line(question.question.prompt),
+      text: line(questionTitle(question.question)),
       conversationId: question.conversationId,
     })
   }

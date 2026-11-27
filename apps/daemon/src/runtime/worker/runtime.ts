@@ -58,6 +58,8 @@ export interface AgentTurnWorkerSpec {
   contacts: AgentContact[]
   /** The operator started the turn (a chat, a follow-up, Telegram), not a schedule or a teammate. */
   withOperator: boolean
+  /** Messages from other Agents waiting unread (sent without waking it), for its system prompt. */
+  unreadMessages?: number
 }
 
 /** A learning review: a digest of recent turns, answered only through `propose_lesson`. */

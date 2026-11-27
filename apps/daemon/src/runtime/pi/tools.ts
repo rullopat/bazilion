@@ -11,7 +11,7 @@ import { SANDBOX_INPUTS_DIR } from '../shell/tooling.ts'
 import { type AskUser, askUserTool } from '../tools/ask-user.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
-import { deliverFileTool, type FileSink } from '../tools/deliver-file.ts'
+import { deliverFileTool, type FileSink, type ShowResult } from '../tools/deliver-file.ts'
 import { homeTools } from '../tools/home.ts'
 import { imageGenerateTool } from '../tools/image-generate.ts'
 import { jobTools } from '../tools/jobs.ts'
@@ -75,6 +75,7 @@ export interface BazilionCustomToolsOpts {
   mcpHost?: McpHost
   mcpTools?: InjectedMcpTool[]
   fileSink?: FileSink
+  showResult?: ShowResult
   imageGenerationHost?: ImageGenerationHost
   /** Daemon-run search; absent means no web_search tool. */
   webSearchHost?: WebSearchHost
@@ -120,7 +121,8 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.mcpHost && opts.mcpTools && opts.mcpTools.length > 0) {
     handlers.push(...mcpProxyTools(opts.mcpHost, opts.mcpTools))
   }
-  if (opts.fileSink) handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink))
+  if (opts.fileSink)
+    handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink, opts.showResult))
   if (opts.imageGenerationHost) handlers.push(imageGenerateTool(opts.imageGenerationHost))
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   if (opts.teamHost) handlers.push(agentCreateTool(opts.teamHost))

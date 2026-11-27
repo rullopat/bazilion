@@ -7,11 +7,14 @@ const call = createProcessIpcClient()
 try {
   // The daemon binds the Agent; a worker cannot pick another one.
   const args = {
-    question: { prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] },
+    question: {
+      questions: [{ prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] }],
+    },
     agentId: 'another-agent',
   }
   const result = await call('askUser', args)
-  if (result.kind !== 'answer' || result.answer.kind !== 'choice' || result.answer.index !== 1) {
+  const [answer] = result.kind === 'answer' ? result.answers : []
+  if (answer?.kind !== 'choice' || answer.index !== 1) {
     throw new Error('Expected JSON')
   }
   process.stdout.write(`${JSON.stringify({ kind: 'done', messages: [] })}\n`)

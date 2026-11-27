@@ -3,15 +3,24 @@
 // registration whatever happens.
 
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { realpathSync } from 'node:fs'
+import { join, posix, resolve } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { imageRoute } from '../core/image-generation-config.ts'
-import { agentReviewRepo, commandRuleRepo, mergeSecretsIntoEnv } from '../core/index.ts'
+import {
+  agentReviewRepo,
+  commandRuleRepo,
+  mergeSecretsIntoEnv,
+  messageRepo,
+} from '../core/index.ts'
 import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { rememberLocalModelWindow } from '../runtime/providers/pi-runtime.ts'
+import { isContained, readContainedFile } from '../runtime/safe-files.ts'
 import { loadPromptSkills } from '../runtime/session/prompt.ts'
+import { ContainerPaths } from '../runtime/shell/container-paths.ts'
 import {
+  CONTAINER_WORKSPACE,
   containerWorkdir,
   jobContainerPrefix,
   removeDockerContainers,
@@ -19,6 +28,7 @@ import {
 import { resolveShellSecurityConfig, toolEnvironment } from '../runtime/shell/security.ts'
 import { buildDockerSandbox, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
+import { envSecretValues } from '../runtime/worker/runtime.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { commandApprovalRegistry, createTurnApprovalHost } from './bash-approval.ts'
@@ -26,11 +36,12 @@ import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
 import { reviewCommand } from './command-review.ts'
 import { getCtx } from './ctx.ts'
-import { createImageGenerationHost } from './image-generation.ts'
+import { createImageGenerationHost, MAX_REFERENCE_BYTES } from './image-generation.ts'
 import { createJobHost } from './jobs.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
 import { questionRegistry } from './questions.ts'
+import { createRecallHost } from './recall-host.ts'
 import { createResultHost } from './result-host.ts'
 import { agentContacts, createDbTeamHost } from './team-host.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
@@ -90,6 +101,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         bashApprovalMode: turn.bashApprovalMode,
         contacts: agentContacts(db, agentId),
         withOperator: withOperator(turn),
+        unreadMessages: messageRepo.unreadCount(db, agentId),
       },
       {
         env,
@@ -171,6 +183,43 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
   const { agent, conversation } = turn
   const { signal } = turn.controller
   const secretsEnv = () => mergeSecretsIntoEnv(db, authToken)
+  // The container the turn's commands run in, built from what the daemon knows of the turn.
+  const sandbox = () => {
+    const docker = turn.docker
+    if (!docker) throw new Error('the turn has no Docker settings')
+    return buildDockerSandbox(agent.team.path, docker, {
+      inputsDir: join(agent.agent.dir, 'uploads'),
+      skillMounts: loadPromptSkills(paths.skillsDir, agent.skills).map((skill) => ({
+        source: skill.hostDir,
+        target: skill.sandboxDir,
+      })),
+    })
+  }
+  // A path the Agent names, read as its file tools would: container paths in Docker.
+  const readAgentFile = (path: string): Buffer => {
+    if (!turn.docker) {
+      // The workspace and the Agent's uploads only, links resolved, as deliver_file reads.
+      const wanted = resolve(agent.team.path, path)
+      for (const root of [agent.team.path, join(agent.agent.dir, 'uploads')]) {
+        let real: string
+        try {
+          real = realpathSync(root)
+        } catch {
+          continue
+        }
+        if (isContained(root, wanted) || isContained(real, wanted)) {
+          return readContainedFile(wanted, real, MAX_REFERENCE_BYTES)
+        }
+      }
+      throw new Error(`${path} is not in your workspace or uploads`)
+    }
+    const current = sandbox()
+    const files = new ContainerPaths([
+      { target: CONTAINER_WORKSPACE, source: current.workspace, writable: true },
+      ...current.readOnlyMounts.map((mount) => ({ ...mount, writable: false })),
+    ])
+    return files.readFile(posix.resolve(containerWorkdir(turn.docker.cwd), path))
+  }
   const codexConnected = hasCredentials(db, authToken)
   const search = searchRoute(env, agent.model, codexConnected)
   return {
@@ -203,6 +252,7 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
           conversationId: conversation.id,
           signal,
           env: secretsEnv,
+          readReference: readAgentFile,
           codex: {
             connected: () => hasCredentials(db, authToken),
             accessToken: () => loadAccessToken(db, authToken),
@@ -229,28 +279,21 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
           uploadsShown: turn.docker ? SANDBOX_INPUTS_DIR : join(agent.agent.dir, 'uploads'),
         })
       : undefined,
+    // recall with everywhere: the Agent's other conversations, read here.
+    recallHost: createRecallHost({
+      db,
+      paths,
+      agentId: agent.agent.id,
+      conversationId: conversation.id,
+      secrets: envSecretValues(secretsEnv()),
+    }),
     // Its jobs run where its commands do: in the turn's container, or on the host.
     jobHost: createJobHost({
       paths,
       agentId: agent.agent.id,
       conversationId: conversation.id,
       ...(turn.docker
-        ? {
-            docker: {
-              sandbox: () => {
-                const docker = turn.docker
-                if (!docker) throw new Error('the turn has no Docker settings')
-                return buildDockerSandbox(agent.team.path, docker, {
-                  inputsDir: join(agent.agent.dir, 'uploads'),
-                  skillMounts: loadPromptSkills(paths.skillsDir, agent.skills).map((skill) => ({
-                    source: skill.hostDir,
-                    target: skill.sandboxDir,
-                  })),
-                })
-              },
-              namePrefix: jobContainerPrefix(paths.home),
-            },
-          }
+        ? { docker: { sandbox, namePrefix: jobContainerPrefix(paths.home) } }
         : { host: { cwd: agent.team.path, env } }),
     }),
   }
