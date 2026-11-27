@@ -17,7 +17,7 @@ import {
   removeDockerContainers,
 } from '../runtime/shell/docker.ts'
 import { resolveShellSecurityConfig, toolEnvironment } from '../runtime/shell/security.ts'
-import { buildDockerSandbox } from '../runtime/shell/tooling.ts'
+import { buildDockerSandbox, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
 import { resolveAgentApiKey } from './api-key.ts'
@@ -222,7 +222,12 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
     teamHost: withOperator(turn) ? createDbTeamHost(db, paths, agent.agent.id) : undefined,
     // Bound to this turn's Agent: the worker cannot drive another Agent's browser.
     browserHost: isBrowserEnabled(env)
-      ? createBrowserHost(resolveBrowserConfig(env), { paths, agentId: agent.agent.id, signal })
+      ? createBrowserHost(resolveBrowserConfig(env), {
+          paths,
+          agentId: agent.agent.id,
+          signal,
+          uploadsShown: turn.docker ? SANDBOX_INPUTS_DIR : join(agent.agent.dir, 'uploads'),
+        })
       : undefined,
     // Its jobs run where its commands do: in the turn's container, or on the host.
     jobHost: createJobHost({

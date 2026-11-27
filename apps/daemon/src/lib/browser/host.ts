@@ -8,10 +8,24 @@ import { invokeBrowserAction } from './pool.ts'
 
 export function createBrowserHost(
   config: BrowserConfig,
-  turn: { agentId: string; paths: Paths; signal?: AbortSignal },
+  turn: {
+    agentId: string
+    paths: Paths
+    signal?: AbortSignal
+    /** How the Agent sees its uploads folder, where PDFs and downloads are saved. */
+    uploadsShown?: string
+  },
 ): BrowserHost {
   return {
     invoke: (_workerAgentId, action, args) =>
-      invokeBrowserAction(turn.agentId, action, args, config, turn.paths, turn.signal),
+      invokeBrowserAction(
+        turn.agentId,
+        action,
+        args,
+        config,
+        turn.paths,
+        turn.signal,
+        turn.uploadsShown,
+      ),
   }
 }

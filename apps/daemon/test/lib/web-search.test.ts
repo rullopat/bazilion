@@ -196,3 +196,144 @@ test('credentialed backend requests never follow a redirect, and oversized bodie
     await Promise.all([destination.close(), redirecting.close(), oversized.close()])
   }
 })
+
+function hostWith(
+  backend: WebSearchOutput['backend'],
+  fetcher: typeof fetch,
+  env: NodeJS.ProcessEnv = {},
+) {
+  return createWebSearchHost({
+    backend,
+    env: () => ({ TAVILY_API_KEY: 'tvly-key', EXA_API_KEY: 'exa-key', ...brave, ...searx, ...env }),
+    model: 'openai:gpt-5',
+    codexToken: async () => '',
+    signal: new AbortController().signal,
+    fetch: fetcher,
+  })
+}
+
+test('auto takes Tavily, then Exa, after Brave and SearXNG', () => {
+  expect(searchRoute({ TAVILY_API_KEY: 't', EXA_API_KEY: 'e' }, 'lmstudio:m', false)).toEqual({
+    backend: 'tavily',
+  })
+  expect(searchRoute({ EXA_API_KEY: 'e' }, 'lmstudio:m', false)).toEqual({ backend: 'exa' })
+  expect(searchRoute({ BAZILION_WEB_SEARCH_ROUTE: 'exa' }, 'lmstudio:m', false)).toEqual({
+    backend: null,
+    reason: 'Exa search needs EXA_API_KEY.',
+  })
+})
+
+test('Brave and SearXNG take the filters they support, and say which they could not', async () => {
+  const fetcher = vi.fn<typeof fetch>(async () =>
+    Response.json({ web: { results: [] }, results: [] }),
+  )
+  const filters = {
+    query: 'rust release',
+    after: '2026-01-01',
+    before: '2026-02-01',
+    sites: ['blog.rust-lang.org'],
+    excludeSites: ['reddit.com'],
+    country: 'it',
+    language: 'IT',
+  }
+  expect((await hostWith('brave', fetcher).search(filters)).unapplied).toBeUndefined()
+  const braveUrl = new URL(String(fetcher.mock.calls[0]?.[0]))
+  expect(Object.fromEntries(braveUrl.searchParams)).toEqual({
+    q: 'rust release site:blog.rust-lang.org -site:reddit.com',
+    count: '5',
+    freshness: '2026-01-01to2026-02-01',
+    country: 'IT',
+    search_lang: 'it',
+  })
+  const searx = await hostWith('searxng', fetcher).search({ ...filters, freshness: 'week' })
+  // Dates win over a freshness given with them; SearXNG takes neither dates nor a country.
+  expect(searx.unapplied).toEqual(['after', 'before', 'country', 'freshness'])
+  const searxUrl = new URL(String(fetcher.mock.calls[1]?.[0]))
+  expect(searxUrl.searchParams.get('time_range')).toBeNull()
+  expect(searxUrl.searchParams.get('language')).toBe('it')
+})
+
+test('Tavily and Exa get their own request shapes, with their keys', async () => {
+  const fetcher = vi.fn<typeof fetch>(async (url) =>
+    String(url).includes('tavily')
+      ? Response.json({
+          results: [
+            { title: 'T', url: 'https://t.example', content: 'tav', published_date: 'Tue' },
+          ],
+        })
+      : Response.json({
+          results: [{ title: 'E', url: 'https://e.example', highlights: ['one', 'two'] }],
+        }),
+  )
+  const tavily = await hostWith('tavily', fetcher).search({
+    query: 'q',
+    count: 3,
+    freshness: 'month',
+    sites: ['https://example.com/'],
+    country: 'GB',
+    language: 'en',
+  })
+  expect(tavily).toEqual({
+    backend: 'tavily',
+    results: [{ title: 'T', url: 'https://t.example', snippet: 'tav', published: 'Tue' }],
+  })
+  const [tavilyUrl, tavilyInit] = fetcher.mock.calls[0] ?? []
+  expect(String(tavilyUrl)).toBe('https://api.tavily.com/search')
+  expect(new Headers(tavilyInit?.headers).get('authorization')).toBe('Bearer tvly-key')
+  expect(JSON.parse(String(tavilyInit?.body))).toEqual({
+    query: 'q',
+    max_results: 3,
+    time_range: 'month',
+    include_domains: ['example.com'],
+    country: 'united kingdom',
+    language: 'en',
+    filter_by_language: true,
+    include_published_date: true,
+  })
+
+  const exa = await hostWith('exa', fetcher).search({
+    query: 'q',
+    before: '2025-12-31',
+    excludeSites: ['spam.example'],
+    language: 'en',
+  })
+  expect(exa).toEqual({
+    backend: 'exa',
+    results: [{ title: 'E', url: 'https://e.example', snippet: 'one … two' }],
+    unapplied: ['language'],
+  })
+  const [, exaInit] = fetcher.mock.calls[1] ?? []
+  expect(new Headers(exaInit?.headers).get('x-api-key')).toBe('exa-key')
+  expect(JSON.parse(String(exaInit?.body))).toEqual({
+    query: 'q',
+    numResults: 5,
+    endPublishedDate: '2025-12-31T23:59:59.999Z',
+    excludeDomains: ['spam.example'],
+    contents: { highlights: true },
+  })
+})
+
+test('a filter that is not valid is refused; a search repeated in a turn is asked once', async () => {
+  const fetcher = vi.fn<typeof fetch>(async () => Response.json({ web: { results: [] } }))
+  const host = hostWith('brave', fetcher)
+  await expect(host.search({ query: 'q', after: 'last week' })).rejects.toThrow(/YYYY-MM-DD/)
+  await expect(host.search({ query: 'q', country: 'Italy' })).rejects.toThrow(/two-letter/)
+  await expect(host.search({ query: 'q', sites: ['not a site'] })).rejects.toThrow(/not a site/)
+  await host.search({ query: 'same', freshness: 'day' })
+  await host.search({ query: 'same', freshness: 'day' })
+  await host.search({ query: 'same', freshness: 'week' })
+  expect(fetcher).toHaveBeenCalledTimes(2)
+})
+
+test('the tool names what the backend could not apply', async () => {
+  const tool = webSearchTool({
+    search: async () => ({
+      backend: 'searxng',
+      results: [{ title: 'A', url: 'https://a.example', snippet: 's', published: '2026-01-02' }],
+      unapplied: ['country'],
+    }),
+  })
+  const text = String(await tool.invoke({ query: 'q', country: 'IT' }, { toolCallId: 'c' }))
+  expect(text).toContain('Published: 2026-01-02')
+  expect(text).toContain('Not applied by searxng search: country.')
+})

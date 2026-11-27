@@ -7,7 +7,25 @@ Agents research the web with two tools:
 - `web_fetch` reads a page: it fetches the URL (refusing private and loopback addresses, also after
   redirects), extracts the readable text as markdown and notes the final URL when a redirect
   happened. With `FIRECRAWL_API_KEY` set, a page whose text comes out nearly empty (a JavaScript
-  shell) is fetched again through Firecrawl. Pages are cached for 15 minutes.
+  shell) is fetched again through Firecrawl. Pages are cached for 15 minutes. A page longer than
+  `max_length` (20,000 characters by default) is saved whole with the Agent's uploads
+  (`uploads/web/` in its folder, `/inputs/web/` in Docker), and the Agent gets the first part and
+  the path, to read or grep the rest.
+
+`web_search` takes filters: `freshness` (`day`, `week`, `month`, `year`) or `after`/`before`
+(`YYYY-MM-DD`, which win over a freshness given with them), `sites` and `exclude_sites`, `country`
+(two letters, `IT`) and `language` (two letters, `it`). Each backend applies the ones it supports,
+and the result names the others so the Agent checks them itself:
+
+| Backend | Applies |
+| --- | --- |
+| Brave | all of them (sites through `site:` in the query) |
+| SearXNG | freshness, sites (through `site:`, for the engines that honour it), language |
+| Tavily | all of them |
+| Exa | all but language |
+| native | sites and country |
+
+The same search twice in one turn is answered from the first one.
 
 Search results are leads: the Agent reads the pages it cites with `web_fetch`. Every kind of turn
 (chat, Telegram, follow-ups, schedules, inbox wakes) gets the same tools.
@@ -20,9 +38,11 @@ The managed browser is separate from search; see [managed browser](browser-resea
 
 | Value | Backend |
 | --- | --- |
-| `auto` (default) | Brave when `BRAVE_API_KEY` is set, else SearXNG when `SEARXNG_URL` is set, else `native`. |
+| `auto` (default) | The first that is set up: Brave (`BRAVE_API_KEY`), SearXNG (`SEARXNG_URL`), Tavily (`TAVILY_API_KEY`), Exa (`EXA_API_KEY`), then `native`. |
 | `brave` | The Brave Search API with `BRAVE_API_KEY` (the key field on the same card). |
 | `searxng` | Your SearXNG instance at `SEARXNG_URL`, with its JSON output enabled. |
+| `tavily` | The Tavily Search API with `TAVILY_API_KEY`. |
+| `exa` | The Exa Search API with `EXA_API_KEY`; each result's snippet is its highlights. |
 | `native` | The search built into the Agent's own model: OpenAI models with `OPENAI_API_KEY`, or ChatGPT models with the ChatGPT login. It returns a written answer and the pages it cites. Other models get no `web_search`. |
 | `off` | No `web_search` tool. |
 
@@ -33,6 +53,9 @@ configured leaves Agents without `web_search`; nothing falls back to another bac
 
 - A query has at most 512 characters; a search returns up to 10 results (default 5) and waits at
   most 30 seconds. Errors carry the backend's own status and message.
-- Brave bills per query on its own plan; native search counts against the OpenAI account or the
-  ChatGPT subscription.
-- `web_fetch` reads at most 3 MiB of a page and returns at most 20,000 characters by default.
+- Brave, Tavily and Exa bill per query on their own plans; native search counts against the
+  OpenAI account or the ChatGPT subscription.
+- `web_fetch` reads at most 3 MiB of a page. Saved pages stay in the uploads folder until you
+  remove them.
+- Tavily takes a country by its English name; Bazilion turns the two letters into it, and a
+  country Tavily does not list is refused with Tavily's own message.

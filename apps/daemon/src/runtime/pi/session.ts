@@ -261,6 +261,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     teamHost: opts.teamHost,
     jobHost: opts.jobHost,
     env,
+    docker,
   })
   const promptOptions: BuildSystemPromptOptions = {
     skills: promptSkills,

@@ -190,13 +190,27 @@ export interface WebSearchArgs {
   query: string
   /** Number of results, 1–10 (default 5). */
   count?: number
+  /** Only results from the last day, week, month or year. */
+  freshness?: 'day' | 'week' | 'month' | 'year'
+  /** Published on or after / on or before this date, YYYY-MM-DD. */
+  after?: string
+  before?: string
+  /** Only these sites (domains), or none of those in `excludeSites`. */
+  sites?: string[]
+  excludeSites?: string[]
+  /** ISO 3166 two-letter country code, e.g. "IT". */
+  country?: string
+  /** ISO 639-1 language code, e.g. "it". */
+  language?: string
 }
 
 /** Results to read with web_fetch; provider-hosted search also returns its written answer. */
 export interface WebSearchOutput {
-  backend: 'brave' | 'searxng' | 'openai' | 'openai-codex'
+  backend: 'brave' | 'searxng' | 'tavily' | 'exa' | 'openai' | 'openai-codex'
   answer?: string
-  results: Array<{ title: string; url: string; snippet: string }>
+  results: Array<{ title: string; url: string; snippet: string; published?: string }>
+  /** Filters asked for that this backend could not apply. */
+  unapplied?: string[]
 }
 
 // The daemon side of each tool. The daemon implements them against its repos and resources;

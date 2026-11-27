@@ -7,16 +7,22 @@
 // a call hangs or its turn is cancelled mid-call, on operator stop or reset, and at
 // daemon shutdown. Its profile stays on disk until a reset or the agent's deletion.
 
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import type { BrowserStatus } from '@bazilion/api-types'
-import type {
-  Request as BrowserRequest,
-  Response as BrowserResponse,
-  ConsoleMessage,
-  Page,
+import {
+  type Request as BrowserRequest,
+  type Response as BrowserResponse,
+  type CDPSession,
+  type ConsoleMessage,
+  type Download,
+  devices,
+  type Page,
+  type WebError,
 } from 'playwright'
 import type { Paths } from '../../core/index.ts'
 import type { ToolResultPart } from '../../runtime/tools/types.ts'
+import { extractReadable } from '../../runtime/tools/web-extract.ts'
 import { ensureResourceReaper, resources } from '../resources.ts'
 import { attachBrowser } from './attach.ts'
 import type { BrowserConfig } from './config.ts'
@@ -53,7 +59,18 @@ export interface BrowserSession {
   /** The latest snapshot, kept so the model can read the rest of it page by page. */
   snapshot: Snapshot | null
   console: string[]
-  network: Array<{ method: string; url: string; status?: number }>
+  network: Array<{ method: string; url: string; status?: number; failure?: string }>
+  /** Console errors and warnings and uncaught page errors since `browser_errors` last read them. */
+  errors: string[]
+  /** Files pages downloaded (an Agent's own browser only), until a result has named them. */
+  downloads: Array<{
+    name: string
+    path: string
+    state: 'saving' | 'saved' | 'failed'
+    error?: string
+  }>
+  /** The DevTools sessions that hold a tab's emulation (`browser_emulate`). */
+  emulation: WeakMap<Page, CDPSession>
   /** Remove the session from the pool and quit its browser. Never throws. */
   close(): Promise<void>
 }
@@ -117,6 +134,8 @@ function startSession(
   key: string,
   browser: AgentBrowser,
   idleMs: number,
+  /** Where downloads are saved; null in an attached browser, where they are refused. */
+  downloadsDir: string | null,
 ): BrowserSession {
   const sessions = resources().browsers
   const { context } = browser
@@ -136,6 +155,9 @@ function startSession(
     snapshot: null,
     console: [],
     network: [],
+    errors: [],
+    downloads: [],
+    emulation: new WeakMap(),
     close() {
       if (sessions.get(agentId) === session) sessions.delete(agentId)
       if (!closed) {
@@ -150,16 +172,45 @@ function startSession(
       return closed
     },
   }
-  for (const page of browser.pages()) tabId(session, page)
+  // A download is saved with the Agent's uploads, and the next result names it.
+  const onDownload = (download: Download) => {
+    if (!downloadsDir) return
+    const name = basename(download.suggestedFilename()) || 'download'
+    const path = join(downloadsDir, `${Date.now()}-${name.replace(/[^\w.-]+/g, '_')}`)
+    const entry: BrowserSession['downloads'][number] = { name, path, state: 'saving' }
+    remember(session.downloads, entry)
+    mkdirSync(downloadsDir, { recursive: true })
+    download.saveAs(path).then(
+      () => {
+        entry.state = 'saved'
+      },
+      (error: unknown) => {
+        entry.state = 'failed'
+        entry.error = clip(errorMessage(error))
+      },
+    )
+  }
+  const watch = (page: Page) => {
+    tabId(session, page)
+    page.on('download', onDownload)
+    unlisten.push(() => page.off('download', onDownload))
+  }
+  for (const page of browser.pages()) watch(page)
   // Popups and tabs a page opens get tab ids too (in an attached browser, when first listed).
   const onPage = (page: Page) => {
-    if (browser.owns(page)) tabId(session, page)
+    if (browser.owns(page)) watch(page)
   }
   // Page-controlled text is clipped as it is kept, so the logs stay small. In an attached
   // browser only the agent's own tabs are logged.
   const onConsole = (message: ConsoleMessage) => {
     if (!browser.owns(message.page())) return
-    remember(session.console, clip(`[${message.type()}] ${message.text()}`, CONSOLE_CHARS))
+    const line = clip(`[${message.type()}] ${message.text()}`, CONSOLE_CHARS)
+    remember(session.console, line)
+    if (message.type() === 'error' || message.type() === 'warning') remember(session.errors, line)
+  }
+  const onWebError = (error: WebError) => {
+    if (!browser.owns(error.page())) return
+    remember(session.errors, clip(`[uncaught] ${error.error().message}`, CONSOLE_CHARS))
   }
   const entries = new WeakMap<BrowserRequest, BrowserSession['network'][number]>()
   const onRequest = (request: BrowserRequest) => {
@@ -172,15 +223,23 @@ function startSession(
     const entry = entries.get(response.request())
     if (entry) entry.status = response.status()
   }
+  const onFailed = (request: BrowserRequest) => {
+    const entry = entries.get(request)
+    if (entry) entry.failure = clip(request.failure()?.errorText ?? 'failed')
+  }
   context.on('page', onPage)
   context.on('console', onConsole)
+  context.on('weberror', onWebError)
   context.on('request', onRequest)
   context.on('response', onResponse)
+  context.on('requestfailed', onFailed)
   unlisten.push(
     () => context.off('page', onPage),
     () => context.off('console', onConsole),
+    () => context.off('weberror', onWebError),
     () => context.off('request', onRequest),
     () => context.off('response', onResponse),
+    () => context.off('requestfailed', onFailed),
   )
   sessions.set(agentId, session)
   ensureResourceReaper()
@@ -229,7 +288,13 @@ async function claimSession(
           ...(config.allowPrivate ? {} : { proxyUrl: await getSsrfProxy() }),
         })
     launchErrors.delete(agentId)
-    const session = startSession(agentId, key, browser, config.idleMs)
+    const session = startSession(
+      agentId,
+      key,
+      browser,
+      config.idleMs,
+      config.attach ? null : join(paths.agentDir(agentId), 'uploads', 'browser'),
+    )
     session.busy++
     return session
   } catch (error) {
@@ -248,7 +313,12 @@ export async function invokeBrowserAction(
   config: BrowserConfig,
   paths: Paths,
   signal?: AbortSignal,
+  /** How the turn's Agent sees its uploads folder (`/inputs` in Docker), for saved files. */
+  uploadsShown?: string,
 ): Promise<ToolResultPart[]> {
+  const uploads = join(paths.agentDir(agentId), 'uploads')
+  const shown = (path: string) =>
+    uploadsShown && path.startsWith(uploads) ? `${uploadsShown}${path.slice(uploads.length)}` : path
   try {
     return await serialize(agentId, async () => {
       signal?.throwIfAborted()
@@ -264,14 +334,20 @@ export async function invokeBrowserAction(
             void session.close()
             reject(reason)
           }
+          // browser_wait waits as long as it was asked to, on top of the usual allowance.
+          const waiting = action === 'wait' ? waitSeconds(args) * 1000 : 0
           timer = setTimeout(
             () => stop(new Error('the browser did not answer in time and was stopped; try again')),
-            CALL_TIMEOUT_MS,
+            CALL_TIMEOUT_MS + waiting,
           )
           onAbort = () => stop(signal?.reason)
           signal?.addEventListener('abort', onAbort, { once: true })
         })
-        return await Promise.race([runAction(session, action, args, config), stopped])
+        const result = await Promise.race([
+          runAction(session, action, args, config, { dir: uploads, shown }),
+          stopped,
+        ])
+        return withDownloads(session, result, shown)
       } finally {
         clearTimeout(timer)
         if (onAbort) signal?.removeEventListener('abort', onAbort)
@@ -453,13 +529,228 @@ async function act(
   return text(await freshSnapshot(session, page))
 }
 
+/** How long `browser_wait` may wait, as the Agent asked. */
+function waitSeconds(args: Record<string, unknown>): number {
+  const seconds = Number(args.seconds)
+  if (!(seconds > 0))
+    throw new Error('"seconds" must be a number above 0: how long to wait at most')
+  return seconds
+}
+
+/** The result, with what pages downloaded since the last result. */
+function withDownloads(
+  session: BrowserSession,
+  result: ToolResultPart[],
+  shown: (path: string) => string,
+): ToolResultPart[] {
+  if (session.downloads.length === 0) return result
+  const saving = session.downloads.filter((entry) => entry.state === 'saving')
+  const lines = session.downloads.map((entry) =>
+    entry.state === 'saved'
+      ? `Downloaded ${clip(entry.name)}: saved at ${shown(entry.path)}`
+      : entry.state === 'failed'
+        ? `The download of ${clip(entry.name)} failed: ${entry.error ?? 'unknown error'}`
+        : `Still downloading ${clip(entry.name)}; browser_wait with download: true waits for it.`,
+  )
+  session.downloads = saving
+  return [...result, { type: 'text', text: lines.join('\n') }]
+}
+
+/** A file name from a page's address. */
+function pageName(url: string): string {
+  let name = 'page'
+  try {
+    const parsed = new URL(url)
+    name = `${parsed.hostname}${parsed.pathname}`
+  } catch {}
+  return (
+    name
+      .replace(/[^\w.-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'page'
+  )
+}
+
+const COLOR_SCHEMES = ['light', 'dark', 'no-preference'] as const
+
+/** Device size and touch, colour scheme, locale and time zone of one tab, over DevTools. */
+async function emulate(session: BrowserSession, page: Page, args: Record<string, unknown>) {
+  let cdp = session.emulation.get(page)
+  if (!cdp) {
+    cdp = await page.context().newCDPSession(page)
+    session.emulation.set(page, cdp)
+  }
+  if (args.reset === true) {
+    await cdp.send('Emulation.clearDeviceMetricsOverride')
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false })
+    await cdp.send('Emulation.setUserAgentOverride', { userAgent: '' })
+    await cdp.send('Emulation.setLocaleOverride', {})
+    await cdp.send('Emulation.setTimezoneOverride', { timezoneId: '' })
+    await page.emulateMedia({ colorScheme: null })
+    return 'Back to the browser’s own size, scheme, locale and time zone.'
+  }
+  const said: string[] = []
+  const name = typeof args.device === 'string' ? args.device : undefined
+  const device = name ? devices[name] : undefined
+  if (name && !device) {
+    const known = Object.keys(devices).filter((key) => !key.endsWith('landscape'))
+    throw new Error(
+      `Unknown device "${clip(name)}". Some there are: ${known.slice(0, 12).join(', ')}.`,
+    )
+  }
+  const width = typeof args.width === 'number' ? args.width : device?.viewport.width
+  const height = typeof args.height === 'number' ? args.height : device?.viewport.height
+  if (width && height) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: Math.round(width),
+      height: Math.round(height),
+      deviceScaleFactor: device?.deviceScaleFactor ?? 0,
+      mobile: device?.isMobile ?? false,
+    })
+    said.push(`${name ? `${name}, ` : ''}${Math.round(width)}×${Math.round(height)}`)
+  }
+  const touch = typeof args.touch === 'boolean' ? args.touch : device?.hasTouch
+  if (touch !== undefined) {
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: touch })
+    said.push(touch ? 'touch' : 'no touch')
+  }
+  const locale = typeof args.locale === 'string' && args.locale ? args.locale : undefined
+  // The user agent carries the language pages read from navigator.language and Accept-Language.
+  if (device?.userAgent || locale) {
+    const userAgent = device?.userAgent ?? (await cdp.send('Browser.getVersion')).userAgent
+    await cdp.send('Emulation.setUserAgentOverride', {
+      userAgent,
+      ...(locale ? { acceptLanguage: locale } : {}),
+    })
+  }
+  if (args.color_scheme !== undefined) {
+    const scheme = COLOR_SCHEMES.find((value) => value === args.color_scheme)
+    if (!scheme) throw new Error('color_scheme must be light, dark or no-preference')
+    await page.emulateMedia({ colorScheme: scheme })
+    said.push(`${scheme} colour scheme`)
+  }
+  if (locale) {
+    await cdp.send('Emulation.setLocaleOverride', { locale })
+    said.push(`locale ${clip(locale)}`)
+  }
+  if (typeof args.timezone === 'string' && args.timezone) {
+    await cdp.send('Emulation.setTimezoneOverride', { timezoneId: args.timezone })
+    said.push(`time zone ${clip(args.timezone)}`)
+  }
+  if (said.length === 0)
+    throw new Error(
+      'Say what to emulate: device, width and height, touch, color_scheme, locale or timezone, or reset: true.',
+    )
+  return `This tab now has: ${said.join(', ')}. It lasts until you reset it or the tab closes; reload the page if it read these when it loaded.`
+}
+
 async function runAction(
   session: BrowserSession,
   action: string,
   args: Record<string, unknown>,
   config: BrowserConfig,
+  files: { dir: string; shown: (path: string) => string },
 ): Promise<ToolResultPart[]> {
   switch (action) {
+    case 'errors': {
+      const errors = session.errors.splice(0)
+      return text(
+        errors.length > 0
+          ? errors.join('\n')
+          : 'No console errors or warnings, and no uncaught page errors, since you last looked.',
+      )
+    }
+    case 'text': {
+      const page = await activePage(session)
+      if (isBlank(page)) return text(NO_PAGE_HINT)
+      if (args.ref !== undefined) {
+        const ref = elementRef(args.ref)
+        return text(await page.locator(`aria-ref=${ref}`).innerText({ timeout: 5_000 }))
+      }
+      const read = extractReadable(await page.content(), page.url(), 'markdown')
+      return text(read.title ? `# ${read.title}\n\n${read.text}` : read.text)
+    }
+    case 'wait': {
+      const page = await activePage(session)
+      const timeout = waitSeconds(args) * 1000
+      const goals: Array<[string, () => Promise<unknown>]> = []
+      if (typeof args.text === 'string' && args.text) {
+        const wanted = args.text
+        goals.push([
+          `"${clip(wanted)}" to show`,
+          () => page.getByText(wanted).first().waitFor({ timeout }),
+        ])
+      }
+      if (args.ref !== undefined) {
+        const ref = elementRef(args.ref)
+        goals.push([`${ref} to show`, () => page.locator(`aria-ref=${ref}`).waitFor({ timeout })])
+      }
+      if (typeof args.url === 'string' && args.url) {
+        const wanted = args.url
+        goals.push([
+          `an address with "${clip(wanted)}"`,
+          () => page.waitForURL((url) => url.href.includes(wanted), { timeout }),
+        ])
+      }
+      if (args.settled === true) {
+        goals.push(['the page to settle', () => page.waitForLoadState('networkidle', { timeout })])
+      }
+      if (args.download === true) {
+        goals.push([
+          'its downloads to finish',
+          // One that has not started yet is waited for too.
+          async () => {
+            const end = Date.now() + timeout
+            const busy = () =>
+              session.downloads.length === 0 ||
+              session.downloads.some((entry) => entry.state === 'saving')
+            while (busy() && Date.now() < end) {
+              await new Promise((resolve) => setTimeout(resolve, 200))
+            }
+            if (session.downloads.length === 0) throw new Error('no download started')
+            if (busy()) throw new Error('still downloading')
+          },
+        ])
+      }
+      if (goals.length === 0)
+        throw new Error('Say what to wait for: text, ref, url, settled or download.')
+      for (const [goal, wait] of goals) {
+        try {
+          await wait()
+        } catch (error) {
+          return text(
+            `Waited up to ${timeout / 1000} s for ${goal}, and it did not happen (${firstLine(error)}).\n\n${await freshSnapshot(session, page)}`,
+          )
+        }
+      }
+      return text(
+        `Done waiting for ${goals.map(([goal]) => goal).join(' and ')}.\n\n${await freshSnapshot(session, page)}`,
+      )
+    }
+    case 'pdf': {
+      const page = await activePage(session)
+      if (isBlank(page)) return text(NO_PAGE_HINT)
+      let pdf: Buffer
+      try {
+        pdf = await page.pdf({ printBackground: true })
+      } catch (error) {
+        throw new Error(
+          `The page could not be saved as a PDF (${firstLine(error)}): that takes the Agent's own browser running headless, not a visible window or your running Chrome.`,
+        )
+      }
+      const dir = join(files.dir, 'browser')
+      mkdirSync(dir, { recursive: true })
+      const path = join(dir, `${pageName(page.url())}-${Date.now()}.pdf`)
+      writeFileSync(path, pdf)
+      return text(
+        `Saved the page as a PDF (${Math.ceil(pdf.length / 1024)} KB) at ${files.shown(path)}.`,
+      )
+    }
+    case 'emulate': {
+      const page = await activePage(session)
+      const said = await emulate(session, page, args)
+      return text(isBlank(page) ? said : `${said}\n\n${await freshSnapshot(session, page)}`)
+    }
     case 'navigate': {
       const url = stringArg(args, 'url')
       await checkUrl(url, config)
@@ -532,11 +823,16 @@ async function runAction(
     case 'take_screenshot': {
       const page = await activePage(session)
       if (isBlank(page)) return text(NO_PAGE_HINT)
-      const png = await page.screenshot({
-        type: 'png',
-        fullPage: args.full_page === true,
-        scale: 'css',
-      })
+      const png =
+        args.ref !== undefined
+          ? await page
+              .locator(`aria-ref=${elementRef(args.ref)}`)
+              .screenshot({ type: 'png', scale: 'css', timeout: 5_000 })
+          : await page.screenshot({
+              type: 'png',
+              fullPage: args.full_page === true,
+              scale: 'css',
+            })
       if (png.length > MAX_SCREENSHOT_BYTES) {
         throw new Error(
           `The screenshot is ${(png.length / 1024 / 1024).toFixed(1)} MB, over the 4 MB limit; take one of the visible area (without full_page).`,
@@ -549,11 +845,20 @@ async function runAction(
     }
     case 'console':
       return text(session.console.join('\n') || 'no console messages')
-    case 'network':
-      return text(
-        session.network.map((r) => `${r.method} ${r.status ?? '...'} ${r.url}`).join('\n') ||
-          'no network requests recorded',
+    case 'network': {
+      const filter = typeof args.filter === 'string' ? args.filter.toLowerCase() : ''
+      const rows = session.network.filter(
+        (r) => !filter || r.url.toLowerCase().includes(filter) || r.method.toLowerCase() === filter,
       )
+      return text(
+        rows
+          .map(
+            (r) =>
+              `${r.method} ${r.failure ? `failed: ${r.failure}` : (r.status ?? '...')} ${r.url}`,
+          )
+          .join('\n') || `No requests recorded${filter ? ' that match' : ''}.`,
+      )
+    }
     default:
       throw new Error(`unknown browser action: ${action}`)
   }

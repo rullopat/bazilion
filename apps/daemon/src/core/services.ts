@@ -152,7 +152,7 @@ export const SERVICES: ServiceDef[] = [
             {
               value: 'auto',
               label: 'Automatic',
-              hint: 'Brave when a key is saved, else SearXNG, else the model’s own search.',
+              hint: 'The first that is set up: Brave, SearXNG, Tavily, Exa, then the model’s own search.',
             },
             {
               value: 'brave',
@@ -165,6 +165,16 @@ export const SERVICES: ServiceDef[] = [
               hint: 'Your own instance, at the address below.',
             },
             {
+              value: 'tavily',
+              label: 'Tavily',
+              hint: 'Needs the key below. Search made for Agents; free tier at tavily.com.',
+            },
+            {
+              value: 'exa',
+              label: 'Exa',
+              hint: 'Needs the key below. Search by meaning; free credits at exa.ai.',
+            },
+            {
               value: 'native',
               label: 'The model’s own search',
               hint: 'Only Agents on OpenAI or ChatGPT models can search.',
@@ -174,6 +184,8 @@ export const SERVICES: ServiceDef[] = [
         },
       },
       { envVar: 'BRAVE_API_KEY', kind: 'secret', label: 'Brave API key', placeholder: 'BSA…' },
+      { envVar: 'TAVILY_API_KEY', kind: 'secret', label: 'Tavily API key', placeholder: 'tvly-…' },
+      { envVar: 'EXA_API_KEY', kind: 'secret', label: 'Exa API key' },
       {
         envVar: 'SEARXNG_URL',
         kind: 'config',

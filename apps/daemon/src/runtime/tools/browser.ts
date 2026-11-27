@@ -97,10 +97,62 @@ export function browserTools(host: BrowserHost, agentId: string): ToolHandler[] 
     ),
     tool(
       'take_screenshot',
-      'PNG screenshot of the current page, returned as an image. Use it only when the visual layout matters; browser_snapshot is how you read and act on a page.',
-      { full_page: { type: 'boolean', description: 'Capture the whole scrollable page.' } },
+      'PNG screenshot of the current page, or of one element (ref), returned as an image. Use it only when the visual layout matters; browser_snapshot is how you read and act on a page.',
+      {
+        full_page: { type: 'boolean', description: 'Capture the whole scrollable page.' },
+        ref: { ...REF, description: 'Capture only this element, a ref from the latest snapshot.' },
+      },
     ),
     tool('console', 'Recent browser console messages (logs, warnings, errors).'),
-    tool('network', 'Recent network requests made by the page (method, status, URL).'),
+    tool(
+      'errors',
+      'Console errors and warnings and uncaught page errors since you last asked: the first thing to look at when a page of an app you are building misbehaves.',
+    ),
+    tool(
+      'network',
+      'Recent network requests made by the page: method, status (or why it failed) and URL.',
+      {
+        filter: {
+          type: 'string',
+          description: 'Only requests whose URL contains this text, or with this method (POST).',
+        },
+      },
+    ),
+    tool(
+      'text',
+      'The readable text of the page (as Markdown), or of one element with ref: for reading an article or a document, where a snapshot is noisy.',
+      { ref: { ...REF, description: 'Only this element, a ref from the latest snapshot.' } },
+    ),
+    tool(
+      'wait',
+      'Wait until something happens on the page, up to `seconds`: a text or an element (ref) shows, the address contains a text, the page settles (no requests for a moment), or its downloads finish. Returns a fresh snapshot, or what did not happen.',
+      {
+        seconds: { type: 'number', description: 'How long to wait at most.' },
+        text: { type: 'string', description: 'Text that should appear.' },
+        ref: { ...REF, description: 'An element that should appear.' },
+        url: { type: 'string', description: 'Text the page address should come to contain.' },
+        settled: { type: 'boolean', description: 'Wait until the page has no requests going.' },
+        download: { type: 'boolean', description: 'Wait for its downloads to finish.' },
+      },
+      ['seconds'],
+    ),
+    tool(
+      'pdf',
+      'Save the page as a PDF with your uploads, and say where. Needs your own browser running headless.',
+    ),
+    tool(
+      'emulate',
+      'Show this tab as a device would: a device by name ("iPhone 15", "Pixel 7", "iPad Pro 11"), or a width and height, with or without touch; light or dark colour scheme; a locale; a time zone. reset: true goes back. Lasts for the tab until reset.',
+      {
+        device: { type: 'string', description: 'A device name, e.g. "iPhone 15".' },
+        width: { type: 'number' },
+        height: { type: 'number' },
+        touch: { type: 'boolean' },
+        color_scheme: { type: 'string', enum: ['light', 'dark', 'no-preference'] },
+        locale: { type: 'string', description: 'e.g. "it-IT"' },
+        timezone: { type: 'string', description: 'e.g. "Europe/Rome"' },
+        reset: { type: 'boolean', description: 'Go back to the browser’s own settings.' },
+      },
+    ),
   ]
 }

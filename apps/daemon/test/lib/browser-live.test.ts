@@ -2,7 +2,7 @@
 // pool's pages, refs, paging, tabs, profile persistence, stop and reset, and the
 // launch-level network and profile controls. Skipped when no browser is installed.
 
-import { existsSync, mkdtempSync, readdirSync, readlinkSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -61,6 +61,18 @@ const PAGES: Record<string, string> = {
       '<input aria-label="Query">' +
       "<script>let n = 0; setInterval(() => { document.getElementById('tick').textContent = String(++n) }, 20)</script>",
   ),
+  // A page of an app under test: an error in the console, an uncaught one, a failed request,
+  // text that shows late, and a file to download.
+  '/app': html(
+    '<h1>App</h1><main id="main"><p>Readable article text for the reader.</p></main>' +
+      '<p id="later"></p><a id="dl" href="/report.csv">Report</a>' +
+      "<script>console.error('boom in console'); fetch('/missing-api'); " +
+      "setTimeout(() => { document.getElementById('later').textContent = 'Loaded late' }, 600); " +
+      "setTimeout(() => { throw new Error('uncaught boom') }, 50)</script>",
+  ),
+  '/media': html(
+    "<meta name='viewport' content='width=device-width'><p id='m'></p><script>document.getElementById('m').textContent = [matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', innerWidth, navigator.language, Intl.DateTimeFormat().resolvedOptions().timeZone].join('|')</script>",
+  ),
   '/long': html(
     Array.from(
       { length: 1500 },
@@ -74,6 +86,14 @@ beforeAll(async () => {
     if (req.url === '/set-cookie') {
       res.setHeader('set-cookie', 'baziu=purr; Max-Age=3600; Path=/')
       res.end(html('<p>cookie set</p>'))
+      return
+    }
+    if (req.url === '/report.csv') {
+      res.writeHead(200, {
+        'content-type': 'text/csv',
+        'content-disposition': 'attachment; filename="report.csv"',
+      })
+      res.end('a,b\n1,2\n')
       return
     }
     if (req.url === '/show-cookie') {
@@ -122,6 +142,71 @@ live(
     expect(textOf(await run('live-a', 'snapshot'))).toContain('Hello Bazilion')
     expect(textOf(await run('live-a', 'network'))).toContain(`GET 200 ${origin}/hello`)
     expect(resources().browsers.get('live-a')).toBe(session)
+  },
+  120_000,
+)
+
+live(
+  'errors, network, text, wait, element screenshot, PDF and a download, for a page under test',
+  async () => {
+    await run('live-app', 'navigate', { url: `${origin}/app` })
+    const waited = textOf(await run('live-app', 'wait', { seconds: 10, text: 'Loaded late' }))
+    expect(waited).toContain('Done waiting for "Loaded late" to show')
+    const errors = textOf(await run('live-app', 'errors'))
+    expect(errors).toContain('boom in console')
+    expect(errors).toContain('[uncaught] uncaught boom')
+    // Read once: asked again, there is nothing new.
+    expect(textOf(await run('live-app', 'errors'))).toMatch(/^No console errors/)
+    expect(textOf(await run('live-app', 'network', { filter: 'missing' }))).toBe(
+      `GET 404 ${origin}/missing-api`,
+    )
+    expect(textOf(await run('live-app', 'text'))).toContain('Readable article text for the reader.')
+    const missed = textOf(await run('live-app', 'wait', { seconds: 0.3, text: 'Never there' }))
+    expect(missed).toMatch(/Waited up to 0.3 s for "Never there" to show, and it did not happen/)
+
+    const snapshot = textOf(await run('live-app', 'snapshot'))
+    const heading = refOf(snapshot, /heading "App" \[level=1\] \[ref=(e\d+)\]/)
+    const shot = await run('live-app', 'take_screenshot', { ref: heading })
+    expect(shot.some((part) => part.type === 'image')).toBe(true)
+
+    const pdf = textOf(await run('live-app', 'pdf'))
+    const pdfPath = /saved .*at (\S+\.pdf)\./i.exec(pdf)?.[1] ?? ''
+    expect(pdfPath.startsWith(join(paths.agentDir('live-app'), 'uploads', 'browser'))).toBe(true)
+    expect(readFileSync(pdfPath).subarray(0, 4).toString()).toBe('%PDF')
+
+    const link = refOf(textOf(await run('live-app', 'snapshot')), /link "Report" \[ref=(e\d+)\]/)
+    // The click's own result names the download when it is quick; a wait names it otherwise.
+    let said = textOf(await run('live-app', 'click', { ref: link }))
+    if (!said.includes('Downloaded report.csv'))
+      said = textOf(await run('live-app', 'wait', { seconds: 10, download: true }))
+    const saved = /Downloaded report\.csv: saved at (\S+)/.exec(said)?.[1] ?? ''
+    expect(saved.startsWith(join(paths.agentDir('live-app'), 'uploads', 'browser'))).toBe(true)
+    expect(readFileSync(saved, 'utf8')).toBe('a,b\n1,2\n')
+  },
+  120_000,
+)
+
+live(
+  'emulation shows a tab as a phone, dark, in another locale and time zone, and resets',
+  async () => {
+    await run('live-media', 'navigate', { url: `${origin}/media` })
+    const said = textOf(
+      await run('live-media', 'emulate', {
+        device: 'iPhone 15',
+        color_scheme: 'dark',
+        locale: 'it-IT',
+        timezone: 'Europe/Rome',
+      }),
+    )
+    expect(said).toContain('iPhone 15, 393×659')
+    await run('live-media', 'navigate', { url: `${origin}/media` })
+    expect(textOf(await run('live-media', 'text'))).toContain('dark|393|it-IT|Europe/Rome')
+    await run('live-media', 'emulate', { reset: true })
+    await run('live-media', 'navigate', { url: `${origin}/media` })
+    expect(textOf(await run('live-media', 'text'))).not.toContain('dark|393|it-IT')
+    await expect(run('live-media', 'emulate', { device: 'Nokia 3310' })).rejects.toThrow(
+      /Unknown device/,
+    )
   },
   120_000,
 )
@@ -337,13 +422,16 @@ describe.skipIf(!available)('launch controls', () => {
     await closed(browser, 'proxied')
   })
 
-  test('downloads are refused', { timeout: 60_000 }, async () => {
+  test("a download reaches the daemon, never the browser's own Downloads folder", {
+    timeout: 60_000,
+  }, async () => {
     const browser = await launch('downloads', false)
     const page = await pageOf(browser.context)
     await page.goto(`${origin.origin}/download-page`)
     const download = page.waitForEvent('download')
     await page.click('#dl')
-    expect(await (await download).failure()).toBeTruthy()
+    // The pool saves it with the Agent's uploads (see its own test above).
+    expect(await (await download).failure()).toBeNull()
     const saved = join(scratch, 'downloads', 'home', 'Downloads')
     expect(existsSync(saved) ? readdirSync(saved) : []).toEqual([])
     await closed(browser, 'downloads')

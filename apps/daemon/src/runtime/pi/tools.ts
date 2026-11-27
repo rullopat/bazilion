@@ -2,10 +2,12 @@
 // come from Pi itself; see runtime/shell/tooling.ts. A handler throws on failure, which Pi turns
 // into an error tool result.
 
+import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import type { MemoryBackend } from '../memory/types.ts'
+import { SANDBOX_INPUTS_DIR } from '../shell/tooling.ts'
 import { type AskUser, askUserTool } from '../tools/ask-user.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
@@ -83,6 +85,8 @@ export interface BazilionCustomToolsOpts {
   jobHost?: JobHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
+  /** Commands run in Docker: paths the Agent is told are the container's. */
+  docker?: boolean
 }
 
 /**
@@ -94,7 +98,14 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
     recallTool(opts.recall),
     ...homeTools(opts.agent.agent.dir),
     bootstrapTool(opts.agent.agent.dir),
-    webFetchTool({ env: opts.env }),
+    webFetchTool({
+      env: opts.env,
+      // A long page is kept whole with the Agent's uploads, which Docker commands see at /inputs.
+      savePages: {
+        dir: join(opts.agent.agent.dir, 'uploads'),
+        shown: opts.docker ? SANDBOX_INPUTS_DIR : join(opts.agent.agent.dir, 'uploads'),
+      },
+    }),
     ...(opts.webSearchHost ? [webSearchTool(opts.webSearchHost)] : []),
   ]
   if (opts.messagingHost) {

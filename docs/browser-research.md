@@ -31,6 +31,18 @@ names them, and `npx playwright install-deps chromium` installs them.
 - `browser_snapshot` returns the page's accessibility tree. Elements carry refs such as `[ref=e5]`
   that the other tools act on, and every action answers with a fresh snapshot. A long snapshot comes
   in pages of about 24,000 characters; `browser_snapshot {"page": 2}` reads the next one.
+- Reading and checking a page: `browser_text` gives the readable text of the page or of one
+  element; `browser_errors` the console errors and warnings and uncaught page errors since it was
+  last asked; `browser_network` the recent requests with their status or failure, filtered by text
+  or method; `browser_take_screenshot` with a `ref` captures one element.
+- `browser_wait` waits up to the `seconds` it is given until a text or an element shows, the
+  address contains a text, the page settles, or its downloads finish, and says what did not happen.
+- `browser_emulate` shows the tab as a device (`"iPhone 15"`, `"Pixel 7"`; Playwright's list), or
+  at a width and height, with or without touch, light or dark, in a locale and a time zone, until
+  `reset: true` or the tab closes.
+- `browser_pdf` saves the page as a PDF, and a file a page downloads is saved: both with the
+  Agent's uploads (`uploads/browser/` in its folder, `/inputs/browser/` in Docker), and the result
+  says where.
 - A browser idle for `BROWSER_IDLE_MS` is stopped. At most `BROWSER_MAX_SESSIONS` browsers run at
   once; when another Agent needs one, the least recently used idle browser is stopped. A browser
   that leaves a call unanswered for two minutes (a hung page) is stopped too, and so is one whose
@@ -103,11 +115,11 @@ What changes in this mode:
 
 In an Agent's own browser, all traffic goes through a proxy in the daemon. It refuses loopback, private and link-local
 addresses, including host names that resolve to one, and connects only to the address it checked.
-Navigation to `file:` and similar local schemes is refused. Downloads are refused, WebRTC is removed
-from pages and QUIC is off, so no traffic goes around the proxy. Service workers can register and
-keep running, but their requests go through the same proxy. `BROWSER_ALLOW_PRIVATE_NETWORK=true`
-turns off the proxy and the URL check, so `file:` pages open too; downloads stay refused and WebRTC
-and QUIC stay off.
+Navigation to `file:` and similar local schemes is refused. WebRTC is removed from pages and QUIC is
+off, so no traffic goes around the proxy; downloads go through it like any request, and are saved
+with the Agent's uploads, never in the browser's own Downloads folder. Service workers can register
+and keep running, but their requests go through the same proxy. `BROWSER_ALLOW_PRIVATE_NETWORK=true`
+turns off the proxy and the URL check, so `file:` pages open too; WebRTC and QUIC stay off.
 
 ## Profile
 
@@ -147,6 +159,10 @@ Stop and reset are refused while the Agent has a turn running.
   on a changed page. A failed action may still have taken effect, and the Agent is told to check the
   fresh snapshot before trying again.
 - Screenshots larger than 4 MB are refused; take one of the visible area instead of `full_page`.
+- `browser_pdf` needs the Agent's own browser running headless: a visible window
+  (`BROWSER_HEADLESS=false`) and your running browser cannot print to PDF.
+- A call that waits longer than `browser_wait` was asked to, by two minutes, stops the browser as a
+  hung page would.
 - Results are bounded: page URLs and titles are cut at 500 characters, console messages at 2,000,
   and any other text or error at about 28,000 (long snapshots come in pages instead).
 - Linux and macOS are supported. Linux is tested in CI; macOS is checked by hand.

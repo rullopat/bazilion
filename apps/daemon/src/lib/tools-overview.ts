@@ -51,6 +51,8 @@ function hasSearchingModel(db: BazilionDb, env: NodeJS.ProcessEnv, authToken: st
 function describeSearch(db: BazilionDb, env: NodeJS.ProcessEnv, authToken: string): Described {
   const brave = Boolean(env.BRAVE_API_KEY?.trim())
   const searxng = Boolean(env.SEARXNG_URL?.trim())
+  const tavily = Boolean(env.TAVILY_API_KEY?.trim())
+  const exa = Boolean(env.EXA_API_KEY?.trim())
   const own = hasSearchingModel(db, env, authToken)
   const ownSearch: Described = {
     state: own ? on('Using the model’s own search') : warning('Nothing to search with'),
@@ -59,13 +61,22 @@ function describeSearch(db: BazilionDb, env: NodeJS.ProcessEnv, authToken: strin
     ? 'Now: Brave.'
     : searxng
       ? 'Now: SearXNG.'
-      : own
-        ? 'Now: the model’s own search, for Agents on OpenAI or ChatGPT models.'
-        : 'Now: nothing. Only OpenAI and ChatGPT models search by themselves, and none is in Chat: save a Brave key or a SearXNG address.'
+      : tavily
+        ? 'Now: Tavily.'
+        : exa
+          ? 'Now: Exa.'
+          : own
+            ? 'Now: the model’s own search, for Agents on OpenAI or ChatGPT models.'
+            : 'Now: nothing. Only OpenAI and ChatGPT models search by themselves, and none is in Chat: save a Brave, Tavily or Exa key or a SearXNG address.'
   const options: Described['options'] = {
     BAZILION_WEB_SEARCH_ROUTE: {
-      auto: { text: automatic, tone: brave || searxng || own ? 'ok' : 'warning' },
+      auto: {
+        text: automatic,
+        tone: brave || searxng || tavily || exa || own ? 'ok' : 'warning',
+      },
       ...(brave ? {} : { brave: { text: 'No Brave API key is saved yet.', tone: 'warning' } }),
+      ...(tavily ? {} : { tavily: { text: 'No Tavily API key is saved yet.', tone: 'warning' } }),
+      ...(exa ? {} : { exa: { text: 'No Exa API key is saved yet.', tone: 'warning' } }),
       ...(searxng
         ? {}
         : { searxng: { text: 'No SearXNG address is saved yet.', tone: 'warning' } }),
@@ -88,6 +99,10 @@ function describeSearch(db: BazilionDb, env: NodeJS.ProcessEnv, authToken: strin
         return brave ? { state: on('Using Brave') } : { state: warning('Needs a Brave key') }
       case 'searxng':
         return searxng ? { state: on('Using SearXNG') } : { state: warning('Needs an address') }
+      case 'tavily':
+        return tavily ? { state: on('Using Tavily') } : { state: warning('Needs a Tavily key') }
+      case 'exa':
+        return exa ? { state: on('Using Exa') } : { state: warning('Needs an Exa key') }
       case 'native':
         return ownSearch
       case 'auto':
@@ -95,7 +110,11 @@ function describeSearch(db: BazilionDb, env: NodeJS.ProcessEnv, authToken: strin
           ? { state: on('Using Brave') }
           : searxng
             ? { state: on('Using SearXNG') }
-            : ownSearch
+            : tavily
+              ? { state: on('Using Tavily') }
+              : exa
+                ? { state: on('Using Exa') }
+                : ownSearch
       default:
         return {
           state: warning('Not usable'),
