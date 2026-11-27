@@ -77,7 +77,6 @@ test('bootstrap marks a trigger run cut short by a daemon stop as failed', async
     agentId: agent.id,
     kind: 'interval',
     intervalSec: 60,
-    cronExpr: null,
     message: 'work',
   })
   const dispatch = triggerDispatchRepo.materialize(db, {

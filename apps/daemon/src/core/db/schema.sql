@@ -186,13 +186,19 @@ CREATE INDEX agent_loop_break_events_agent_time
 CREATE TABLE agent_triggers (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('interval','cron')),
+  kind TEXT NOT NULL CHECK (kind IN ('interval','cron','once')),
   interval_sec INTEGER,
   cron_expr TEXT,
+  -- kind 'once': when it runs.
+  run_at INTEGER,
   message TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   last_fired_at INTEGER,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  -- The conversation it runs in; null means the Agent's selected one.
+  conversation_id TEXT,
+  -- Who set it: the owner, or the Agent itself (schedule_add).
+  set_by TEXT NOT NULL DEFAULT 'owner' CHECK (set_by IN ('owner','agent'))
 );
 CREATE INDEX agent_triggers_agent ON agent_triggers(agent_id);
 CREATE INDEX agent_triggers_enabled ON agent_triggers(enabled) WHERE enabled = 1;

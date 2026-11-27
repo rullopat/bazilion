@@ -50,6 +50,9 @@ test('a schedule reads as words, its message under it, and nothing internal show
           enabled: true,
           lastFiredAt: null,
           createdAt: 0,
+          runAt: null,
+          conversationId: null,
+          setBy: 'owner',
         },
       ],
       dispatches: [],
@@ -72,4 +75,42 @@ test('the next run reads in words', () => {
   expect(nextRunWords(now + 20_000, now)).toBe('Next run now')
   expect(nextRunWords(now + 5 * 60_000, now)).toBe('Next run in 5 min')
   expect(nextRunWords(now + 26 * 3_600_000, now)).toMatch(/^Next run \S/)
+})
+
+test('a schedule the Agent set is marked, and a one-time schedule that ran is done', () => {
+  const base = {
+    agentId: 'agent-1',
+    intervalSec: null,
+    cronExpr: null,
+    enabled: true,
+    createdAt: 0,
+  }
+  const runAt = Date.UTC(2026, 10, 28, 9, 0)
+  const html = renderToStaticMarkup(
+    createElement(SchedulesView, {
+      agentId: 'agent-1',
+      agentName: 'Mira',
+      triggers: [
+        {
+          ...base,
+          id: 'own',
+          kind: 'once',
+          runAt,
+          message: 'Check the deploy',
+          lastFiredAt: runAt,
+          conversationId: 'conversation-1',
+          setBy: 'agent',
+        },
+      ],
+      dispatches: [],
+      nextRuns: { own: null },
+      schedulerOff: false,
+      onChanged: async () => {},
+    }),
+  )
+  expect(html).toContain('Set by Mira')
+  expect(html).toContain('Done')
+  expect(html).toContain('In the conversation it was set in')
+  // A schedule that has run has nothing left to pause.
+  expect(html).not.toContain('role="switch"')
 })

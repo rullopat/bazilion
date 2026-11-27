@@ -116,7 +116,6 @@ describe('scheduler', () => {
       agentId: 'a1',
       kind: 'interval',
       intervalSec: 60,
-      cronExpr: null,
       message: 'scheduled work',
     })
     const dispatch = triggerDispatchRepo.materialize(env.db, {
@@ -541,7 +540,6 @@ describe('scheduler', () => {
       agentId: 'a1',
       kind: 'interval',
       intervalSec: 1,
-      cronExpr: null,
       message: 'coalesced work',
     })
     registerAgent('a1', new AbortController())
@@ -609,7 +607,6 @@ describe('scheduler', () => {
     const trigger = triggerRepo.insert(env.db, {
       agentId: 'a1',
       kind: 'cron',
-      intervalSec: null,
       cronExpr: '0 9 * * *',
       message: 'daily work',
     })
@@ -628,6 +625,70 @@ describe('scheduler', () => {
       expect.objectContaining({ scheduledAt: at(15, 9, 0), status: 'succeeded' }),
     ])
     expect(turnCalls).toHaveLength(1)
+  })
+
+  test('a one-time schedule runs once at its time, then is done; a missed one runs at start', async () => {
+    const start = Date.now()
+    const once = triggerRepo.insert(env.db, {
+      agentId: 'a1',
+      kind: 'once',
+      runAt: start + 120_000,
+      message: 'call the bank',
+    })
+    await scheduler._tickOnce()
+    expect(turnCalls).toEqual([])
+    // The daemon was down at its time: the first tick after it runs it, once.
+    vi.setSystemTime(start + 600_000)
+    await scheduler._tickOnce()
+    await scheduler._tickOnce()
+    expect(triggerDispatchRepo.listForTrigger(env.db, once.id)).toEqual([
+      expect.objectContaining({ scheduledAt: start + 120_000, status: 'succeeded' }),
+    ])
+    expect(turnCalls).toEqual([{ agentId: 'a1', message: 'call the bank' }])
+    const done = triggerRepo.get(env.db, once.id)
+    expect(done && triggerRepo.onceDone(done)).toBe(true)
+    const { nextRunAt } = await import('../../src/lib/trigger-timing.ts')
+    expect(done && nextRunAt(done)).toBeNull()
+    // Moved to a new time, it is due again.
+    triggerRepo.setTiming(env.db, once.id, { kind: 'once', runAt: start + 900_000 })
+    vi.setSystemTime(start + 900_000)
+    await scheduler._tickOnce()
+    expect(turnCalls).toHaveLength(2)
+  })
+
+  test("an Agent's own schedule runs in its conversation, told it is its own", async () => {
+    const selected = seedRegisteredConversation(env.db, env.paths, 'a1').id
+    const other = seedConversationTarget(join(env.paths.agentDir('a1'), 'sessions'), env.paths.home)
+    conversations.create(env.db, 'a1', other.id)
+    conversations.select(env.db, 'a1', selected)
+    const own = triggerRepo.insert(env.db, {
+      agentId: 'a1',
+      kind: 'once',
+      runAt: Date.now() + 1000,
+      message: 'check the deploy',
+      conversationId: other.id,
+      setBy: 'agent',
+    })
+    vi.setSystemTime(Date.now() + 2000)
+    await scheduler._tickOnce()
+    expect(targets).toEqual([other.id])
+    expect(turnCalls[0]?.message).toContain(`schedule ${own.id}`)
+    expect(turnCalls[0]?.message).toMatch(/A schedule you set .* is due[\s\S]*check the deploy$/)
+
+    // Its conversation gone, it runs in the selected one.
+    const gone = triggerRepo.insert(env.db, {
+      agentId: 'a1',
+      kind: 'once',
+      runAt: Date.now() + 1000,
+      message: 'again',
+      conversationId: 'deleted-conversation',
+      setBy: 'agent',
+    })
+    vi.setSystemTime(Date.now() + 2000)
+    await scheduler._tickOnce()
+    expect(triggerDispatchRepo.listForTrigger(env.db, gone.id)).toEqual([
+      expect.objectContaining({ conversationId: selected }),
+    ])
   })
 
   describe('wakes', () => {

@@ -53,6 +53,7 @@ import type {
   McpHost,
   MessagingHost,
   RecallHost,
+  ScheduleHost,
   TeamHost,
   UserMdHost,
   WebSearchHost,
@@ -105,6 +106,8 @@ export interface CreateBazilionSessionOptions {
   jobHost?: JobHost
   /** The Agent's other conversations, for `recall` with `everywhere`. */
   recallHost?: RecallHost
+  /** The Agent's schedules: schedule_add, schedule_list, schedule_remove. */
+  scheduleHost?: ScheduleHost
   /** Whom the Agent can message, listed in its system prompt. */
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
@@ -268,6 +271,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     askUser: opts.askUser,
     teamHost: opts.teamHost,
     jobHost: opts.jobHost,
+    scheduleHost: opts.scheduleHost,
     env,
     docker,
   })

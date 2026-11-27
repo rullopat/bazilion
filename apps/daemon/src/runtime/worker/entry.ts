@@ -169,6 +169,13 @@ async function openAgentTurn(
             call('recallRead', { conversationId, from, ...(count !== undefined ? { count } : {}) }),
         }
       : undefined,
+    scheduleHost: served.has('scheduleHost')
+      ? {
+          add: (args) => call('scheduleAdd', args),
+          list: () => call('scheduleList', {}),
+          remove: (id) => call('scheduleRemove', { id }),
+        }
+      : undefined,
     jobHost: served.has('jobHost')
       ? {
           start: (args) => call('jobStart', args),

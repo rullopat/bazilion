@@ -9,6 +9,7 @@ import {
   readFileSync,
   readlinkSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -613,10 +614,37 @@ test('restore takes a backup from before schema versions, which the daemon then 
   const valid = await createBackup()
   // What 0.26.0 to 0.62.0 wrote: the baseline schema, without a version.
   const unversioned = await repack(valid, (dir) => {
-    const db = new DatabaseSync(join(dir, 'bazilion.db'))
-    db.exec('DROP TABLE command_rules')
+    // The same rows in the baseline's tables and columns.
+    const path = join(dir, 'bazilion.db')
+    renameSync(path, `${path}.current`)
+    const db = new DatabaseSync(path)
+    db.exec('PRAGMA foreign_keys = OFF')
+    db.exec((shippedSchema().migrations[0] as { sql: string }).sql)
+    db.exec(`ATTACH DATABASE '${path}.current' AS current`)
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      .all() as { name: string }[]
+    for (const { name } of tables) {
+      const kept = (
+        db.prepare(`SELECT name FROM pragma_table_info('${name}')`).all() as {
+          name: string
+        }[]
+      ).map((column) => column.name)
+      const current = new Set(
+        (
+          db.prepare(`SELECT name FROM current.pragma_table_info('${name}')`).all() as {
+            name: string
+          }[]
+        ).map((column) => column.name),
+      )
+      const columns = kept.filter((column) => current.has(column)).join(', ')
+      if (columns)
+        db.exec(`INSERT INTO main.${name} (${columns}) SELECT ${columns} FROM current.${name}`)
+    }
+    db.exec('DETACH DATABASE current')
     db.exec('PRAGMA user_version = 0')
     db.close()
+    rmSync(`${path}.current`, { force: true })
   })
   const target = makeTarget(false)
   try {

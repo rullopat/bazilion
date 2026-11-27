@@ -42,7 +42,7 @@ export function TextField({
   label: string
   value: string
   onChange: (value: string) => void
-  type?: 'text' | 'time'
+  type?: 'text' | 'time' | 'datetime-local'
   placeholder?: string
   /** What to know about it, under the field. */
   hint?: ReactNode

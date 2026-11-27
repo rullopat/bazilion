@@ -310,7 +310,11 @@ export interface WebSession {
   current: boolean
 }
 
-export type TriggerKind = 'interval' | 'cron'
+/** `once` runs at `runAt` and is then done. */
+export type TriggerKind = 'interval' | 'cron' | 'once'
+
+/** Who set a schedule: the owner (Schedules, `bazilion trigger`) or the Agent (`schedule_add`). */
+export type TriggerSetBy = 'owner' | 'agent'
 
 export interface AgentTrigger {
   id: string
@@ -318,10 +322,15 @@ export interface AgentTrigger {
   kind: TriggerKind
   intervalSec: number | null
   cronExpr: string | null
+  /** kind `once`: when it runs. */
+  runAt: Timestamp | null
   message: string
   enabled: boolean
   lastFiredAt: Timestamp | null
   createdAt: Timestamp
+  /** The conversation it runs in; null means the Agent's selected one. */
+  conversationId: string | null
+  setBy: TriggerSetBy
 }
 
 /** pending waits for a free Agent; each occurrence runs at most once. */

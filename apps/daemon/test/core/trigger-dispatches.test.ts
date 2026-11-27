@@ -30,7 +30,6 @@ beforeEach(() => {
     agentId: 'a1',
     kind: 'interval',
     intervalSec: 60,
-    cronExpr: null,
     message: 'work',
   }).id
 })

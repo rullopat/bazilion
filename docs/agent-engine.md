@@ -163,6 +163,8 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   by default its own), only in a turn you started and at most six per turn
   (`lib/team-host.ts`). The new Agent's `AGENTS.md` starts with its role and who made it, it gets
   no first-run ritual, and in a restricted Team it is connected with its creator both ways.
+- `schedule_add`, `schedule_list`, `schedule_remove`: the Agent's own schedules
+  (`lib/schedule-host.ts`), in every kind of turn; see [the scheduler](#9-scheduler).
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and
   `mcp__<server>__<tool>`: each present when its host is. `deliver_file` with `result` shows one of
   the Agent's saved results again. `ask_user` takes a card of `questions` or an `action` (see
@@ -281,14 +283,26 @@ the running ones and waits for them before closing browsers, MCP connections and
 
 - **Triggers.** An interval trigger is due when `last_fired_at + every` has passed (the creation
   time counts as the first `last_fired_at`); a cron trigger is due when the current minute matches
-  its 5-field expression (`lib/cron.ts`, daemon local time). The due occurrence is recorded in
+  its 5-field expression (`lib/cron.ts`, daemon local time); a one-time trigger is due once its
+  time has come and it has not run since. The due occurrence is recorded in
   `trigger_dispatches` and runs at most once: a busy Agent leaves it pending, then it ends
   succeeded, failed or cancelled, and nothing is retried. While one is open, later interval
-  occurrences coalesce, and a minute missed while the daemon was down is not caught up. A run cut
-  short by a daemon stop is marked failed at the next start. Failures show in Attention and in
-  `bazilion trigger history <id>`. The Schedules sheet and `bazilion trigger list` say when each
-  trigger runs next (`nextRuns` in `GET /api/agents/:id/triggers`; none while it is paused or
-  the scheduler is off, which both also say).
+  occurrences coalesce, and a minute missed while the daemon was down is not caught up. An
+  interval or a one-time trigger whose time passed while the daemon was down runs once at the
+  next start. A run cut short by a daemon stop is marked failed at the next start. Failures show
+  in Attention and in `bazilion trigger history <id>`. The Schedules sheet and
+  `bazilion trigger list` say when each trigger runs next (`nextRuns` in
+  `GET /api/agents/:id/triggers`; none while it is paused, once a one-time trigger has run, or
+  while the scheduler is off, which they also say).
+- **Schedules an Agent sets.** `schedule_add` takes a message and one of `at` (a local time),
+  `in_minutes`, `every_minutes` and `cron`; its description gives the current time and time zone.
+  The trigger is stored with `set_by = 'agent'` and the conversation it was set in, and runs
+  there, or in the selected conversation once that one is gone. Its turn's message says that the
+  Agent set it. `schedule_list` shows all the Agent's schedules and who set each;
+  `schedule_remove` removes only its own. Agents have these tools in every kind of turn. You
+  change or remove any schedule: in the Schedules sheet (**Change…**, **Delete…**), with
+  `bazilion trigger edit|rm`, or `PATCH /api/triggers/:id` (`message`, and a new timing as
+  `kind` with its field).
 - **Inbox wakes.** An idle Agent with unread mail gets one turn whose prompt contains the
   messages, marked read in the same transaction, in the Agent's current conversation. The
   Agent must answer a new message with `send_message`. A reply is not answered back: the Agent

@@ -1,5 +1,7 @@
 // An Agent's schedules: messages it gets at set times, as if the operator had written them, and
-// what happened the last times they ran. Times are this computer's, where the daemon runs.
+// what happened the last times they ran. The Agent can set its own (schedule_add); those are
+// marked, and the owner changes or removes any of them. Times are this computer's, where the
+// daemon runs.
 
 import type {
   Agent,
@@ -13,7 +15,9 @@ import { api, errorMessage } from '../../lib/api'
 import type { Tone } from '../../lib/model-facts'
 import {
   describeSchedule,
+  draftOf,
   EMPTY_SCHEDULE,
+  onceWords,
   REPEATS,
   type Repeat,
   type ScheduleDraft,
@@ -89,12 +93,14 @@ export function SchedulesView({
   onChanged: () => Promise<void>
 }) {
   const [adding, setAdding] = useState(false)
+  const [changing, setChanging] = useState<AgentTrigger | null>(null)
   const [removing, setRemoving] = useState<AgentTrigger | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   // Dates are written in the browser's own format, which the server cannot know.
   const hydrated = useHydrated()
   const when = (at: number) => (hydrated ? new Date(at).toLocaleString() : '')
+  const clock = hydrated ? (at: number) => onceWords(at) : undefined
   const byId = new Map(triggers.map((trigger) => [trigger.id, trigger]))
 
   async function toggle(trigger: AgentTrigger) {
@@ -159,7 +165,13 @@ export function SchedulesView({
         ) : (
           <CardList>
             {triggers.map((trigger) => {
-              const schedule = describeSchedule(trigger)
+              const schedule = describeSchedule(trigger, clock)
+              // A one-time schedule has run once its last run is at or after its time.
+              const done =
+                trigger.kind === 'once' &&
+                trigger.lastFiredAt !== null &&
+                trigger.runAt !== null &&
+                trigger.lastFiredAt >= trigger.runAt
               return (
                 <ListRow
                   key={trigger.id}
@@ -172,11 +184,16 @@ export function SchedulesView({
                     )
                   }
                   chip={
-                    trigger.enabled ? (
-                      <Chip tone="success">On</Chip>
-                    ) : (
-                      <Chip tone="neutral">Paused</Chip>
-                    )
+                    <>
+                      {done ? (
+                        <Chip tone="neutral">Done</Chip>
+                      ) : trigger.enabled ? (
+                        <Chip tone="success">On</Chip>
+                      ) : (
+                        <Chip tone="neutral">Paused</Chip>
+                      )}
+                      {trigger.setBy === 'agent' && <Chip tone="neutral">Set by {agentName}</Chip>}
+                    </>
                   }
                   meta={
                     <>
@@ -188,19 +205,23 @@ export function SchedulesView({
                           ? `Last ran ${when(trigger.lastFiredAt)}`
                           : 'Has not run yet'}
                       </span>
+                      {trigger.conversationId && <span>In the conversation it was set in</span>}
                     </>
                   }
                   actions={
                     <>
-                      <Switch
-                        label={`${schedule.text}: ${trigger.enabled ? 'on' : 'paused'}`}
-                        checked={trigger.enabled}
-                        disabled={busyId === trigger.id}
-                        onChange={() => void toggle(trigger)}
-                      />
+                      {!done && (
+                        <Switch
+                          label={`${schedule.text}: ${trigger.enabled ? 'on' : 'paused'}`}
+                          checked={trigger.enabled}
+                          disabled={busyId === trigger.id}
+                          onChange={() => void toggle(trigger)}
+                        />
+                      )}
                       <RowMenu
                         label={`More for ${schedule.text}`}
                         items={[
+                          { label: 'Change…', onSelect: () => setChanging(trigger) },
                           {
                             label: 'Delete…',
                             danger: true,
@@ -243,7 +264,9 @@ export function SchedulesView({
                   title={when(dispatch.scheduledAt) || '…'}
                   chip={<Chip tone={run.tone}>{run.label}</Chip>}
                   meta={
-                    <span>{trigger ? describeSchedule(trigger).text : 'A deleted schedule'}</span>
+                    <span>
+                      {trigger ? describeSchedule(trigger, clock).text : 'A deleted schedule'}
+                    </span>
                   }
                 >
                   {dispatch.error && (
@@ -256,13 +279,18 @@ export function SchedulesView({
         )}
       </SetupCard>
 
-      {adding && (
-        <AddSchedule
+      {(adding || changing) && (
+        <ScheduleDialog
           agentId={agentId}
           agentName={agentName}
-          onClose={() => setAdding(false)}
-          onAdded={async () => {
+          {...(changing ? { changing } : {})}
+          onClose={() => {
             setAdding(false)
+            setChanging(null)
+          }}
+          onSaved={async () => {
+            setAdding(false)
+            setChanging(null)
             await onChanged()
           }}
         />
@@ -273,8 +301,8 @@ export function SchedulesView({
         title="Delete this schedule?"
         description={
           <p className="m-0">
-            {removing ? describeSchedule(removing).text : 'The schedule'} stops, and its run history
-            goes with it. {agentName} and its conversations stay.
+            {removing ? describeSchedule(removing, clock).text : 'The schedule'} stops, and its run
+            history goes with it. {agentName} and its conversations stay.
           </p>
         }
         confirmLabel="Delete the schedule"
@@ -291,29 +319,43 @@ export function SchedulesView({
   )
 }
 
-function AddSchedule({
+/** Add a schedule, or change one (`changing`), whoever set it. */
+function ScheduleDialog({
   agentId,
   agentName,
+  changing,
   onClose,
-  onAdded,
+  onSaved,
 }: {
   agentId: string
   agentName: string
+  changing?: AgentTrigger
   onClose: () => void
-  onAdded: () => Promise<void>
+  onSaved: () => Promise<void>
 }) {
-  const [draft, setDraft] = useState<ScheduleDraft>(EMPTY_SCHEDULE)
+  const [draft, setDraft] = useState<ScheduleDraft>(() =>
+    changing ? draftOf(changing) : EMPTY_SCHEDULE,
+  )
+  // A change sends the timing only when it was touched, so a timing the presets cannot show
+  // (an interval in seconds, a one-time schedule that has run) stays as it is.
+  const [timingTouched, setTimingTouched] = useState(!changing)
   const [tried, setTried] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const set = <Key extends keyof ScheduleDraft>(key: Key, value: ScheduleDraft[Key]) => {
     setDraft((current) => ({ ...current, [key]: value }))
+    if (key !== 'message') setTimingTouched(true)
     setError(null)
   }
-  const built = scheduleRequest(draft)
+  const message = draft.message.trim()
+  const built = timingTouched
+    ? scheduleRequest(draft)
+    : message
+      ? ({ request: { message }, problem: null, field: null } as const)
+      : ({ request: null, problem: 'Write the message the Agent gets.', field: 'message' } as const)
   // The schedule in words as soon as it is valid, before the message is written.
-  const timing = scheduleRequest({ ...draft, message: draft.message.trim() || '…' })
-  const preview = timing.request ? describeSchedule(timing.request) : null
+  const timing = timingTouched ? scheduleRequest({ ...draft, message: message || '…' }) : null
+  const preview = timing?.request ? describeSchedule(timing.request, (at) => onceWords(at)) : null
   const problemOf = (field: ScheduleField) =>
     tried && built.field === field ? built.problem : undefined
 
@@ -323,8 +365,15 @@ function AddSchedule({
     if (!built.request) return
     setBusy(true)
     try {
-      await api(`/api/agents/${encodeURIComponent(agentId)}/triggers`, { body: built.request })
-      await onAdded()
+      if (changing) {
+        await api(`/api/triggers/${encodeURIComponent(changing.id)}`, {
+          method: 'PATCH',
+          body: built.request,
+        })
+      } else {
+        await api(`/api/agents/${encodeURIComponent(agentId)}/triggers`, { body: built.request })
+      }
+      await onSaved()
     } catch (cause) {
       setError(errorMessage(cause))
       setBusy(false)
@@ -333,8 +382,12 @@ function AddSchedule({
 
   return (
     <Dialog
-      title="Add a schedule"
-      description={`${agentName} gets the message at these times, as if you had written it.`}
+      title={changing ? 'Change this schedule' : 'Add a schedule'}
+      description={
+        changing?.setBy === 'agent'
+          ? `${agentName} set this schedule for itself and gets the message at these times.`
+          : `${agentName} gets the message at these times, as if you had written it.`
+      }
       busy={busy}
       onClose={onClose}
     >
@@ -368,6 +421,17 @@ function AddSchedule({
               disabled={busy}
               className="max-w-none"
               onChange={(value) => set('time', value)}
+            />
+          )}
+          {draft.repeat === 'once' && (
+            <TextField
+              label="On"
+              type="datetime-local"
+              value={draft.at}
+              problem={problemOf('at')}
+              disabled={busy}
+              className="max-w-none"
+              onChange={(value) => set('at', value)}
             />
           )}
           {draft.repeat === 'cron' && (
@@ -430,13 +494,22 @@ function AddSchedule({
           </p>
         )}
         {error && (
-          <Notice role="alert" title="The schedule was not added.">
+          <Notice
+            role="alert"
+            title={changing ? 'The schedule was not changed.' : 'The schedule was not added.'}
+          >
             {error}
           </Notice>
         )}
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" type="submit" disabled={busy}>
-            {busy ? 'Adding…' : 'Add the schedule'}
+            {changing
+              ? busy
+                ? 'Saving…'
+                : 'Save the schedule'
+              : busy
+                ? 'Adding…'
+                : 'Add the schedule'}
           </Button>
           <Button variant="ghost" disabled={busy} onClick={onClose}>
             Cancel

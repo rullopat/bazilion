@@ -157,6 +157,37 @@ test('a home from before schema versions is version 1, and this release stamps i
   }
 })
 
+test("the shipped migrations keep a home's schedules and their runs, set by the owner", () => {
+  const path = join(home, 'bazilion.db')
+  writeUnversionedHome(path)
+  const db = openDb(path)
+  try {
+    initSchema(db, { copyDir: join(home, 'upgrades') })
+    expect(
+      db.raw
+        .query<Record<string, unknown>, []>(
+          'SELECT id, kind, cron_expr, run_at, message, conversation_id, set_by FROM agent_triggers',
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: 'trigger',
+        kind: 'cron',
+        cron_expr: '0 9 * * *',
+        run_at: null,
+        message: 'Morning summary',
+        conversation_id: null,
+        set_by: 'owner',
+      },
+    ])
+    expect(db.raw.query<{ id: string }, []>('SELECT id FROM trigger_dispatches').all()).toEqual([
+      { id: 'dispatch' },
+    ])
+  } finally {
+    db.close()
+  }
+})
+
 test('an upgrade keeps every row, copies the database first and stamps the new version', () => {
   const path = join(home, 'bazilion.db')
   writeUnversionedHome(path)

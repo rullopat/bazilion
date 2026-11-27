@@ -43,6 +43,7 @@ import { createDbMessagingHost } from './messaging-host.ts'
 import { questionRegistry } from './questions.ts'
 import { createRecallHost } from './recall-host.ts'
 import { createResultHost } from './result-host.ts'
+import { createScheduleHost } from './schedule-host.ts'
 import { agentContacts, createDbTeamHost } from './team-host.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
 import {
@@ -295,6 +296,12 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
       agentId: agent.agent.id,
       conversationId: conversation.id,
       secrets: envSecretValues(secretsEnv()),
+    }),
+    // Its schedules: what it adds runs in this conversation, in any kind of turn.
+    scheduleHost: createScheduleHost({
+      db,
+      agentId: agent.agent.id,
+      conversationId: conversation.id,
     }),
     // Its jobs run where its commands do: in the turn's container, or on the host.
     jobHost: createJobHost({

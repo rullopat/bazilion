@@ -330,6 +330,9 @@ const RPC_HANDLERS: RpcHandlers = {
   recallSearch: ({ query }, { hosts }) => host(hosts.recallHost, 'recall').search(query),
   recallRead: ({ conversationId, from, count }, { hosts }) =>
     host(hosts.recallHost, 'recall').read(conversationId, from, count),
+  scheduleAdd: (args, { hosts }) => host(hosts.scheduleHost, 'schedule').add(args),
+  scheduleList: (_args, { hosts }) => host(hosts.scheduleHost, 'schedule').list(),
+  scheduleRemove: ({ id }, { hosts }) => host(hosts.scheduleHost, 'schedule').remove(id),
   refreshApiKey: async ({ providerName }, ctx) => {
     const token = await refreshApiKeyForTurn(
       providerName,

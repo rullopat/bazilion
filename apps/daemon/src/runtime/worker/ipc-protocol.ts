@@ -10,6 +10,7 @@ import type {
   AgentQuestion,
   AgentQuestionInput,
   AgentQuestionToolResult,
+  AgentTrigger,
   BashApprovalMode,
   CommandApproval,
   CommandRisk,
@@ -60,6 +61,29 @@ export interface RpcMethods {
   jobStop: { args: { id: string }; result: Job }
   recallSearch: { args: { query: string }; result: string }
   recallRead: { args: { conversationId: string; from: number; count?: number }; result: string }
+  scheduleAdd: { args: ScheduleAddArgs; result: ScheduleEntry }
+  scheduleList: { args: Record<string, never>; result: ScheduleEntry[] }
+  scheduleRemove: { args: { id: string }; result: ScheduleEntry }
+}
+
+/** A schedule the Agent sets: the message and exactly one of the timings. */
+export interface ScheduleAddArgs {
+  message: string
+  /** Once, at a time on the daemon's clock ("2026-11-28 09:00") or with an offset. */
+  at?: string
+  /** Once, this many minutes from now. */
+  inMinutes?: number
+  everyMinutes?: number
+  /** Five fields, on the daemon's clock. */
+  cron?: string
+}
+
+/** One of the Agent's schedules, as its tools show it. */
+export interface ScheduleEntry {
+  trigger: AgentTrigger
+  nextRunAt: number | null
+  /** It runs in the turn's conversation. */
+  here: boolean
 }
 
 /** A job with the output the Agent had not read yet. */
@@ -341,6 +365,16 @@ export interface RecallHost {
   read(conversationId: string, from: number, count?: number): Promise<string>
 }
 
+/**
+ * The turn's Agent's schedules. Bound by the daemon to the Agent and the conversation: a schedule
+ * it adds runs there, and it removes only the ones it set.
+ */
+export interface ScheduleHost {
+  add(args: ScheduleAddArgs): Promise<ScheduleEntry>
+  list(): Promise<ScheduleEntry[]>
+  remove(id: string): Promise<ScheduleEntry>
+}
+
 /** Search runs in the daemon, which holds the backend URL and credentials. */
 export interface WebSearchHost {
   search(args: WebSearchArgs): Promise<WebSearchOutput>
@@ -364,6 +398,7 @@ export interface WorkerHosts {
   teamHost?: TeamHost
   jobHost?: JobHost
   recallHost?: RecallHost
+  scheduleHost?: ScheduleHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

@@ -166,5 +166,43 @@ test('trigger add rejects both --every and --cron', async () => {
     'hi',
   ])
   expect(r.exitCode).not.toBe(0)
-  expect(r.stderr + r.stdout).toMatch(/exactly one of --every/)
+  expect(r.stderr + r.stdout).toMatch(/only one of --every, --cron and --at/)
+})
+
+test('a one-time trigger, changed with trigger edit, shows who set it', async () => {
+  const agentId = await spawnAgent()
+  const add = await server.cli([
+    'trigger',
+    'add',
+    agentId,
+    '--at',
+    '2099-01-02 09:30',
+    '--message',
+    'renew the domain',
+  ])
+  expect(add.exitCode, add.stderr).toBe(0)
+  expect(add.stdout).toMatch(/once 2099-01-02 09:30\tenabled/)
+  const [id] = add.stdout.trim().split('\t') as [string]
+
+  const edit = await server.cli([
+    'trigger',
+    'edit',
+    id,
+    '--cron',
+    '0 9 * * 1-5',
+    '--message',
+    'weekday check',
+  ])
+  expect(edit.exitCode, edit.stderr).toBe(0)
+  expect(edit.stdout).toMatch(/cron "0 9 \* \* 1-5"/)
+  const list = await server.cli(['trigger', 'list', agentId])
+  expect(list.stdout).toMatch(/set by you/)
+  expect(list.stdout).toContain('"weekday check"')
+
+  const past = await server.cli(['trigger', 'edit', id, '--at', '2001-01-01 09:00'])
+  expect(past.exitCode).not.toBe(0)
+  expect(past.stderr + past.stdout).toMatch(/runAt is in the past/)
+  const nothing = await server.cli(['trigger', 'edit', id])
+  expect(nothing.exitCode).not.toBe(0)
+  expect(nothing.stderr + nothing.stdout).toMatch(/give a new --message/)
 })

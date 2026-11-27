@@ -8,9 +8,8 @@ import type {
   UpdateTriggerRequest,
 } from '@bazilion/api-types'
 import { triggerDispatchRepo, triggerRepo } from '../core/index.ts'
-import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
-import { nextRunAt } from '../lib/scheduler.ts'
+import { nextRunAt, triggerTiming } from '../lib/trigger-timing.ts'
 import { jsonBody, newRouter, routeAgent } from './http.ts'
 
 export const triggersRouter = newRouter()
@@ -45,6 +44,13 @@ triggersRouter.patch('/:id', async (c) => {
   if (!body) return c.json({ error: 'invalid JSON body' }, 400)
   if (!triggerExists(id)) return c.json({ error: `trigger not found: ${id}` }, 404)
   const { db } = getCtx()
+  // Everything is checked before anything changes.
+  const timing = body.kind !== undefined ? triggerTiming(body) : null
+  if (body.message !== undefined && (typeof body.message !== 'string' || !body.message.trim())) {
+    return c.json({ error: 'message cannot be empty' }, 400)
+  }
+  if (timing) triggerRepo.setTiming(db, id, timing)
+  if (typeof body.message === 'string') triggerRepo.setMessage(db, id, body.message)
   if (typeof body.enabled === 'boolean') triggerRepo.setEnabled(db, id, body.enabled)
   return c.json({ trigger: triggerRepo.get(db, id) })
 })
@@ -74,44 +80,12 @@ agentTriggersRouter.post('/:id/triggers', async (c) => {
   if (typeof body.message !== 'string' || !body.message.trim()) {
     return c.json({ error: 'message is required' }, 400)
   }
-  const agentId = routeAgent(c).id
-  const { db } = getCtx()
-
-  if (body.kind === 'interval') {
-    const intervalSec = body.intervalSec
-    if (typeof intervalSec !== 'number' || !Number.isInteger(intervalSec) || intervalSec < 1) {
-      return c.json({ error: 'intervalSec must be a whole number of seconds, at least 1' }, 400)
-    }
-    const trigger = triggerRepo.insert(db, {
-      agentId,
-      kind: 'interval',
-      intervalSec,
-      cronExpr: null,
-      message: body.message,
-      enabled: body.enabled,
-    })
-    return c.json({ trigger }, 201)
-  }
-
-  if (body.kind === 'cron') {
-    if (typeof body.cronExpr !== 'string' || !body.cronExpr.trim()) {
-      return c.json({ error: 'cronExpr is required for kind=cron' }, 400)
-    }
-    try {
-      validateCron(body.cronExpr)
-    } catch (err) {
-      return c.json({ error: `invalid cron: ${(err as Error).message}` }, 400)
-    }
-    const trigger = triggerRepo.insert(db, {
-      agentId,
-      kind: 'cron',
-      intervalSec: null,
-      cronExpr: body.cronExpr.trim(),
-      message: body.message,
-      enabled: body.enabled,
-    })
-    return c.json({ trigger }, 201)
-  }
-
-  return c.json({ error: `invalid kind: ${body.kind}` }, 400)
+  const timing = triggerTiming(body)
+  const trigger = triggerRepo.insert(getCtx().db, {
+    agentId: routeAgent(c).id,
+    ...timing,
+    message: body.message,
+    enabled: body.enabled,
+  })
+  return c.json({ trigger }, 201)
 })

@@ -1,6 +1,6 @@
 // Schedules in words: "Weekdays at 09:00", not `0 9 * * 1-5`. The daemon stores a schedule as an
-// interval in seconds or a five-field cron expression on its own clock; the Schedules sheet offers
-// the common ones as presets and keeps cron for the rest.
+// interval in seconds, a five-field cron expression on its own clock, or one time; the Schedules
+// sheet offers the common ones as presets and keeps cron for the rest.
 
 import type { AgentTrigger, CreateTriggerRequest } from '@bazilion/api-types'
 
@@ -47,12 +47,36 @@ export function describeCron(expression: string): string | null {
   return null
 }
 
-/** What the schedule says, and whether that is a cron expression shown as it is. */
-export function describeSchedule(trigger: {
-  kind: AgentTrigger['kind']
-  intervalSec?: number | null
-  cronExpr?: string | null
-}): { text: string; raw: boolean } {
+/** "Fri 28 Nov, 09:00", with the year when it is not this one; on the reader's clock. */
+export function onceWords(at: number, now = Date.now()): string {
+  const date = new Date(at)
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: 'numeric' }),
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/**
+ * What the schedule says, and whether that is a cron expression shown as it is. A one-time
+ * schedule's time is written by `clock`, which only the browser has (its locale and zone).
+ */
+export function describeSchedule(
+  trigger: {
+    kind: AgentTrigger['kind']
+    intervalSec?: number | null
+    cronExpr?: string | null
+    runAt?: number | null
+  },
+  clock?: (at: number) => string,
+): { text: string; raw: boolean } {
+  if (trigger.kind === 'once') {
+    const at = trigger.runAt
+    return { text: clock && typeof at === 'number' ? `Once, ${clock(at)}` : 'Once', raw: false }
+  }
   if (trigger.kind === 'interval')
     return { text: describeInterval(trigger.intervalSec ?? 0), raw: false }
   const expression = trigger.cronExpr ?? ''
@@ -60,9 +84,10 @@ export function describeSchedule(trigger: {
   return words ? { text: words, raw: false } : { text: expression, raw: true }
 }
 
-export type Repeat = 'minutes' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'cron'
+export type Repeat = 'once' | 'minutes' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'cron'
 
 export const REPEATS: readonly { value: Repeat; label: string }[] = [
+  { value: 'once', label: 'Once' },
   { value: 'minutes', label: 'Every few minutes' },
   { value: 'hourly', label: 'Every hour' },
   { value: 'daily', label: 'Every day' },
@@ -84,6 +109,8 @@ export interface ScheduleDraft {
   /** 0 (Sunday) to 6, for weekly schedules. */
   day: string
   cron: string
+  /** For "once": a datetime-local value, YYYY-MM-DDTHH:MM on the reader's clock. */
+  at: string
   message: string
 }
 
@@ -93,15 +120,17 @@ export const EMPTY_SCHEDULE: ScheduleDraft = {
   time: '09:00',
   day: '1',
   cron: '',
+  at: '',
   message: '',
 }
 
 /** The draft's field a problem belongs under. */
-export type ScheduleField = 'minutes' | 'time' | 'cron' | 'message'
+export type ScheduleField = 'minutes' | 'time' | 'cron' | 'at' | 'message'
 
 /** The request for a draft, or what is wrong with it and in which field. */
 export function scheduleRequest(
   draft: ScheduleDraft,
+  now = Date.now(),
 ):
   | { request: CreateTriggerRequest; problem: null; field: null }
   | { request: null; problem: string; field: ScheduleField } {
@@ -117,6 +146,14 @@ export function scheduleRequest(
   const minute = time ? Number(time[2]) : Number.NaN
   const timeOk = hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
   switch (draft.repeat) {
+    case 'once': {
+      const runAt = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(draft.at)
+        ? new Date(draft.at).getTime()
+        : Number.NaN
+      if (!Number.isFinite(runAt)) return fail('at', 'Give a day and a time.')
+      if (runAt <= now) return fail('at', 'Give a time that has not passed yet.')
+      return done({ kind: 'once', runAt })
+    }
     case 'minutes': {
       const minutes = Number(draft.minutes)
       if (!Number.isInteger(minutes) || minutes < 1)
@@ -139,4 +176,41 @@ export function scheduleRequest(
       return done({ kind: 'cron', cronExpr: expression })
     }
   }
+}
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/** A time as a datetime-local value, on the reader's clock. */
+export function localInput(at: number): string {
+  const date = new Date(at)
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/**
+ * The draft that shows a schedule, to change it. A timing the presets cannot show (an interval in
+ * seconds) comes back as the nearest one; the sheet sends the timing only when it was changed.
+ */
+export function draftOf(trigger: AgentTrigger): ScheduleDraft {
+  const base = { ...EMPTY_SCHEDULE, message: trigger.message }
+  if (trigger.kind === 'once')
+    return { ...base, repeat: 'once', at: trigger.runAt ? localInput(trigger.runAt) : '' }
+  if (trigger.kind === 'interval')
+    return {
+      ...base,
+      repeat: 'minutes',
+      minutes: String(Math.max(1, Math.round((trigger.intervalSec ?? 60) / 60))),
+    }
+  const expression = (trigger.cronExpr ?? '').trim().replace(/\s+/g, ' ')
+  if (expression === '0 * * * *') return { ...base, repeat: 'hourly' }
+  const fields = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5|[0-6])$/.exec(expression)
+  const minute = Number(fields?.[1])
+  const hour = Number(fields?.[2])
+  if (fields && minute <= 59 && hour <= 23) {
+    const time = `${pad(hour)}:${pad(minute)}`
+    const days = fields[3] as string
+    if (days === '*') return { ...base, repeat: 'daily', time }
+    if (days === '1-5') return { ...base, repeat: 'weekdays', time }
+    return { ...base, repeat: 'weekly', time, day: days }
+  }
+  return { ...base, repeat: 'cron', cron: expression }
 }

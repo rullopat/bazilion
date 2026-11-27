@@ -43,7 +43,6 @@ async function setupTrigger() {
     agentId: agent.id,
     kind: 'interval',
     intervalSec: 60,
-    cronExpr: null,
     message: 'work',
   })
   return { ctx, trigger, triggersRouter }
@@ -94,7 +93,7 @@ test.each([
 
 test('a schedule says when it runs next; the scheduler being off says none does', async () => {
   const { ctx, trigger } = await setupTrigger()
-  const { nextRunAt } = await import('../../src/lib/scheduler.ts')
+  const { nextRunAt } = await import('../../src/lib/trigger-timing.ts')
   const { triggerRepo } = await import('../../src/core/index.ts')
   const now = trigger.createdAt + 10_000
   expect(nextRunAt(trigger, now)).toBe(trigger.createdAt + 60_000)
@@ -103,7 +102,6 @@ test('a schedule says when it runs next; the scheduler being off says none does'
   const cron = triggerRepo.insert(ctx.db, {
     agentId: trigger.agentId,
     kind: 'cron',
-    intervalSec: null,
     cronExpr: '*/5 * * * *',
     message: 'cron work',
   })
@@ -122,4 +120,54 @@ test('a schedule says when it runs next; the scheduler being off says none does'
   }
   expect(on.schedulerOff).toBe(false)
   expect(typeof on.nextRuns[cron.id]).toBe('number')
+})
+
+describe('one-time schedules and changes', () => {
+  test('creates a one-time schedule in the future and refuses one in the past', async () => {
+    const { ctx, trigger } = await setupTrigger()
+    const { agentTriggersRouter } = await import('../../src/routes/triggers.ts')
+    const path = `/${trigger.agentId}/triggers`
+    const runAt = Date.now() + 3_600_000
+    const created = await agentTriggersRouter.request(path, {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'once', runAt, message: 'renew the domain' }),
+    })
+    expect(created.status).toBe(201)
+    expect(((await created.json()) as { trigger: unknown }).trigger).toMatchObject({
+      kind: 'once',
+      runAt,
+      setBy: 'owner',
+      conversationId: null,
+      intervalSec: null,
+      cronExpr: null,
+    })
+    const past = await agentTriggersRouter.request(path, {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'once', runAt: Date.now() - 1000, message: 'late' }),
+    })
+    expect(past.status).toBe(400)
+    expect(await past.json()).toEqual({ error: 'runAt is in the past' })
+    expect(ctx.db.raw.query('SELECT count(*) AS n FROM agent_triggers').get()).toEqual({ n: 2 })
+  })
+
+  test('PATCH changes the message and the timing, checking all of it first', async () => {
+    const { ctx, trigger, triggersRouter } = await setupTrigger()
+    const { triggerRepo } = await import('../../src/core/index.ts')
+    const patch = (body: unknown) =>
+      triggersRouter.request(`/${trigger.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+
+    const bad = await patch({ message: 'new words', kind: 'cron', cronExpr: '61 * * * *' })
+    expect(bad.status).toBe(400)
+    expect(triggerRepo.get(ctx.db, trigger.id)).toMatchObject({ message: 'work', kind: 'interval' })
+
+    const changed = await patch({ message: 'new words', kind: 'cron', cronExpr: '0  9 * * 1-5' })
+    expect(changed.status).toBe(200)
+    expect(((await changed.json()) as { trigger: unknown }).trigger).toMatchObject({
+      message: 'new words',
+      kind: 'cron',
+      cronExpr: '0 9 * * 1-5',
+      intervalSec: null,
+    })
+    expect((await patch({ message: '  ' })).status).toBe(400)
+  })
 })

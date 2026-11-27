@@ -19,6 +19,7 @@ import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
 import { type RecallSource, recallTool } from '../tools/recall.ts'
+import { scheduleTools } from '../tools/schedule.ts'
 import { agentCreateTool } from '../tools/team.ts'
 import type { ToolHandler, ToolResultPart } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
@@ -30,6 +31,7 @@ import type {
   JobHost,
   McpHost,
   MessagingHost,
+  ScheduleHost,
   TeamHost,
   UserMdHost,
   WebSearchHost,
@@ -84,6 +86,8 @@ export interface BazilionCustomToolsOpts {
   teamHost?: TeamHost
   /** The job_* tools for background jobs. */
   jobHost?: JobHost
+  /** The schedule_* tools. */
+  scheduleHost?: ScheduleHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
   /** Commands run in Docker: paths the Agent is told are the container's. */
@@ -127,5 +131,6 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   if (opts.teamHost) handlers.push(agentCreateTool(opts.teamHost))
   if (opts.jobHost) handlers.push(...jobTools(opts.jobHost))
+  if (opts.scheduleHost) handlers.push(...scheduleTools(opts.scheduleHost))
   return handlers.map(ourToolToPiTool)
 }
