@@ -3,7 +3,16 @@
 
 import { type Agent, chosenName } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
-import { Archive, ArrowDown, ArrowUp, Ellipsis, Pencil, Send, Settings2 } from 'lucide-react'
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  Ellipsis,
+  GripVertical,
+  Pencil,
+  Send,
+  Settings2,
+} from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { type AgentState, shortTime } from '../../../lib/activity'
 import { useHydrated } from '../../../lib/use-resource'
@@ -45,6 +54,11 @@ export function AgentRow({
       className={`group/row relative rounded-2xl ${mark ? DROP_MARK_CLASS[mark] : ''}`}
       {...order.dropTarget(agent.id, agent.teamId)}
     >
+      {/* Dragging the row moves the Agent in its Team; the grip says so when pointed at. */}
+      <GripVertical
+        aria-hidden="true"
+        className="pointer-events-none absolute -left-1.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100"
+      />
       <Link
         {...order.dragSource({ kind: 'agent', id: agent.id, teamId: agent.teamId })}
         to="/"

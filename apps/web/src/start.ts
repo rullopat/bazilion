@@ -3,6 +3,7 @@
 
 import { isLoopbackHost, type PublicOriginConfig, publicOriginConfig } from '@bazilion/api-types'
 import { createMiddleware, createStart } from '@tanstack/react-start'
+import { BUILD_HEADER, PAGE_BUILD } from './lib/build'
 import { cookieValues } from './lib/cookies'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
@@ -79,6 +80,8 @@ function refuse(request: Request, config: PublicOriginConfig): Response | null {
 function withSecurityHeaders(response: Response, production: boolean): Response {
   const headers = new Headers(response.headers)
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value)
+  // Every response says which build answered: an open tab of an older one offers a reload.
+  headers.set(BUILD_HEADER, PAGE_BUILD)
   if (production) headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains')
   return new Response(response.body, {
     status: response.status,

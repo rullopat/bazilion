@@ -17,10 +17,13 @@ bazilion app install               # macOS, when you use the Bazilion app: resta
 Bazilion needs Node.js 26.12.1 or a later 26.x release; the CLI refuses any other Node before it
 starts. A refusal caused by the Node version means upgrading Node, never resetting the home.
 
-A browser tab left open across an upgrade still runs the page it loaded. When it next needs a part
-of the web UI it had not loaded yet (the Connections map, a dialog), that part is gone from the
-new release, so the tab reloads itself once to get the new version; if that cannot help, the page
-says so and offers **Reload**. Reloading open tabs after an upgrade avoids the hiccup.
+A browser tab left open across an upgrade still runs the page it loaded. Every answer of the web
+server says which build it comes from, so the tab notices the new release (at the latest when its
+live updates come back after the restart) and says **Bazilion was updated** with **Reload**; what
+you had typed and not sent is kept across the reload. When the tab needs a part of the web UI it
+had not loaded yet (the Connections map, a dialog), that part is gone from the new release, so it
+reloads itself once. **Retry**, on a page that could not load while Bazilion restarted, reloads
+the whole page, so it shows the release that answers.
 
 ## The database
 

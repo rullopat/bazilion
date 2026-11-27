@@ -27,9 +27,10 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   at the end, a new Agent at the end of its Team. The order is kept in Bazilion, so every browser,
   Manage and `bazilion team list` / `agent list` show it; `bazilion team order <team>…` and
   `bazilion agent order <team> <agent>…` set it from a terminal (those named first, the others
-  after them as they were). Jump to keeps its own order. The handle on the list's right edge
-  makes it wider or narrower (drag it, or the arrow keys when it has the focus; a double-click
-  puts it back); the width is kept per browser.
+  after them as they were). Jump to keeps its own order. A grip shows on the row you point at.
+  The handle on the list's right edge, a faint line with a grip at its middle, makes it wider or
+  narrower (drag it, or the arrow keys when it has the focus; a double-click puts it back); the
+  width is kept per browser. Unsent text is kept per Agent for the tab, a reload included.
 - **The conversation** is the chat with the open Agent. Tool calls read as steps (`Ran`, `Read`,
   `Wrote` with the lines added and removed); click one for its input and output. A message to a
   teammate is a hand-off card with what that teammate is doing now, or `not sent` when the call
