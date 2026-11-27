@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { stdin } from 'node:process'
 import type {
   RegisterTeamRequest,
+  SetOrderRequest,
   SetTeamTopicFormatRequest,
   SetTeamUserMdRequest,
   Team,
@@ -47,6 +48,24 @@ const listCmd = defineCommand({
     const list = await createClient().get<Team[]>('/api/teams')
     printRows(
       list.map((team) => [team.id, team.path]),
+      '(no teams)',
+    )
+  },
+})
+
+const orderCmd = defineCommand({
+  meta: {
+    name: 'order',
+    description:
+      'Set the order of the Teams in every list: those named come first, the others keep their order after them',
+  },
+  args: { team: { type: 'positional', description: 'Team slugs, in order', required: true } },
+  async run({ args }) {
+    const ids = args._.map(String)
+    const body: SetOrderRequest = { ids }
+    const list = await createClient().put<Team[]>('/api/teams/order', body)
+    printRows(
+      list.map((team, index) => [String(index + 1), team.id, team.name]),
       '(no teams)',
     )
   },
@@ -183,6 +202,7 @@ export const teamCommand = defineCommand({
     today: teamTodayCommand,
     add: addCmd,
     list: listCmd,
+    order: orderCmd,
     rm: rmCmd,
     'user-md': userMdCmd,
     'topic-format': topicFormatCmd,

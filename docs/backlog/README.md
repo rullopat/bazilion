@@ -10,11 +10,18 @@ are never reused, so the gaps below are deliberate.
 
 Planned after comparing OpenClaw's tools with ours (2026-11-26). 0.63.0 improved the tools Agents
 already had (BAZ-086 to BAZ-088, with background commands) and 0.64.0 added the missing ones that
-are useful (BAZ-089 to BAZ-092); later releases take up the rest.
+are useful (BAZ-089 to BAZ-092). 0.65.0 (asked for on 2026-11-27) brings video, music and speech,
+the Agent in the workspace, and three changes to the workspace itself; later releases take up the
+rest.
 
 | ID | Story | Release |
 | --- | --- | --- |
-| [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | 0.65.0 and later |
+| [BAZ-095](draft/BAZ-095-video-music-sound.md) | Videos, music and sound an Agent makes | 0.65.0 |
+| [BAZ-096](draft/BAZ-096-speech.md) | Speech: Agents that talk, dictation, any audio transcribed | 0.65.0 |
+| [BAZ-097](draft/BAZ-097-agent-in-the-workspace.md) | The Agent in the workspace: views, theme, progress, a canvas | 0.65.0 |
+| [BAZ-098](draft/BAZ-098-list-order-and-width.md) | The list on the left: your order, your width | 0.65.0 |
+| [BAZ-099](draft/BAZ-099-messages-show-at-once.md) | What happens elsewhere shows in the conversation at once | 0.65.0 |
+| [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | 0.66.0 and later |
 
 **Schema.** Since 0.63.0 (BAZ-094) an upgrade migrates the home instead of needing a fresh one
 ([upgrading](../upgrades.md)); each schema change ships with its own migration.

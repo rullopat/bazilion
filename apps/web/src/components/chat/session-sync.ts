@@ -50,6 +50,7 @@ export function activityReaction(
   ) {
     return was.working && !now.working ? 'queue-then-head' : 'queue'
   }
-  if (!now.working && now.lastActivityAt !== was.lastActivityAt) return 'head'
+  // The conversation file changed: a turn from elsewhere saved a message, or one ended.
+  if (now.lastActivityAt !== was.lastActivityAt) return 'head'
   return null
 }

@@ -211,3 +211,27 @@ test('agent move changes team membership', async () => {
   r = await server.cli(['agent', 'show', id])
   expect(r.stdout).toContain('elsewhere')
 })
+
+test('team order and agent order set the order every list shows', async () => {
+  await server.cli(['profile', 'create', 'p', '--model', 'anthropic:claude-opus-4-6'])
+  await server.cli(['team', 'add', 'g1'])
+  await server.cli(['team', 'add', 'g2'])
+  for (const name of ['A1', 'A2', 'A3'])
+    await server.cli(['agent', 'spawn', '--profile', 'p', '--name', name, '--team', 'g1'])
+
+  let r = await server.cli(['team', 'order', 'g2', 'g1'])
+  expect(r.exitCode).toBe(0)
+  const teams = r.stdout.trim().split('\n')
+  expect(teams[0]).toMatch(/^1\s+g2\b/)
+  expect(teams[1]).toMatch(/^2\s+g1\b/)
+
+  r = await server.cli(['agent', 'order', 'g1', 'A3', 'A1'])
+  expect(r.exitCode).toBe(0)
+  expect(r.stdout.match(/A\d/g)).toEqual(['A3', 'A1', 'A2'])
+  r = await server.cli(['agent', 'list'])
+  expect(r.stdout.match(/\bA\d\b/g)).toEqual(['A3', 'A1', 'A2'])
+
+  r = await server.cli(['agent', 'order', 'g1', 'nobody'])
+  expect(r.exitCode).not.toBe(0)
+  expect(r.stderr).toMatch(/No such Agent in g1: nobody/)
+})

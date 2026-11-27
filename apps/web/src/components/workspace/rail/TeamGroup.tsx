@@ -3,10 +3,13 @@
 
 import type { Agent, Team } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
-import { ChevronRight, PanelRight } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronRight, Ellipsis, PanelRight } from 'lucide-react'
+import { DropdownMenu } from 'radix-ui'
 import { teamSummary, type useActivity } from '../../../lib/activity'
 import type { useWorkspace } from '../context'
 import { AgentRow } from './AgentRow'
+import { MENU_ITEM } from './menu'
+import { DROP_MARK_CLASS, type useRailOrder } from './use-rail-order'
 
 export function TeamGroup({
   team,
@@ -20,6 +23,9 @@ export function TeamGroup({
   panel,
   onRename,
   onArchive,
+  order,
+  onMoveUp,
+  onMoveDown,
 }: {
   team: Team
   members: Agent[]
@@ -35,12 +41,21 @@ export function TeamGroup({
   panel: ReturnType<typeof useWorkspace>['search']['panel']
   onRename: (agent: Agent) => void
   onArchive: (agent: Agent) => void
+  /** Dragging and moving rows (BAZ-098). */
+  order: ReturnType<typeof useRailOrder>
+  /** Move the Team one place up or down; absent at that end of the list. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   const summary = teamSummary(members.map((agent) => activity.stateOf(agent.id)))
+  const mark = order.dropMark(team.id)
   return (
     // The way into the Team sits over the fold's line, not inside it: a control inside a
     // <summary> is a control inside a control.
-    <div className="relative mb-1 last:mb-0">
+    <div
+      className={`group/team relative mb-1 rounded-lg last:mb-0 ${mark ? DROP_MARK_CLASS[mark] : ''}`}
+      {...order.dropTarget(team.id)}
+    >
       <details
         open={isOpen}
         onToggle={(event) => {
@@ -51,7 +66,8 @@ export function TeamGroup({
         className="group/details"
       >
         <summary
-          className={`flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-lg py-1 pl-2 pr-9 text-sm transition-colors hover:bg-accent/60 [&::-webkit-details-marker]:hidden ${
+          {...order.dragSource({ kind: 'team', id: team.id })}
+          className={`flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-lg py-1 pl-2 pr-16 text-sm transition-colors hover:bg-accent/60 [&::-webkit-details-marker]:hidden ${
             current ? 'bg-muted text-foreground' : 'text-mocha'
           }`}
         >
@@ -68,10 +84,17 @@ export function TeamGroup({
           <div className="py-2 pl-7 pr-2 text-xs text-muted-foreground">No agents in this team</div>
         ) : (
           <div className="space-y-0.5 py-1 pl-1.5">
-            {members.map((agent) => (
+            {members.map((agent, index) => (
               <AgentRow
                 key={agent.id}
                 agent={agent}
+                order={order}
+                onMoveUp={index > 0 ? () => order.moveAgent(team.id, agent.id, -1) : undefined}
+                onMoveDown={
+                  index < members.length - 1
+                    ? () => order.moveAgent(team.id, agent.id, 1)
+                    : undefined
+                }
                 selected={agent.id === selectedId}
                 state={activity.stateOf(agent.id)}
                 lastActivityAt={activity.byAgent.get(agent.id)?.lastActivityAt ?? null}
@@ -83,6 +106,33 @@ export function TeamGroup({
           </div>
         )}
       </details>
+      <DropdownMenu.Root modal={false}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`More for ${team.name}`}
+            className="unstyled absolute right-8 top-1 flex size-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-card hover:text-primary focus-visible:opacity-100 group-hover/team:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
+          >
+            <Ellipsis className="size-4" aria-hidden="true" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            align="start"
+            sideOffset={4}
+            className="z-50 w-44 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-baziu-lg outline-none"
+          >
+            <DropdownMenu.Item className={MENU_ITEM} disabled={!onMoveUp} onSelect={onMoveUp}>
+              <ArrowUp className="size-3.5" aria-hidden="true" />
+              Move up
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className={MENU_ITEM} disabled={!onMoveDown} onSelect={onMoveDown}>
+              <ArrowDown className="size-3.5" aria-hidden="true" />
+              Move down
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
       <Link
         to="/"
         search={{

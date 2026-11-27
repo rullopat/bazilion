@@ -3,7 +3,7 @@
 
 import { type Agent, chosenName } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
-import { Archive, Ellipsis, Pencil, Send, Settings2 } from 'lucide-react'
+import { Archive, ArrowDown, ArrowUp, Ellipsis, Pencil, Send, Settings2 } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { type AgentState, shortTime } from '../../../lib/activity'
 import { useHydrated } from '../../../lib/use-resource'
@@ -11,6 +11,7 @@ import { AgentAvatar } from '../../AgentAvatar'
 import type { useWorkspace } from '../context'
 import { STATE_DOT, STATE_TEXT } from '../state-style'
 import { MENU_ITEM } from './menu'
+import { DROP_MARK_CLASS, type useRailOrder } from './use-rail-order'
 
 export function AgentRow({
   agent,
@@ -20,6 +21,9 @@ export function AgentRow({
   panel,
   onRename,
   onArchive,
+  order,
+  onMoveUp,
+  onMoveDown,
 }: {
   agent: Agent
   selected: boolean
@@ -28,11 +32,21 @@ export function AgentRow({
   panel: ReturnType<typeof useWorkspace>['search']['panel']
   onRename: () => void
   onArchive: () => void
+  /** Dragging rows within the Team (BAZ-098). */
+  order: ReturnType<typeof useRailOrder>
+  /** Move the Agent one place up or down in its Team; absent at that end. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   const hydrated = useHydrated()
+  const mark = order.dropMark(agent.id)
   return (
-    <div className="group/row relative rounded-2xl">
+    <div
+      className={`group/row relative rounded-2xl ${mark ? DROP_MARK_CLASS[mark] : ''}`}
+      {...order.dropTarget(agent.id, agent.teamId)}
+    >
       <Link
+        {...order.dragSource({ kind: 'agent', id: agent.id, teamId: agent.teamId })}
         to="/"
         search={{ agent: agent.id, ...(panel ? { panel } : {}) }}
         aria-current={selected ? 'page' : undefined}
@@ -108,6 +122,14 @@ export function AgentRow({
             <DropdownMenu.Item className={MENU_ITEM} onSelect={onRename}>
               <Pencil className="size-3.5" aria-hidden="true" />
               Rename
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className={MENU_ITEM} disabled={!onMoveUp} onSelect={onMoveUp}>
+              <ArrowUp className="size-3.5" aria-hidden="true" />
+              Move up
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className={MENU_ITEM} disabled={!onMoveDown} onSelect={onMoveDown}>
+              <ArrowDown className="size-3.5" aria-hidden="true" />
+              Move down
             </DropdownMenu.Item>
             <DropdownMenu.Item className={MENU_ITEM} onSelect={onArchive}>
               <Archive className="size-3.5" aria-hidden="true" />

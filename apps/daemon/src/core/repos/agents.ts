@@ -7,6 +7,7 @@ import type {
   TelegramMirrorMode,
 } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { orderedIds } from './teams.ts'
 
 interface RawAgent {
   id: string
@@ -63,10 +64,21 @@ export function insert(
     'id' | 'profileId' | 'name' | 'modelOverride' | 'reasoningLevel' | 'status' | 'teamId'
   >,
 ): Agent {
+  // A new Agent goes at the end of its Team.
   db.raw.run(
-    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, team_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [a.id, a.profileId, a.name, a.modelOverride, a.reasoningLevel, a.status, a.teamId, Date.now()],
+    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, team_id, created_at, position)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${END_OF_TEAM})`,
+    [
+      a.id,
+      a.profileId,
+      a.name,
+      a.modelOverride,
+      a.reasoningLevel,
+      a.status,
+      a.teamId,
+      Date.now(),
+      a.teamId,
+    ],
   )
   const agent = get(db, a.id)
   if (!agent) throw new Error(`agent insert failed: ${a.id}`)
@@ -102,9 +114,36 @@ export function setName(db: BazilionDb, id: string, name: string): void {
   db.raw.run('UPDATE agents SET name = ? WHERE id = ?', [name, id])
 }
 
-/** Move the agent to a different team. The new team must exist. */
+/** The place after the last Agent of the Team given as the query's parameter. */
+const END_OF_TEAM = '(SELECT COALESCE(MAX(position) + 1, 0) FROM agents WHERE team_id = ?)'
+
+/** The order Agents are listed in: by their Team's place, then by their own in it. */
+const LIST_ORDER =
+  'ORDER BY (SELECT position FROM teams WHERE teams.id = agents.team_id), position, created_at, id'
+
+/** Move the agent to a different team, at its end. The new team must exist. */
 export function setTeam(db: BazilionDb, id: string, teamId: string): void {
-  db.raw.run('UPDATE agents SET team_id = ? WHERE id = ?', [teamId, id])
+  db.raw.run(
+    `UPDATE agents SET position = ${END_OF_TEAM}, team_id = ? WHERE id = ? AND team_id <> ?`,
+    [teamId, teamId, id, teamId],
+  )
+}
+
+/**
+ * Put the Agents named first in their Team, in that order; the Team's other Agents (archived ones
+ * included) follow in the order they had. Ids of other Teams' Agents are left out.
+ */
+export function setOrderInTeam(db: BazilionDb, teamId: string, ids: readonly string[]): void {
+  const current = db.raw
+    .query<{ id: string }, [string]>(
+      'SELECT id FROM agents WHERE team_id = ? ORDER BY position, created_at, id',
+    )
+    .all(teamId)
+    .map((row) => row.id)
+  db.raw.transaction(() => {
+    for (const [place, id] of orderedIds(current, ids).entries())
+      db.raw.run('UPDATE agents SET position = ? WHERE id = ?', [place, id])
+  })()
 }
 
 /**
@@ -138,8 +177,8 @@ export function get(db: BazilionDb, idOrName: string): Agent | null {
 
 export function list(db: BazilionDb, opts?: { includeArchived?: boolean }): Agent[] {
   const sql = opts?.includeArchived
-    ? 'SELECT * FROM agents ORDER BY created_at ASC'
-    : "SELECT * FROM agents WHERE status != 'archived' ORDER BY created_at ASC"
+    ? `SELECT * FROM agents ${LIST_ORDER}`
+    : `SELECT * FROM agents WHERE status != 'archived' ${LIST_ORDER}`
   return db.raw
     .query<RawAgent, []>(sql)
     .all()

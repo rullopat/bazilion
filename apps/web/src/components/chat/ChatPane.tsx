@@ -13,7 +13,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useActivityOptional } from '../../lib/activity'
 import { useFindInTranscript } from '../../lib/find-in-transcript'
-import { isAtEnd, placeKey, useTranscriptPlace } from '../../lib/transcript-scroll'
+import { isAtEnd, markArrived, placeKey, useTranscriptPlace } from '../../lib/transcript-scroll'
+import { Button } from '../Button'
 import { useWorkspaceOptional } from '../workspace/context'
 import { AgentQuestions } from './AgentQuestions'
 import { Composer, encodeFiles, MAX_ATTACHMENTS } from './Composer'
@@ -41,7 +42,7 @@ export interface ChatPaneProps {
   /** Where compactions summarized the conversation. */
   initialCompactions?: CompactionMark[]
   initialContext?: ContextUse | null
-  /** SSR snapshot of the conversation file; the stale banner compares against it. */
+  /** SSR snapshot of the conversation file; what moved since is loaded when the page opens. */
   initialSessionHead?: SessionHeadResponse
   /** The bar above the conversation; the Agent's name alone without it. */
   header?: (chat: ChatControls) => ReactNode
@@ -137,6 +138,24 @@ function AgentChat({
     if (log && nearBottomRef.current) log.scrollTop = log.scrollHeight
   })
 
+  // What another source added is marked for a moment. A reader who had scrolled up stays where
+  // they are, with a way down to it.
+  const [unseen, setUnseen] = useState(false)
+  const messageCount = useRef(-1)
+  const arrivalSeen = useRef(chat.arrival)
+  useLayoutEffect(() => {
+    const log = logRef.current
+    if (!log) return
+    const messages = log.querySelectorAll<HTMLElement>('[data-message]')
+    if (chat.arrival !== arrivalSeen.current && messageCount.current >= 0) {
+      const fresh = Array.from(messages).slice(messageCount.current)
+      markArrived(fresh)
+      if (fresh.length > 0 && !nearBottomRef.current) setUnseen(true)
+    }
+    arrivalSeen.current = chat.arrival
+    messageCount.current = messages.length
+  })
+
   async function addFiles(files: FileList | File[]) {
     // Encoding takes a while for a large file; a removal, another add or a send may happen
     // meanwhile, so the new files join the list as it is once they are ready.
@@ -222,41 +241,11 @@ function AgentChat({
           earlier conversations and their files stay listed.
         </p>
       )}
-      {chat.stale && (
-        <div
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-          className="mx-5 mt-2 flex items-center gap-2 rounded-[10px] border border-sapphire-light bg-sapphire-glow px-3 py-2 text-[0.86em] text-sapphire-deep"
-        >
-          <span className="h-2 w-2 flex-none rounded-full bg-sapphire" aria-hidden="true" />
-          <span className="flex-1">
-            {chat.recoveredTurn
-              ? 'The recovered turn has new activity.'
-              : 'There is new activity from elsewhere (the terminal, a follow-up, Telegram or a schedule).'}
-          </span>
-          <button
-            type="button"
-            onClick={() => void chat.refreshHistory()}
-            className="unstyled rounded-md bg-sapphire px-3 py-1 text-[0.92em] font-semibold text-snow hover:bg-sapphire-deep"
-          >
-            Show it
-          </button>
-          <button
-            type="button"
-            onClick={chat.dismissStale}
-            className="unstyled px-1 text-sapphire-deep hover:opacity-70"
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       <div
         ref={logRef}
         onScroll={(event) => {
           nearBottomRef.current = isAtEnd(event.currentTarget)
+          if (nearBottomRef.current) setUnseen(false)
         }}
         role="log"
         aria-label={`Conversation with ${agentName}`}
@@ -298,6 +287,22 @@ function AgentChat({
           )}
         </div>
       </div>
+      {unseen && (
+        <div className="pointer-events-none relative z-10 -mt-12 mb-2 flex justify-center">
+          <Button
+            variant="primary"
+            className="pointer-events-auto shadow-baziu-sm"
+            onClick={() => {
+              const log = logRef.current
+              if (log) log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' })
+              nearBottomRef.current = true
+              setUnseen(false)
+            }}
+          >
+            New messages ↓
+          </Button>
+        </div>
+      )}
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {chat.turnBusy ? `${agentName} is responding.` : 'Conversation ready.'}
       </p>

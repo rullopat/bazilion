@@ -49,6 +49,20 @@ export function applyPlace(log: HTMLElement, place: TranscriptPlace): boolean {
   return true
 }
 
+/** How long what another source added stays marked; it only shapes what the reader sees. */
+const ARRIVED_MS = 4_000
+
+/** Mark messages another source just added, for a moment (`.arrived-message` in styles.css). */
+export function markArrived(messages: readonly HTMLElement[]): void {
+  for (const message of messages) {
+    message.classList.remove('arrived-message')
+    // Read the layout so the animation starts again on a message marked twice in a row.
+    void message.offsetWidth
+    message.classList.add('arrived-message')
+    window.setTimeout(() => message.classList.remove('arrived-message'), ARRIVED_MS)
+  }
+}
+
 export function rememberPlace(key: string, place: TranscriptPlace): void {
   places.delete(key)
   places.set(key, place)

@@ -64,6 +64,8 @@ export function useChatSession({
   const [streaming, setStreaming] = useState(false)
   const [editing, setEditing] = useState(false)
   const [questionsKey, setQuestionsKey] = useState(0)
+  // Counts the loads that brought what another source added, so the pane can mark it.
+  const [arrival, setArrival] = useState(0)
 
   const abortRef = useRef<AbortController | null>(null)
   const noteIdRef = useRef(0)
@@ -85,13 +87,20 @@ export function useChatSession({
     initialSessionHead,
     onConversation,
     streamingRef,
+    hold: editing,
     pushNote,
-    onHistory: (saved) => {
+    onHistory: (saved, arrived) => {
       setMessages(saved.messages)
       setCompactions(saved.compactions ?? [])
       setContext(saved.context ?? null)
-      setLive([])
+      // A turn from elsewhere still waiting on a command keeps its card.
+      setLive((entries) =>
+        entries.filter(
+          (entry) => entry.type === 'command_approval' && entry.approval.status === 'pending',
+        ),
+      )
       setEditing(false)
+      if (arrived) setArrival((count) => count + 1)
     },
   })
   const {
@@ -297,7 +306,8 @@ export function useChatSession({
     /** How full the model's window is; null before the daemon has said. */
     context,
     editing,
-    stale: sync.stale,
+    /** Changes each time what another source added is loaded. */
+    arrival,
     recoveredTurn,
     historyUnavailable: sync.historyUnavailable,
     queue: sync.queue,
@@ -309,7 +319,6 @@ export function useChatSession({
     cancelEdit: () => setEditing(false),
     refreshHistory: sync.refreshHistory,
     refreshQueue: sync.refreshQueue,
-    dismissStale: sync.dismissStale,
     /** The conversation on screen; null before the Agent's first turn. */
     conversationId: sync.knownConversationId,
   }

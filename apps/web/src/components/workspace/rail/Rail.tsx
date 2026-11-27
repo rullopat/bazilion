@@ -17,8 +17,9 @@ import { TeamForm } from '../../TeamForm'
 import { useWorkspace } from '../context'
 import { NewMenu } from './NewMenu'
 import { isGroupOpen, writeOpenGroupsCookie } from './open-groups'
-import { sortProfiles, sortTeams } from './order'
+import { sortProfiles } from './order'
 import { TeamGroup } from './TeamGroup'
+import { useRailOrder } from './use-rail-order'
 
 export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, boolean> }) {
   const {
@@ -45,7 +46,9 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
 
   // The seeded default template and Team come first: the one-click path for a new install.
   const sortedProfiles = sortProfiles(profiles)
-  const sortedTeams = sortTeams(teams)
+  // The owner's order, with a drag or a Move shown before the daemon has it.
+  const order = useRailOrder(teams, agents)
+  const sortedTeams = order.teams
   const template = teamTemplates.find((entry) => entry.id === spawnTemplate)
   const selectedId = open?.agent.id ?? null
 
@@ -78,6 +81,22 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
       </header>
 
       <nav className="flex-1 overflow-y-auto p-1.5" aria-label="Teams and agents">
+        {order.error && (
+          <p
+            role="alert"
+            className="m-1 mb-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"
+          >
+            <span className="flex-1">{order.error}</span>
+            <button
+              type="button"
+              onClick={order.clearError}
+              className="unstyled px-1 hover:opacity-70"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </p>
+        )}
         {agents.length === 0 && (
           <div className="m-1 mb-2 flex flex-col items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center">
             <p className="m-0 text-sm font-semibold text-foreground">No agents yet</p>
@@ -99,13 +118,13 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
             )}
           </div>
         )}
-        {sortedTeams.map((team) => {
+        {sortedTeams.map((team, index) => {
           const current = inView?.id === team.id
           return (
             <TeamGroup
               key={team.id}
               team={team}
-              members={agents.filter((agent) => agent.teamId === team.id)}
+              members={order.membersOf(team.id)}
               current={current}
               isOpen={isGroupOpen(openGroups, team.id, current)}
               onOpenChange={(next) => {
@@ -119,6 +138,11 @@ export function Rail({ initialOpenGroups }: { initialOpenGroups: Record<string, 
               panel={search.panel}
               onRename={(agent) => setRenameTarget(agent)}
               onArchive={(agent) => setArchiveTarget(agent)}
+              order={order}
+              onMoveUp={index > 0 ? () => order.moveTeam(team.id, -1) : undefined}
+              onMoveDown={
+                index < sortedTeams.length - 1 ? () => order.moveTeam(team.id, 1) : undefined
+              }
             />
           )
         })}

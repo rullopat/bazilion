@@ -71,7 +71,9 @@ test('an activity reading asks for the head, the queue, both, or nothing', () =>
   expect(activityReaction(idle, { ...idle, queuePaused: true })).toBe('queue')
   expect(activityReaction(idle, { ...idle, lastActivityAt: 2_000 })).toBe('head')
   const working = { ...idle, working: true }
-  expect(activityReaction(working, { ...working, lastActivityAt: 2_000 })).toBe(null)
+  // A turn from elsewhere saved a message: it shows while the turn runs.
+  expect(activityReaction(working, { ...working, lastActivityAt: 2_000 })).toBe('head')
+  expect(activityReaction(working, { ...working, step: { tool: 'bash', target: 'ls' } })).toBe(null)
 })
 
 test('a message being sent shows its text, its images and the names of its other files', () => {

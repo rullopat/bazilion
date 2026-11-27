@@ -19,3 +19,12 @@ export interface SetTeamUserMdRequest {
    */
   expected?: string
 }
+
+/**
+ * Body for `PUT /api/teams/order` (the Teams) and `PUT /api/teams/:id/agents/order` (one Team's
+ * Agents): those named come first, in this order, and the rest follow in the order they had.
+ * Agents may be named by id, unambiguous id prefix, or name in the Team.
+ */
+export interface SetOrderRequest {
+  ids: string[]
+}

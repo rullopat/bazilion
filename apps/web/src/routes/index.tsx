@@ -19,7 +19,16 @@ import { ApiClientError } from '@bazilion/client'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { ChangesView } from '../components/changes/ChangesView'
 import { ReviewProvider } from '../components/changes/review'
 import { ChatPane } from '../components/chat/ChatPane'
@@ -34,6 +43,7 @@ import { FocusFrame } from '../components/workspace/FocusFrame'
 import { Overview } from '../components/workspace/Overview'
 import { SIDEBAR_OPEN_GROUPS_COOKIE } from '../components/workspace/rail/open-groups'
 import { Rail } from '../components/workspace/rail/Rail'
+import { RailResizer } from '../components/workspace/rail/RailResizer'
 import { SlimRail } from '../components/workspace/rail/SlimRail'
 import { Sheets } from '../components/workspace/Sheets'
 import { TeamHome } from '../components/workspace/TeamHome'
@@ -49,7 +59,9 @@ import {
   type PanelMemory,
   type PanelTab,
   parsePanelCookie,
+  parseRailWidthCookie,
   parseWorkspaceSearch,
+  RAIL_WIDTH_COOKIE,
   writePanelCookie,
 } from '../lib/workspace'
 
@@ -124,6 +136,7 @@ const fetchWorkspace = createServerFn({ method: 'GET' })
       activity: activity.agents,
       openGroups: parseOpenGroupsCookie(getCookie(SIDEBAR_OPEN_GROUPS_COOKIE)),
       panel: parsePanelCookie(getCookie(PANEL_COOKIE)),
+      railWidth: parseRailWidthCookie(getCookie(RAIL_WIDTH_COOKIE)),
     }
   })
 
@@ -154,6 +167,8 @@ function WorkspacePage() {
           : 'Overview',
   )
 
+  // The list on the left at the width this browser left it (BAZ-098).
+  const [railWidth, setRailWidth] = useState(data.railWidth)
   // The side panel opens on the tab it was last on; the address, when it says, wins.
   const [memory, setMemory] = useState<PanelMemory>(data.panel)
   useEffect(() => {
@@ -334,18 +349,23 @@ function WorkspacePage() {
             </div>
           ) : (
             <div
-              className={`grid h-full min-h-0 grid-cols-1 gap-3 py-3 lg:grid-cols-[18rem_minmax(0,1fr)] ${
-                panel === 'none' ? '' : 'xl:grid-cols-[18rem_minmax(0,1fr)_minmax(22rem,27rem)]'
+              // The list keeps at most a third of the window, whatever width it was given.
+              style={{ '--rail-width': `min(${railWidth}rem, 33vw)` } as CSSProperties}
+              className={`grid h-full min-h-0 grid-cols-1 gap-3 py-3 lg:grid-cols-[var(--rail-width)_minmax(0,1fr)] ${
+                panel === 'none'
+                  ? ''
+                  : 'xl:grid-cols-[var(--rail-width)_minmax(0,1fr)_minmax(22rem,27rem)]'
               }`}
             >
               <div
                 inert={overlay || undefined}
-                className={`flex min-h-0 flex-col gap-3 ${open || team ? 'hidden lg:flex' : ''}`}
+                className={`relative flex min-h-0 flex-col gap-3 ${open || team ? 'hidden lg:flex' : ''}`}
               >
                 <WaitingStrip className="lg:hidden" />
                 <div className="min-h-0 flex-1">
                   <Rail initialOpenGroups={data.openGroups} />
                 </div>
+                <RailResizer width={railWidth} onWidth={setRailWidth} />
               </div>
               <div
                 inert={overlay || undefined}

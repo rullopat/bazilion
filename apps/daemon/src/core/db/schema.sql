@@ -11,7 +11,9 @@ CREATE TABLE teams (
   policy_mode TEXT NOT NULL DEFAULT 'open' CHECK (policy_mode IN ('open', 'restricted')),
   created_at INTEGER NOT NULL,
   telegram_icon_color INTEGER,
-  telegram_topic_name_format TEXT
+  telegram_topic_name_format TEXT,
+  -- Where the Team stands in the workspace's list (0 first); set by the owner since 0.65.0.
+  position INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE profiles (
   id TEXT PRIMARY KEY,
@@ -46,7 +48,9 @@ CREATE TABLE agents (
   telegram_topic_id INTEGER,
   telegram_icon_emoji TEXT,
   telegram_mirror_mode TEXT NOT NULL DEFAULT 'minimal'
-    CHECK (telegram_mirror_mode IN ('minimal','verbose'))
+    CHECK (telegram_mirror_mode IN ('minimal','verbose')),
+  -- Where the Agent stands in its Team's list (0 first); set by the owner since 0.65.0.
+  position INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX idx_agents_telegram_topic_id
   ON agents(telegram_topic_id) WHERE telegram_topic_id IS NOT NULL;
