@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.65.1
+
+### Patch Changes
+
+- [#137](https://github.com/rullopat/bazilion/pull/137) [`a0c3745`](https://github.com/rullopat/bazilion/commit/a0c3745e3d8098c76ecb00060070e0ad3b16b111) Thanks [@rullopat](https://github.com/rullopat)! - **A tab open across an upgrade now says so, and the list's controls are easier to find.** After an upgrade, a Bazilion tab that stayed open showed the old interface until a full browser reload, and **Retry** on the "Could not load this page" screen kept the old page. Now every answer of the web server says which build it comes from: an older tab shows **Bazilion was updated** with **Reload** (at the latest when its live updates come back after the restart), and **Retry** reloads the whole page. What you typed and did not send is kept for the tab across a reload. In the list on the left, the width handle is always visible as a faint line with a grip at its middle, and a grip shows on a Team or Agent row you point at, to drag it into place.
+
 ## 0.65.0
 
 ### Minor Changes
