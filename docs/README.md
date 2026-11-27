@@ -31,7 +31,8 @@ Start with the [README](../README.md): install, first run and the CLI.
 - [Team Policy and Team templates](team-policy.md)
 - [Coding](coding-environments.md): shell, Docker sandbox, repository instructions
 - [Change review and live tool output](change-review.md)
-- [Results](results.md) and [image generation](image-generation.md)
+- [Results](results.md), [image generation](image-generation.md), [video and sound](video-and-sound.md)
+  and [speech](speech.md): voices, Read aloud, dictation and transcripts
 - [Web research](web-research.md), the [managed browser](browser-research.md) and [MCP](mcp.md)
 - [Telegram](telegram.md) and [Attention notifications](attention-notifications.md)
 

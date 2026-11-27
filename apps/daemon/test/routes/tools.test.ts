@@ -73,6 +73,9 @@ test('four tools on a new home, each with what it is doing', async () => {
   ])
   expect(functions.map((card) => card.id)).toEqual([
     'image-generation',
+    'video-generation',
+    'audio-generation',
+    'speech',
     'transcription',
     'command-review',
   ])

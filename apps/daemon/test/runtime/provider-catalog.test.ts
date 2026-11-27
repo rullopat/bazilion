@@ -17,11 +17,16 @@ test('the provider table covers every Pi chat provider, and each hosted entry ha
     (id) => getBuiltinModels(id as Parameters<typeof getBuiltinModels>[0]).length > 0,
   )
   expect(piChatProviders.filter((id) => !covered.has(id))).toEqual([])
+  // Every hosted chat provider has a catalog; a media-only account (ElevenLabs) has no chat models.
   expect(
     PROVIDERS.filter(
-      (provider) => !provider.local && listCatalogModelsSync(provider.id).length === 0,
+      (provider) =>
+        !provider.local && !provider.media && listCatalogModelsSync(provider.id).length === 0,
     ).map((provider) => provider.id),
   ).toEqual([])
+  expect(PROVIDERS.filter((provider) => provider.media).map((provider) => provider.id)).toEqual([
+    'elevenlabs',
+  ])
 })
 
 test('a local server lists its loaded models live; a hosted API without a listing does not', async () => {

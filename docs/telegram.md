@@ -63,15 +63,19 @@ at a time; a 👀 reaction shows the message was received. Photos reach the mode
 files are saved for the Agent to read (up to 20 MB), a PDF with `pdf_read`. A voice note or audio
 file is transcribed before the turn when a model is chosen under **Transcription** on
 **Setup → Models**: the turn's message carries its words and the file's path
-([models](models-and-providers.md#transcription)). Without one the Agent gets the file alone. If
-a queued message fails, is cancelled or is removed, the bot replies to it.
+([speech](speech.md#transcription)). Without one the Agent gets the file alone. With a **Speech**
+model chosen too, a voice note is answered by a voice note after the text
+([speech](speech.md#speech)). If a queued message fails, is cancelled or is removed, the bot
+replies to it.
 
 - `/queue` lists waiting messages; `/queue drop <n|all>` removes them.
 - `/stop` cancels the running turn and, when messages are waiting, pauses the queue; `/resume`
   continues it.
 - `/close` closes the topic, `/rebind <agent>` points it at another Agent, `/unbind` detaches it.
 
-Replies, errors, images and delivered files are mirrored into the topic. An Agent's mirror mode
+Replies, errors, images and delivered files are mirrored into the topic: a video plays, speech is
+a voice note, a song is in the player, anything else is a document, up to the 50 MB a bot may
+send. A progress card of the Agent's (`progress`) is one message, edited as its steps move on. An Agent's mirror mode
 (`bazilion agent edit <id> --mirror minimal|verbose`, or **Telegram** in the Agent's side panel)
 adds short tool-call lines in verbose mode; those are limited to 30 a minute per Agent.
 

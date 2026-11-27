@@ -43,7 +43,7 @@ for us.
 - `core/transcription-config.ts`: `BAZILION_TRANSCRIPTION_MODEL` (`off` or `openai:gpt-transcribe`);
   `lib/transcription.ts` posts each audio attachment to `/v1/audio/transcriptions` while the turn
   is prepared. A **Transcription** card on the Models page shares the Images card's parts.
-- Guides: [Telegram](../../telegram.md), [models](../../models-and-providers.md#transcription),
+- Guides: [Telegram](../../telegram.md), [speech](../../speech.md#transcription),
   [agent engine](../../agent-engine.md#5-tools).
 
 ## Decided while building

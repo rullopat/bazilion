@@ -178,6 +178,19 @@ can reconcile its view. The JSONL file is the only record of the conversation.
 - `helper_start`, `helper_wait`, `helper_stop`: [helpers](#helpers), not in a helper's own turn.
 - `schedule_add`, `schedule_list`, `schedule_remove`: the Agent's own schedules
   (`lib/schedule-host.ts`), in every kind of turn; see [the scheduler](#9-scheduler).
+- `video_generate`, `audio_generate`, `speak` and `transcribe`: each while its model is chosen
+  under Setup → Models and has its key (`lib/media-host.ts`, the calls in `lib/media/`). A video
+  always runs in the background and wakes the Agent when it is saved; music and sound wait, or
+  run in the background with `background: true`. What they make is saved as a result at most
+  25 MiB. `transcribe` reads a file of the workspace or uploads, up to what the transcription
+  model takes, and gives its lines with their times when the model gives them. See
+  [video and sound](video-and-sound.md) and [speech](speech.md).
+- `progress`, `screen`, `theme` and `canvas`: the Agent in the workspace
+  (`runtime/tools/workspace.ts`). `progress` is a card of steps that later calls update by its id
+  (one Telegram message, edited); `screen` opens a panel tab, a view or one of the Agent's sheets,
+  and `theme` the light or dark theme, in the browser tabs that show the conversation (a live
+  event, `lib/workspace-host.ts`); `canvas` saves an HTML page or SVG drawing that the chat shows
+  in a sealed frame. See [the workspace](workspace.md#the-agent-in-the-workspace).
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and
   `mcp__<server>__<tool>`: each present when its host is. `deliver_file` with `result` shows one of
   the Agent's saved results again. `ask_user` takes a card of `questions` or an `action` (see
