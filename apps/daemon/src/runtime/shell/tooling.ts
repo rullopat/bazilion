@@ -7,6 +7,7 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
 import { type BashApprovalHost, createApprovalGatedBashTool } from './approval.ts'
+import { ContainerPaths } from './container-paths.ts'
 import {
   CONTAINER_WORKSPACE,
   containerWorkdir,
@@ -14,6 +15,7 @@ import {
   type DockerMount,
   type DockerSandbox,
 } from './docker.ts'
+import { dockerApplyPatchTool, dockerFileTools, hostApplyPatchTool } from './file-tools.ts'
 import { resolveShellSecurityConfig, type ShellSecurityConfig } from './security.ts'
 
 const HOST_CODING_TOOL_NAMES = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const
@@ -50,6 +52,11 @@ export interface SessionShellTools {
   hostToolNames: readonly string[]
   /** Same-name replacement for Pi's built-in bash when Docker or approval is active. */
   customBash?: ToolDefinition
+  /**
+   * File tools of Bazilion's own: `apply_patch` always, and in Docker mode read, write, edit,
+   * grep, find and ls on container paths (Pi's own take host paths, which would bypass it).
+   */
+  fileTools: ToolDefinition[]
 }
 
 /**
@@ -63,12 +70,16 @@ export function createSessionShellTools(
 ): SessionShellTools {
   const config = resolveShellSecurityConfig(env)
   if (config.sandboxMode === 'off') {
-    if (config.approvalMode === 'off') return { config, hostToolNames: HOST_CODING_TOOL_NAMES }
+    const fileTools = [hostApplyPatchTool(cwd)]
+    if (config.approvalMode === 'off') {
+      return { config, hostToolNames: HOST_CODING_TOOL_NAMES, fileTools }
+    }
     const base = createBashToolDefinition(cwd, { operations: createLocalBashOperations() })
     return {
       config,
       hostToolNames: HOST_FILE_TOOL_NAMES,
       customBash: createApprovalGatedBashTool(base, options.approvalHost, cwd),
+      fileTools,
     }
   }
 
@@ -113,9 +124,22 @@ export function createSessionShellTools(
     label: 'bash (Docker sandbox)',
     description: `${base.description} Each command runs in a fresh network-disabled Docker container. The Team workspace is ${CONTAINER_WORKSPACE} (memory/ is read-only), uploaded files are under ${SANDBOX_INPUTS_DIR} and attached skills under /skills, all read-only; the rest of the filesystem is read-only except /tmp, which does not persist. Host files and credentials are unavailable.`,
   })
+  // The file tools reach what commands see: the same mounts, checked at each use.
+  const containerPaths = () => {
+    const current = sandbox()
+    return new ContainerPaths([
+      { target: CONTAINER_WORKSPACE, source: current.workspace, writable: true },
+      ...current.readOnlyMounts.map((mount) => ({ ...mount, writable: false })),
+    ])
+  }
+  const workdir = containerWorkdir(turn.cwd)
   return {
     config: { ...config, sandboxImage: turn.image },
     hostToolNames: [],
+    fileTools: [
+      ...dockerFileTools(workdir, containerPaths),
+      dockerApplyPatchTool(workdir, containerPaths),
+    ],
     customBash:
       config.approvalMode === 'dangerous'
         ? createApprovalGatedBashTool(bash, options.approvalHost, CONTAINER_WORKSPACE)

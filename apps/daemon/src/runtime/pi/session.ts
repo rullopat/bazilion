@@ -275,7 +275,11 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     // the container's working directory instead.
     modelCwd: docker ? containerWorkdir(opts.docker?.cwd ?? '.') : cwd,
     docker,
-    tools: shellTools.customBash ? [...customTools, shellTools.customBash] : customTools,
+    tools: [
+      ...customTools,
+      ...shellTools.fileTools,
+      ...(shellTools.customBash ? [shellTools.customBash] : []),
+    ],
     hostToolNames: shellTools.hostToolNames,
     promptOptions,
   }
