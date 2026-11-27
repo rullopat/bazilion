@@ -1,5 +1,0 @@
----
-"bazilion": minor
----
-
-**Questions in one card, quiet messages, recall across conversations, pictures from pictures.** An Agent can ask several questions in one card, and a question can let you pick several choices; on the web you answer them together, in a terminal one by one, on Telegram each has its own message, and `bazilion question answer` takes one `--answer` per question. It can also ask you to do something only you can do, such as signing in or confirming in your bank's app: the card says why and what to do, the Agent ends its turn, and your **Done** or **Can't** (`--done`, `--cannot`, with a note) starts its next one in the same conversation. Agents can send each other quiet messages that wait in the inbox without starting a turn, and wait for several replies at once. `recall` searches and reads the Agent's other conversations too. `image_generate` can start from pictures in the workspace or uploads (an edit, a variation, a style), and can make a picture in the background, waking the Agent to show it when it is ready.
