@@ -16,6 +16,7 @@ import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/a
 import { InputFile } from 'grammy'
 import { agentRepo } from '../../core/index.ts'
 import * as results from '../../core/repos/results.ts'
+import { type ProgressStep, progressCard } from '../../runtime/tools/workspace.ts'
 import { scheduleApprovalPrompt } from './approvals.ts'
 import { type TelegramLive, telegramLive } from './live.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
@@ -57,6 +58,15 @@ export async function mirrorAgentTurnFrame(agentId: string, frame: ChatFrame): P
     await sendQuestionPrompt(live, topicId, frame.event.question).catch(() =>
       logMirrorAdapterFailure('telegram_mirror_question_failed', agent.id),
     )
+    return
+  }
+  // A progress card is one message, edited as the task moves on (BAZ-097).
+  if (
+    frame.kind === 'event' &&
+    frame.event.type === 'tool_call' &&
+    frame.event.name === 'progress'
+  ) {
+    await mirrorProgress(live, topicId, agent.id, frame.event.id, frame.event.arguments)
     return
   }
 
@@ -198,6 +208,70 @@ async function mirrorFile(
   }
 }
 
+// ─── progress cards ─────────────────────────────────────────────────────
+
+const STEP_MARK: Record<ProgressStep['state'], string> = {
+  todo: '▫️',
+  doing: '⏳',
+  done: '✅',
+  failed: '❌',
+}
+
+/** The message each progress card is in, by Agent and card id; a restart starts a new message. */
+const progressMessages = new Map<string, number>()
+
+/** A progress card as a Telegram message: its title, how far it got, a line per step. */
+export function progressText(card: { task: string; steps: ProgressStep[] }): string {
+  const done = card.steps.filter((step) => step.state === 'done').length
+  const lines = card.steps.map(
+    (step) => `${STEP_MARK[step.state]} ${step.step}${step.note ? ` — ${step.note}` : ''}`,
+  )
+  return clip(
+    [`📋 ${card.task} (${done}/${card.steps.length})`, ...lines].join('\n'),
+    TELEGRAM_SAFE_BUDGET,
+  )
+}
+
+async function mirrorProgress(
+  live: TelegramLive,
+  topicId: number,
+  agentId: string,
+  toolCallId: string,
+  rawArgs: string,
+): Promise<void> {
+  let card: ReturnType<typeof progressCard>
+  try {
+    card = progressCard(JSON.parse(rawArgs) as Record<string, unknown>)
+  } catch {
+    return // The tool refuses it too; nothing to show.
+  }
+  const key = `${agentId}:${card.id ?? toolCallId}`
+  const text = progressText(card)
+  const known = progressMessages.get(key)
+  try {
+    if (known !== undefined) {
+      try {
+        await enqueueOutbound(live.chatId, () => live.api.editMessageText(live.chatId, known, text))
+        return
+      } catch (e) {
+        // The same text again is not an edit; anything else sends the card anew.
+        if (e instanceof Error && e.message.toLowerCase().includes('message is not modified'))
+          return
+      }
+    }
+    const sent = await enqueueOutbound(live.chatId, () =>
+      live.api.sendMessage(live.chatId, text, { message_thread_id: topicId }),
+    )
+    progressMessages.set(key, sent.message_id)
+  } catch (e) {
+    if (isThreadGoneError(e)) {
+      agentRepo.setTelegramTopicId(live.db, agentId, null)
+      return
+    }
+    logMirrorAdapterFailure('telegram_mirror_progress_failed', agentId)
+  }
+}
+
 function logMirrorAdapterFailure(event: string, agentId: string): void {
   // Grammy errors can embed the Bot API URL, including the bot token. Keep
   // adapter diagnostics metadata-only at this Bazilion-authored log boundary.
@@ -336,5 +410,6 @@ export function mirrorTypingStop(agentId: string): void {
 export function _resetMirrorForTest(): void {
   for (const interval of _typingIntervals.values()) clearInterval(interval)
   _typingIntervals.clear()
+  progressMessages.clear()
   _resetLoopGuardForTest()
 }

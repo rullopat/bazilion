@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { ApiError, api, apiFetch, errorMessage } from '../../lib/api'
 import type { WorkspaceSearch } from '../../lib/workspace'
 import { Button } from '../Button'
+import { CanvasFrame, isCanvas } from './CanvasFrame'
 import {
   formatBytes,
   isPreviewImage,
@@ -217,6 +218,7 @@ export function ResultTile({
         )}
         {download}
       </div>
+      {isCanvas(result) && <CanvasFrame result={result} />}
       {text !== null && (
         <pre className="m-0 max-h-80 overflow-auto whitespace-pre-wrap break-words border-t border-border bg-card p-3 text-xs">
           {text}

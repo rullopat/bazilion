@@ -56,6 +56,7 @@ import {
 } from './turn-preparation.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
 import { createWebSearchHost, searchRoute } from './web-search.ts'
+import { createWorkspaceHost } from './workspace-host.ts'
 
 export { prepareAgentTurn }
 
@@ -321,6 +322,8 @@ function turnHosts(
       conversationId: conversation.id,
       secrets: envSecretValues(secretsEnv()),
     }),
+    // screen and theme reach the tabs showing the conversation the user reads.
+    workspaceHost: createWorkspaceHost(agent.agent.id, homeConversation),
     // Its schedules: what it adds runs in this conversation, in any kind of turn.
     scheduleHost: createScheduleHost({
       db,

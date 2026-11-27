@@ -188,6 +188,9 @@ async function openAgentTurn(
           stop: (args) => call('helperStop', args),
         }
       : undefined,
+    workspaceHost: served.has('workspaceHost')
+      ? { show: (action) => call('workspaceShow', { action }) }
+      : undefined,
     scheduleHost: served.has('scheduleHost')
       ? {
           add: (args) => call('scheduleAdd', args),

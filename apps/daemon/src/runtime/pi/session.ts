@@ -60,6 +60,7 @@ import type {
   TeamHost,
   UserMdHost,
   WebSearchHost,
+  WorkspaceHost,
 } from '../worker/ipc-protocol.ts'
 import type {
   MinimalWorkerScratch,
@@ -124,6 +125,8 @@ export interface CreateBazilionSessionOptions {
   readResult?: (resultId: string) => Promise<ResultContent>
   /** helper_start, helper_wait, helper_stop; never in a helper's own turn. */
   helperHost?: HelperHost
+  /** screen and theme, sent to the tabs showing the conversation. */
+  workspaceHost?: WorkspaceHost
   /** Whom the Agent can message, listed in its system prompt. */
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
@@ -342,6 +345,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     secrets,
     readFile: shellTools.readFile,
     helperHost: opts.helperHost,
+    workspaceHost: opts.workspaceHost,
     ...(opts.readResult ? { readResult: opts.readResult } : {}),
     env,
     docker,

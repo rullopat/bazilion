@@ -19,6 +19,7 @@ import type {
   Job,
   Message,
   ResultReference,
+  WorkspaceAction,
 } from '@bazilion/api-types'
 import type { ToolResultPart } from '../tools/types.ts'
 
@@ -72,6 +73,20 @@ export interface RpcMethods {
   helperWait: { args: { ids: string[]; waitMs: number }; result: Helper[] }
   helperStop: { args: { id: string }; result: Helper }
   secretRequest: { args: { secret: unknown; replace: boolean }; result: SecretRequestResult }
+  workspaceShow: { args: { action: WorkspaceAction }; result: WorkspaceShown }
+}
+
+/** How many browsers were connected when `screen` or `theme` was sent. */
+export interface WorkspaceShown {
+  browsers: number
+}
+
+/**
+ * `screen` and `theme` (BAZ-097): sent to the browsers, where only the tabs showing the turn's
+ * conversation act on it. Bound by the daemon to the Agent and the conversation.
+ */
+export interface WorkspaceHost {
+  show(action: WorkspaceAction): Promise<WorkspaceShown>
 }
 
 /** What `secret_request` comes back with: the card it showed, or the secret already stored. */
@@ -443,6 +458,7 @@ export interface WorkerHosts {
   scheduleHost?: ScheduleHost
   secretHost?: Pick<SecretHost, 'list'>
   helperHost?: HelperHost
+  workspaceHost?: WorkspaceHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

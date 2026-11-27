@@ -102,6 +102,28 @@ resultsRouter.get('/:id/download', (c) => {
   }
 })
 
+/** Pages and drawings the web shows in a sealed frame (BAZ-097). */
+const CANVAS_TYPES = new Set(['text/html', 'image/svg+xml'])
+
+// The text of an HTML page or SVG drawing, for the web's sealed frame. Sent as inert text: the
+// frame, not this response, is where it runs.
+resultsRouter.get('/:id/canvas', (c) => {
+  const db = getCtx().db
+  const result = results.get(db, c.req.param('id'))
+  if (!result) return c.json({ error: 'Result not found' }, 404)
+  if (!CANVAS_TYPES.has(result.mimeType))
+    return c.json({ error: 'Only HTML pages and SVG drawings are shown in a frame.' }, 415)
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(results.read(db, result.id))
+    c.header('Content-Type', 'text/plain; charset=utf-8')
+    c.header('Content-Security-Policy', "default-src 'none'; sandbox")
+    c.header('Cache-Control', 'private, max-age=3600')
+    return c.body(text)
+  } catch {
+    return c.json({ error: 'This file is not text. Use Download.' }, 415)
+  }
+})
+
 resultsRouter.delete('/:id', (c) => {
   if (!results.remove(getCtx().db, c.req.param('id'))) {
     return c.json({ error: 'Result not found' }, 404)

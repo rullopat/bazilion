@@ -36,6 +36,7 @@ import { getDialogFocusRestoreTarget, restoreDialogFocus } from '../components/D
 import { FilesView } from '../components/files/FilesView'
 import { StatusBadge } from '../components/Page'
 import { SidePanel } from '../components/panel/SidePanel'
+import { useAgentScreen } from '../components/workspace/agent-screen'
 import { ConversationHeader } from '../components/workspace/ConversationHeader'
 import { WorkspaceProvider } from '../components/workspace/context'
 import { EarlierConversation } from '../components/workspace/EarlierConversation'
@@ -281,6 +282,13 @@ function WorkspacePage() {
       ? search.conversation
       : null
   const conversationId = open ? (reading ?? activeConversation) : null
+  // What the open Agent asks this tab to show, while it shows that Agent's conversation.
+  useAgentScreen(
+    open && !reading && activeConversation
+      ? { agentId: open.agent.id, conversationId: activeConversation }
+      : null,
+    search,
+  )
 
   const workspace = useMemo(
     () => ({

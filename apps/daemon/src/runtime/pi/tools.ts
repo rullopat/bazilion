@@ -27,6 +27,7 @@ import { agentCreateTool } from '../tools/team.ts'
 import type { ToolHandler, ToolResultPart } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
 import { type WebFetchSecret, webFetchTool, webSearchTool } from '../tools/web.ts'
+import { workspaceTools } from '../tools/workspace.ts'
 import type {
   BrowserHost,
   HelperHost,
@@ -41,6 +42,7 @@ import type {
   TeamHost,
   UserMdHost,
   WebSearchHost,
+  WorkspaceHost,
 } from '../worker/ipc-protocol.ts'
 
 /**
@@ -114,6 +116,8 @@ export interface BazilionCustomToolsOpts {
   readResult?: (resultId: string) => Promise<ResultContent>
   /** The helper_* tools. */
   helperHost?: HelperHost
+  /** screen and theme; progress always, canvas with the file sink. */
+  workspaceHost?: WorkspaceHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
   /** Commands run in Docker: paths the Agent is told are the container's. */
@@ -161,6 +165,12 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.scheduleHost) handlers.push(...scheduleTools(opts.scheduleHost))
   if (opts.secretHost) handlers.push(...secretTools(opts.secretHost))
   if (opts.helperHost) handlers.push(...helperTools(opts.helperHost))
+  handlers.push(
+    ...workspaceTools({
+      ...(opts.workspaceHost ? { host: opts.workspaceHost } : {}),
+      ...(opts.fileSink ? { fileSink: opts.fileSink } : {}),
+    }),
+  )
   if (opts.readFile) {
     const sources = {
       readFile: opts.readFile,

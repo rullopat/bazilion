@@ -1,7 +1,7 @@
 import type { CommandApproval, CompactionMark, ProviderMessage } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
 import { FileText } from 'lucide-react'
-import { type ReactNode, useState, useSyncExternalStore } from 'react'
+import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react'
 import { type InboxNote, inboxUpdateLabel, parseInboxWake } from '../../lib/inbox-presentation'
 import { renderMd } from '../../lib/md'
 import { formatContext } from '../../lib/model-facts'
@@ -10,6 +10,7 @@ import { ResultTile } from '../files/ResultTile'
 import { useWorkspaceOptional } from '../workspace/context'
 import { CommandApprovalCard } from './CommandApprovalCard'
 import { groupEntries, projectMessages, type RenderEntry, type TranscriptBlock } from './entries'
+import { ProgressContext, progressBoard } from './Progress'
 import { StepsBlock } from './Steps'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
@@ -407,6 +408,8 @@ export function TranscriptBlocks({
   onEdit?: () => void
   approvals?: ApprovalControls
 }) {
+  // Progress cards show once per task, in the state of its latest call.
+  const board = useMemo(() => progressBoard(entries), [entries])
   const out: ReactNode[] = []
   let next = 0
   // A note made when `afterIndex` entries existed goes before the block that starts there.
@@ -443,7 +446,7 @@ export function TranscriptBlocks({
   }
   // Notes anchored past the end (the tail was replaced by an edit) stay visible at the bottom.
   flush(Number.POSITIVE_INFINITY)
-  return <>{out}</>
+  return <ProgressContext.Provider value={board}>{out}</ProgressContext.Provider>
 }
 
 /** A conversation's messages, read-only (an earlier conversation). */
