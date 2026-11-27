@@ -60,6 +60,15 @@ export interface AgentTurnWorkerSpec {
   withOperator: boolean
   /** Messages from other Agents waiting unread (sent without waking it), for its system prompt. */
   unreadMessages?: number
+  /** The Agent's own secrets, by name: their values are in the worker's environment. */
+  secrets?: AgentSecretUse[]
+}
+
+/** One of the Agent's secrets, as a turn uses it. */
+export interface AgentSecretUse {
+  name: string
+  /** The hosts web_fetch may send it to in a header; empty means commands only. */
+  hosts: string[]
 }
 
 /** A learning review: a digest of recent turns, answered only through `propose_lesson`. */
@@ -147,6 +156,28 @@ export function reviewRuntimeSecrets(runtime: ReviewProviderRuntime): string[] {
     ...(runtime.credentialEnv ?? []).map((field) => field.value),
     runtime.credentialFile?.content,
   ].filter((value): value is string => Boolean(value))
+}
+
+/**
+ * The forms of a secret that output shows: as stored, without its ends' whitespace, each long line
+ * of a multi-line one (a key file), and escaped as JSON prints it.
+ */
+export function secretForms(value: string): string[] {
+  const forms = new Set([value, value.trim()])
+  const lines = value.split(/\r?\n/).map((line) => line.trim())
+  if (lines.length > 1) for (const line of lines) if (line.length >= 8) forms.add(line)
+  forms.add(JSON.stringify(value).slice(1, -1))
+  return [...forms].filter(Boolean)
+}
+
+/** Every string in a value (a tool result's details), with the values taken out. */
+export function redactDeep<T>(value: T, values: readonly string[], depth = 0): T {
+  if (typeof value === 'string') return redactExactValues(value, values) as T
+  if (depth > 16 || !value || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map((entry) => redactDeep(entry, values, depth + 1)) as T
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, redactDeep(entry, values, depth + 1)]),
+  ) as T
 }
 
 export function redactExactValues(text: string, values: readonly string[]): string {

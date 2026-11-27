@@ -35,7 +35,10 @@ function toDispatch(row: RawDispatch): TriggerDispatch {
   }
 }
 
-/** Record an occurrence; the same (trigger, scheduled time) is recorded once. */
+/**
+ * Record an occurrence; the same (trigger, scheduled time) is recorded once. A cancelled one that
+ * comes due again (a one-time schedule paused while its run waited, then resumed) waits again.
+ */
 export function materialize(
   db: BazilionDb,
   input: { triggerId: string; agentId: string; conversationId: string; scheduledAt: number },
@@ -44,7 +47,10 @@ export function materialize(
     `INSERT INTO trigger_dispatches
        (id, trigger_id, agent_id, conversation_id, scheduled_at, status)
      VALUES (?, ?, ?, ?, ?, 'pending')
-     ON CONFLICT(trigger_id, scheduled_at) DO NOTHING`,
+     ON CONFLICT(trigger_id, scheduled_at) DO UPDATE SET
+       status = 'pending', conversation_id = excluded.conversation_id, started_at = NULL,
+       finished_at = NULL, error = NULL
+     WHERE trigger_dispatches.status = 'cancelled'`,
     [randomUUID(), input.triggerId, input.agentId, input.conversationId, input.scheduledAt],
   )
   const row = db.raw

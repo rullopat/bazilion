@@ -10,9 +10,12 @@ import type {
   AgentQuestion,
   AgentQuestionInput,
   AgentQuestionToolResult,
+  AgentSecret,
+  AgentTrigger,
   BashApprovalMode,
   CommandApproval,
   CommandRisk,
+  Helper,
   Job,
   Message,
   ResultReference,
@@ -24,6 +27,7 @@ export interface RpcMethods {
   askUser: { args: { question: AgentQuestionInput }; result: AgentQuestionToolResult }
   publishResult: { args: PublishResultArgs; result: ResultReference }
   showResult: { args: { resultId: string }; result: ShownResult }
+  readResult: { args: { resultId: string }; result: ResultContent }
   generateImages: { args: ImageGenerationInput; result: ImageGenerationOutput }
   webSearch: { args: WebSearchArgs; result: WebSearchOutput }
   sendMessage: { args: SendMessageArgs; result: { messageId: string } }
@@ -60,6 +64,39 @@ export interface RpcMethods {
   jobStop: { args: { id: string }; result: Job }
   recallSearch: { args: { query: string }; result: string }
   recallRead: { args: { conversationId: string; from: number; count?: number }; result: string }
+  scheduleAdd: { args: ScheduleAddArgs; result: ScheduleEntry }
+  scheduleList: { args: Record<string, never>; result: ScheduleEntry[] }
+  scheduleRemove: { args: { id: string }; result: ScheduleEntry }
+  secretList: { args: Record<string, never>; result: AgentSecret[] }
+  helperStart: { args: { task: unknown; model?: unknown }; result: Helper }
+  helperWait: { args: { ids: string[]; waitMs: number }; result: Helper[] }
+  helperStop: { args: { id: string }; result: Helper }
+  secretRequest: { args: { secret: unknown; replace: boolean }; result: SecretRequestResult }
+}
+
+/** What `secret_request` comes back with: the card it showed, or the secret already stored. */
+export type SecretRequestResult =
+  | { kind: 'asked'; question: AgentQuestion }
+  | { kind: 'stored'; secret: AgentSecret }
+
+/** A schedule the Agent sets: the message and exactly one of the timings. */
+export interface ScheduleAddArgs {
+  message: string
+  /** Once, at a time on the daemon's clock ("2026-11-28 09:00") or with an offset. */
+  at?: string
+  /** Once, this many minutes from now. */
+  inMinutes?: number
+  everyMinutes?: number
+  /** Five fields, on the daemon's clock. */
+  cron?: string
+}
+
+/** One of the Agent's schedules, as its tools show it. */
+export interface ScheduleEntry {
+  trigger: AgentTrigger
+  nextRunAt: number | null
+  /** It runs in the turn's conversation. */
+  here: boolean
 }
 
 /** A job with the output the Agent had not read yet. */
@@ -296,6 +333,26 @@ export interface QuestionHost {
     question: unknown,
     signal?: AbortSignal,
   ): { question: AgentQuestion; result: Promise<AgentQuestionToolResult> }
+  /** A secret request card, unless the secret is stored and not to be replaced. */
+  askSecret(secret: unknown, replace: boolean): SecretRequestResult
+}
+
+/**
+ * The turn's Agent's helpers (`helper_start`, `helper_wait`, `helper_stop`), bound by the daemon
+ * to the Agent and the conversation. Never served to a helper's own turn.
+ */
+export interface HelperHost {
+  start(input: { task: unknown; model?: unknown }): Promise<Helper>
+  /** The helpers' states once one changes, all have ended, or `waitMs` passes. */
+  wait(input: { ids: string[]; waitMs: number }, signal?: AbortSignal): Promise<Helper[]>
+  stop(input: { id: string }): Promise<Helper>
+}
+
+/** The turn's Agent's secrets, without their values: secret_list. */
+export interface SecretHost {
+  list(): Promise<AgentSecret[]>
+  /** Only where the owner can answer (the question host is served). */
+  request?(secret: unknown, replace: boolean): Promise<SecretRequestResult>
 }
 
 /** A result already saved, to show again in the chat. */
@@ -305,10 +362,19 @@ export interface ShownResult {
   mimeType: string
 }
 
+/** A saved result's bytes, base64, for view_image. */
+export interface ResultContent {
+  name: string
+  mimeType: string
+  data: string
+}
+
 export interface ResultHost {
   publish(input: PublishResultArgs): Promise<ResultReference>
   /** One of the Agent's own saved results (a picture made in the background, say). */
   show(resultId: string): Promise<ShownResult>
+  /** The bytes of one of the Agent's own saved results. */
+  read(resultId: string): Promise<ResultContent>
 }
 
 export interface ImageGenerationHost {
@@ -341,6 +407,16 @@ export interface RecallHost {
   read(conversationId: string, from: number, count?: number): Promise<string>
 }
 
+/**
+ * The turn's Agent's schedules. Bound by the daemon to the Agent and the conversation: a schedule
+ * it adds runs there, and it removes only the ones it set.
+ */
+export interface ScheduleHost {
+  add(args: ScheduleAddArgs): Promise<ScheduleEntry>
+  list(): Promise<ScheduleEntry[]>
+  remove(id: string): Promise<ScheduleEntry>
+}
+
 /** Search runs in the daemon, which holds the backend URL and credentials. */
 export interface WebSearchHost {
   search(args: WebSearchArgs): Promise<WebSearchOutput>
@@ -364,6 +440,9 @@ export interface WorkerHosts {
   teamHost?: TeamHost
   jobHost?: JobHost
   recallHost?: RecallHost
+  scheduleHost?: ScheduleHost
+  secretHost?: Pick<SecretHost, 'list'>
+  helperHost?: HelperHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

@@ -27,6 +27,7 @@ import { isTelegramSenderAllowed } from './origin.ts'
 import {
   answerActionFromTelegram,
   answerFromTelegram,
+  isSecretPromptReply,
   questionCallback,
   questionReply,
   replyAnswer,
@@ -40,6 +41,8 @@ import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
  * spy.
  */
 export interface ReplyApi extends CommandApi {
+  /** For a reply that may hold a secret; refused without the right to delete messages. */
+  deleteMessage?(chatId: number, messageId: number): Promise<unknown>
   sendMessage(
     chatId: number,
     text: string,
@@ -179,6 +182,16 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     return { kind: 'unauthorized', userId: m.from.id }
   }
 
+  // A reply to a request for a secret may hold it: it is removed and never reaches the Agent.
+  if (isSecretPromptReply(m)) {
+    await deps.api.deleteMessage?.(deps.chatId, m.message_id).catch(() => undefined)
+    await reply(
+      deps,
+      threadId ?? undefined,
+      'That reply was not passed on, and it was deleted if the bot could: a Telegram message is not private. Store the secret in Bazilion or with bazilion agent secret set.',
+    )
+    return { kind: 'question_answer' }
+  }
   // A reply to a waiting question answers it instead of queueing behind the turn that asks.
   const replied = questionReply(m)
   if (replied && m.text && !parseCommand(m.text)) {

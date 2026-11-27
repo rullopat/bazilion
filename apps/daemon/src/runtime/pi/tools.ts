@@ -12,6 +12,8 @@ import { type AskUser, askUserTool } from '../tools/ask-user.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
 import { deliverFileTool, type FileSink, type ShowResult } from '../tools/deliver-file.ts'
+import { pdfReadTool, viewImageTool } from '../tools/documents.ts'
+import { helperTools } from '../tools/helpers.ts'
 import { homeTools } from '../tools/home.ts'
 import { imageGenerateTool } from '../tools/image-generate.ts'
 import { jobTools } from '../tools/jobs.ts'
@@ -19,17 +21,23 @@ import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
 import { type RecallSource, recallTool } from '../tools/recall.ts'
+import { scheduleTools } from '../tools/schedule.ts'
+import { secretTools } from '../tools/secrets.ts'
 import { agentCreateTool } from '../tools/team.ts'
 import type { ToolHandler, ToolResultPart } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
-import { webFetchTool, webSearchTool } from '../tools/web.ts'
+import { type WebFetchSecret, webFetchTool, webSearchTool } from '../tools/web.ts'
 import type {
   BrowserHost,
+  HelperHost,
   ImageGenerationHost,
   InjectedMcpTool,
   JobHost,
   McpHost,
   MessagingHost,
+  ResultContent,
+  ScheduleHost,
+  SecretHost,
   TeamHost,
   UserMdHost,
   WebSearchHost,
@@ -45,8 +53,18 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
     label: h.def.name,
     description: h.def.description,
     parameters: Type.Unsafe<Record<string, unknown>>(h.def.parameters as Record<string, unknown>),
-    async execute(toolCallId, params, signal) {
-      const out = await h.invoke(params as Record<string, unknown>, { toolCallId, signal })
+    async execute(toolCallId, params, signal, onUpdate) {
+      const out = await h.invoke(params as Record<string, unknown>, {
+        toolCallId,
+        signal,
+        // Live output while the call runs: what the chat shows under it.
+        ...(onUpdate
+          ? {
+              progress: (text: string) =>
+                onUpdate({ content: [{ type: 'text', text }], details: {} }),
+            }
+          : {}),
+      })
       if (typeof out === 'string') return { content: [{ type: 'text', text: out }], details: {} }
       if (Array.isArray(out)) return { content: out.map(toPiPart), details: {} }
       return { content: out.content.map(toPiPart), details: out.details }
@@ -84,6 +102,18 @@ export interface BazilionCustomToolsOpts {
   teamHost?: TeamHost
   /** The job_* tools for background jobs. */
   jobHost?: JobHost
+  /** The schedule_* tools. */
+  scheduleHost?: ScheduleHost
+  /** secret_list, and secret_request when it can ask. */
+  secretHost?: SecretHost
+  /** The Agent's secrets with their values, for web_fetch headers. */
+  secrets?: readonly WebFetchSecret[]
+  /** Files the Agent names, read as its file tools would: view_image and pdf_read. */
+  readFile?: (path: string) => Buffer
+  /** One of its saved results, for view_image. */
+  readResult?: (resultId: string) => Promise<ResultContent>
+  /** The helper_* tools. */
+  helperHost?: HelperHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
   /** Commands run in Docker: paths the Agent is told are the container's. */
@@ -106,6 +136,7 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
         dir: join(opts.agent.agent.dir, 'uploads'),
         shown: opts.docker ? SANDBOX_INPUTS_DIR : join(opts.agent.agent.dir, 'uploads'),
       },
+      ...(opts.secrets?.length ? { secrets: opts.secrets } : {}),
     }),
     ...(opts.webSearchHost ? [webSearchTool(opts.webSearchHost)] : []),
   ]
@@ -127,5 +158,15 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   if (opts.teamHost) handlers.push(agentCreateTool(opts.teamHost))
   if (opts.jobHost) handlers.push(...jobTools(opts.jobHost))
+  if (opts.scheduleHost) handlers.push(...scheduleTools(opts.scheduleHost))
+  if (opts.secretHost) handlers.push(...secretTools(opts.secretHost))
+  if (opts.helperHost) handlers.push(...helperTools(opts.helperHost))
+  if (opts.readFile) {
+    const sources = {
+      readFile: opts.readFile,
+      ...(opts.readResult ? { readResult: opts.readResult } : {}),
+    }
+    handlers.push(viewImageTool(sources), pdfReadTool(sources))
+  }
   return handlers.map(ourToolToPiTool)
 }

@@ -27,6 +27,7 @@ export function questionAnswer(args: {
   answers?: string[]
   done?: boolean
   cannot?: boolean
+  decline?: boolean
   note?: string
 }): AgentQuestionAnswer {
   const answers = args.answers ?? []
@@ -37,12 +38,14 @@ export function questionAnswer(args: {
     answers.length > 0,
     args.done === true,
     args.cannot === true,
+    args.decline === true,
   ].filter(Boolean).length
   if (given !== 1)
     throw new Error(
-      'Specify exactly one of --choice, --text, --answer (per question), --skip, --done or --cannot',
+      'Specify exactly one of --choice, --text, --answer (per question), --skip, --done, --cannot or --decline',
     )
   const note = args.note !== undefined ? { note: args.note } : {}
+  if (args.decline) return { kind: 'decline', ...note }
   if (args.done) return { kind: 'done', ...note }
   if (args.cannot) return { kind: 'cannot', ...note }
   if (args.skip) return { kind: 'skip' }
@@ -69,9 +72,11 @@ export const questionCommand = defineCommand({
         if (!questions.length) return console.log('(no waiting questions)')
         for (const item of questions) {
           console.log(
-            item.expiresAt === null
-              ? `${item.id} · an action, waiting until you answer it`
-              : `${item.id} · expires ${new Date(item.expiresAt).toLocaleTimeString()}`,
+            item.question.secret
+              ? `${item.id} · a secret request: bazilion agent secret set ${args.agent} ${item.question.secret.name}`
+              : item.expiresAt === null
+                ? `${item.id} · an action, waiting until you answer it`
+                : `${item.id} · expires ${new Date(item.expiresAt).toLocaleTimeString()}`,
           )
           for (const line of questionLines(item)) console.log(`  ${line}`)
         }
@@ -95,7 +100,14 @@ export const questionCommand = defineCommand({
         skip: { type: 'boolean', description: 'Skip the whole card' },
         done: { type: 'boolean', description: 'An action: it is done' },
         cannot: { type: 'boolean', description: 'An action: you cannot do it' },
-        note: { type: 'string', description: 'With --done or --cannot: a note for the Agent' },
+        decline: {
+          type: 'boolean',
+          description: 'A secret request: do not give it (store one with agent secret set)',
+        },
+        note: {
+          type: 'string',
+          description: 'With --done, --cannot or --decline: a note for the Agent',
+        },
       },
       async run({ args, rawArgs }) {
         const answer = questionAnswer({
@@ -104,6 +116,7 @@ export const questionCommand = defineCommand({
           ...(args.skip ? { skip: true } : {}),
           ...(args.done ? { done: true } : {}),
           ...(args.cannot ? { cannot: true } : {}),
+          ...(args.decline ? { decline: true } : {}),
           ...(args.note !== undefined ? { note: args.note } : {}),
           answers: collectFlagValues(rawArgs, 'answer'),
         })
@@ -115,7 +128,9 @@ export const questionCommand = defineCommand({
               ? 'Done: the Agent goes on from here.'
               : answer.kind === 'cannot'
                 ? 'Told the Agent you cannot.'
-                : 'Answered.',
+                : answer.kind === 'decline'
+                  ? 'Told the Agent you declined.'
+                  : 'Answered.',
         )
       },
     }),

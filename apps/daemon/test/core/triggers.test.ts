@@ -33,7 +33,6 @@ test('insert + get + listForAgent round-trip for interval trigger', () => {
     agentId,
     kind: 'interval',
     intervalSec: 60,
-    cronExpr: null,
     message: 'tick',
   })
   expect(t.kind).toBe('interval')
@@ -53,7 +52,6 @@ test('cron triggers store cronExpr and null intervalSec', () => {
   const t = triggerRepo.insert(env.db, {
     agentId,
     kind: 'cron',
-    intervalSec: null,
     cronExpr: '*/5 * * * *',
     message: 'tick',
   })
@@ -66,7 +64,6 @@ test('enabled=false disables at insert', () => {
     agentId,
     kind: 'interval',
     intervalSec: 30,
-    cronExpr: null,
     message: 'tick',
     enabled: false,
   })
@@ -78,7 +75,6 @@ test('setEnabled toggles the enabled flag', () => {
     agentId,
     kind: 'interval',
     intervalSec: 30,
-    cronExpr: null,
     message: 'tick',
   })
   triggerRepo.setEnabled(env.db, t.id, false)
@@ -92,7 +88,6 @@ test('markFired populates lastFiredAt', () => {
     agentId,
     kind: 'interval',
     intervalSec: 30,
-    cronExpr: null,
     message: 'tick',
   })
   const when = Date.now() + 10_000
@@ -105,7 +100,6 @@ test('remove deletes the trigger', () => {
     agentId,
     kind: 'interval',
     intervalSec: 30,
-    cronExpr: null,
     message: 'tick',
   })
   triggerRepo.remove(env.db, t.id)
@@ -117,14 +111,12 @@ test('listEnabled filters out disabled rows', () => {
     agentId,
     kind: 'interval',
     intervalSec: 30,
-    cronExpr: null,
     message: 'on',
   })
   triggerRepo.insert(env.db, {
     agentId,
     kind: 'interval',
     intervalSec: 60,
-    cronExpr: null,
     message: 'off',
     enabled: false,
   })
@@ -147,14 +139,12 @@ test('listEnabled skips the triggers of archived Agents', () => {
     agentId,
     kind: 'interval',
     intervalSec: 30,
-    cronExpr: null,
     message: 'live',
   })
   triggerRepo.insert(env.db, {
     agentId: other.id,
     kind: 'interval',
     intervalSec: 30,
-    cronExpr: null,
     message: 'archived',
   })
   agentRepo.archive(env.db, other.id)
@@ -168,7 +158,6 @@ describe('ON DELETE CASCADE', () => {
       agentId,
       kind: 'interval',
       intervalSec: 30,
-      cronExpr: null,
       message: 'tick',
     })
     expect(triggerRepo.listForAgent(env.db, agentId)).toHaveLength(1)

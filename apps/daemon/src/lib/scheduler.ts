@@ -11,6 +11,10 @@
 //        - cron:     current minute's wall-clock matches expression AND
 //          last_fired_at's minute < current minute (a minute that passed
 //          while the daemon was down is not caught up)
+//        - once:     run_at ≤ now and it has not run since (a time that passed
+//          while the daemon was down runs at the next start, as an interval does)
+//      A schedule runs in its own conversation when it has one (an Agent's
+//      schedule_add sets the one it was set in), else in the selected one.
 //      While a trigger has an open occurrence, later ones coalesce. Each
 //      occurrence runs at most once: it stays pending while its Agent is busy,
 //      then runs and ends succeeded, failed or cancelled. Nothing is retried;
@@ -34,16 +38,18 @@
 
 import type { AgentTrigger, Message, TriggerDispatch } from '@bazilion/api-types'
 import { agentRepo, messageRepo, triggerDispatchRepo, triggerRepo } from '../core/index.ts'
+import * as conversations from '../core/repos/conversations.ts'
 import { forgetTurnFailure, rememberTurnFailure } from '../core/turn-failures.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { selectCausalParent } from './agent-loop-guard.ts'
 import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
 import { resolveConversationTarget } from './conversation-target.ts'
-import { matchesCron, nextCronMatch, type ParsedCron, parseCron } from './cron.ts'
+import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
 import { endExchangeTurn, exchangeSoFar, noteExchangeTurn } from './exchanges.ts'
 import { signalLiveChange } from './live-signal.ts'
 import { dispatchPendingReviews } from './review-dispatcher.ts'
+import { floorToMinute } from './trigger-timing.ts'
 import { turnFailureReason, turnFrameFailure } from './turn-outcome.ts'
 import { agentsWithWakes, returnWakes, takeWakes, wakeMessage } from './wakes.ts'
 
@@ -85,12 +91,9 @@ function state(): SchedulerState {
   return s
 }
 
-function floorToMinute(ms: number): number {
-  return Math.floor(ms / 60_000) * 60_000
-}
-
 function isDue(t: AgentTrigger, now: number, cronCache: Map<string, ParsedCron>): boolean {
   if (!t.enabled) return false
+  if (t.kind === 'once') return t.runAt !== null && now >= t.runAt && !triggerRepo.onceDone(t)
   if (t.kind === 'interval') {
     const every = (t.intervalSec ?? 0) * 1000
     if (every <= 0) return false
@@ -115,35 +118,9 @@ function isDue(t: AgentTrigger, now: number, cronCache: Map<string, ParsedCron>)
   return false
 }
 
-/**
- * When a trigger next runs: the next matching minute (a cron) or the end of the interval, now
- * when that is already past; null when it is paused or its expression never matches. A busy Agent
- * runs it once its turn ends.
- */
-export function nextRunAt(t: AgentTrigger, now = Date.now()): number | null {
-  if (!t.enabled) return null
-  if (t.kind === 'interval') {
-    const every = (t.intervalSec ?? 0) * 1000
-    if (every <= 0) return null
-    return Math.max((t.lastFiredAt ?? t.createdAt) + every, now)
-  }
-  if (!t.cronExpr) return null
-  let parsed: ParsedCron
-  try {
-    parsed = parseCron(t.cronExpr)
-  } catch {
-    return null
-  }
-  // A minute it already ran in does not count again.
-  const from =
-    t.lastFiredAt && floorToMinute(t.lastFiredAt) === floorToMinute(now)
-      ? floorToMinute(now) + 60_000
-      : floorToMinute(now)
-  return nextCronMatch(parsed, from)
-}
-
 function scheduledOccurrence(t: AgentTrigger, now: number): number {
   if (t.kind === 'cron') return floorToMinute(now)
+  if (t.kind === 'once') return t.runAt ?? now
   const baseline = t.lastFiredAt ?? t.createdAt
   const every = (t.intervalSec ?? 0) * 1000
   if (every <= 0) return now
@@ -181,7 +158,7 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
         attemptId: `${t.id}:${dispatch.scheduledAt}`,
         agentId: t.agentId,
         conversationId: dispatch.conversationId,
-        message: t.message,
+        message: t.setBy === 'agent' ? ownScheduleMessage(t) : t.message,
         attachments: [],
         claim: { controller },
       })
@@ -222,6 +199,15 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
   } finally {
     s.firing.delete(key)
   }
+}
+
+/**
+ * The message of a schedule the Agent set itself, framed so it knows the time came rather than
+ * the owner writing to it now.
+ */
+export function ownScheduleMessage(t: AgentTrigger): string {
+  const set = new Date(t.createdAt).toLocaleString()
+  return `[A schedule you set on ${set} (schedule ${t.id}) is due. What you wrote for this time:]\n\n${t.message}`
 }
 
 function decodeText(payload: string): string {
@@ -546,7 +532,12 @@ async function runTick(): Promise<void> {
       const occurrence = scheduledOccurrence(t, now)
       try {
         if (!triggerDispatchRepo.hasOpenForTrigger(ctx.db, t.id)) {
-          const conversation = resolveConversationTarget(ctx.db, ctx.paths, t.agentId)
+          // Its own conversation while it still exists, else the selected one.
+          const pinned =
+            t.conversationId && conversations.get(ctx.db, t.agentId, t.conversationId)
+              ? t.conversationId
+              : undefined
+          const conversation = resolveConversationTarget(ctx.db, ctx.paths, t.agentId, pinned)
           ctx.db.raw.transaction(() => {
             triggerDispatchRepo.materialize(ctx.db, {
               triggerId: t.id,
@@ -556,7 +547,8 @@ async function runTick(): Promise<void> {
             })
             triggerRepo.markFired(ctx.db, t.id, occurrence)
           })()
-        } else triggerRepo.markFired(ctx.db, t.id, occurrence)
+        } else if (t.kind !== 'once') triggerRepo.markFired(ctx.db, t.id, occurrence)
+        // A one-time schedule moved while its earlier run is open stays due for when it ends.
       } catch (error) {
         console.warn(
           JSON.stringify({

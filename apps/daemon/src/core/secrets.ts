@@ -6,6 +6,7 @@
 // overrides (set by `bazilion login`) coexist in the same file.
 
 import { existsSync, readFileSync } from 'node:fs'
+import { isAgentSecretKey } from './agent-secrets.ts'
 import type { BazilionDb } from './db/client.ts'
 import { MODEL_WINDOWS_KEY, openConfig, PROVIDER_CHECKS_KEY } from './repos/config.ts'
 import { openSecrets } from './repos/secrets.ts'
@@ -42,7 +43,7 @@ export function readAuthFile(authFile: string): AuthFile {
  * caller supplies the bootstrap `password` (typically `readAuthFile().token`)
  * because the secrets table is encrypted with it. A secret that does not
  * decrypt (corrupt row, other password) is left out. The record of provider
- * tests is state, not a setting, and stays out.
+ * tests is state, not a setting, and stays out, as do the secrets of single Agents.
  */
 export function mergeSecretsIntoEnv(
   db: BazilionDb,
@@ -55,5 +56,9 @@ export function mergeSecretsIntoEnv(
     [MODEL_WINDOWS_KEY]: _windows,
     ...config
   } = openConfig(db).getAll()
-  return { ...config, ...openSecrets(db, password).getAll(), ...env }
+  // An Agent's own secrets reach only that Agent's turns (`agent-secrets.ts`).
+  const secrets = Object.fromEntries(
+    Object.entries(openSecrets(db, password).getAll()).filter(([key]) => !isAgentSecretKey(key)),
+  )
+  return { ...config, ...secrets, ...env }
 }

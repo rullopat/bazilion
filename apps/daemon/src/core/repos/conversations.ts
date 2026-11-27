@@ -76,7 +76,14 @@ export function validTitle(value: string): string {
 }
 
 /** Record a new conversation whose session file already exists, and select it. */
-export function create(db: BazilionDb, agentId: string, id: string, title?: string): Conversation {
+/** A new conversation, selected unless `select` is false (a helper's own). */
+export function create(
+  db: BazilionDb,
+  agentId: string,
+  id: string,
+  title?: string,
+  options: { select?: boolean } = {},
+): Conversation {
   const displayTitle = title === undefined ? undefined : validTitle(title)
   return db.raw.transaction(() => {
     const now = Date.now()
@@ -85,11 +92,12 @@ export function create(db: BazilionDb, agentId: string, id: string, title?: stri
       VALUES (?, ?, ?, ?, ?)`,
       [id, agentId, displayTitle ?? `Conversation ${list(db, agentId, 1).total + 1}`, now, now],
     )
-    db.raw.run(
-      `INSERT INTO agent_conversation_selection (agent_id, conversation_id) VALUES (?, ?)
+    if (options.select !== false)
+      db.raw.run(
+        `INSERT INTO agent_conversation_selection (agent_id, conversation_id) VALUES (?, ?)
       ON CONFLICT(agent_id) DO UPDATE SET conversation_id = excluded.conversation_id`,
-      [agentId, id],
-    )
+        [agentId, id],
+      )
     const conversation = get(db, agentId, id)
     if (!conversation) throw new Error('Conversation not found')
     return conversation

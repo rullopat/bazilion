@@ -314,13 +314,31 @@ export interface ImageRouteEntry {
   needs?: string
 }
 
-/** `GET /api/config/models`: what Agents think and draw with. */
+/** One way to turn speech into words: a model through one provider's account. */
+export interface TranscriptionRouteEntry {
+  /** The value of BAZILION_TRANSCRIPTION_MODEL that selects it. */
+  id: string
+  model: string
+  provider: string
+  providerName: string
+  billing: string
+  ready: boolean
+  needs?: string
+}
+
+/** `GET /api/config/models`: what Agents think, draw and hear with. */
 export interface ModelsResponse {
   chat: ChatModelEntry[]
   images: {
     /** The selected route's id, or `off`. */
     selected: string
     routes: ImageRouteEntry[]
+  }
+  /** What voice notes and audio you send are transcribed with, before the turn. */
+  transcription: {
+    /** The selected route's id, or `off`. */
+    selected: string
+    routes: TranscriptionRouteEntry[]
   }
   /** The model that answers first for dangerous commands (BAZILION_COMMAND_REVIEW_MODEL). */
   commandReview: {

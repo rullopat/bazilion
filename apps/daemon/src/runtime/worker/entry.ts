@@ -151,6 +151,9 @@ async function openAgentTurn(
           return result
         }
       : undefined,
+    readResult: served.has('resultHost')
+      ? (resultId) => call('readResult', { resultId })
+      : undefined,
     showResult: served.has('resultHost')
       ? async (resultId) => {
           const shown = await call('showResult', { resultId })
@@ -167,6 +170,29 @@ async function openAgentTurn(
           search: (query) => call('recallSearch', { query }),
           read: (conversationId, from, count) =>
             call('recallRead', { conversationId, from, ...(count !== undefined ? { count } : {}) }),
+        }
+      : undefined,
+    secretHost: served.has('secretHost')
+      ? {
+          list: () => call('secretList', {}),
+          ...(served.has('questionHost')
+            ? { request: (secret, replace) => call('secretRequest', { secret, replace }) }
+            : {}),
+        }
+      : undefined,
+    ...(input.secrets ? { secrets: input.secrets } : {}),
+    helperHost: served.has('helperHost')
+      ? {
+          start: (args) => call('helperStart', args),
+          wait: (args) => call('helperWait', args),
+          stop: (args) => call('helperStop', args),
+        }
+      : undefined,
+    scheduleHost: served.has('scheduleHost')
+      ? {
+          add: (args) => call('scheduleAdd', args),
+          list: () => call('scheduleList', {}),
+          remove: (id) => call('scheduleRemove', { id }),
         }
       : undefined,
     jobHost: served.has('jobHost')
@@ -199,8 +225,14 @@ async function openReview(
   return { handle, review }
 }
 
-/** The prompt text, without the turn's own credentials, and an Agent turn's images. */
-function promptOf(input: WorkerInput): {
+/**
+ * The prompt text, without the turn's credentials and the Agent's secrets (a wake can carry a
+ * job's output), and an Agent turn's images.
+ */
+function promptOf(
+  input: WorkerInput,
+  secrets: readonly string[],
+): {
   text: string
   images?: Array<{ type: 'image'; data: string; mimeType: string }>
 } {
@@ -213,7 +245,7 @@ function promptOf(input: WorkerInput): {
     mimeType: image.mimeType,
   }))
   return {
-    text: redactExactValues(input.message, input.apiKey ? [input.apiKey] : []),
+    text: redactExactValues(input.message, [...secrets, ...(input.apiKey ? [input.apiKey] : [])]),
     ...(images.length > 0 ? { images } : {}),
   }
 }
@@ -271,7 +303,7 @@ async function main(): Promise<void> {
   })
 
   try {
-    const { text, images } = promptOf(input)
+    const { text, images } = promptOf(input, handle.redactionSecrets)
     await session.prompt(text, images ? { images } : undefined)
     await session.agent.waitForIdle()
     emit(

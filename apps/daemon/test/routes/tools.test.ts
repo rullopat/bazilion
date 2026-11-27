@@ -71,7 +71,11 @@ test('four tools on a new home, each with what it is doing', async () => {
     ['browser', 'Browser', { label: 'On: a browser per Agent', tone: 'on' }],
     ['commands', 'Commands', { label: 'Runs on this computer', tone: 'on' }],
   ])
-  expect(functions.map((card) => card.id)).toEqual(['image-generation', 'command-review'])
+  expect(functions.map((card) => card.id)).toEqual([
+    'image-generation',
+    'transcription',
+    'command-review',
+  ])
   // Nothing is stored, and every setting says what is in effect.
   const browser = cards.find((card) => card.id === 'browser') as ServiceCard
   expect(browser.fields.every((entry) => !entry.set)).toBe(true)

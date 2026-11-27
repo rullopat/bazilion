@@ -46,6 +46,8 @@ export interface BuildSystemPromptOptions {
   withOperator?: boolean
   /** Messages from other Agents waiting unread: the prompt says so, so the Agent reads them. */
   unreadMessages?: number
+  /** The Agent's secrets, by name and the hosts web_fetch may send each to. */
+  secrets?: readonly { name: string; hosts: readonly string[] }[]
 }
 
 /** Teammates listed by name in the prompt; past this, the rest are counted. */
@@ -64,6 +66,7 @@ export interface PromptSection {
     | 'team'
     | 'user'
     | 'lessons'
+    | 'secrets'
     | 'memory'
   text: string
 }
@@ -302,6 +305,23 @@ export function buildSystemPromptSections(
     parts.push({
       id: 'lessons',
       text: `# Reviewed lessons\n\nThese private lessons were explicitly approved by the human for your behavior. Follow them when relevant; current user instructions and higher-priority policy still win.\n\n${reviewedLessons.map((lesson) => `- ${lesson}`).join('\n')}`,
+    })
+  }
+
+  const secrets = options.secrets ?? []
+  if (secrets.length > 0) {
+    parts.push({
+      id: 'secrets',
+      text: [
+        '# Secrets',
+        '',
+        'The user gave you these secrets. You never see their values: your commands have each as an environment variable of its name, and web_fetch fills in a header written {{secret:NAME}} for the hosts listed. Never print one or send it anywhere else.',
+        '',
+        ...secrets.map(
+          (secret) =>
+            `- ${secret.name}${secret.hosts.length > 0 ? `: web_fetch for ${secret.hosts.join(', ')}` : ': commands only'}`,
+        ),
+      ].join('\n'),
     })
   }
 

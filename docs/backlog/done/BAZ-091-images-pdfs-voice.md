@@ -1,8 +1,9 @@
 ---
 id: BAZ-091
 title: "Images, PDFs and voice notes an Agent can read"
-status: draft
+status: done
 created: 2026-11-27
+shipped: 2026-11-27
 release: v0.64.0
 ---
 
@@ -31,19 +32,29 @@ for us.
 - Without a Transcription model, nothing changes: the Agent gets the path, and the setting's card
   says voice notes are not transcribed.
 
-## Where it goes
+## As built
 
-- `src/runtime/tools/view-image.ts`, `src/runtime/tools/pdf-read.ts` (a PDF text library the
-  worker can load under type stripping and the CLI bundle can carry).
-- `src/lib/attachments.ts`, `src/lib/telegram/media.ts`, `src/core/services.ts` and
-  `src/core/providers.ts` (the model function and the providers that offer transcription).
-- Guides: [Telegram](../../telegram.md), [agent engine](../../agent-engine.md#5-tools),
-  [models and providers](../../models-and-providers.md).
+- `runtime/tools/documents.ts`: `view_image` takes `paths`, `urls` and `results`, shows the
+  pictures in order with a line each, and lists what it could not show. `pdf_read` uses unpdf
+  (PDF.js) in the worker; text comes per page, split in parts like a snapshot, read once a turn.
+- Both read through the shell tools' `readFile`: `ContainerPaths` in Docker, `readFromRoots`
+  (workspace and uploads) on the host, which the daemon's reference reader now shares.
+- `pictures.ts` sniffs PNG, JPEG, GIF and WebP; the 25 MiB limit is shared with `image_generate`.
+- `core/transcription-config.ts`: `BAZILION_TRANSCRIPTION_MODEL` (`off` or `openai:gpt-transcribe`);
+  `lib/transcription.ts` posts each audio attachment to `/v1/audio/transcriptions` while the turn
+  is prepared. A **Transcription** card on the Models page shares the Images card's parts.
+- Guides: [Telegram](../../telegram.md), [models](../../models-and-providers.md#transcription),
+  [agent engine](../../agent-engine.md#5-tools).
 
-## Limits and open questions
+## Decided while building
+
+- OpenAI's `gpt-transcribe` first: OpenAI deprecated `whisper-1` and the `gpt-4o-*-transcribe`
+  models (shut down on 2027-02-26).
+- A model without image input gets Pi's own note in place of the picture.
+- On the host, `view_image` and `pdf_read` read only the workspace and the uploads.
+
+## Limits
 
 - Scanned PDFs have no text, and OCR is not part of this story.
-- Usage is counted from the session files, so a transcription made outside a turn does not show
-  in Usage until it is counted there.
+- A transcription is not a turn, so Usage does not count it.
 - Audio files the Agent finds in the workspace are not transcribed, only the ones you send.
-- To decide: which transcription providers come first. OpenAI's models are my pick.

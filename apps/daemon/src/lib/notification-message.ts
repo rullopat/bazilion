@@ -11,7 +11,7 @@ function display(value: string): string {
 }
 
 /** A link only works through a published (non-loopback) web origin. */
-function publicOrigin(env: NodeJS.ProcessEnv): string | null {
+export function publicOrigin(env: NodeJS.ProcessEnv): string | null {
   try {
     const origin = publicOriginConfig(env.BAZILION_PUBLIC_ORIGIN).origin
     if (!origin) return null

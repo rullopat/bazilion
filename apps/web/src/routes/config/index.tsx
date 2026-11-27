@@ -15,6 +15,7 @@ import {
   ImagesCard,
   ProvidersCard,
   StatusLine,
+  TranscriptionCard,
 } from '../../components/setup/ModelsCards'
 import { ProviderSheet } from '../../components/setup/ProviderSheet'
 import { api } from '../../lib/api'
@@ -106,6 +107,11 @@ function ModelsPage() {
         onChanged={reload}
       />
       <ImagesCard images={models.images} onConnect={(id) => open({ add: id })} onChanged={reload} />
+      <TranscriptionCard
+        transcription={models.transcription}
+        onConnect={(id) => open({ add: id })}
+        onChanged={reload}
+      />
       <CommandReviewCard chat={models.chat} review={models.commandReview} onChanged={reload} />
       <ProvidersCard
         providers={listed}

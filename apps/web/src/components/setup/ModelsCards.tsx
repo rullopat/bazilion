@@ -5,7 +5,16 @@ import type {
   ProviderConfigEntry,
   SetProviderModelsResponse,
 } from '@bazilion/api-types'
-import { ChevronRight, Images, MessageSquare, Plug, Plus, ShieldCheck, X } from 'lucide-react'
+import {
+  AudioLines,
+  ChevronRight,
+  Images,
+  MessageSquare,
+  Plug,
+  Plus,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
 import { useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import {
@@ -275,17 +284,88 @@ export function ImagesCard({
   onConnect: (providerId: string) => void
   onChanged: () => Promise<void>
 }) {
+  return (
+    <RouteCard
+      field="BAZILION_IMAGE_MODEL"
+      labelledBy="setup-images"
+      icon={<Images className="size-5" />}
+      title="Images"
+      description="What Agents draw with. One model for every Agent, up to four images a turn."
+      offText="Agents have no image tool"
+      unknown="an image route"
+      choice={images}
+      onConnect={onConnect}
+      onChanged={onChanged}
+    />
+  )
+}
+
+/**
+ * Transcription: one speech-to-text model turns voice notes and audio you send into words before
+ * the turn, or the Agent gets the file alone.
+ */
+export function TranscriptionCard({
+  transcription,
+  onConnect,
+  onChanged,
+}: {
+  transcription: ModelsResponse['transcription']
+  onConnect: (providerId: string) => void
+  onChanged: () => Promise<void>
+}) {
+  return (
+    <RouteCard
+      field="BAZILION_TRANSCRIPTION_MODEL"
+      labelledBy="setup-transcription"
+      icon={<AudioLines className="size-5" />}
+      title="Transcription"
+      description="What turns voice notes and audio you send, in chat or on Telegram, into words before the turn."
+      offText="Voice notes are not transcribed: Agents get the file"
+      unknown="a transcription route"
+      choice={transcription}
+      onConnect={onConnect}
+      onChanged={onChanged}
+    />
+  )
+}
+
+/** One model for every Agent, through one provider's account, chosen from a list, or none. */
+function RouteCard({
+  field,
+  labelledBy,
+  icon,
+  title,
+  description,
+  offText,
+  unknown,
+  choice,
+  onConnect,
+  onChanged,
+}: {
+  field: string
+  labelledBy: string
+  icon: React.ReactNode
+  title: string
+  description: string
+  /** What Off means. */
+  offText: string
+  /** What the setting should name, for a value that names none. */
+  unknown: string
+  choice: { selected: string; routes: ImageRouteEntry[] }
+  onConnect: (providerId: string) => void
+  onChanged: () => Promise<void>
+}) {
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const selected = images.routes.find((route) => route.id === images.selected)
+  const selected = choice.routes.find((route) => route.id === choice.selected)
   const on = selected?.ready === true
-  const shown = saving ?? images.selected
+  const shown = saving ?? choice.selected
 
   async function choose(id: string) {
     setSaving(id)
     setError(null)
     try {
-      await api('/api/config/fields/BAZILION_IMAGE_MODEL', { method: 'PUT', body: { value: id } })
+      await api(`/api/config/fields/${field}`, { method: 'PUT', body: { value: id } })
       await onChanged()
     } catch (cause) {
       setError(errorMessage(cause))
@@ -301,7 +381,7 @@ export function ImagesCard({
     >
       <input
         type="radio"
-        name="image-model"
+        name={labelledBy}
         checked={shown === id}
         disabled={!ready || saving !== null}
         onChange={() => void choose(id)}
@@ -314,17 +394,17 @@ export function ImagesCard({
 
   return (
     <SetupCard
-      labelledBy="setup-images"
-      icon={<Images className="size-5" />}
-      title="Images"
-      description="What Agents draw with. One model for every Agent, up to four images a turn."
+      labelledBy={labelledBy}
+      icon={icon}
+      title={title}
+      description={description}
       action={
         <Chip tone={on ? 'success' : selected ? 'warning' : 'neutral'}>
           {on ? `On: ${selected.model}` : selected ? `Needs ${selected.needs}` : 'Off'}
         </Chip>
       }
     >
-      {images.routes.map((route: ImageRouteEntry) =>
+      {choice.routes.map((route: ImageRouteEntry) =>
         row(
           route.id,
           <>
@@ -356,17 +436,14 @@ export function ImagesCard({
           <span className="min-w-0 flex-[1.6] basis-60 text-base font-semibold text-foreground">
             Off
           </span>
-          <span className="min-w-0 flex-1 basis-44 text-sm text-muted-foreground">
-            Agents have no image tool
-          </span>
+          <span className="min-w-0 flex-1 basis-44 text-sm text-muted-foreground">{offText}</span>
         </>,
         true,
         null,
       )}
-      {images.selected !== 'off' && !selected && (
+      {choice.selected !== 'off' && !selected && (
         <div role="alert" className={`${ROW} py-3 text-sm text-warning`}>
-          BAZILION_IMAGE_MODEL is set to “{images.selected}”, which is not an image route. Choose
-          one above.
+          {field} is set to “{choice.selected}”, which is not {unknown}. Choose one above.
         </div>
       )}
       {error && (

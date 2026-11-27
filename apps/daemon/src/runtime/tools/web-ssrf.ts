@@ -195,6 +195,8 @@ export interface GuardedFetchOptions {
   signal?: AbortSignal
   /** If true, skip all SSRF checks (for tests hitting 127.0.0.1 mocks). */
   allowPrivate?: boolean
+  /** Headers meant for the first origin only, dropped with the credentials when a redirect leaves it. */
+  dropOnCrossOrigin?: readonly string[]
 }
 
 export interface GuardedFetchResult {
@@ -209,12 +211,14 @@ function isRedirectStatus(s: number): boolean {
 
 function withoutCrossOriginCredentials(
   headersInit: ConstructorParameters<typeof Headers>[0] | undefined,
+  drop: readonly string[] = [],
 ): Headers | undefined {
   if (!headersInit) return undefined
   const headers = new Headers(headersInit)
   headers.delete('authorization')
   headers.delete('cookie')
   headers.delete('proxy-authorization')
+  for (const name of drop) headers.delete(name)
   return headers
 }
 
@@ -337,7 +341,7 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
       if (new URL(next).origin !== parsed.origin) {
         requestInit = {
           ...requestInit,
-          headers: withoutCrossOriginCredentials(requestInit.headers),
+          headers: withoutCrossOriginCredentials(requestInit.headers, opts.dropOnCrossOrigin),
         }
       }
       current = next

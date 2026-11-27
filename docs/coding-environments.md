@@ -102,6 +102,11 @@ as the daemon's user: it can read the Bazilion home, including `auth.json` and t
 secrets that token decrypts. In Docker only the Team directory, the uploads and the attached skills
 are mounted and no host environment is passed, so those stay out of reach.
 
+An Agent's own secrets, the ones it asked for with `secret_request` or you gave it on its
+**Secrets** sheet, are in its commands' environment by name in both modes; Docker gets them with
+`--env NAME`, so a value is never on a command line. Other Agents' turns do not get them. See
+[secrets an Agent asks for](questions.md#secrets-an-agent-asks-for).
+
 ## Background jobs
 
 `bash` with `background: true` starts the command as a job and answers at once with its id and

@@ -55,9 +55,11 @@ export function waitingAttention(db: BazilionDb): AttentionItem[] {
         updatedAt: question.createdAt,
         // An action waits until it is answered.
         ...(question.expiresAt !== null ? { expiresAt: question.expiresAt } : {}),
-        title: question.question.action
-          ? `${name(entry)} needs you to do something`
-          : `${name(entry)} is waiting for your answer`,
+        title: question.question.secret
+          ? `${name(entry)} asks for a secret`
+          : question.question.action
+            ? `${name(entry)} needs you to do something`
+            : `${name(entry)} is waiting for your answer`,
         diagnostic: bounded(questionTitle(question.question), 'A question'),
         href: href(question.agentId),
         acknowledgeable: false,

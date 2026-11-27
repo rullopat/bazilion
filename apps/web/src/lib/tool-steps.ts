@@ -246,6 +246,91 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
         icon: 'question',
         kind: 'other',
       }
+    case 'view_image':
+      return {
+        doing: 'looking at pictures',
+        verb: 'Looked at',
+        target: (() => {
+          const count = ['paths', 'urls', 'results']
+            .map((key) => (Array.isArray(args?.[key]) ? (args?.[key] as unknown[]).length : 0))
+            .reduce((a, b) => a + b, 0)
+          return count === 1 ? 'a picture' : `${count} pictures`
+        })(),
+        icon: 'image',
+        kind: 'read',
+      }
+    case 'pdf_read':
+      return {
+        doing: `reading ${baseName(String(args?.path ?? 'a PDF'))}`,
+        verb: 'Read',
+        target: str(args?.path) ? String(args?.path) : null,
+        icon: 'read',
+        kind: 'read',
+      }
+    case 'helper_start':
+      return {
+        doing: 'starting a helper',
+        verb: 'Started a helper for',
+        target: str(args?.task) ? clip(String(args?.task).split('\n')[0] ?? '') : null,
+        icon: 'tool',
+        kind: 'other',
+      }
+    case 'helper_wait':
+      return {
+        doing: 'waiting for its helpers',
+        verb: 'Waited for its helpers',
+        target: null,
+        icon: 'tool',
+        kind: 'other',
+      }
+    case 'helper_stop':
+      return {
+        doing: 'stopping a helper',
+        verb: 'Stopped a helper',
+        target: null,
+        icon: 'tool',
+        kind: 'other',
+      }
+    case 'secret_request':
+      return {
+        doing: 'asking you for a secret',
+        verb: 'Asked you for',
+        target: str(args?.name) ? String(args?.name) : null,
+        icon: 'question',
+        kind: 'other',
+      }
+    case 'secret_list':
+      return {
+        doing: 'listing its secrets',
+        verb: 'Listed its secrets',
+        target: null,
+        icon: 'note',
+        kind: 'other',
+      }
+    case 'schedule_add':
+      return {
+        doing: 'setting a schedule',
+        verb: 'Set a schedule',
+        target: null,
+        icon: 'note',
+        kind: 'other',
+      }
+    case 'schedule_list':
+      return {
+        doing: 'listing its schedules',
+        verb: 'Listed its schedules',
+        target: null,
+        icon: 'note',
+        kind: 'other',
+      }
+    case 'schedule_remove':
+      return {
+        doing: 'removing a schedule',
+        verb: 'Removed a schedule',
+        target: null,
+        icon: 'note',
+        kind: 'other',
+      }
     case 'propose_lesson':
       return {
         doing: 'proposing a lesson',

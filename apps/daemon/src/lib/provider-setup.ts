@@ -45,6 +45,7 @@ import {
   providerEndpoint,
   providersUsingField,
 } from '../core/providers.ts'
+import { TRANSCRIPTION_ROUTES, transcriptionRouteNeeds } from '../core/transcription-config.ts'
 import {
   type CatalogEntry,
   catalogContextWindow,
@@ -237,6 +238,21 @@ export async function modelsOverview(ctx: SetupCtx): Promise<ModelsResponse> {
     commandReview: {
       selected: snap.env.BAZILION_COMMAND_REVIEW_MODEL?.trim() || null,
       approvalMode: approval === 'dangerous' || approval === 'review' ? approval : 'off',
+    },
+    transcription: {
+      selected: snap.env.BAZILION_TRANSCRIPTION_MODEL?.trim() || 'off',
+      routes: TRANSCRIPTION_ROUTES.map((route) => {
+        const needs = transcriptionRouteNeeds(route, snap.env)
+        return {
+          id: route.id,
+          model: route.model,
+          provider: route.provider,
+          providerName: findProvider(route.provider)?.displayName ?? route.provider,
+          billing: route.billing,
+          ready: needs === null,
+          ...(needs ? { needs } : {}),
+        }
+      }),
     },
     images: {
       selected: snap.env.BAZILION_IMAGE_MODEL || 'off',

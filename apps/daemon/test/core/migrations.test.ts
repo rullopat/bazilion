@@ -157,6 +157,37 @@ test('a home from before schema versions is version 1, and this release stamps i
   }
 })
 
+test("the shipped migrations keep a home's schedules and their runs, set by the owner", () => {
+  const path = join(home, 'bazilion.db')
+  writeUnversionedHome(path)
+  const db = openDb(path)
+  try {
+    initSchema(db, { copyDir: join(home, 'upgrades') })
+    expect(
+      db.raw
+        .query<Record<string, unknown>, []>(
+          'SELECT id, kind, cron_expr, run_at, message, conversation_id, set_by FROM agent_triggers',
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: 'trigger',
+        kind: 'cron',
+        cron_expr: '0 9 * * *',
+        run_at: null,
+        message: 'Morning summary',
+        conversation_id: null,
+        set_by: 'owner',
+      },
+    ])
+    expect(db.raw.query<{ id: string }, []>('SELECT id FROM trigger_dispatches').all()).toEqual([
+      { id: 'dispatch' },
+    ])
+  } finally {
+    db.close()
+  }
+})
+
 test('an upgrade keeps every row, copies the database first and stamps the new version', () => {
   const path = join(home, 'bazilion.db')
   writeUnversionedHome(path)
@@ -366,6 +397,8 @@ const SHIPPED_MIGRATIONS: Record<string, string> = {
   '001-baseline.sql': '1f424c75254ed4e4cfc51a9eb34b6cfef13025f01726681b6b12983c44e0d015',
   // 0.63.0: the remembered command rules.
   '002-command-rules.sql': '29a3e16e5c0b4a047e92a9f65951cf1318f2aad548d2cecee16ffbfe53d4e5ef',
+  // 0.64.0: one-time schedules, the conversation a schedule runs in, who set it.
+  '003-agent-schedules.sql': '3893ecdd4cf151621a28d488e6bb08417c64beec454d368a04d9ef227133fe0f',
 }
 
 test('migrations that releases shipped are unchanged', () => {

@@ -1,0 +1,5 @@
+---
+"bazilion": minor
+---
+
+**Agents set their own schedules.** Ask an Agent "remind me on Friday at nine", "check the deploy again in two hours" or "summarise the inbox every morning", in chat or on Telegram, and it sets the schedule itself with `schedule_add`: once at a time, every few minutes, or a cron expression, together with the note it gets when the time comes. The schedule runs in the conversation it was set in, and the Agent's turn says that it set it. `schedule_list` shows the Agent all its schedules and who set each; `schedule_remove` removes only its own. Schedules can now run once: the Schedules sheet has **Once** with a day and a time, `bazilion trigger add` takes `--at "YYYY-MM-DD HH:MM"`, and a one-time schedule shows as done once it has run. You can change any schedule, whoever set it: **Change…** in the Schedules sheet or `bazilion trigger edit <id>` with a new message or timing. Schedules an Agent set are marked with its name in the sheet and `set by the agent` in `bazilion trigger list`. The upgrade adds the new fields to your schedules and keeps every schedule and its runs.

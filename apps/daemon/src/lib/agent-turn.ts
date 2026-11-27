@@ -3,9 +3,9 @@
 // registration whatever happens.
 
 import { randomUUID } from 'node:crypto'
-import { realpathSync } from 'node:fs'
-import { join, posix, resolve } from 'node:path'
+import { join, posix } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
+import { agentSecretValues, listAgentSecrets } from '../core/agent-secrets.ts'
 import { imageRoute } from '../core/image-generation-config.ts'
 import {
   agentReviewRepo,
@@ -16,7 +16,7 @@ import {
 import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { rememberLocalModelWindow } from '../runtime/providers/pi-runtime.ts'
-import { isContained, readContainedFile } from '../runtime/safe-files.ts'
+import { readFromRoots } from '../runtime/safe-files.ts'
 import { loadPromptSkills } from '../runtime/session/prompt.ts'
 import { ContainerPaths } from '../runtime/shell/container-paths.ts'
 import {
@@ -27,22 +27,26 @@ import {
 } from '../runtime/shell/docker.ts'
 import { resolveShellSecurityConfig, toolEnvironment } from '../runtime/shell/security.ts'
 import { buildDockerSandbox, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
+import { MAX_PICTURE_BYTES } from '../runtime/tools/pictures.ts'
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
+import { requestAgentSecret } from './agent-secrets.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { commandApprovalRegistry, createTurnApprovalHost } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
 import { reviewCommand } from './command-review.ts'
 import { getCtx } from './ctx.ts'
-import { createImageGenerationHost, MAX_REFERENCE_BYTES } from './image-generation.ts'
+import { createHelperHost, turnClosed, turnOpened } from './helpers.ts'
+import { createImageGenerationHost } from './image-generation.ts'
 import { createJobHost } from './jobs.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
 import { questionRegistry } from './questions.ts'
 import { createRecallHost } from './recall-host.ts'
 import { createResultHost } from './result-host.ts'
+import { createScheduleHost } from './schedule-host.ts'
 import { agentContacts, createDbTeamHost } from './team-host.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
 import {
@@ -57,10 +61,17 @@ export { prepareAgentTurn }
 
 export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<ChatFrame> {
   const agentId = turn.agent.agent.id
+  // A helper runs beside the Agent's own turn: it is not the Agent's running turn, in the panel or
+  // on Telegram, and its own frames go to the helper's record (lib/helpers.ts).
+  const helper = turn.request.origin === 'helper'
+  if (!helper) turnOpened(turn.request.attemptId)
   try {
     const { db, authToken } = getCtx()
     // The worker, and so every shell command of the turn, never sees Bazilion's own credentials.
     const env = toolEnvironment(mergeSecretsIntoEnv(db, authToken), authToken)
+    // The Agent's own secrets join the worker's environment, and so its commands', by name.
+    const secrets = agentSecretValues(db, authToken, agentId)
+    const secretEnv = Object.fromEntries(secrets.map((secret) => [secret.name, secret.value]))
     const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, turn.agent)
     // A tool that sends or changes something outside waits for the operator, as a risky command
     // does: in the chat, Telegram and Attention, and refused when nobody can answer this turn.
@@ -111,31 +122,33 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         contacts: agentContacts(db, agentId),
         withOperator: withOperator(turn),
         unreadMessages: messageRepo.unreadCount(db, agentId),
+        secrets: secrets.map(({ name, hosts }) => ({ name, hosts })),
       },
       {
-        env,
+        env: { ...env, ...secretEnv },
         signal: turn.controller.signal,
         diagnosticSink: (diagnostic) => console.warn(`[worker ${agentId}] ${diagnostic}`),
-        ...turnHosts(turn, env),
+        ...turnHosts(turn, env, secretEnv),
         mcpHost: mcp?.host,
         apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
       },
     )
 
-    mirrorTypingStart(agentId)
+    if (!helper) mirrorTypingStart(agentId)
     let completed = false
     for await (const frame of frames) {
-      void mirrorAgentTurnFrame(agentId, frame).catch((error) => {
-        console.warn(
-          JSON.stringify({
-            event: 'telegram_mirror_failed',
-            agentId,
-            origin: turn.request.origin,
-            attemptId: turn.request.attemptId,
-            errorName: error instanceof Error ? error.name : 'unknown',
-          }),
-        )
-      })
+      if (!helper)
+        void mirrorAgentTurnFrame(agentId, frame).catch((error) => {
+          console.warn(
+            JSON.stringify({
+              event: 'telegram_mirror_failed',
+              agentId,
+              origin: turn.request.origin,
+              attemptId: turn.request.attemptId,
+              errorName: error instanceof Error ? error.name : 'unknown',
+            }),
+          )
+        })
       if (frame.kind === 'done') {
         completed = true
         // The worker reports the window Pi was given; seed the daemon's sync reads with it.
@@ -143,7 +156,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         if (typeof window === 'number' && window > 0)
           rememberLocalModelWindow(turn.agent.model, window)
       }
-      noteTurnFrame(agentId, frame)
+      if (!helper) noteTurnFrame(agentId, frame)
       yield frame
     }
     // Reviewed learning counts the completed turns the owner started.
@@ -151,8 +164,11 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       agentReviewRepo.recordSuccessfulUserTurn(db, agentId)
     }
   } finally {
-    noteTurnEnd(agentId)
-    mirrorTypingStop(agentId)
+    if (!helper) {
+      noteTurnEnd(agentId)
+      mirrorTypingStop(agentId)
+      turnClosed(turn.request.attemptId)
+    }
     // A killed worker cannot remove the container its last command was running in.
     if (turn.docker) await removeDockerContainers(turn.docker.containerPrefix)
     releasePreparedAgentTurn(turn)
@@ -187,10 +203,17 @@ function withOperator(turn: PreparedAgentTurn): boolean {
 }
 
 /** The daemon side of the turn's tools, each bound to this turn's Agent, conversation and signal. */
-function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts {
+function turnHosts(
+  turn: PreparedAgentTurn,
+  env: NodeJS.ProcessEnv,
+  secretEnv: Readonly<Record<string, string>>,
+): WorkerHosts {
   const { db, paths, authToken } = getCtx()
   const { agent, conversation } = turn
   const { signal } = turn.controller
+  // What a helper delivers or schedules belongs to the conversation it was started from.
+  const helperOf = turn.request.origin === 'helper' ? turn.request.helper : undefined
+  const homeConversation = helperOf?.parentConversationId ?? conversation.id
   const secretsEnv = () => mergeSecretsIntoEnv(db, authToken)
   // The container the turn's commands run in, built from what the daemon knows of the turn.
   const sandbox = () => {
@@ -198,6 +221,7 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
     if (!docker) throw new Error('the turn has no Docker settings')
     return buildDockerSandbox(agent.team.path, docker, {
       inputsDir: join(agent.agent.dir, 'uploads'),
+      secretEnv,
       skillMounts: loadPromptSkills(paths.skillsDir, agent.skills).map((skill) => ({
         source: skill.hostDir,
         target: skill.sandboxDir,
@@ -208,19 +232,12 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
   const readAgentFile = (path: string): Buffer => {
     if (!turn.docker) {
       // The workspace and the Agent's uploads only, links resolved, as deliver_file reads.
-      const wanted = resolve(agent.team.path, path)
-      for (const root of [agent.team.path, join(agent.agent.dir, 'uploads')]) {
-        let real: string
-        try {
-          real = realpathSync(root)
-        } catch {
-          continue
-        }
-        if (isContained(root, wanted) || isContained(real, wanted)) {
-          return readContainedFile(wanted, real, MAX_REFERENCE_BYTES)
-        }
-      }
-      throw new Error(`${path} is not in your workspace or uploads`)
+      return readFromRoots(
+        path,
+        [agent.team.path, join(agent.agent.dir, 'uploads')],
+        agent.team.path,
+        MAX_PICTURE_BYTES,
+      )
     }
     const current = sandbox()
     const files = new ContainerPaths([
@@ -236,7 +253,7 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
       causalParentMessageId: turn.request.causalParentMessageId,
     }),
     userMdHost: createDbUserMdHost(db, paths),
-    resultHost: createResultHost(db, agent, conversation.id, signal),
+    resultHost: createResultHost(db, agent, homeConversation, signal),
     bashApprovalHost: createTurnApprovalHost({
       registry: commandApprovalRegistry,
       rule: (agentId, command) => commandRuleRepo.matching(db, agentId, command)?.prefix ?? null,
@@ -251,14 +268,22 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
               question,
               askSignal,
             ),
+          askSecret: (secret, replace) =>
+            requestAgentSecret(db, authToken, {
+              agentId: agent.agent.id,
+              conversationId: conversation.id,
+              secret,
+              replace,
+            }),
         }
       : undefined,
+    secretHost: { list: async () => listAgentSecrets(db, authToken, agent.agent.id) },
     imageGenerationHost: imageRoute(env, codexConnected).ready
       ? createImageGenerationHost({
           db,
           agentId: agent.agent.id,
           teamId: agent.team.id,
-          conversationId: conversation.id,
+          conversationId: homeConversation,
           signal,
           env: secretsEnv,
           readReference: readAgentFile,
@@ -296,14 +321,31 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
       conversationId: conversation.id,
       secrets: envSecretValues(secretsEnv()),
     }),
+    // Its schedules: what it adds runs in this conversation, in any kind of turn.
+    scheduleHost: createScheduleHost({
+      db,
+      agentId: agent.agent.id,
+      conversationId: homeConversation,
+    }),
+    // Helpers start helpers of their own never: that is a rule, not a depth limit.
+    helperHost: helperOf
+      ? undefined
+      : createHelperHost({
+          db,
+          paths,
+          agentId: agent.agent.id,
+          conversationId: conversation.id,
+          turnId: turn.request.attemptId,
+          signal,
+        }),
     // Its jobs run where its commands do: in the turn's container, or on the host.
     jobHost: createJobHost({
       paths,
       agentId: agent.agent.id,
-      conversationId: conversation.id,
+      conversationId: homeConversation,
       ...(turn.docker
         ? { docker: { sandbox, namePrefix: jobContainerPrefix(paths.home) } }
-        : { host: { cwd: agent.team.path, env } }),
+        : { host: { cwd: agent.team.path, env: { ...env, ...secretEnv } } }),
     }),
   }
 }

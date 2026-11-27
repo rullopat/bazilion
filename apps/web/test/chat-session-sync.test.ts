@@ -31,6 +31,7 @@ const idle: AgentActivity = {
   queuePaused: false,
   followUps: 0,
   jobs: 0,
+  helpers: 0,
   lastActivityAt: 1_000,
   results: 0,
   lastResultAt: null,

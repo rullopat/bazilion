@@ -4,6 +4,7 @@ import {
   describeCron,
   describeInterval,
   describeSchedule,
+  draftOf,
   EMPTY_SCHEDULE,
   scheduleRequest,
 } from '../src/lib/schedules.ts'
@@ -57,4 +58,57 @@ test('a preset becomes the request the daemon takes', () => {
   expect(scheduleRequest({ ...draft, repeat: 'cron', cron: '0 9 * *' }).problem).toMatch(
     /five fields/,
   )
+})
+
+test('a one-time schedule needs a time to come, and an existing schedule opens as its preset', () => {
+  const now = new Date(2026, 10, 27, 12, 0).getTime()
+  const draft = { ...EMPTY_SCHEDULE, repeat: 'once' as const, message: 'Renew the domain' }
+  expect(scheduleRequest({ ...draft, at: '2026-11-28T09:00' }, now).request).toEqual({
+    kind: 'once',
+    runAt: new Date(2026, 10, 28, 9, 0).getTime(),
+    message: 'Renew the domain',
+  })
+  expect(scheduleRequest({ ...draft, at: '2026-11-27T11:00' }, now).problem).toBe(
+    'Give a time that has not passed yet.',
+  )
+  expect(scheduleRequest({ ...draft, at: '' }, now).field).toBe('at')
+  expect(describeSchedule({ kind: 'once', runAt: now })).toEqual({ text: 'Once', raw: false })
+  expect(describeSchedule({ kind: 'once', runAt: now }, () => 'Fri 28 Nov, 09:00').text).toBe(
+    'Once, Fri 28 Nov, 09:00',
+  )
+
+  const trigger = {
+    id: 't',
+    agentId: 'a',
+    intervalSec: null,
+    cronExpr: null,
+    runAt: null,
+    message: 'm',
+    enabled: true,
+    lastFiredAt: null,
+    createdAt: 0,
+    conversationId: null,
+    setBy: 'owner' as const,
+  }
+  expect(draftOf({ ...trigger, kind: 'cron', cronExpr: '0 9 * * 1-5' })).toMatchObject({
+    repeat: 'weekdays',
+    time: '09:00',
+    message: 'm',
+  })
+  expect(draftOf({ ...trigger, kind: 'cron', cronExpr: '30 18 * * 0' })).toMatchObject({
+    repeat: 'weekly',
+    day: '0',
+    time: '18:30',
+  })
+  expect(draftOf({ ...trigger, kind: 'cron', cronExpr: '*/15 9-17 * * 1-5' })).toMatchObject({
+    repeat: 'cron',
+    cron: '*/15 9-17 * * 1-5',
+  })
+  expect(draftOf({ ...trigger, kind: 'interval', intervalSec: 1800 })).toMatchObject({
+    repeat: 'minutes',
+    minutes: '30',
+  })
+  expect(
+    draftOf({ ...trigger, kind: 'once', runAt: new Date(2026, 10, 28, 9, 5).getTime() }),
+  ).toMatchObject({ repeat: 'once', at: '2026-11-28T09:05' })
 })

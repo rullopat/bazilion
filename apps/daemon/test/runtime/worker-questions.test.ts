@@ -20,6 +20,9 @@ test.each([
     ask: vi.fn((question: unknown, signal?: AbortSignal) =>
       registry.ask({ agentId: agent.id, conversationId: target.id }, question, signal),
     ),
+    askSecret: vi.fn(() => {
+      throw new Error('not asked in this test')
+    }),
   }
   try {
     const frames = []

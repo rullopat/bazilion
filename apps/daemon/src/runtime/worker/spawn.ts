@@ -296,6 +296,7 @@ const RPC_HANDLERS: RpcHandlers = {
   },
   publishResult: (args, { hosts }) => host(hosts.resultHost, 'result').publish(args),
   showResult: ({ resultId }, { hosts }) => host(hosts.resultHost, 'result').show(resultId),
+  readResult: ({ resultId }, { hosts }) => host(hosts.resultHost, 'result').read(resultId),
   generateImages: (args, { hosts }) =>
     host(hosts.imageGenerationHost, 'image generation').generate(args),
   webSearch: (args, { hosts }) => host(hosts.webSearchHost, 'web search').search(args),
@@ -330,6 +331,19 @@ const RPC_HANDLERS: RpcHandlers = {
   recallSearch: ({ query }, { hosts }) => host(hosts.recallHost, 'recall').search(query),
   recallRead: ({ conversationId, from, count }, { hosts }) =>
     host(hosts.recallHost, 'recall').read(conversationId, from, count),
+  scheduleAdd: (args, { hosts }) => host(hosts.scheduleHost, 'schedule').add(args),
+  scheduleList: (_args, { hosts }) => host(hosts.scheduleHost, 'schedule').list(),
+  scheduleRemove: ({ id }, { hosts }) => host(hosts.scheduleHost, 'schedule').remove(id),
+  secretList: (_args, { hosts }) => host(hosts.secretHost, 'secret').list(),
+  helperStart: (args, { hosts }) => host(hosts.helperHost, 'helper').start(args),
+  helperWait: (args, ctx) => host(ctx.hosts.helperHost, 'helper').wait(args, ctx.signal),
+  helperStop: (args, { hosts }) => host(hosts.helperHost, 'helper').stop(args),
+  secretRequest: async ({ secret, replace }, ctx) => {
+    const asked = host(ctx.hosts.questionHost, 'question').askSecret(secret, replace)
+    if (asked.kind === 'asked')
+      ctx.pushFrame({ kind: 'event', event: { type: 'agent_question', question: asked.question } })
+    return asked
+  },
   refreshApiKey: async ({ providerName }, ctx) => {
     const token = await refreshApiKeyForTurn(
       providerName,

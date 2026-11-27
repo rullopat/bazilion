@@ -232,6 +232,73 @@ export interface WebFetchOpts {
    * the Agent sees it (`/inputs` in Docker). Without it, a long page is cut.
    */
   savePages?: { dir: string; shown: string }
+  /** The Agent's secrets, for headers written {{secret:NAME}}: each only for its own hosts. */
+  secrets?: readonly WebFetchSecret[]
+}
+
+/** One of the Agent's secrets, as web_fetch may use it. */
+export interface WebFetchSecret {
+  name: string
+  value: string
+  /** Host names, compared whole and in lower case. */
+  hosts: readonly string[]
+}
+
+const SECRET_PLACEHOLDER = /\{\{secret:([A-Za-z_][A-Za-z0-9_]*)\}\}/g
+const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/
+/** Headers the request itself owns; the Agent's would break it or smuggle another one. */
+const FIXED_HEADERS = new Set([
+  'host',
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'upgrade',
+  'te',
+  'trailer',
+  'keep-alive',
+  'proxy-authorization',
+])
+
+/**
+ * The Agent's request headers with each {{secret:NAME}} filled in. A secret is used only when the
+ * request goes to one of its hosts; anything else is refused before a byte is sent.
+ */
+export function fillHeaders(
+  raw: unknown,
+  url: URL,
+  secrets: readonly WebFetchSecret[],
+): Record<string, string> {
+  if (raw === undefined || raw === null) return {}
+  if (typeof raw !== 'object' || Array.isArray(raw))
+    throw new Error('web_fetch: headers is an object of header names and values')
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  const filled: Record<string, string> = {}
+  for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!HEADER_NAME.test(name)) throw new Error(`web_fetch: "${name}" is not a header name`)
+    if (FIXED_HEADERS.has(name.toLowerCase()))
+      throw new Error(`web_fetch: the ${name} header is set by the request itself`)
+    if (typeof value !== 'string') throw new Error(`web_fetch: header ${name} must be text`)
+    if (/[\r\n]/.test(value)) throw new Error(`web_fetch: header ${name} has a line break`)
+    filled[name] = value.replace(SECRET_PLACEHOLDER, (_match, secretName: string) => {
+      const secret = secrets.find((candidate) => candidate.name === secretName)
+      if (!secret)
+        throw new Error(`web_fetch: you have no secret ${secretName}; secret_list shows yours`)
+      if (!secret.hosts.includes(host))
+        throw new Error(
+          secret.hosts.length > 0
+            ? `web_fetch: ${secretName} is only for ${secret.hosts.join(', ')}, not ${host}`
+            : `web_fetch: ${secretName} is for your commands only; no host may get it from web_fetch`,
+        )
+      // In clear text it could be read on the way; a local server (tests) is the exception.
+      if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(host))
+        throw new Error(`web_fetch: ${secretName} is sent over https only`)
+      return secret.value
+    })
+    // Never quoted: the request library's error would show the value.
+    if (/[\r\n]/.test(filled[name] as string))
+      throw new Error(`web_fetch: header ${name} would hold a line break, so it is not sent`)
+  }
+  return filled
 }
 
 /** web_search: the daemon runs the search; the worker never sees the backend or its credentials. */
@@ -329,7 +396,7 @@ export function webFetchTool(opts?: WebFetchOpts): ToolHandler {
     def: {
       name: 'web_fetch',
       description:
-        'Fetch a URL and return its readable content. HTML is extracted via Readability and converted to markdown. When the primary extraction returns near-empty content from a 2xx HTML page (typical of JS-only shells), the tool automatically retries via Firecrawl if FIRECRAWL_API_KEY is configured. Results are cached for 15 minutes.',
+        'Fetch a URL and return its readable content. HTML is extracted via Readability and converted to markdown. When the primary extraction returns near-empty content from a 2xx HTML page (typical of JS-only shells), the tool automatically retries via Firecrawl if FIRECRAWL_API_KEY is configured. Results without headers are cached for 15 minutes. headers sends request headers, for an API that needs a key: write one of your secrets as {{secret:NAME}} and it is filled in, only for the hosts that secret is for.',
       parameters: {
         type: 'object',
         properties: {
@@ -343,6 +410,12 @@ export function webFetchTool(opts?: WebFetchOpts): ToolHandler {
             enum: ['markdown', 'text'],
             description: 'Output format for HTML pages. Default "markdown".',
           },
+          headers: {
+            type: 'object',
+            additionalProperties: { type: 'string' },
+            description:
+              'Request headers, such as {"Authorization": "Bearer {{secret:GITHUB_TOKEN}}"}. They are dropped if the page redirects to another site.',
+          },
         },
         required: ['url'],
       },
@@ -353,8 +426,17 @@ export function webFetchTool(opts?: WebFetchOpts): ToolHandler {
       const maxLen = typeof args.max_length === 'number' ? args.max_length : DEFAULT_MAX_LENGTH
       const mode: ExtractMode = args.extract_mode === 'text' ? 'text' : 'markdown'
       const cacheKey = `${mode}|${url}`
+      let target: URL
+      try {
+        target = new URL(url)
+      } catch {
+        throw new Error(`web_fetch: ${url} is not a URL`)
+      }
+      const headers = fillHeaders(args.headers, target, opts?.secrets ?? [])
+      // A request with headers (an API with a key) is neither cached nor answered from the cache.
+      const cacheable = Object.keys(headers).length === 0
 
-      const cached = cacheGet(cache, cacheKey)
+      const cached = cacheable ? cacheGet(cache, cacheKey) : undefined
       if (cached) return formatOutput(cached, maxLen, cacheKey, opts?.savePages)
 
       let result: GuardedFetchResultShape | null = null
@@ -365,11 +447,13 @@ export function webFetchTool(opts?: WebFetchOpts): ToolHandler {
           signal: opts?.signal,
           allowPrivate,
           timeoutMs,
+          dropOnCrossOrigin: Object.keys(headers),
           init: {
             headers: {
               'user-agent': DEFAULT_USER_AGENT,
               accept: 'text/html,application/xhtml+xml,application/json,text/plain,*/*',
               'accept-language': 'en-US,en;q=0.9',
+              ...headers,
             },
           },
         })
@@ -412,7 +496,7 @@ export function webFetchTool(opts?: WebFetchOpts): ToolHandler {
         // Redirects are followed: tell the model which page it actually read.
         if (result.finalUrl !== new URL(url).href)
           extracted = { ...extracted, text: `[final URL: ${result.finalUrl}]\n\n${extracted.text}` }
-        cacheSet(cache, cacheKey, extracted, cacheTtlMs, cacheMax)
+        if (cacheable) cacheSet(cache, cacheKey, extracted, cacheTtlMs, cacheMax)
         return formatOutput(extracted, maxLen, cacheKey, opts?.savePages)
       } catch (err) {
         if (err instanceof SsrFBlockedError) throw new Error(`web_fetch: ${err.message}`)

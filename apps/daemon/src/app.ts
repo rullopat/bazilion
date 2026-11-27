@@ -7,6 +7,7 @@ import { activityRouter } from './routes/activity.ts'
 import { agentBrowserRouter } from './routes/agent-browser.ts'
 import { agentChatRouter } from './routes/agent-chat.ts'
 import { agentLearningRouter } from './routes/agent-learning.ts'
+import { agentSecretsRouter } from './routes/agent-secrets.ts'
 import { agentsRouter } from './routes/agents.ts'
 import { attentionRouter } from './routes/attention.ts'
 import { authRouter } from './routes/auth-login.ts'
@@ -14,6 +15,7 @@ import { commandRulesRouter } from './routes/command-rules.ts'
 import { configRouter } from './routes/config.ts'
 import { conversationSearchRouter, conversationsRouter } from './routes/conversations.ts'
 import { eventsRouter } from './routes/events.ts'
+import { agentHelpersRouter } from './routes/helpers.ts'
 import { agentJobsRouter, jobsRouter } from './routes/jobs.ts'
 import { mcpRouter } from './routes/mcp.ts'
 import {
@@ -61,6 +63,8 @@ export function createApp(): Hono {
   app.route('/api/agents', agentSkillsRouter)
   app.route('/api/agents', agentTelegramRouter)
   app.route('/api/agents', agentTriggersRouter)
+  app.route('/api/agents', agentSecretsRouter)
+  app.route('/api/agents', agentHelpersRouter)
   app.route('/api/agents', agentJobsRouter)
   app.route('/api/agents', conversationsRouter)
   app.route('/api/agents', userQueueRouter)

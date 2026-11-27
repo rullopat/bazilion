@@ -17,7 +17,8 @@ same two functions:
    and its conversation, refuses a
    disabled provider or a disconnected ChatGPT account, registers the turn's `AbortController`
    under the Agent id, prepares the Docker settings when `BAZILION_BASH_SANDBOX=docker`, reads the
-   workspace `AGENTS.md` files and saves non-image attachments to `uploads/`. Trigger and inbox
+   workspace `AGENTS.md` files and saves non-image attachments to `uploads/`, transcribing audio
+   when a Transcription model is chosen (`lib/transcription.ts`). Trigger and inbox
    turns arrive already registered by the scheduler.
 2. `runAgentTurn` (`apps/daemon/src/lib/agent-turn.ts`) builds the daemon hosts behind the
    worker's tools, starts the worker with `spawnWorkerTurn`, relays its frames (mirroring them to
@@ -163,6 +164,20 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   by default its own), only in a turn you started and at most six per turn
   (`lib/team-host.ts`). The new Agent's `AGENTS.md` starts with its role and who made it, it gets
   no first-run ritual, and in a restricted Team it is connected with its creator both ways.
+- `secret_request` (where `ask_user` is) and `secret_list`: secrets by name; the value goes from a
+  masked card to the daemon's store and reaches the Agent's commands as an environment variable
+  and `web_fetch` headers written `{{secret:NAME}}` (`lib/agent-secrets.ts`); see
+  [questions](questions.md#secrets-an-agent-asks-for). Tool results go to the model with secrets
+  and Bazilion's credentials taken out (`redactToolResults` in `runtime/pi/session.ts`).
+- `view_image` shows the model pictures: files in the workspace or uploads, URLs (through the
+  `web_fetch` guard) and saved results, PNG, JPEG, GIF or WebP up to 25 MiB each; a model that
+  takes no images gets Pi's note instead. `pdf_read` gives a PDF's text page by page (`pages`
+  such as `2-5`), in parts of a snapshot's size (`part`), and marks a page without text; it has no
+  OCR (`runtime/tools/documents.ts`, with unpdf). Both read files as the file tools do: container
+  paths in Docker, the workspace and uploads on the host.
+- `helper_start`, `helper_wait`, `helper_stop`: [helpers](#helpers), not in a helper's own turn.
+- `schedule_add`, `schedule_list`, `schedule_remove`: the Agent's own schedules
+  (`lib/schedule-host.ts`), in every kind of turn; see [the scheduler](#9-scheduler).
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and
   `mcp__<server>__<tool>`: each present when its host is. `deliver_file` with `result` shows one of
   the Agent's saved results again. `ask_user` takes a card of `questions` or an `action` (see
@@ -189,6 +204,24 @@ The coding tools depend on `BAZILION_BASH_SANDBOX` and `BAZILION_BASH_APPROVAL`
   `command_approval` event and waits up to five minutes for `POST /api/shell-approvals/:id` (or a
   tap in Telegram, see [coding environments](coding-environments.md)), or denies at once when
   nobody can answer.
+
+### Helpers
+
+`helper_start` (a task, optionally a `provider:model`) starts a helper: a turn of the same Agent
+with origin `helper`, in a new conversation titled `Helper: …` that is not selected, beside the
+Agent's own turn, which it neither waits for nor marks busy (`lib/helpers.ts`). Its first message
+says it is a helper; it has the Agent's tools except the helper tools, `ask_user` and
+`secret_request`, dangerous commands are refused as in any unattended turn, and what it delivers
+or schedules belongs to the conversation that started it. Its last message is its answer.
+`helper_wait` takes ids and waits until all of them end (or `wait_seconds`), showing each one's
+current step as live output; `helper_stop` ends one. Several run at once, each a worker, with no
+cap. An answer that comes after the starting turn ended wakes the Agent there, unless a later
+`helper_wait` took it; stopping that turn stops its helpers, and so does deleting, archiving or
+moving the Agent or closing or resetting its browser. A helper's background jobs and pictures
+wake the conversation that started it. The Agent's **Helpers** sheet and `bazilion agent helpers <agent> [--stop
+<id>|all]` list them (`GET /api/agents/:id/helpers`, `POST …/helpers/:helperId/stop`), and the
+panel counts the ones working. Helpers live in memory: a restart stops them, and their
+conversations stay. Usage counts each helper's conversation under its Agent.
 
 ## 6. Conversation commands
 
@@ -281,14 +314,26 @@ the running ones and waits for them before closing browsers, MCP connections and
 
 - **Triggers.** An interval trigger is due when `last_fired_at + every` has passed (the creation
   time counts as the first `last_fired_at`); a cron trigger is due when the current minute matches
-  its 5-field expression (`lib/cron.ts`, daemon local time). The due occurrence is recorded in
+  its 5-field expression (`lib/cron.ts`, daemon local time); a one-time trigger is due once its
+  time has come and it has not run since. The due occurrence is recorded in
   `trigger_dispatches` and runs at most once: a busy Agent leaves it pending, then it ends
   succeeded, failed or cancelled, and nothing is retried. While one is open, later interval
-  occurrences coalesce, and a minute missed while the daemon was down is not caught up. A run cut
-  short by a daemon stop is marked failed at the next start. Failures show in Attention and in
-  `bazilion trigger history <id>`. The Schedules sheet and `bazilion trigger list` say when each
-  trigger runs next (`nextRuns` in `GET /api/agents/:id/triggers`; none while it is paused or
-  the scheduler is off, which both also say).
+  occurrences coalesce, and a minute missed while the daemon was down is not caught up. An
+  interval or a one-time trigger whose time passed while the daemon was down runs once at the
+  next start. A run cut short by a daemon stop is marked failed at the next start. Failures show
+  in Attention and in `bazilion trigger history <id>`. The Schedules sheet and
+  `bazilion trigger list` say when each trigger runs next (`nextRuns` in
+  `GET /api/agents/:id/triggers`; none while it is paused, once a one-time trigger has run, or
+  while the scheduler is off, which they also say).
+- **Schedules an Agent sets.** `schedule_add` takes a message and one of `at` (a local time),
+  `in_minutes`, `every_minutes` and `cron`; its description gives the current time and time zone.
+  The trigger is stored with `set_by = 'agent'` and the conversation it was set in, and runs
+  there, or in the selected conversation once that one is gone. Its turn's message says that the
+  Agent set it. `schedule_list` shows all the Agent's schedules and who set each;
+  `schedule_remove` removes only its own. Agents have these tools in every kind of turn. You
+  change or remove any schedule: in the Schedules sheet (**Change…**, **Delete…**), with
+  `bazilion trigger edit|rm`, or `PATCH /api/triggers/:id` (`message`, and a new timing as
+  `kind` with its field).
 - **Inbox wakes.** An idle Agent with unread mail gets one turn whose prompt contains the
   messages, marked read in the same transaction, in the Agent's current conversation. The
   Agent must answer a new message with `send_message`. A reply is not answered back: the Agent

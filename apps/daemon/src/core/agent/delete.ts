@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, renameSync, rmSync } from 'node:fs'
+import { removeAllAgentSecrets } from '../agent-secrets.ts'
 import type { BazilionDb } from '../db/client.ts'
 import { DomainError } from '../errors.ts'
 import * as agentRepo from '../repos/agents.ts'
@@ -32,6 +33,7 @@ export function deleteAgent(db: BazilionDb, id: string): void {
         fullId,
       ])
       teamPolicyRepo.removeAgentEdges(db, agent.teamId, fullId)
+      removeAllAgentSecrets(db, fullId)
       agentRepo.remove(db, fullId)
     })()
   } catch (error) {

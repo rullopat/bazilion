@@ -2,6 +2,7 @@
 // web: types, a few constants and the public-origin rule, with no Node-only imports.
 
 export * from './activity.ts'
+export * from './agent-secrets.ts'
 export * from './agents.ts'
 export * from './attention.ts'
 export * from './auth.ts'
@@ -15,6 +16,7 @@ export * from './errors.ts'
 export * from './events.ts'
 export * from './git-review.ts'
 export * from './health.ts'
+export * from './helpers.ts'
 export * from './jobs.ts'
 export * from './live.ts'
 export * from './mcp-presets.ts'

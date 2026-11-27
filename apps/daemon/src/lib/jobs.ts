@@ -26,6 +26,7 @@ import type { Paths } from '../core/index.ts'
 import {
   type DockerSandbox,
   dockerRunArgs,
+  dockerSpawnEnv,
   removeDockerContainers,
   signalDockerContainer,
 } from '../runtime/shell/docker.ts'
@@ -259,7 +260,11 @@ export function startJob(turn: JobTurn, command: string): JobRecord {
       // `-i` keeps stdin open for job_input; the client stays attached, so its end is the job's.
       const args = dockerRunArgs(sandbox, container, command)
       args.splice(1, 0, '--interactive')
-      child = spawn('docker', args, { detached: true, stdio: ['pipe', log, log] })
+      child = spawn('docker', args, {
+        env: dockerSpawnEnv(sandbox),
+        detached: true,
+        stdio: ['pipe', log, log],
+      })
       record = { ...base, cwd: sandbox.workdir, sandbox: 'docker', container }
     } else if (turn.host) {
       child = spawn('/bin/bash', ['-c', command], {

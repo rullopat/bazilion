@@ -31,6 +31,16 @@ function itemLines(item: AgentQuestionItem, label = ''): string[] {
 
 /** The model-written card, or action, as terminal lines. */
 export function questionLines(question: AgentQuestion): string[] {
+  const secret = question.question.secret
+  if (secret) {
+    return [
+      terminalSafe(`Asks for a secret: ${secret.name}`),
+      ...terminalSafe(secret.reason).split('\n'),
+      secret.hosts?.length
+        ? terminalSafe(`For web_fetch to ${secret.hosts.join(', ')}, and its commands`)
+        : 'For its commands',
+    ]
+  }
   const action = question.question.action
   if (action) {
     return [
@@ -88,6 +98,14 @@ export async function promptForQuestion(
   item: AgentQuestion,
   prompt: QuestionPrompt,
 ): Promise<AgentQuestionAnswer | null> {
+  if (item.question.secret) {
+    prompt.write(`Secret request ${item.id}`)
+    for (const line of questionLines(item)) prompt.write(line)
+    prompt.write(
+      `Store it without echo: bazilion agent secret set ${item.agentId} ${item.question.secret.name}. Or decline: bazilion question answer ${item.agentId} ${item.id} --decline.`,
+    )
+    return null
+  }
   if (item.question.action) {
     prompt.write(`Action ${item.id}`)
     for (const line of questionLines(item)) prompt.write(line)

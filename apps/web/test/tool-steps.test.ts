@@ -91,3 +91,15 @@ test('arguments that are not an object are no arguments', () => {
   expect(baseName('a/b/c.txt')).toBe('c.txt')
   expect(baseName('dir/')).toBe('dir')
 })
+
+test('schedules and secrets read as what the Agent did, never a value', () => {
+  expect(describeStep('schedule_add', { message: 'm', in_minutes: 120 })).toMatchObject({
+    verb: 'Set a schedule',
+    doing: 'setting a schedule',
+  })
+  expect(describeStep('secret_request', { name: 'GITHUB_TOKEN', reason: 'r' })).toMatchObject({
+    verb: 'Asked you for',
+    target: 'GITHUB_TOKEN',
+    icon: 'question',
+  })
+})

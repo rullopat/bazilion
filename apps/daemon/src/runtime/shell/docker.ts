@@ -31,6 +31,16 @@ export interface DockerSandbox {
   readOnlyMounts: readonly DockerMount[]
   /** Every container is named `<containerPrefix><random>`. */
   containerPrefix: string
+  /**
+   * The Agent's secrets, by name: the container gets each as an environment variable, passed by
+   * name so the value is never on a command line (`dockerSpawnEnv`).
+   */
+  env?: Readonly<Record<string, string>>
+}
+
+/** The environment the `docker` client runs with: its own, plus the values `--env NAME` reads. */
+export function dockerSpawnEnv(sandbox: DockerSandbox): NodeJS.ProcessEnv {
+  return { ...process.env, ...(sandbox.env ?? {}) }
 }
 
 /** The container path of a Team-relative directory ('.' is the workspace root). */
@@ -67,6 +77,7 @@ export function dockerRunArgs(sandbox: DockerSandbox, name: string, command: str
     'TMPDIR=/tmp',
     '--env',
     'LANG=C.UTF-8',
+    ...Object.keys(sandbox.env ?? {}).flatMap((name) => ['--env', name]),
     '--workdir',
     sandbox.workdir,
     '--mount',
@@ -107,7 +118,10 @@ export function createDockerBashOperations(sandbox: () => DockerSandbox): BashOp
       const name = `${current.containerPrefix}${randomUUID().replaceAll('-', '').slice(0, 12)}`
       const args = dockerRunArgs(current, name, command)
       return new Promise<{ exitCode: number | null }>((resolve, reject) => {
-        const child = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+        const child = spawn('docker', args, {
+          env: dockerSpawnEnv(current),
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
         let stopped: Error | undefined
         let settled = false
         const stop = (reason: Error) => {

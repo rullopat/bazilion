@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, mkdirSync, realpathSync, statSync } from 'node:fs'
-import { dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { dirname, isAbsolute, join, posix, relative, sep } from 'node:path'
 import {
   createBashToolDefinition,
   createLocalBashOperations,
@@ -7,6 +7,7 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
 import { type TSchema, Type } from 'typebox'
+import { readFromRoots } from '../safe-files.ts'
 import type { JobHost, JobOutputResult } from '../worker/ipc-protocol.ts'
 import {
   type BashApprovalHost,
@@ -52,6 +53,8 @@ export interface SessionShellToolOptions {
   approvalHost?: BashApprovalHost
   /** The daemon's background jobs: with it, bash takes `background: true`. */
   jobHost?: JobHost
+  /** The Agent's secrets, by name, for Docker commands (host commands inherit them). */
+  secretEnv?: Readonly<Record<string, string>>
 }
 
 export interface SessionShellTools {
@@ -65,6 +68,11 @@ export interface SessionShellTools {
    * grep, find and ls on container paths (Pi's own take host paths, which would bypass it).
    */
   fileTools: ToolDefinition[]
+  /**
+   * A file the Agent names, read as its file tools would: a container path in Docker; on the
+   * host its workspace and uploads only. For view_image and pdf_read.
+   */
+  readFile: (path: string) => Buffer
 }
 
 /**
@@ -75,7 +83,11 @@ export interface SessionShellTools {
 export function buildDockerSandbox(
   cwd: string,
   turn: DockerTurn,
-  mounts: { inputsDir?: string; skillMounts?: readonly DockerMount[] } = {},
+  mounts: {
+    inputsDir?: string
+    skillMounts?: readonly DockerMount[]
+    secretEnv?: Readonly<Record<string, string>>
+  } = {},
 ): DockerSandbox {
   const workspace = realpathSync(cwd)
   if (
@@ -99,6 +111,9 @@ export function buildDockerSandbox(
       ),
     ],
     containerPrefix: turn.containerPrefix,
+    ...(mounts.secretEnv && Object.keys(mounts.secretEnv).length > 0
+      ? { env: mounts.secretEnv }
+      : {}),
   }
 }
 
@@ -168,8 +183,10 @@ export function createSessionShellTools(
   const gated = config.approvalMode !== 'off'
   if (config.sandboxMode === 'off') {
     const fileTools = [hostApplyPatchTool(cwd)]
+    const roots = [cwd, ...(options.inputsDir ? [options.inputsDir] : [])]
+    const readFile = (path: string) => readFromRoots(path, roots, cwd)
     if (!gated && !options.jobHost) {
-      return { config, hostToolNames: HOST_CODING_TOOL_NAMES, fileTools }
+      return { config, hostToolNames: HOST_CODING_TOOL_NAMES, fileTools, readFile }
     }
     const base = createBashToolDefinition(cwd, { operations: createLocalBashOperations() })
     const bash = gated ? createApprovalGatedBashTool(base, options.approvalHost, cwd) : base
@@ -185,6 +202,7 @@ export function createSessionShellTools(
           : undefined,
       ),
       fileTools,
+      readFile,
     }
   }
 
@@ -224,6 +242,7 @@ export function createSessionShellTools(
       ...dockerFileTools(workdir, containerPaths),
       dockerApplyPatchTool(workdir, containerPaths),
     ],
+    readFile: (path) => containerPaths().readFile(posix.resolve(workdir, path)),
     customBash: withBackground(
       gatedBash as unknown as ToolDefinition,
       options.jobHost,
