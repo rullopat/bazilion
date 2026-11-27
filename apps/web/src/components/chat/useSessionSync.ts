@@ -86,7 +86,10 @@ export function useSessionSync({
       const body = await api<SessionMessagesResponse>(`${base}/sessions/messages`)
       if (streamingRef.current) return
       setHistoryUnavailable(body.head.unavailable ?? false)
-      const same = body.head.conversationId === knownHeadRef.current.conversationId
+      // The same conversation, or the first one, which another source just began: what it holds
+      // arrived. Another conversation selected elsewhere is shown, not marked.
+      const known = knownHeadRef.current.conversationId
+      const same = known === null || body.head.conversationId === known
       onHistory(body, arrived && same)
       know(body.head)
       setBehind(false)

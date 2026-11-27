@@ -136,6 +136,41 @@ Thank you for writing with us.
 export function demoScripts(ids: () => Partial<DemoIds>): Script[] {
   return [
     {
+      // BAZ-097: a progress card that a second call updates, and a drawing in the chat.
+      match: /track the launch checklist/i,
+      steps: () => [
+        {
+          text: 'Starting on the checklist.',
+          tools: [
+            {
+              name: 'progress',
+              args: {
+                task: 'Launch checklist',
+                steps: [
+                  { step: 'Draft the post', state: 'done' },
+                  { step: 'Review the copy', state: 'doing', note: 'with Quill' },
+                  { step: 'Schedule it', state: 'todo' },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          text: 'Here is where it stands.',
+          tools: [
+            {
+              name: 'canvas',
+              args: {
+                name: 'launch-chart',
+                svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><rect width="80" height="40" fill="#3b6fd8"/><text x="4" y="24">2 of 3</text></svg>',
+              },
+            },
+          ],
+        },
+        { text: 'The checklist is two-thirds done.' },
+      ],
+    },
+    {
       match: /which headline/i,
       steps: () => [
         {

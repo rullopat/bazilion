@@ -451,6 +451,60 @@ test('a question asked and answered elsewhere comes and goes in the open convers
   expect(session.problems).toEqual([])
 })
 
+test('what a turn elsewhere adds shows at once, marked, with its progress card and drawing', async () => {
+  const session = await open()
+  await session.go(`/?agent=${ids.sage}`, 1500)
+  const log = session.page.getByRole('log', { name: /Conversation with/ })
+  // As a turn started from the terminal does: nothing to click to see it.
+  void instance.chat(ids.sage, 'Please track the launch checklist for me.').catch(() => {})
+  await pw(log).toContainText('The checklist is two-thirds done.', { timeout: 10_000 })
+  await pw(session.page.locator('.arrived-message').first()).toBeAttached({ timeout: 5_000 })
+  await pw(session.page.getByRole('button', { name: 'Show it' })).toHaveCount(0)
+  // One card for the task, and the drawing in its sealed frame.
+  const card = log.getByRole('region', { name: 'Progress: Launch checklist' })
+  await pw(card).toHaveCount(1)
+  await pw(card).toContainText('1 of 3 done')
+  const frame = log.locator('iframe[title="launch-chart.svg"]')
+  await pw(frame).toBeVisible({ timeout: 5_000 })
+  expect(await frame.getAttribute('sandbox')).toBe('allow-scripts')
+  await pw(frame.contentFrame().locator('svg')).toBeVisible()
+  expect(session.problems).toEqual([])
+})
+
+test('Teams and Agents move in the list and stay there; the list is as wide as it is dragged', async () => {
+  const session = await open()
+  await session.go('/', 1500)
+  const before = await instance.api<Array<{ id: string; name: string }>>('/api/teams')
+  const second = before[1]
+  if (!second) throw new Error('the demo has fewer than two Teams')
+  await session.page.getByRole('button', { name: `More for ${second.name}` }).click()
+  await session.page.getByRole('menuitem', { name: 'Move up' }).click()
+  await pw
+    .poll(async () => (await instance.api<Array<{ id: string }>>('/api/teams'))[0]?.id, {
+      timeout: 5_000,
+    })
+    .toBe(second.id)
+  // The page shows the order the daemon keeps.
+  const rail = session.page.getByRole('navigation', { name: 'Teams and agents' })
+  await pw(rail.locator('summary').first()).toContainText(second.name)
+  // Back as it was, for the other tests.
+  await instance.api('/api/teams/order', {
+    method: 'PUT',
+    body: { ids: before.map((team) => team.id) },
+  })
+
+  const handle = session.page.getByRole('separator', { name: 'Width of the list of Teams' })
+  await handle.focus()
+  await session.page.keyboard.press('ArrowRight')
+  await pw(handle).toHaveAttribute('aria-valuenow', '19')
+  expect(await session.page.evaluate('document.cookie')).toContain('bz_rail_width=19')
+  await session.page.keyboard.press('Home')
+  await pw(handle).toHaveAttribute('aria-valuenow', '14')
+  await handle.dblclick()
+  await pw(handle).toHaveAttribute('aria-valuenow', '18')
+  expect(session.problems).toEqual([])
+})
+
 test('a Team and an Agent made outside the page show up without a reload', async () => {
   const session = await open()
   // Dev's Team, Mira's too, is open in the list.
