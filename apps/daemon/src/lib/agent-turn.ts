@@ -42,6 +42,7 @@ import { createHelperHost, turnClosed, turnOpened } from './helpers.ts'
 import { createImageGenerationHost } from './image-generation.ts'
 import { createJobHost } from './jobs.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
+import { mediaHosts } from './media-host.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
 import { questionRegistry } from './questions.ts'
 import { createRecallHost } from './recall-host.ts'
@@ -56,6 +57,7 @@ import {
 } from './turn-preparation.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
 import { createWebSearchHost, searchRoute } from './web-search.ts'
+import { createWorkspaceHost } from './workspace-host.ts'
 
 export { prepareAgentTurn }
 
@@ -228,15 +230,19 @@ function turnHosts(
       })),
     })
   }
-  // A path the Agent names, read as its file tools would: container paths in Docker.
-  const readAgentFile = (path: string): Buffer => {
+  // A path the Agent names, read as its file tools would: container paths in Docker. A picture by
+  // default; a recording to transcribe up to what its model takes, or whole.
+  const readAgentFile = (
+    path: string,
+    maxBytes: number | undefined = MAX_PICTURE_BYTES,
+  ): Buffer => {
     if (!turn.docker) {
       // The workspace and the Agent's uploads only, links resolved, as deliver_file reads.
       return readFromRoots(
         path,
         [agent.team.path, join(agent.agent.dir, 'uploads')],
         agent.team.path,
-        MAX_PICTURE_BYTES,
+        maxBytes,
       )
     }
     const current = sandbox()
@@ -320,6 +326,18 @@ function turnHosts(
       agentId: agent.agent.id,
       conversationId: conversation.id,
       secrets: envSecretValues(secretsEnv()),
+    }),
+    // screen and theme reach the tabs showing the conversation the user reads.
+    workspaceHost: createWorkspaceHost(agent.agent.id, homeConversation),
+    // Videos, music and sound, speech, transcripts: each while its model is chosen and ready.
+    ...mediaHosts({
+      db,
+      agentId: agent.agent.id,
+      teamId: agent.team.id,
+      conversationId: homeConversation,
+      signal,
+      env: secretsEnv,
+      readFile: readAgentFile,
     }),
     // Its schedules: what it adds runs in this conversation, in any kind of turn.
     scheduleHost: createScheduleHost({

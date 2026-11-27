@@ -25,7 +25,12 @@ export function formatBytes(bytes: number): string {
 
 /** "PNG image", "Markdown", "PDF": a file's kind in a word or two. */
 export function kindLabel(mimeType: string, name: string): string {
-  if (mimeType.startsWith('image/')) return `${mimeType.slice(6).toUpperCase()} image`
+  if (mimeType.startsWith('image/'))
+    return `${mimeType.slice(6).split('+')[0]?.toUpperCase()} image`
+  if (mimeType.startsWith('video/')) return 'Video'
+  if (mimeType === 'audio/mpeg') return 'MP3 audio'
+  if (mimeType.startsWith('audio/')) return `${mimeType.slice(6).toUpperCase()} audio`
+  if (mimeType === 'text/html') return 'HTML page'
   if (mimeType === 'text/markdown') return 'Markdown'
   if (mimeType === 'text/plain') return 'Text'
   if (mimeType === 'application/pdf') return 'PDF'
@@ -33,7 +38,11 @@ export function kindLabel(mimeType: string, name: string): string {
   return extension ? extension.toUpperCase() : mimeType
 }
 
-export const resultPath = (id: string, action?: 'download' | 'preview') =>
+/** A sound or a video the page plays where it was delivered. */
+export const isPlayable = (result: Pick<AgentResult, 'mimeType'>) =>
+  result.mimeType.startsWith('audio/') || result.mimeType.startsWith('video/')
+
+export const resultPath = (id: string, action?: 'download' | 'preview' | 'media') =>
   `/api/results/${encodeURIComponent(id)}${action ? `/${action}` : ''}`
 
 /** The start of a text file, for a tile. */

@@ -647,3 +647,36 @@
     0 0 0 2px var(--ring),
     0 0 0 6px var(--accent);
 }
+
+/* What another source (a teammate, Telegram, a schedule, a follow-up) just added: it flashes
+   twice, then fades within the 4 s markArrived keeps the class on. */
+.arrived-message {
+  animation: arrived-message 4s ease-out forwards;
+}
+@keyframes arrived-message {
+  0%,
+  24%,
+  65% {
+    box-shadow:
+      0 0 0 2px var(--ring),
+      0 0 0 6px var(--accent);
+  }
+  12% {
+    box-shadow:
+      0 0 0 1px var(--ring),
+      0 0 0 3px var(--accent);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 transparent,
+      0 0 0 0 transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arrived-message {
+    animation: none;
+    box-shadow:
+      0 0 0 2px var(--ring),
+      0 0 0 6px var(--accent);
+  }
+}

@@ -119,3 +119,25 @@ export function writePanelCookie(memory: PanelMemory): void {
   // biome-ignore lint/suspicious/noDocumentCookie: a plain UI preference shared with SSR.
   document.cookie = `${PANEL_COOKIE}=${value}; Path=/; Max-Age=31536000; SameSite=Lax`
 }
+
+/**
+ * Cookie that keeps the width of the list on the left (BAZ-098) per browser, in rem, so the first
+ * paint has it. The bounds only shape the layout: below the least an Agent's name and state no
+ * longer fit, past the most the conversation runs short of room.
+ */
+export const RAIL_WIDTH_COOKIE = 'bz_rail_width'
+export const RAIL_WIDTH = { least: 14, most: 32, usual: 18 } as const
+
+export function clampRailWidth(rem: number): number {
+  return Math.min(RAIL_WIDTH.most, Math.max(RAIL_WIDTH.least, Math.round(rem * 4) / 4))
+}
+
+export function parseRailWidthCookie(raw: string | undefined): number {
+  const value = Number(raw)
+  return raw && Number.isFinite(value) ? clampRailWidth(value) : RAIL_WIDTH.usual
+}
+
+export function writeRailWidthCookie(rem: number): void {
+  // biome-ignore lint/suspicious/noDocumentCookie: a plain UI preference shared with SSR.
+  document.cookie = `${RAIL_WIDTH_COOKIE}=${rem}; Path=/; Max-Age=31536000; SameSite=Lax`
+}

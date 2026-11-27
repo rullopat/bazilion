@@ -8,6 +8,7 @@
 // the field-write endpoints.
 
 import { IMAGE_ROUTES } from './image-generation-config.ts'
+import { AUDIO_ROUTES, SPEECH_ROUTES, VIDEO_ROUTES } from './media-routes.ts'
 import { PROVIDERS } from './providers.ts'
 import { TRANSCRIPTION_ROUTES } from './transcription-config.ts'
 
@@ -112,6 +113,86 @@ export const SERVICES: ServiceDef[] = [
         },
         description:
           'Off by default. API-key routes are billed per image; the ChatGPT sign-in uses your subscription.',
+      },
+    ],
+  },
+
+  {
+    id: 'video-generation',
+    displayName: 'Video',
+    // Chosen under Video on the Models page; the field is here for `bazilion config`.
+    category: 'function',
+    hint: 'The video_generate tool: short clips with sound, saved to Team Results.',
+    fields: [
+      {
+        envVar: 'BAZILION_VIDEO_MODEL',
+        kind: 'config',
+        label: 'Video model',
+        input: {
+          type: 'choice',
+          default: 'off',
+          options: [
+            { value: 'off', label: 'Off' },
+            ...VIDEO_ROUTES.map((route) => ({ value: route.id, label: route.label })),
+          ],
+        },
+        description: 'Off by default. Billed per second or per video by the provider.',
+      },
+    ],
+  },
+
+  {
+    id: 'audio-generation',
+    displayName: 'Music and sound',
+    // Chosen under Music and sound on the Models page; the field is here for `bazilion config`.
+    category: 'function',
+    hint: 'The audio_generate tool: songs, background music and sound effects, saved to Team Results.',
+    fields: [
+      {
+        envVar: 'BAZILION_AUDIO_MODEL',
+        kind: 'config',
+        label: 'Music and sound model',
+        input: {
+          type: 'choice',
+          default: 'off',
+          options: [
+            { value: 'off', label: 'Off' },
+            ...AUDIO_ROUTES.map((route) => ({ value: route.id, label: route.label })),
+          ],
+        },
+        description: 'Off by default. Billed per song or in credits by the provider.',
+      },
+    ],
+  },
+
+  {
+    id: 'speech',
+    displayName: 'Speech',
+    // Chosen under Speech on the Models page; the fields are here for `bazilion config`.
+    category: 'function',
+    hint: 'The speak tool, Read aloud in the web chat, and voice replies to voice notes on Telegram.',
+    fields: [
+      {
+        envVar: 'BAZILION_SPEECH_MODEL',
+        kind: 'config',
+        label: 'Speech model',
+        input: {
+          type: 'choice',
+          default: 'off',
+          options: [
+            { value: 'off', label: 'Off' },
+            ...SPEECH_ROUTES.map((route) => ({ value: route.id, label: route.label })),
+          ],
+        },
+        description: 'Off by default. Billed per character by the provider.',
+      },
+      {
+        envVar: 'BAZILION_SPEECH_VOICE',
+        kind: 'config',
+        label: 'Voice',
+        input: { type: 'text' },
+        description:
+          "The voice's id, as the speech model's provider lists it (the Speech card shows them). Empty: the model's first voice.",
       },
     ],
   },

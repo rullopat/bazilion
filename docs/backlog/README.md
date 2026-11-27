@@ -10,11 +10,13 @@ are never reused, so the gaps below are deliberate.
 
 Planned after comparing OpenClaw's tools with ours (2026-11-26). 0.63.0 improved the tools Agents
 already had (BAZ-086 to BAZ-088, with background commands) and 0.64.0 added the missing ones that
-are useful (BAZ-089 to BAZ-092); later releases take up the rest.
+are useful (BAZ-089 to BAZ-092). 0.65.0 (asked for on 2026-11-27) brought video, music and speech,
+the Agent in the workspace, and three changes to the workspace itself (BAZ-095 to BAZ-099); later
+releases take up the rest.
 
 | ID | Story | Release |
 | --- | --- | --- |
-| [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | 0.65.0 and later |
+| [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | 0.66.0 and later |
 
 **Schema.** Since 0.63.0 (BAZ-094) an upgrade migrates the home instead of needing a fresh one
 ([upgrading](../upgrades.md)); each schema change ships with its own migration.
@@ -72,5 +74,10 @@ are useful (BAZ-089 to BAZ-092); later releases take up the rest.
 | [BAZ-088](done/BAZ-088-questions-messages-recall-pictures.md) | Questions in one card, quiet messages, recall across conversations, pictures from pictures | 0.63.0 | [questions](../questions.md), [image generation](../image-generation.md) |
 | [BAZ-089](done/BAZ-089-schedules-agents-set.md) | Schedules an Agent sets itself | 0.64.0 | [agent engine](../agent-engine.md#9-scheduler) |
 | [BAZ-090](done/BAZ-090-secrets-asked-for.md) | Secrets an Agent asks for, kept out of the conversation | 0.64.0 | [questions](../questions.md#secrets-an-agent-asks-for) |
-| [BAZ-091](done/BAZ-091-images-pdfs-voice.md) | Images, PDFs and voice notes an Agent can read | 0.64.0 | [models](../models-and-providers.md#transcription), [Telegram](../telegram.md) |
+| [BAZ-091](done/BAZ-091-images-pdfs-voice.md) | Images, PDFs and voice notes an Agent can read | 0.64.0 | [speech](../speech.md#transcription), [Telegram](../telegram.md) |
 | [BAZ-092](done/BAZ-092-helpers.md) | Helpers: short runs of the same Agent | 0.64.0 | [agent engine](../agent-engine.md#helpers) |
+| [BAZ-095](done/BAZ-095-video-music-sound.md) | Videos, music and sound an Agent makes | 0.65.0 | [video and sound](../video-and-sound.md) |
+| [BAZ-096](done/BAZ-096-speech.md) | Speech: Agents that talk, dictation, any audio transcribed | 0.65.0 | [speech](../speech.md), [Telegram](../telegram.md) |
+| [BAZ-097](done/BAZ-097-agent-in-the-workspace.md) | The Agent in the workspace: views, theme, progress, a canvas | 0.65.0 | [workspace](../workspace.md#the-agent-in-the-workspace), [results](../results.md) |
+| [BAZ-098](done/BAZ-098-list-order-and-width.md) | The list on the left: your order, your width | 0.65.0 | [workspace](../workspace.md), [manage](../manage.md) |
+| [BAZ-099](done/BAZ-099-messages-show-at-once.md) | What happens elsewhere shows in the conversation at once | 0.65.0 | [workspace](../workspace.md#live) |

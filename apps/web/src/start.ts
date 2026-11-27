@@ -13,10 +13,13 @@ const SECURITY_HEADERS: Record<string, string> = {
   // would send `Origin: null` and fail the login check below. `same-origin` still withholds
   // referrers from every other site.
   'referrer-policy': 'same-origin',
-  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+  // The microphone is this page's alone, for dictation in the chat (BAZ-096).
+  'permissions-policy': 'camera=(), microphone=(self), geolocation=()',
   'x-frame-options': 'DENY',
+  // Speech played from the page (Read aloud, a voice sample) is a blob: URL; a canvas frame
+  // inherits this policy, so it may also show inline pictures, fonts and media (BAZ-096, BAZ-097).
   'content-security-policy':
-    "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
 }
 
 function text(body: string, status: number): Response {

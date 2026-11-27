@@ -204,7 +204,9 @@ export function ProviderConnect({
     }
   }
 
-  let testNote = 'No chat model is ticked, so nothing is tested.'
+  let testNote = provider.media
+    ? `${provider.displayName} has no chat models. Its key is saved for the Models cards that use it, and checked when one does.`
+    : 'No chat model is ticked, so nothing is tested.'
   if (chosen.length > 0) {
     const target = asked ? modelName(asked) : 'a model'
     const rank = asked?.price ? 'cheapest' : 'first'
@@ -278,129 +280,134 @@ export function ProviderConnect({
         </div>
       )}
 
-      <fieldset className="m-0 min-w-0 border-0 p-0">
-        <legend className="mb-2 flex w-full flex-wrap items-baseline gap-x-2 p-0">
-          <span className="text-sm font-semibold text-foreground">Models your Agents can use</span>
-          <span className="text-xs text-muted-foreground">
-            {local
-              ? 'What the server reports. You can change this later.'
-              : `${models.length} available. You can change this later.`}
-          </span>
-        </legend>
-
-        {local && catalog.data?.listError && (
-          <div className="mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-sm">
-            <span className="min-w-0 flex-1">
-              Nothing answers at {values[mainFields[0]?.envVar ?? ''] || 'that address'}. Start{' '}
-              {provider.displayName} and switch its server on.
+      {/* A media account has no chat models to choose (ElevenLabs). */}
+      {!provider.media && (
+        <fieldset className="m-0 min-w-0 border-0 p-0">
+          <legend className="mb-2 flex w-full flex-wrap items-baseline gap-x-2 p-0">
+            <span className="text-sm font-semibold text-foreground">
+              Models your Agents can use
             </span>
-            <Button
-              variant="ghost"
-              disabled={catalog.loading}
-              onClick={() => {
-                setLookup(changedLookup(provider, values))
-                void catalog.reload()
-              }}
-            >
-              {catalog.loading ? 'Looking…' : 'Look again'}
-            </Button>
-          </div>
-        )}
+            <span className="text-xs text-muted-foreground">
+              {local
+                ? 'What the server reports. You can change this later.'
+                : `${models.length} available. You can change this later.`}
+            </span>
+          </legend>
 
-        {browsing && models.length > 8 && (
-          <SearchField
-            label={`Search ${provider.displayName} models`}
-            placeholder="Search by name"
-            value={query}
-            onChange={setQuery}
-            className="mb-2"
-          />
-        )}
-        {browsing && models.length > 8 && chosen.length > 0 && (
-          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="text-muted-foreground">Ticked:</span>
-            {chosen.map((model) => (
-              <button
-                key={model.id}
-                type="button"
-                disabled={busy}
-                onClick={() => toggle(model.id)}
-                aria-label={`Untick ${modelName(model)}`}
-                className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 font-semibold text-accent-foreground"
-              >
-                {modelName(model)}
-                <X className="size-3" aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
-          {catalog.loading && !catalog.data && (
-            <div className="p-3 text-sm text-muted-foreground">Reading the model list…</div>
-          )}
-          {catalog.error && <div className="p-3 text-sm text-danger">{catalog.error}</div>}
-          {catalog.data && rows.length === 0 && (
-            <div className="p-3 text-sm text-muted-foreground">
-              {query
-                ? 'No model matches.'
-                : local
-                  ? 'The server lists no model yet.'
-                  : 'No models are listed for this provider. Add one by its id below.'}
-            </div>
-          )}
-          {rows.map((model) => (
-            <ModelRow
-              key={model.id}
-              model={model}
-              connect={provider.connect}
-              checked={picks.has(model.id)}
-              disabled={busy}
-              onToggle={() => toggle(model.id)}
-              className="px-3 last:border-b-0"
-            />
-          ))}
-          {matching.length > rows.length && (
-            <div className="p-3 text-xs text-muted-foreground">
-              {matching.length - rows.length} more: search to narrow them down.
-            </div>
-          )}
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-          {!browsing && models.length > shortlist.length && (
-            <button
-              type="button"
-              onClick={() => setShowAll(true)}
-              className="text-sm font-semibold text-primary"
-            >
-              See all {models.length}
-            </button>
-          )}
-          {browsing && !local && (
-            <span className="flex min-w-0 flex-1 basis-64 items-center gap-2">
-              <input
-                type="text"
-                aria-label="A model id that is not listed"
-                placeholder="A model id that is not listed"
-                value={typedModel}
-                disabled={busy}
-                onChange={(event) => setTypedModel(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    addTyped()
-                  }
+          {local && catalog.data?.listError && (
+            <div className="mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-sm">
+              <span className="min-w-0 flex-1">
+                Nothing answers at {values[mainFields[0]?.envVar ?? ''] || 'that address'}. Start{' '}
+                {provider.displayName} and switch its server on.
+              </span>
+              <Button
+                variant="ghost"
+                disabled={catalog.loading}
+                onClick={() => {
+                  setLookup(changedLookup(provider, values))
+                  void catalog.reload()
                 }}
-                className="min-h-10 font-mono text-sm"
-              />
-              <Button variant="ghost" disabled={busy || !typedModel.trim()} onClick={addTyped}>
-                Add
+              >
+                {catalog.loading ? 'Looking…' : 'Look again'}
               </Button>
-            </span>
+            </div>
           )}
-        </div>
-      </fieldset>
+
+          {browsing && models.length > 8 && (
+            <SearchField
+              label={`Search ${provider.displayName} models`}
+              placeholder="Search by name"
+              value={query}
+              onChange={setQuery}
+              className="mb-2"
+            />
+          )}
+          {browsing && models.length > 8 && chosen.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-muted-foreground">Ticked:</span>
+              {chosen.map((model) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => toggle(model.id)}
+                  aria-label={`Untick ${modelName(model)}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 font-semibold text-accent-foreground"
+                >
+                  {modelName(model)}
+                  <X className="size-3" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
+            {catalog.loading && !catalog.data && (
+              <div className="p-3 text-sm text-muted-foreground">Reading the model list…</div>
+            )}
+            {catalog.error && <div className="p-3 text-sm text-danger">{catalog.error}</div>}
+            {catalog.data && rows.length === 0 && (
+              <div className="p-3 text-sm text-muted-foreground">
+                {query
+                  ? 'No model matches.'
+                  : local
+                    ? 'The server lists no model yet.'
+                    : 'No models are listed for this provider. Add one by its id below.'}
+              </div>
+            )}
+            {rows.map((model) => (
+              <ModelRow
+                key={model.id}
+                model={model}
+                connect={provider.connect}
+                checked={picks.has(model.id)}
+                disabled={busy}
+                onToggle={() => toggle(model.id)}
+                className="px-3 last:border-b-0"
+              />
+            ))}
+            {matching.length > rows.length && (
+              <div className="p-3 text-xs text-muted-foreground">
+                {matching.length - rows.length} more: search to narrow them down.
+              </div>
+            )}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            {!browsing && models.length > shortlist.length && (
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="text-sm font-semibold text-primary"
+              >
+                See all {models.length}
+              </button>
+            )}
+            {browsing && !local && (
+              <span className="flex min-w-0 flex-1 basis-64 items-center gap-2">
+                <input
+                  type="text"
+                  aria-label="A model id that is not listed"
+                  placeholder="A model id that is not listed"
+                  value={typedModel}
+                  disabled={busy}
+                  onChange={(event) => setTypedModel(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      addTyped()
+                    }
+                  }}
+                  className="min-h-10 font-mono text-sm"
+                />
+                <Button variant="ghost" disabled={busy || !typedModel.trim()} onClick={addTyped}>
+                  Add
+                </Button>
+              </span>
+            )}
+          </div>
+        </fieldset>
+      )}
 
       {imageRoutes.length > 0 && (
         <p className="m-0 flex items-start gap-2 text-sm text-muted-foreground">

@@ -102,6 +102,70 @@ resultsRouter.get('/:id/download', (c) => {
   }
 })
 
+/** Audio and video a page plays where it was delivered (BAZ-095, BAZ-096). */
+const PLAYABLE = /^(audio|video)\/[a-z0-9.+-]+$/
+
+// A sound or a video to play in the page, inline and in parts, so that a player can seek.
+resultsRouter.get('/:id/media', (c) => {
+  const db = getCtx().db
+  const result = results.get(db, c.req.param('id'))
+  if (!result) return c.json({ error: 'Result not found' }, 404)
+  if (!PLAYABLE.test(result.mimeType))
+    return c.json({ error: 'Only sounds and videos are played. Use Download.' }, 415)
+  c.header('Content-Type', result.mimeType)
+  c.header('Accept-Ranges', 'bytes')
+  c.header('Content-Security-Policy', "default-src 'none'; sandbox")
+  c.header('Cache-Control', 'private, max-age=3600')
+  const range = /^bytes=(\d*)-(\d*)$/.exec(c.req.header('range') ?? '')
+  if (!range) {
+    // The whole file is read and checked against its checksum.
+    let bytes: Buffer
+    try {
+      bytes = results.read(db, result.id)
+    } catch {
+      return c.json({ error: 'Saved file failed integrity verification and cannot be played' }, 409)
+    }
+    c.header('Content-Length', String(bytes.byteLength))
+    return c.body(new Uint8Array(bytes))
+  }
+  // A part, as a player seeking asks: read alone, without the whole file.
+  const size = result.byteLength
+  const [, from, to] = range
+  // "bytes=-500" is the last 500 bytes; "bytes=100-" is from 100 to the end.
+  const start = from ? Number(from) : Math.max(0, size - Number(to))
+  const end = from && to ? Math.min(Number(to), size - 1) : size - 1
+  if (!(start <= end && start < size)) {
+    c.header('Content-Range', `bytes */${size}`)
+    return c.body(null, 416)
+  }
+  const part = results.readRange(db, result.id, start, end)
+  c.header('Content-Range', `bytes ${start}-${end}/${size}`)
+  c.header('Content-Length', String(part.byteLength))
+  return c.body(new Uint8Array(part), 206)
+})
+
+/** Pages and drawings the web shows in a sealed frame (BAZ-097). */
+const CANVAS_TYPES = new Set(['text/html', 'image/svg+xml'])
+
+// The text of an HTML page or SVG drawing, for the web's sealed frame. Sent as inert text: the
+// frame, not this response, is where it runs.
+resultsRouter.get('/:id/canvas', (c) => {
+  const db = getCtx().db
+  const result = results.get(db, c.req.param('id'))
+  if (!result) return c.json({ error: 'Result not found' }, 404)
+  if (!CANVAS_TYPES.has(result.mimeType))
+    return c.json({ error: 'Only HTML pages and SVG drawings are shown in a frame.' }, 415)
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(results.read(db, result.id))
+    c.header('Content-Type', 'text/plain; charset=utf-8')
+    c.header('Content-Security-Policy', "default-src 'none'; sandbox")
+    c.header('Cache-Control', 'private, max-age=3600')
+    return c.body(text)
+  } catch {
+    return c.json({ error: 'This file is not text. Use Download.' }, 415)
+  }
+})
+
 resultsRouter.delete('/:id', (c) => {
   if (!results.remove(getCtx().db, c.req.param('id'))) {
     return c.json({ error: 'Result not found' }, 404)

@@ -54,8 +54,10 @@ export function readContainedFile(path: string, realRoot: string, maxBytes: numb
       confirmed = realpathSync(path)
     } catch {}
     if (confirmed !== real) throw new ContainedFileError('changed')
-    // One sentinel byte past the cap detects growth after the checks.
-    const buffer = Buffer.alloc(maxBytes + 1)
+    // The file's size, and one sentinel byte past it to detect growth after the checks: a cap
+    // as large as a provider's upload limit (gigabytes) is never allocated for a small file.
+    const expected = Math.min(maxBytes, opened.size)
+    const buffer = Buffer.alloc(expected + 1)
     let length = 0
     while (length < buffer.length) {
       const count = readSync(fd, buffer, length, buffer.length - length, null)
@@ -63,6 +65,9 @@ export function readContainedFile(path: string, realRoot: string, maxBytes: numb
       length += count
     }
     if (length > maxBytes) throw new ContainedFileError('too_large')
+    // It grew while being read: past the cap it is too large, within it it changed.
+    if (length > expected)
+      throw new ContainedFileError(fstatSync(fd).size > maxBytes ? 'too_large' : 'changed')
     return buffer.subarray(0, length)
   } finally {
     closeSync(fd)

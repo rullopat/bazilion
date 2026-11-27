@@ -39,8 +39,10 @@ export function insert(
   // pass content, such as a Team template's spawn, keep it.
   const userMd = g.userMd ?? ''
   const policyMode = g.policyMode ?? 'open'
+  // A new Team goes at the end of the list.
   db.raw.run(
-    'INSERT INTO teams (id, name, user_md, policy_mode, created_at) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO teams (id, name, user_md, policy_mode, created_at, position)
+     VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM teams))`,
     [g.id, g.name, userMd, policyMode, now],
   )
   return {
@@ -61,13 +63,36 @@ export function get(db: BazilionDb, id: string, paths: Paths): Team | null {
 
 export function list(db: BazilionDb, paths: Paths): Team[] {
   return db.raw
-    .query<RawTeam, []>('SELECT * FROM teams ORDER BY created_at ASC')
+    .query<RawTeam, []>('SELECT * FROM teams ORDER BY position, created_at, id')
     .all()
     .map((r) => toTeam(r, paths))
 }
 
 export function remove(db: BazilionDb, id: string): void {
   db.raw.run('DELETE FROM teams WHERE id = ?', [id])
+}
+
+/**
+ * Put the Teams named first, in that order; the others follow in the order they had. Ids that
+ * name no Team are left out, and the caller says so.
+ */
+export function setOrder(db: BazilionDb, ids: readonly string[]): void {
+  const current = db.raw
+    .query<{ id: string }, []>('SELECT id FROM teams ORDER BY position, created_at, id')
+    .all()
+    .map((row) => row.id)
+  db.raw.transaction(() => {
+    for (const [place, id] of orderedIds(current, ids).entries())
+      db.raw.run('UPDATE teams SET position = ? WHERE id = ?', [place, id])
+  })()
+}
+
+/** `named` first (those that are in `current`, once each), then the rest of `current` in order. */
+export function orderedIds(current: readonly string[], named: readonly string[]): string[] {
+  const known = new Set(current)
+  const first = [...new Set(named)].filter((id) => known.has(id))
+  const placed = new Set(first)
+  return [...first, ...current.filter((id) => !placed.has(id))]
 }
 
 export function setUserMd(db: BazilionDb, id: string, userMd: string): void {

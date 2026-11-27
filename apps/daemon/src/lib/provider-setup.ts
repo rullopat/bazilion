@@ -8,6 +8,7 @@ import type {
   ConnectProviderRequest,
   ConnectProviderResponse,
   LocalProvidersResponse,
+  MediaRouteEntry,
   ModelsResponse,
   ModelWindow,
   OpenAICodexStatus,
@@ -34,6 +35,14 @@ import {
   replaceCuratedModels,
   writeModelWindow,
 } from '../core/index.ts'
+import {
+  AUDIO_ROUTES,
+  isMediaModel,
+  type MediaRouteDef,
+  mediaRouteNeeds,
+  SPEECH_ROUTES,
+  VIDEO_ROUTES,
+} from '../core/media-routes.ts'
 import { modelUsage } from '../core/model-usage.ts'
 import { readProviderChecks, writeProviderCheck } from '../core/provider-checks.ts'
 import {
@@ -45,7 +54,7 @@ import {
   providerEndpoint,
   providersUsingField,
 } from '../core/providers.ts'
-import { TRANSCRIPTION_ROUTES, transcriptionRouteNeeds } from '../core/transcription-config.ts'
+import { TRANSCRIPTION_ROUTES } from '../core/transcription-config.ts'
 import {
   type CatalogEntry,
   catalogContextWindow,
@@ -95,7 +104,9 @@ function connectKind(provider: ProviderDef): ProviderConfigEntry['connect'] {
 
 /** Chat models of Pi's catalog; image models have their own place. */
 function chatCatalog(providerId: string): CatalogEntry[] {
-  return listCatalogEntries(providerId).filter((model) => !isImageModel(providerId, model.id))
+  return listCatalogEntries(providerId).filter(
+    (model) => !isImageModel(providerId, model.id) && !isMediaModel(providerId, model.id),
+  )
 }
 
 /**
@@ -169,6 +180,7 @@ function entryOf(provider: ProviderDef, snap: Snapshot, db: BazilionDb): Provide
     models,
     suggested: [...(provider.suggested ?? [])],
     catalogSize: chatCatalog(provider.id).length,
+    ...(provider.media ? { media: true } : {}),
     listsModels: Boolean(provider.local || provider.modelsUrl),
     ...(address ? { address } : {}),
     ...(connect === 'signin' && snap.codex.accountId ? { account: snap.codex.accountId } : {}),
@@ -241,18 +253,20 @@ export async function modelsOverview(ctx: SetupCtx): Promise<ModelsResponse> {
     },
     transcription: {
       selected: snap.env.BAZILION_TRANSCRIPTION_MODEL?.trim() || 'off',
-      routes: TRANSCRIPTION_ROUTES.map((route) => {
-        const needs = transcriptionRouteNeeds(route, snap.env)
-        return {
-          id: route.id,
-          model: route.model,
-          provider: route.provider,
-          providerName: findProvider(route.provider)?.displayName ?? route.provider,
-          billing: route.billing,
-          ready: needs === null,
-          ...(needs ? { needs } : {}),
-        }
-      }),
+      routes: TRANSCRIPTION_ROUTES.map((route) => mediaEntry(route, snap.env)),
+    },
+    video: {
+      selected: snap.env.BAZILION_VIDEO_MODEL?.trim() || 'off',
+      routes: VIDEO_ROUTES.map((route) => mediaEntry(route, snap.env)),
+    },
+    audio: {
+      selected: snap.env.BAZILION_AUDIO_MODEL?.trim() || 'off',
+      routes: AUDIO_ROUTES.map((route) => mediaEntry(route, snap.env)),
+    },
+    speech: {
+      selected: snap.env.BAZILION_SPEECH_MODEL?.trim() || 'off',
+      routes: SPEECH_ROUTES.map((route) => mediaEntry(route, snap.env)),
+      voice: snap.env.BAZILION_SPEECH_VOICE?.trim() || null,
     },
     images: {
       selected: snap.env.BAZILION_IMAGE_MODEL || 'off',
@@ -269,6 +283,20 @@ export async function modelsOverview(ctx: SetupCtx): Promise<ModelsResponse> {
         }
       }),
     },
+  }
+}
+
+/** A media route as a Models card lists it: ready, or what it still needs. */
+function mediaEntry(route: MediaRouteDef, env: NodeJS.ProcessEnv): MediaRouteEntry {
+  const needs = mediaRouteNeeds(route, env)
+  return {
+    id: route.id,
+    model: route.model,
+    provider: route.provider,
+    providerName: findProvider(route.provider)?.displayName ?? route.provider,
+    billing: route.billing,
+    ready: needs === null,
+    ...(needs ? { needs } : {}),
   }
 }
 
@@ -352,7 +380,9 @@ export async function providerCatalog(
   const live = ask
     ? await listLiveModels(id, env, signal ? AbortSignal.any([signal, limit]) : limit)
     : undefined
-  const listed = (live?.models ?? []).filter((model) => !isImageModel(id, model))
+  const listed = (live?.models ?? []).filter(
+    (model) => !isImageModel(id, model) && !isMediaModel(id, model),
+  )
   const selected = providerModelRepo.list(ctx.db, id)
   const catalog = provider.local ? [] : chatCatalog(id)
   const facts = new Map(catalog.map((model) => [model.id, model]))

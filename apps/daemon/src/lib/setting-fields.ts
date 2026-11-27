@@ -209,6 +209,9 @@ export function writeSetting(
   value: string,
 ): void {
   const store = field.kind === 'config' ? openConfig(db) : openSecrets(db, authToken)
+  // A voice belongs to its speech model: another model starts again from its own first voice.
+  if (field.envVar === 'BAZILION_SPEECH_MODEL' && (store.get(field.envVar) ?? '') !== value)
+    openConfig(db).remove('BAZILION_SPEECH_VOICE')
   if (value === '') store.remove(field.envVar)
   else store.set(field.envVar, value)
 }

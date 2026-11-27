@@ -1,6 +1,8 @@
 // Keeps one Agent's chat level with the daemon: the saved history, the conversation file's head
 // and the follow-up queue, read again when the live feed (or, without it, a poll) says something
-// moved elsewhere.
+// moved elsewhere. What another source added (a teammate's message, Telegram, a schedule, a
+// follow-up, the terminal, another tab) is loaded at once, except under an open edit: it waits
+// for the edit to end.
 
 import type {
   AgentActivity,
@@ -29,6 +31,7 @@ export function useSessionSync({
   initialSessionHead,
   onConversation,
   streamingRef,
+  hold,
   pushNote,
   onHistory,
 }: {
@@ -41,12 +44,17 @@ export function useSessionSync({
   onConversation?: (conversationId: string | null) => void
   /** This tab streams a turn: the history is not reloaded under it. */
   streamingRef: RefObject<boolean>
+  /** An edit is open: what arrives meanwhile is loaded when it ends. */
+  hold: boolean
   pushNote: (content: string) => void
-  /** The saved history was loaded again. */
-  /** The conversation as the daemon has it now: messages, compactions, how full the window is. */
-  onHistory: (history: SessionMessagesResponse) => void
+  /**
+   * The conversation as the daemon has it now: messages, compactions, how full the window is.
+   * `arrived` when it is the same conversation with what another source added since.
+   */
+  onHistory: (history: SessionMessagesResponse, arrived: boolean) => void
 }) {
-  const [stale, setStale] = useState(false)
+  /** Another source moved the conversation while an edit was open. */
+  const [behind, setBehind] = useState(false)
   const [historyUnavailable, setHistoryUnavailable] = useState(
     initialSessionHead?.unavailable ?? false,
   )
@@ -54,9 +62,12 @@ export function useSessionSync({
 
   const knownHeadRef = useRef(initialSessionHead ?? EMPTY_HEAD)
   const queueRef = useRef<UserQueueListResponse | null>(null)
-  const staleRef = useRef(stale)
-  staleRef.current = stale
+  const holdRef = useRef(hold)
+  holdRef.current = hold
   const activityRef = useRef<AgentActivity | null>(null)
+  // One look at the head at a time; a change that comes in meanwhile has it look once more.
+  const catchingUp = useRef(false)
+  const lookAgain = useRef(false)
   const feed = useLive()
 
   const queueWorking = isQueueWorking(queue)
@@ -68,14 +79,20 @@ export function useSessionSync({
     knownHeadRef.current = head
   }
 
-  async function refreshHistory() {
+  /** Load the conversation again; `arrived` when another source added to the one on screen. */
+  async function refreshHistory(arrived = false) {
     if (streamingRef.current) return
     try {
       const body = await api<SessionMessagesResponse>(`${base}/sessions/messages`)
+      if (streamingRef.current) return
       setHistoryUnavailable(body.head.unavailable ?? false)
-      onHistory(body)
+      // The same conversation, or the first one, which another source just began: what it holds
+      // arrived. Another conversation selected elsewhere is shown, not marked.
+      const known = knownHeadRef.current.conversationId
+      const same = known === null || body.head.conversationId === known
+      onHistory(body, arrived && same)
       know(body.head)
-      setStale(false)
+      setBehind(false)
     } catch {
       pushNote('Conversation history is unavailable. Your draft is preserved.')
     }
@@ -86,7 +103,8 @@ export function useSessionSync({
       const head = await api<SessionHeadResponse>(`${base}/sessions/head`)
       const prior = knownHeadRef.current.conversationId
       if (prior && prior !== head.conversationId) {
-        setStale(true)
+        // Another conversation was selected elsewhere while this tab's turn ran: show that one.
+        void refreshHistory()
         return
       }
       setHistoryUnavailable(head.unavailable ?? false)
@@ -103,7 +121,7 @@ export function useSessionSync({
       // A follow-up finished: its reply is in the history now.
       const finished =
         openFollowUps(next) < openFollowUps(queueRef.current) && !streamingRef.current
-      if (finished) void refreshHistory()
+      if (finished) void refreshHistory(true)
       queueRef.current = next
       setQueue(next)
       return finished
@@ -113,19 +131,37 @@ export function useSessionSync({
     }
   }
 
-  /** Activity from another source (Telegram, a schedule, another tab) shows a reload banner. */
-  async function checkHead() {
-    if (!initialSessionHead || staleRef.current || streamingRef.current) return
+  /** Activity from another source (Telegram, a schedule, another tab) is loaded at once. */
+  async function lookAtHead() {
+    if (!initialSessionHead || streamingRef.current) return
     try {
       const head = await api<SessionHeadResponse>(`${base}/sessions/head`)
-      if (headMoved(head, knownHeadRef.current)) {
-        setStale(true)
-        // Another source may be running a turn; the queue reports it, so Stop can show.
-        void refreshQueue()
-      }
+      if (!headMoved(head, knownHeadRef.current)) return
+      // Another source may be running a turn; the queue reports it, so Stop can show.
+      void refreshQueue()
+      if (holdRef.current) setBehind(true)
+      else await refreshHistory(true)
     } catch {
       // Transient: the next change tries again.
     }
+  }
+
+  function checkHead() {
+    if (catchingUp.current) {
+      lookAgain.current = true
+      return
+    }
+    catchingUp.current = true
+    void (async () => {
+      try {
+        do {
+          lookAgain.current = false
+          await lookAtHead()
+        } while (lookAgain.current)
+      } finally {
+        catchingUp.current = false
+      }
+    })()
   }
 
   /** Queue a follow-up; returns the draft to give back to the composer when it was not queued. */
@@ -148,7 +184,7 @@ export function useSessionSync({
   }, [])
 
   // The live feed says when this Agent starts or stops working, or its conversation moves on: the
-  // queue is read again then, and a conversation that moved without this tab is reported stale.
+  // queue is read again then, and what another source added to the conversation is loaded.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the handlers read refs.
   useEffect(
     () =>
@@ -159,10 +195,10 @@ export function useSessionSync({
         if (!now || streamingRef.current) return
         const reaction = activityReaction(was, now)
         if (reaction === 'head') {
-          void checkHead()
+          checkHead()
         } else if (reaction !== null) {
           void refreshQueue().then((reloaded) => {
-            if (reaction === 'queue-then-head' && !reloaded) void checkHead()
+            if (reaction === 'queue-then-head' && !reloaded) checkHead()
           })
         }
       }),
@@ -182,16 +218,26 @@ export function useSessionSync({
   // Without the live feed: look for activity from another source every few seconds.
   // biome-ignore lint/correctness/useExhaustiveDependencies: checkHead reads refs.
   useEffect(() => {
-    if (!initialSessionHead || stale || feed.connected) return
+    if (!initialSessionHead || feed.connected) return
     const timer = setInterval(() => {
-      if (!document.hidden) void checkHead()
+      if (!document.hidden) checkHead()
     }, SESSION_POLL_MS)
     return () => clearInterval(timer)
-  }, [base, initialSessionHead, stale, feed.connected])
+  }, [base, initialSessionHead, feed.connected])
+
+  // The edit ended (sent or cancelled): what arrived meanwhile shows now. A sent edit streams its
+  // own turn, which loads the conversation when it ends.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: checkHead reads refs.
+  useEffect(() => {
+    if (!hold && behind) {
+      setBehind(false)
+      checkHead()
+    }
+  }, [hold, behind])
 
   return {
-    stale,
-    dismissStale: () => setStale(false),
+    /** Another source moved the conversation while an edit was open; shown once it ends. */
+    behind,
     historyUnavailable,
     queue,
     /** The conversation this tab last knew of; null before the Agent's first turn. */

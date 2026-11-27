@@ -1,6 +1,13 @@
 // What the workspace's parts share: who exists, what is open, and how to link to another part.
 
-import type { Agent, Profile, ResolvedAgent, Team, TeamTemplate } from '@bazilion/api-types'
+import type {
+  Agent,
+  Profile,
+  ResolvedAgent,
+  SpeechStatusResponse,
+  Team,
+  TeamTemplate,
+} from '@bazilion/api-types'
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
 import type { WorkspaceSearch } from '../../lib/workspace'
 
@@ -16,6 +23,8 @@ export interface WorkspaceValue {
   /** The conversation on screen: the one being read, else the Agent's active one. */
   conversationId: string | null
   search: WorkspaceSearch
+  /** Read aloud and dictation are offered (their models are chosen and ready). */
+  speech: SpeechStatusResponse
   agentById: (id: string) => Agent | undefined
   /** The address with some of its parts changed; `undefined` drops a part. */
   to: (patch: Partial<WorkspaceSearch>) => WorkspaceSearch

@@ -239,3 +239,20 @@ test.each([
   expect(() => applyPatch(input, store)).toThrow(message)
   expect([...store.files.entries()]).toEqual([['a', 'x\n']])
 })
+
+test('a small file is read whole under a cap as large as a provider upload limit', async () => {
+  const { mkdtempSync, writeFileSync, realpathSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { readContainedFile } = await import('../../src/runtime/safe-files.ts')
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'bazilion-cap-')))
+  try {
+    writeFileSync(join(root, 'note.mp3'), 'ID3 small')
+    // 5 GB, the largest upload a transcription provider takes: never allocated for 9 bytes.
+    expect(readContainedFile(join(root, 'note.mp3'), root, 5_000_000_000).toString()).toBe(
+      'ID3 small',
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

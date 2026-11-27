@@ -70,6 +70,12 @@ class LiveFeed {
     return this.#listeners.size
   }
 
+  /** Send an event to every browser connected now, once; returns how many there were. */
+  broadcast(event: LiveEvent): number {
+    for (const listener of this.#listeners) listener(event)
+    return this.#listeners.size
+  }
+
   #start(): void {
     this.#timer = setInterval(() => {
       this.#ticks++

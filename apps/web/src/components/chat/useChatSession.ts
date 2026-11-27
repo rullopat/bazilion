@@ -64,6 +64,8 @@ export function useChatSession({
   const [streaming, setStreaming] = useState(false)
   const [editing, setEditing] = useState(false)
   const [questionsKey, setQuestionsKey] = useState(0)
+  // Counts the loads that brought what another source added, so the pane can mark it.
+  const [arrival, setArrival] = useState(0)
 
   const abortRef = useRef<AbortController | null>(null)
   const noteIdRef = useRef(0)
@@ -85,13 +87,20 @@ export function useChatSession({
     initialSessionHead,
     onConversation,
     streamingRef,
+    hold: editing,
     pushNote,
-    onHistory: (saved) => {
+    onHistory: (saved, arrived) => {
       setMessages(saved.messages)
       setCompactions(saved.compactions ?? [])
       setContext(saved.context ?? null)
-      setLive([])
+      // A turn from elsewhere still waiting on a command keeps its card.
+      setLive((entries) =>
+        entries.filter(
+          (entry) => entry.type === 'command_approval' && entry.approval.status === 'pending',
+        ),
+      )
       setEditing(false)
+      if (arrived) setArrival((count) => count + 1)
     },
   })
   const {
@@ -105,6 +114,10 @@ export function useChatSession({
   } = useCommandApprovals({ agentId, setLive })
 
   const turnBusy = streaming || recoveredTurn
+  // A recovered turn (one this tab lost the stream of) ends elsewhere: the queue says no turn runs.
+  useEffect(() => {
+    if (recoveredTurn && !streaming && sync.queue && !sync.queue.turnActive) setRecoveredTurn(false)
+  }, [recoveredTurn, streaming, sync.queue, setRecoveredTurn])
   // A turn from elsewhere (a follow-up, Telegram, a schedule) can be stopped from here too.
   const agentBusy = turnBusy || Boolean(sync.queue?.turnActive)
 
@@ -178,6 +191,15 @@ export function useChatSession({
     if (turnBusy) {
       if (!editing) return sync.enqueue(draft)
       pushNote('Wait for the current turn to finish before replacing the last message.')
+      return draft
+    }
+    if (editing && sync.behind) {
+      // Messages came while the edit was open: replacing the last turn now would cut them off.
+      // The edit ends, they show, and the text stays in the field to send or edit again.
+      setEditing(false)
+      pushNote(
+        'New messages came in while you were editing, so nothing was replaced. They are shown now; your text is back in the field.',
+      )
       return draft
     }
     if (editing) {
@@ -297,7 +319,8 @@ export function useChatSession({
     /** How full the model's window is; null before the daemon has said. */
     context,
     editing,
-    stale: sync.stale,
+    /** Changes each time what another source added is loaded. */
+    arrival,
     recoveredTurn,
     historyUnavailable: sync.historyUnavailable,
     queue: sync.queue,
@@ -309,7 +332,6 @@ export function useChatSession({
     cancelEdit: () => setEditing(false),
     refreshHistory: sync.refreshHistory,
     refreshQueue: sync.refreshQueue,
-    dismissStale: sync.dismissStale,
     /** The conversation on screen; null before the Agent's first turn. */
     conversationId: sync.knownConversationId,
   }

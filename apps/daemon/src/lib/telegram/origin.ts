@@ -7,6 +7,8 @@ export interface TelegramOrigin {
   threadId: number
   messageId: number
   userId: number
+  /** The message was a voice note: the answer goes back as one too (BAZ-096). */
+  voice?: boolean
 }
 
 /** One Telegram message is one queue attempt, so a redelivered update is not queued twice. */

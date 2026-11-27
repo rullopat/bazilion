@@ -138,7 +138,13 @@ const connectCmd = defineCommand({
       ?.split(',')
       .map((model) => model.trim())
       .filter(Boolean)
-    if (!models && provider.models.length === 0 && provider.suggested.length === 0) {
+    // A media account (ElevenLabs) has no chat models: its key alone is saved, untested.
+    if (
+      !models &&
+      provider.models.length === 0 &&
+      provider.suggested.length === 0 &&
+      !provider.media
+    ) {
       if (provider.connect !== 'local') {
         throw new Error(
           `choose chat models with --models (see: bazilion provider models ${provider.id})`,
@@ -157,8 +163,8 @@ const connectCmd = defineCommand({
 
     const body: ConnectProviderRequest = {
       ...(Object.keys(fields).length > 0 ? { fields } : {}),
-      ...(chosen ? { models: chosen } : {}),
-      ...(args.test ? {} : { test: false }),
+      ...(provider.media ? { models: [] } : chosen ? { models: chosen } : {}),
+      ...(args.test && !provider.media ? {} : { test: false }),
     }
     const result = await client.post<ConnectProviderResponse>(
       apiPath('config', 'providers', provider.id, 'connect'),

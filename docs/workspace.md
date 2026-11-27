@@ -22,6 +22,14 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   `Working: writing theme.js`, `Follow-ups paused`, `2 new files`, `New activity` or `Idle`. A
   Team's header sums its Agents up (`1 waiting · 2 working`). **New** spawns an Agent or a Team
   template, or registers a Team; the menu beside an Agent renames or archives it.
+  Teams and their Agents are in your order: drag a Team by its header, or an Agent within its
+  Team, or use **Move up** and **Move down** in the Team's and the Agent's menus. A new Team goes
+  at the end, a new Agent at the end of its Team. The order is kept in Bazilion, so every browser,
+  Manage and `bazilion team list` / `agent list` show it; `bazilion team order <team>…` and
+  `bazilion agent order <team> <agent>…` set it from a terminal (those named first, the others
+  after them as they were). Jump to keeps its own order. The handle on the list's right edge
+  makes it wider or narrower (drag it, or the arrow keys when it has the focus; a double-click
+  puts it back); the width is kept per browser.
 - **The conversation** is the chat with the open Agent. Tool calls read as steps (`Ran`, `Read`,
   `Wrote` with the lines added and removed); click one for its input and output. A message to a
   teammate is a hand-off card with what that teammate is doing now, or `not sent` when the call
@@ -30,7 +38,10 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   opens their diff. A question from the Agent has one button per choice. While an Agent waits on
   you, its step and the line under the conversation say `waiting for you` in amber, as the list
   does; green and `working` mean it is working. **Edit**, under your last message, appears on
-  hover and replaces that turn. Going to another Agent and back opens the conversation where you
+  hover and replaces that turn. With a Speech model chosen, the speaker under an Agent message
+  reads it aloud; with a Transcription model, the microphone beside the paperclip dictates
+  ([speech](speech.md)). A teammate's message that woke the Agent shows open: who wrote it, a
+  request or a reply, and its text, with what Bazilion told the Agent folded under it. Going to another Agent and back opens the conversation where you
   left it (at the end if you were at the end), for as long as the page is open. When a
   conversation nears the model's window, older messages are summarized to make room: they stay
   on the page, above a line that says so, and **Show the summary** shows what the Agent reads in
@@ -73,6 +84,13 @@ daemon pushes what every Agent is doing and what is open in Attention over one e
 stream and shares it with the others. While it cannot connect (an older proxy, a daemon
 restarting) the pages ask every few seconds instead, and the stream is tried again.
 
+What another source adds to the open conversation (a teammate's message, Telegram, a schedule, a
+follow-up, the terminal, another tab) shows at once, also while that turn still runs, and is
+marked for a few seconds. If you were at the end you follow it; if you had scrolled up you stay
+where you are, and **New messages ↓** takes you down. Nothing you are writing changes: the draft
+and its attachments stay, and an open **Edit** holds what arrives until you send or cancel it;
+sending it then replaces nothing, the new messages show, and your text stays in the field.
+
 The stream also carries a digest of the Teams, Agents and templates. When it changes, because a
 Team or an Agent was added, renamed, moved or archived from the CLI, by an Agent or in another
 tab, the page loads its lists again: nothing needs a reload.
@@ -88,6 +106,20 @@ Where the browser has no Web Locks (an `http://` address other than this compute
 its own stream while it is visible and lets go of it when hidden, so hidden tabs do not take up
 the browser's few connections to the server. A stream ends within 20 seconds of its session being
 signed out or expiring.
+
+## The Agent in the workspace
+
+An Agent can also act on the workspace (`screen`, `theme`, `progress`, `canvas`):
+
+- **`screen`** opens a side-panel tab, a full-width view, or one of its sheets (schedules, jobs,
+  helpers, …), or closes them, in the tabs that show its conversation; a tab showing something
+  else is left alone. **`theme`** switches those tabs to light, dark or the computer's setting.
+  The Agent is told when no browser was connected to see it.
+- **`progress`** puts a card of steps in the conversation (to do, doing, done, failed, each with
+  a line) for a long task; later calls update that card in place, so a task has one card. On
+  Telegram the card is one message, edited.
+- **`canvas`** shows a small HTML page or SVG drawing in the chat, in the sealed frame of
+  [results](results.md#find-preview-and-download), saved under Files.
 
 ## Jump to, and the keyboard
 

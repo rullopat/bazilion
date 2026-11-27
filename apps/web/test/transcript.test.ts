@@ -68,6 +68,7 @@ function render(inWorkspace: boolean): string {
         team,
         conversationId: 'c1',
         search: { agent: 'dev' },
+        speech: { speech: false, transcription: false },
       },
       // biome-ignore lint/correctness/noChildrenProp: createElement types want it in the props.
       children: blocks,

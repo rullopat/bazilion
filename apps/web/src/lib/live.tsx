@@ -20,7 +20,7 @@ import {
 
 const CHANNEL = 'bazilion-live'
 const LOCK = 'bazilion-live'
-const EVENT_TYPES: readonly LiveEvent['type'][] = ['activity', 'attention']
+const EVENT_TYPES: readonly LiveEvent['type'][] = ['activity', 'attention', 'workspace']
 /** After a failed stream: wait, then try again, longer each time up to the last. */
 const RETRY_MS = [1_000, 3_000, 10_000, 30_000]
 
@@ -73,7 +73,8 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
   const focusedTabs = useRef(new Set<string>())
 
   const deliver = useCallback((event: LiveEvent) => {
-    latest.current.set(event.type, event)
+    // An Agent's `screen` or `theme` happens once: a reader that comes later must not replay it.
+    if (event.type !== 'workspace') latest.current.set(event.type, event)
     for (const handler of handlers.current.get(event.type) ?? []) {
       // One reader's failure must not keep the event from the others.
       try {

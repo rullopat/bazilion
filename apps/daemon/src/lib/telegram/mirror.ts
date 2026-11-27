@@ -15,7 +15,9 @@
 import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/api-types'
 import { InputFile } from 'grammy'
 import { agentRepo } from '../../core/index.ts'
+import { SPEECH_ROUTES } from '../../core/media-routes.ts'
 import * as results from '../../core/repos/results.ts'
+import { type ProgressStep, progressCard } from '../../runtime/tools/workspace.ts'
 import { scheduleApprovalPrompt } from './approvals.ts'
 import { type TelegramLive, telegramLive } from './live.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
@@ -57,6 +59,15 @@ export async function mirrorAgentTurnFrame(agentId: string, frame: ChatFrame): P
     await sendQuestionPrompt(live, topicId, frame.event.question).catch(() =>
       logMirrorAdapterFailure('telegram_mirror_question_failed', agent.id),
     )
+    return
+  }
+  // A progress card is one message, edited as the task moves on (BAZ-097).
+  if (
+    frame.kind === 'event' &&
+    frame.event.type === 'tool_call' &&
+    frame.event.name === 'progress'
+  ) {
+    await mirrorProgress(live, topicId, agent.id, frame.event.id, frame.event.arguments)
     return
   }
 
@@ -174,7 +185,25 @@ async function mirrorImages(
   }
 }
 
-/** Send an agent-delivered file, read from the saved results, as a Telegram document. Never throws. */
+/** The most a bot may upload to Telegram, as its Bot API documents (50 MB). */
+const TELEGRAM_UPLOAD_BYTES = 50 * 1000 * 1000
+
+/** How a saved file goes out: a video, a voice note (speech), a song, or a document. */
+export function telegramKind(
+  mimeType: string,
+  model: string | null,
+): 'video' | 'voice' | 'audio' | 'document' {
+  if (mimeType === 'video/mp4') return 'video'
+  const voiceFormat = ['audio/mpeg', 'audio/ogg', 'audio/mp4'].includes(mimeType)
+  if (voiceFormat && model && SPEECH_ROUTES.some((route) => route.model === model)) return 'voice'
+  if (mimeType === 'audio/mpeg' || mimeType === 'audio/mp4') return 'audio'
+  return 'document'
+}
+
+/**
+ * Send an agent-delivered file, read from the saved results: a video plays, speech is a voice
+ * note, a song is in the player, anything else is a document. Never throws.
+ */
 async function mirrorFile(
   live: TelegramLive,
   topicId: number,
@@ -182,12 +211,29 @@ async function mirrorFile(
   ev: { name: string; result: { resultId: string } },
 ): Promise<void> {
   try {
+    const saved = results.get(live.db, ev.result.resultId)
+    if (saved && saved.byteLength > TELEGRAM_UPLOAD_BYTES) {
+      await enqueueOutbound(live.chatId, () =>
+        live.api.sendMessage(
+          live.chatId,
+          `${ev.name} is larger than the 50 MB a bot may send; it is under Files in Bazilion.`,
+          { message_thread_id: topicId },
+        ),
+      )
+      return
+    }
     const buf = results.read(live.db, ev.result.resultId)
-    await enqueueOutbound(live.chatId, () =>
-      live.api.sendDocument(live.chatId, new InputFile(buf, ev.name), {
-        message_thread_id: topicId,
-        caption: ev.name,
-      }),
+    const file = new InputFile(buf, ev.name)
+    const options = { message_thread_id: topicId, caption: ev.name }
+    const kind = telegramKind(saved?.mimeType ?? '', saved?.imageModel ?? null)
+    await enqueueOutbound<unknown>(live.chatId, () =>
+      kind === 'video'
+        ? live.api.sendVideo(live.chatId, file, { ...options, supports_streaming: true })
+        : kind === 'voice'
+          ? live.api.sendVoice(live.chatId, file, { message_thread_id: topicId })
+          : kind === 'audio'
+            ? live.api.sendAudio(live.chatId, file, options)
+            : live.api.sendDocument(live.chatId, file, options),
     )
   } catch (e) {
     if (isThreadGoneError(e)) {
@@ -195,6 +241,70 @@ async function mirrorFile(
       return
     }
     logMirrorAdapterFailure('telegram_mirror_file_failed', agentId)
+  }
+}
+
+// ─── progress cards ─────────────────────────────────────────────────────
+
+const STEP_MARK: Record<ProgressStep['state'], string> = {
+  todo: '▫️',
+  doing: '⏳',
+  done: '✅',
+  failed: '❌',
+}
+
+/** The message each progress card is in, by Agent and card id; a restart starts a new message. */
+const progressMessages = new Map<string, number>()
+
+/** A progress card as a Telegram message: its title, how far it got, a line per step. */
+export function progressText(card: { task: string; steps: ProgressStep[] }): string {
+  const done = card.steps.filter((step) => step.state === 'done').length
+  const lines = card.steps.map(
+    (step) => `${STEP_MARK[step.state]} ${step.step}${step.note ? ` — ${step.note}` : ''}`,
+  )
+  return clip(
+    [`📋 ${card.task} (${done}/${card.steps.length})`, ...lines].join('\n'),
+    TELEGRAM_SAFE_BUDGET,
+  )
+}
+
+async function mirrorProgress(
+  live: TelegramLive,
+  topicId: number,
+  agentId: string,
+  toolCallId: string,
+  rawArgs: string,
+): Promise<void> {
+  let card: ReturnType<typeof progressCard>
+  try {
+    card = progressCard(JSON.parse(rawArgs) as Record<string, unknown>)
+  } catch {
+    return // The tool refuses it too; nothing to show.
+  }
+  const key = `${agentId}:${card.id ?? toolCallId}`
+  const text = progressText(card)
+  const known = progressMessages.get(key)
+  try {
+    if (known !== undefined) {
+      try {
+        await enqueueOutbound(live.chatId, () => live.api.editMessageText(live.chatId, known, text))
+        return
+      } catch (e) {
+        // The same text again is not an edit; anything else sends the card anew.
+        if (e instanceof Error && e.message.toLowerCase().includes('message is not modified'))
+          return
+      }
+    }
+    const sent = await enqueueOutbound(live.chatId, () =>
+      live.api.sendMessage(live.chatId, text, { message_thread_id: topicId }),
+    )
+    progressMessages.set(key, sent.message_id)
+  } catch (e) {
+    if (isThreadGoneError(e)) {
+      agentRepo.setTelegramTopicId(live.db, agentId, null)
+      return
+    }
+    logMirrorAdapterFailure('telegram_mirror_progress_failed', agentId)
   }
 }
 
@@ -336,5 +446,6 @@ export function mirrorTypingStop(agentId: string): void {
 export function _resetMirrorForTest(): void {
   for (const interval of _typingIntervals.values()) clearInterval(interval)
   _typingIntervals.clear()
+  progressMessages.clear()
   _resetLoopGuardForTest()
 }

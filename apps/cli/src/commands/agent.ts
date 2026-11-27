@@ -1,4 +1,10 @@
-import type { Agent, MoveAgentRequest, ResolvedAgent, SpawnAgentRequest } from '@bazilion/api-types'
+import type {
+  Agent,
+  MoveAgentRequest,
+  ResolvedAgent,
+  SetOrderRequest,
+  SpawnAgentRequest,
+} from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { agentArg, apiPath, printRows, teamArg } from '../command-helpers.ts'
@@ -169,6 +175,31 @@ const cancelCmd = defineCommand({
   },
 })
 
+const orderCmd = defineCommand({
+  meta: {
+    name: 'order',
+    description:
+      "Set the order of a Team's Agents: those named come first, the others keep their order after them",
+  },
+  args: {
+    team: teamArg,
+    agent: { type: 'positional', description: 'Agent names or ids, in order', required: true },
+  },
+  async run({ args }) {
+    // The first positional is the Team; the rest are its Agents, in order.
+    const ids = args._.slice(1).map(String)
+    const body: SetOrderRequest = { ids }
+    const agents = await createClient().put<Agent[]>(
+      apiPath('teams', args.team, 'agents', 'order'),
+      body,
+    )
+    printRows(
+      agents.map((agent, index) => [String(index + 1), agent.id.slice(0, 8), agent.name]),
+      '(no agents)',
+    )
+  },
+})
+
 const moveCmd = defineCommand({
   meta: { name: 'move', description: 'Move an agent to a different team' },
   args: { agent: agentArg, team: teamArg },
@@ -195,6 +226,7 @@ export const agentCommand = defineCommand({
     ...learningCommands,
     skill: agentSkillCommand,
     move: moveCmd,
+    order: orderCmd,
     browser: browserCommand,
     secret: agentSecretCommand,
     helpers: agentHelpersCommand,

@@ -12,6 +12,7 @@ import type {
   ResolvedAgent,
   SessionHeadResponse,
   SessionMessagesResponse,
+  SpeechStatusResponse,
   Team,
   TeamTemplate,
 } from '@bazilion/api-types'
@@ -19,7 +20,16 @@ import { ApiClientError } from '@bazilion/client'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { ChangesView } from '../components/changes/ChangesView'
 import { ReviewProvider } from '../components/changes/review'
 import { ChatPane } from '../components/chat/ChatPane'
@@ -27,6 +37,7 @@ import { getDialogFocusRestoreTarget, restoreDialogFocus } from '../components/D
 import { FilesView } from '../components/files/FilesView'
 import { StatusBadge } from '../components/Page'
 import { SidePanel } from '../components/panel/SidePanel'
+import { useAgentScreen } from '../components/workspace/agent-screen'
 import { ConversationHeader } from '../components/workspace/ConversationHeader'
 import { WorkspaceProvider } from '../components/workspace/context'
 import { EarlierConversation } from '../components/workspace/EarlierConversation'
@@ -34,6 +45,7 @@ import { FocusFrame } from '../components/workspace/FocusFrame'
 import { Overview } from '../components/workspace/Overview'
 import { SIDEBAR_OPEN_GROUPS_COOKIE } from '../components/workspace/rail/open-groups'
 import { Rail } from '../components/workspace/rail/Rail'
+import { RailResizer } from '../components/workspace/rail/RailResizer'
 import { SlimRail } from '../components/workspace/rail/SlimRail'
 import { Sheets } from '../components/workspace/Sheets'
 import { TeamHome } from '../components/workspace/TeamHome'
@@ -49,7 +61,9 @@ import {
   type PanelMemory,
   type PanelTab,
   parsePanelCookie,
+  parseRailWidthCookie,
   parseWorkspaceSearch,
+  RAIL_WIDTH_COOKIE,
   writePanelCookie,
 } from '../lib/workspace'
 
@@ -87,12 +101,16 @@ const fetchWorkspace = createServerFn({ method: 'GET' })
   .validator((data: { agentId?: string }) => data)
   .handler(async ({ data }) => {
     const client = daemonClient()
-    const [agents, profiles, teamTemplates, teams, activity] = await Promise.all([
+    const [agents, profiles, teamTemplates, teams, activity, speech] = await Promise.all([
       client.get<Agent[]>('/api/agents?includeArchived=false'),
       client.get<Profile[]>('/api/profiles'),
       client.get<TeamTemplate[]>('/api/team-templates'),
       client.get<Team[]>('/api/teams'),
       client.get<ActivityResponse>('/api/activity'),
+      // Read aloud and dictation show only while their models are ready.
+      client
+        .get<SpeechStatusResponse>('/api/speech/status')
+        .catch((): SpeechStatusResponse => ({ speech: false, transcription: false })),
     ])
     let selected: SelectedAgent | null = null
     if (data.agentId) {
@@ -122,8 +140,10 @@ const fetchWorkspace = createServerFn({ method: 'GET' })
       teams,
       selected,
       activity: activity.agents,
+      speech,
       openGroups: parseOpenGroupsCookie(getCookie(SIDEBAR_OPEN_GROUPS_COOKIE)),
       panel: parsePanelCookie(getCookie(PANEL_COOKIE)),
+      railWidth: parseRailWidthCookie(getCookie(RAIL_WIDTH_COOKIE)),
     }
   })
 
@@ -154,6 +174,8 @@ function WorkspacePage() {
           : 'Overview',
   )
 
+  // The list on the left at the width this browser left it (BAZ-098).
+  const [railWidth, setRailWidth] = useState(data.railWidth)
   // The side panel opens on the tab it was last on; the address, when it says, wins.
   const [memory, setMemory] = useState<PanelMemory>(data.panel)
   useEffect(() => {
@@ -266,6 +288,13 @@ function WorkspacePage() {
       ? search.conversation
       : null
   const conversationId = open ? (reading ?? activeConversation) : null
+  // What the open Agent asks this tab to show, while it shows that Agent's conversation.
+  useAgentScreen(
+    open && !reading && activeConversation
+      ? { agentId: open.agent.id, conversationId: activeConversation }
+      : null,
+    search,
+  )
 
   const workspace = useMemo(
     () => ({
@@ -277,8 +306,19 @@ function WorkspacePage() {
       team,
       conversationId,
       search,
+      speech: data.speech,
     }),
-    [agents, teams, data.profiles, data.teamTemplates, open, team, conversationId, search],
+    [
+      agents,
+      teams,
+      data.profiles,
+      data.teamTemplates,
+      open,
+      team,
+      conversationId,
+      search,
+      data.speech,
+    ],
   )
 
   const header = (
@@ -334,18 +374,23 @@ function WorkspacePage() {
             </div>
           ) : (
             <div
-              className={`grid h-full min-h-0 grid-cols-1 gap-3 py-3 lg:grid-cols-[18rem_minmax(0,1fr)] ${
-                panel === 'none' ? '' : 'xl:grid-cols-[18rem_minmax(0,1fr)_minmax(22rem,27rem)]'
+              // The list keeps at most a third of the window, whatever width it was given.
+              style={{ '--rail-width': `min(${railWidth}rem, 33vw)` } as CSSProperties}
+              className={`grid h-full min-h-0 grid-cols-1 gap-3 py-3 lg:grid-cols-[var(--rail-width)_minmax(0,1fr)] ${
+                panel === 'none'
+                  ? ''
+                  : 'xl:grid-cols-[var(--rail-width)_minmax(0,1fr)_minmax(22rem,27rem)]'
               }`}
             >
               <div
                 inert={overlay || undefined}
-                className={`flex min-h-0 flex-col gap-3 ${open || team ? 'hidden lg:flex' : ''}`}
+                className={`relative flex min-h-0 flex-col gap-3 ${open || team ? 'hidden lg:flex' : ''}`}
               >
                 <WaitingStrip className="lg:hidden" />
                 <div className="min-h-0 flex-1">
                   <Rail initialOpenGroups={data.openGroups} />
                 </div>
+                <RailResizer width={railWidth} onWidth={setRailWidth} />
               </div>
               <div
                 inert={overlay || undefined}

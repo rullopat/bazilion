@@ -98,17 +98,16 @@ Each row on the page says who uses the model. Removing a model an Agent template
 moves the template to another model and says so; an Agent with its own model on a removed model
 is refused until it gets another one in its **Agent** tab.
 
-## Transcription
+## Video, music and sound, speech, transcription
 
-**Transcription** on the Models page chooses what turns voice notes and audio you send, on
-Telegram or attached in a chat, into words before the turn: **GPT Transcribe** through an OpenAI
-API key (billed per minute of audio), or **Off**. The turn's message then carries the words, and
-the file is saved with the uploads all the same. A file that cannot be transcribed says why in
-the message. Off, the default, changes nothing: the Agent gets the file. From a terminal:
-`bazilion config set BAZILION_TRANSCRIPTION_MODEL openai:gpt-transcribe`.
+Four more cards on the Models page each choose one model for every Agent, through one provider's
+account, or **Off**: **Video** and **Music and sound** ([video and sound](video-and-sound.md)),
+**Speech** with its voice, and **Transcription** ([speech](speech.md)). Transcription turns voice
+notes and audio you send into words before the turn, and serves dictation in the chat and the
+`transcribe` tool. Off, its default, changes nothing: the Agent gets the file.
 
-Audio files an Agent finds in its workspace are not transcribed, only the ones you send. A
-transcription is not a turn, so it does not show in [Usage](usage.md).
+**ElevenLabs**, under **Add a provider**, is an account for media only: connecting it saves its
+key and lists no chat models; its sheet says what it serves.
 
 ## What they cost
 

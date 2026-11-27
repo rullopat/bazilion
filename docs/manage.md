@@ -19,7 +19,9 @@ with the reason.
 
 ## Agents
 
-Agents are grouped by Team. **Find** matches a name, or the creature and vibe from IDENTITY.md;
+Agents are grouped by Team, in the order of the workspace's list (set there by dragging or
+**Move up** / **Move down**, or with `bazilion team order` and `bazilion agent order`). **Find**
+matches a name, or the creature and vibe from IDENTITY.md;
 **Current**, **Archived** and **All** choose which Agents are shown. Each row says the template
 the Agent was spawned from and the model it answers with, and says so when that model is not in
 Chat. An archived Agent keeps its files and conversations and takes no work; **Restore** brings

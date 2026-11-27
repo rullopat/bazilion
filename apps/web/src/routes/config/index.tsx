@@ -10,12 +10,15 @@ import { ConfigPage } from '../../components/ConfigPage'
 import { AddProviderDialog } from '../../components/setup/AddProviderDialog'
 import { ModelPicker } from '../../components/setup/ModelPicker'
 import {
+  AudioCard,
   ChatModelsCard,
   CommandReviewCard,
   ImagesCard,
   ProvidersCard,
+  SpeechCard,
   StatusLine,
   TranscriptionCard,
+  VideoCard,
 } from '../../components/setup/ModelsCards'
 import { ProviderSheet } from '../../components/setup/ProviderSheet'
 import { api } from '../../lib/api'
@@ -107,6 +110,9 @@ function ModelsPage() {
         onChanged={reload}
       />
       <ImagesCard images={models.images} onConnect={(id) => open({ add: id })} onChanged={reload} />
+      <VideoCard video={models.video} onConnect={(id) => open({ add: id })} onChanged={reload} />
+      <AudioCard audio={models.audio} onConnect={(id) => open({ add: id })} onChanged={reload} />
+      <SpeechCard speech={models.speech} onConnect={(id) => open({ add: id })} onChanged={reload} />
       <TranscriptionCard
         transcription={models.transcription}
         onConnect={(id) => open({ add: id })}

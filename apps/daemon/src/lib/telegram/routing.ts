@@ -314,6 +314,7 @@ async function handleAgentTopicMessage(
           threadId: topicId,
           messageId: m.message_id,
           userId: from.id,
+          ...(media?.kind === 'voice' ? { voice: true } : {}),
         },
       },
       deps,

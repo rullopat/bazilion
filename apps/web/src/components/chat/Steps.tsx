@@ -34,6 +34,7 @@ import {
 import { AgentAvatar } from '../AgentAvatar'
 import { useWorkspaceOptional, type WorkspaceValue } from '../workspace/context'
 import { pairSteps, type Step, type ToolItem } from './entries'
+import { ProgressCards } from './Progress'
 
 const ICONS: Record<StepIcon, LucideIcon> = {
   terminal: Terminal,
@@ -60,7 +61,9 @@ const CODE =
 export function StepsBlock({ items, dimmed = false }: { items: ToolItem[]; dimmed?: boolean }) {
   const all = pairSteps(items)
   const handoffs = all.filter((step) => step.name === 'send_message')
-  const steps = all.filter((step) => step.name !== 'send_message')
+  // Progress calls show as their card, once per task, not as steps (BAZ-097).
+  const progress = all.filter((step) => step.name === 'progress')
+  const steps = all.filter((step) => step.name !== 'send_message' && step.name !== 'progress')
   const written = [
     ...new Set(
       steps
@@ -72,6 +75,7 @@ export function StepsBlock({ items, dimmed = false }: { items: ToolItem[]; dimme
   return (
     <div className={dimmed ? 'opacity-40' : undefined}>
       {steps.length > 0 && <StepList steps={steps} />}
+      {progress.length > 0 && <ProgressCards steps={progress} />}
       {handoffs.length > 0 && <Handoffs steps={handoffs} />}
       {written.length > 0 && <WrittenFiles paths={written} />}
     </div>

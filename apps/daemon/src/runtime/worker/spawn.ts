@@ -338,6 +338,12 @@ const RPC_HANDLERS: RpcHandlers = {
   helperStart: (args, { hosts }) => host(hosts.helperHost, 'helper').start(args),
   helperWait: (args, ctx) => host(ctx.hosts.helperHost, 'helper').wait(args, ctx.signal),
   helperStop: (args, { hosts }) => host(hosts.helperHost, 'helper').stop(args),
+  workspaceShow: ({ action }, { hosts }) => host(hosts.workspaceHost, 'workspace').show(action),
+  generateVideo: (args, { hosts }) => host(hosts.videoHost, 'video').generate(args),
+  generateAudio: (args, ctx) => host(ctx.hosts.audioHost, 'audio').generate(args, ctx.signal),
+  speak: (args, ctx) => host(ctx.hosts.speechHost, 'speech').speak(args, ctx.signal),
+  transcribeFile: (args, ctx) =>
+    host(ctx.hosts.transcriptionHost, 'transcription').transcribe(args, ctx.signal),
   secretRequest: async ({ secret, replace }, ctx) => {
     const asked = host(ctx.hosts.questionHost, 'question').askSecret(secret, replace)
     if (asked.kind === 'asked')

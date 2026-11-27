@@ -22,6 +22,7 @@ import {
 } from '../tools/propose-lesson.ts'
 import { workerFailureMessage } from './cancellation.ts'
 import { createProcessIpcClient, type WorkerIpcCall } from './ipc-client.ts'
+import type { MediaOutput } from './ipc-protocol.ts'
 import { WorkerOutput } from './output.ts'
 import {
   parseWorkerInput,
@@ -83,6 +84,11 @@ async function openAgentTurn(
   call: WorkerIpcCall,
 ): Promise<BazilionSessionHandle> {
   const served = new Set(input.hosts)
+  // What a media tool saved shows in the chat at once, as a picture's does.
+  const shown = (output: MediaOutput): MediaOutput => {
+    for (const file of output.files) emit({ kind: 'event', event: { type: 'file', ...file } })
+    return output
+  }
   const memory = qmdBackend(`${input.agent.team.path}/memory`)
   await memory.init()
   return createBazilionSession({
@@ -187,6 +193,21 @@ async function openAgentTurn(
           wait: (args) => call('helperWait', args),
           stop: (args) => call('helperStop', args),
         }
+      : undefined,
+    workspaceHost: served.has('workspaceHost')
+      ? { show: (action) => call('workspaceShow', { action }) }
+      : undefined,
+    videoHost: served.has('videoHost')
+      ? { generate: (args) => call('generateVideo', args) }
+      : undefined,
+    audioHost: served.has('audioHost')
+      ? { generate: async (args) => shown(await call('generateAudio', args)) }
+      : undefined,
+    speechHost: served.has('speechHost')
+      ? { speak: async (args) => shown(await call('speak', args)) }
+      : undefined,
+    transcriptionHost: served.has('transcriptionHost')
+      ? { transcribe: (args) => call('transcribeFile', args) }
       : undefined,
     scheduleHost: served.has('scheduleHost')
       ? {

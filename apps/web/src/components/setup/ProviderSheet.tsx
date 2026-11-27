@@ -262,45 +262,55 @@ export function ProviderSheet({
         </div>
       </section>
 
-      <section aria-label="Its models in Chat">
-        <div className="flex items-center gap-3">
-          <h3 className={`${HEADING} flex-1`}>Its models in Chat</h3>
-          <button
-            type="button"
-            onClick={onPickModels}
-            className="text-sm font-semibold text-primary"
-          >
-            Choose models
-          </button>
-        </div>
-        <ul className="m-0 mt-2 list-none divide-y divide-border overflow-hidden rounded-xl border border-border p-0">
-          {provider.models.length === 0 && (
-            <li className="px-3 py-2.5 text-sm text-muted-foreground">
-              None of its models is in Chat.
-            </li>
-          )}
-          {provider.models.map((id) => {
-            const model = chat.find((entry) => entry.id === id)
-            return (
-              <li key={id} className="flex flex-wrap items-center gap-x-3 px-3 py-2.5 text-sm">
-                <span className="min-w-0 flex-1 basis-40 font-semibold text-foreground">
-                  {model ? modelName(model) : id}
-                </span>
-                <span className="text-muted-foreground">
-                  {model ? usedByLine(model.usedBy) : 'Out of Chat while this is turned off'}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
-        {imageRoutes.length > 0 && (
+      {provider.media ? (
+        <section aria-label="What it is used for">
+          <h3 className={HEADING}>What it is used for</h3>
           <p className="m-0 mt-2 text-sm text-muted-foreground">
-            {drawing
-              ? `Images are drawn by ${drawing.model} through this provider.`
-              : `Can also draw images: ${[...new Set(imageRoutes.map((route) => route.model))].join(', ')}.`}
+            {provider.displayName} has no chat models. Its key serves the Speech, Music and sound
+            and Transcription cards above, when one of its models is chosen there.
           </p>
-        )}
-      </section>
+        </section>
+      ) : (
+        <section aria-label="Its models in Chat">
+          <div className="flex items-center gap-3">
+            <h3 className={`${HEADING} flex-1`}>Its models in Chat</h3>
+            <button
+              type="button"
+              onClick={onPickModels}
+              className="text-sm font-semibold text-primary"
+            >
+              Choose models
+            </button>
+          </div>
+          <ul className="m-0 mt-2 list-none divide-y divide-border overflow-hidden rounded-xl border border-border p-0">
+            {provider.models.length === 0 && (
+              <li className="px-3 py-2.5 text-sm text-muted-foreground">
+                None of its models is in Chat.
+              </li>
+            )}
+            {provider.models.map((id) => {
+              const model = chat.find((entry) => entry.id === id)
+              return (
+                <li key={id} className="flex flex-wrap items-center gap-x-3 px-3 py-2.5 text-sm">
+                  <span className="min-w-0 flex-1 basis-40 font-semibold text-foreground">
+                    {model ? modelName(model) : id}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {model ? usedByLine(model.usedBy) : 'Out of Chat while this is turned off'}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+          {imageRoutes.length > 0 && (
+            <p className="m-0 mt-2 text-sm text-muted-foreground">
+              {drawing
+                ? `Images are drawn by ${drawing.model} through this provider.`
+                : `Can also draw images: ${[...new Set(imageRoutes.map((route) => route.model))].join(', ')}.`}
+            </p>
+          )}
+        </section>
+      )}
 
       <section aria-label="More settings">
         <button

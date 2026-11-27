@@ -1,13 +1,17 @@
 import type { CommandApproval, CompactionMark, ProviderMessage } from '@bazilion/api-types'
+import { Link } from '@tanstack/react-router'
 import { FileText } from 'lucide-react'
-import { type ReactNode, useState, useSyncExternalStore } from 'react'
-import { inboxUpdateLabel } from '../../lib/inbox-presentation'
+import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react'
+import { type InboxNote, inboxUpdateLabel, parseInboxWake } from '../../lib/inbox-presentation'
 import { renderMd } from '../../lib/md'
 import { formatContext } from '../../lib/model-facts'
+import { AgentAvatar } from '../AgentAvatar'
 import { ResultTile } from '../files/ResultTile'
 import { useWorkspaceOptional } from '../workspace/context'
 import { CommandApprovalCard } from './CommandApprovalCard'
 import { groupEntries, projectMessages, type RenderEntry, type TranscriptBlock } from './entries'
+import { ProgressContext, progressBoard } from './Progress'
+import { ReadAloud } from './ReadAloud'
 import { StepsBlock } from './Steps'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
@@ -38,6 +42,40 @@ export interface ApprovalControls {
   ) => void
 }
 
+/** A teammate's message that woke the Agent: who wrote it, whether it is a reply, its text. */
+function TeammateMessage({ note, markdownReady }: { note: InboxNote; markdownReady: boolean }) {
+  const workspace = useWorkspaceOptional()
+  const sender = note.fromId ? workspace?.agents.find((agent) => agent.id === note.fromId) : null
+  const name = sender?.name ?? note.fromName
+  return (
+    <section
+      aria-label={`Message from ${name}`}
+      className="rounded-xl border border-fawn bg-ivory px-3.5 py-2.5"
+    >
+      <header className="mb-1 flex items-center gap-2 text-sm">
+        <AgentAvatar identity={sender?.identity} size={22} />
+        {sender ? (
+          <Link
+            to="/"
+            search={{ agent: sender.id }}
+            className="font-semibold text-chocolate hover:text-sapphire"
+          >
+            {name}
+          </Link>
+        ) : (
+          <span className="font-semibold text-chocolate">{name}</span>
+        )}
+        <span className="text-xs text-mocha">{note.reply ? 'replied' : 'wrote'}</span>
+      </header>
+      <div
+        className="md-content bubble-content leading-[1.55] text-chocolate"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: marked output sanitized by DOMPurify.
+        dangerouslySetInnerHTML={{ __html: renderMd(note.text, markdownReady) }}
+      />
+    </section>
+  )
+}
+
 export function Bubble({
   entry,
   markdownReady,
@@ -54,6 +92,8 @@ export function Bubble({
   approvals?: ApprovalControls
 }) {
   const dropClass = dropped ? 'opacity-40 [&_.bubble-content]:line-through' : ''
+  // Read aloud is offered while a speech model is ready (BAZ-096).
+  const readAloud = useWorkspaceOptional()?.speech.speech ?? false
   switch (entry.type) {
     case 'user':
       if (entry.content.startsWith(WAKE_PREFIX)) {
@@ -76,6 +116,26 @@ export function Bubble({
       }
       if (entry.content.startsWith(INBOX_WAKE_PREFIX)) {
         const body = entry.content.slice(INBOX_WAKE_PREFIX.length)
+        const notes = parseInboxWake(body)
+        if (notes)
+          return (
+            <div data-message="" className={`my-4 space-y-2 ${dropClass}`}>
+              {notes.map((note, index) => (
+                <TeammateMessage
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a wake's messages never reorder.
+                  key={index}
+                  note={note}
+                  markdownReady={markdownReady}
+                />
+              ))}
+              <details className="px-1 text-xs text-mocha">
+                <summary className="cursor-pointer">What the Agent was told</summary>
+                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words">
+                  {body}
+                </pre>
+              </details>
+            </div>
+          )
         return (
           <details
             data-message=""
@@ -137,13 +197,17 @@ export function Bubble({
       )
     case 'assistant':
       return (
-        <div data-message="" className={`my-4 flex flex-col items-start ${dropClass}`}>
+        <div
+          data-message=""
+          className={`group/message my-4 flex flex-col items-start ${dropClass}`}
+        >
           <span className="sr-only">agent</span>
           <div
             className="md-content bubble-content w-full leading-[1.55] text-chocolate"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: marked output sanitized by DOMPurify.
             dangerouslySetInnerHTML={{ __html: renderMd(entry.content, markdownReady) }}
           />
+          {readAloud && entry.content.trim() && <ReadAloud text={entry.content} />}
         </div>
       )
     case 'images':
@@ -351,6 +415,8 @@ export function TranscriptBlocks({
   onEdit?: () => void
   approvals?: ApprovalControls
 }) {
+  // Progress cards show once per task, in the state of its latest call.
+  const board = useMemo(() => progressBoard(entries), [entries])
   const out: ReactNode[] = []
   let next = 0
   // A note made when `afterIndex` entries existed goes before the block that starts there.
@@ -387,7 +453,7 @@ export function TranscriptBlocks({
   }
   // Notes anchored past the end (the tail was replaced by an edit) stay visible at the bottom.
   flush(Number.POSITIVE_INFINITY)
-  return <>{out}</>
+  return <ProgressContext.Provider value={board}>{out}</ProgressContext.Provider>
 }
 
 /** A conversation's messages, read-only (an earlier conversation). */

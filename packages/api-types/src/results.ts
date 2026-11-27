@@ -12,7 +12,7 @@ export interface AgentResult {
   mimeType: string
   byteLength: number
   sha256: string
-  /** The image model that generated it; null for delivered files. */
+  /** The model that made it (a picture, a video, a sound, speech); null for delivered files. */
   imageModel: string | null
   createdAt: number
 }

@@ -19,6 +19,7 @@ import type {
   Job,
   Message,
   ResultReference,
+  WorkspaceAction,
 } from '@bazilion/api-types'
 import type { ToolResultPart } from '../tools/types.ts'
 
@@ -72,6 +73,95 @@ export interface RpcMethods {
   helperWait: { args: { ids: string[]; waitMs: number }; result: Helper[] }
   helperStop: { args: { id: string }; result: Helper }
   secretRequest: { args: { secret: unknown; replace: boolean }; result: SecretRequestResult }
+  workspaceShow: { args: { action: WorkspaceAction }; result: WorkspaceShown }
+  generateVideo: { args: VideoInput; result: MediaOutput }
+  generateAudio: { args: AudioInput; result: MediaOutput }
+  speak: { args: SpeakInput; result: MediaOutput }
+  transcribeFile: { args: TranscribeInput; result: TranscribeOutput }
+}
+
+/** `video_generate` (BAZ-095): always in the background; the Agent is woken when it is saved. */
+export interface VideoInput {
+  toolCallId: string
+  prompt: string
+  /** Whole seconds, within what the chosen model takes. */
+  seconds: number
+  shape: 'landscape' | 'portrait' | 'square'
+  /** A picture to start from, as a path the Agent sees (workspace or uploads). */
+  image?: string
+  /** Display filename stem. */
+  name?: string
+}
+
+/** `audio_generate` (BAZ-095): music or a sound effect. */
+export interface AudioInput {
+  toolCallId: string
+  kind: 'music' | 'sound'
+  prompt: string
+  lyrics?: string
+  instrumental?: boolean
+  seconds?: number
+  loop?: boolean
+  name?: string
+  /** Answer at once; the sound is saved when it is ready and wakes the Agent. */
+  background?: boolean
+}
+
+/** `speak` (BAZ-096): text read out in a voice of the chosen speech model. */
+export interface SpeakInput {
+  toolCallId: string
+  text: string
+  /** One of the model's voices; the voice chosen under Setup when absent. */
+  voice?: string
+  name?: string
+}
+
+/** What a media tool saved; the bytes stay in the daemon's result store. */
+export interface MediaOutput {
+  model: string
+  files: Array<{ name: string; mimeType: string; result: ResultReference }>
+  /** Being made in the background: nothing is saved yet. */
+  pending?: boolean
+  /** What the model wrote beside the sound (a song's lyrics). */
+  words?: string
+}
+
+/** `transcribe` (BAZ-096): an audio or video file of the Agent's, as a path it sees. */
+export interface TranscribeInput {
+  path: string
+}
+
+export interface TranscribeOutput {
+  model: string
+  text: string
+  /** The words line by line with their times, when the model gives them. */
+  timed?: string
+}
+
+export interface VideoHost {
+  generate(input: VideoInput): Promise<MediaOutput>
+}
+export interface AudioHost {
+  generate(input: AudioInput, signal?: AbortSignal): Promise<MediaOutput>
+}
+export interface SpeechHost {
+  speak(input: SpeakInput, signal?: AbortSignal): Promise<MediaOutput>
+}
+export interface TranscriptionHost {
+  transcribe(input: TranscribeInput, signal?: AbortSignal): Promise<TranscribeOutput>
+}
+
+/** How many browsers were connected when `screen` or `theme` was sent. */
+export interface WorkspaceShown {
+  browsers: number
+}
+
+/**
+ * `screen` and `theme` (BAZ-097): sent to the browsers, where only the tabs showing the turn's
+ * conversation act on it. Bound by the daemon to the Agent and the conversation.
+ */
+export interface WorkspaceHost {
+  show(action: WorkspaceAction): Promise<WorkspaceShown>
 }
 
 /** What `secret_request` comes back with: the card it showed, or the secret already stored. */
@@ -443,6 +533,12 @@ export interface WorkerHosts {
   scheduleHost?: ScheduleHost
   secretHost?: Pick<SecretHost, 'list'>
   helperHost?: HelperHost
+  workspaceHost?: WorkspaceHost
+  /** Each present only while its model is chosen and ready (BAZ-095, BAZ-096). */
+  videoHost?: VideoHost
+  audioHost?: AudioHost
+  speechHost?: SpeechHost
+  transcriptionHost?: TranscriptionHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

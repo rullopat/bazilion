@@ -188,6 +188,52 @@ test("the shipped migrations keep a home's schedules and their runs, set by the 
   }
 })
 
+test("the shipped migrations keep the list's order: the Default Team first, then by creation", () => {
+  const path = join(home, 'bazilion.db')
+  writeUnversionedHome(path)
+  const seed = openDb(path)
+  seed.raw.exec(`
+    INSERT INTO teams (id, name, created_at) VALUES ('default', 'Default', 5);
+    INSERT INTO teams (id, name, created_at) VALUES ('ops', 'Ops', 3);
+    INSERT INTO agents (id, profile_id, name, status, team_id, created_at)
+      VALUES ('second', 'profile', 'Second', 'idle', 'team', 7);
+    INSERT INTO agents (id, profile_id, name, status, team_id, created_at)
+      VALUES ('first', 'profile', 'First', 'idle', 'team', 0);
+    INSERT INTO agents (id, profile_id, name, status, team_id, created_at)
+      VALUES ('elsewhere', 'profile', 'Elsewhere', 'idle', 'ops', 9);
+  `)
+  seed.close()
+  const db = openDb(path)
+  try {
+    initSchema(db, { copyDir: join(home, 'upgrades') })
+    expect(
+      db.raw
+        .query<{ id: string; position: number }, []>(
+          'SELECT id, position FROM teams ORDER BY position',
+        )
+        .all(),
+    ).toEqual([
+      { id: 'default', position: 0 },
+      { id: 'team', position: 1 },
+      { id: 'ops', position: 2 },
+    ])
+    expect(
+      db.raw
+        .query<{ id: string; position: number }, []>(
+          'SELECT id, position FROM agents ORDER BY team_id, position',
+        )
+        .all(),
+    ).toEqual([
+      { id: 'elsewhere', position: 0 },
+      { id: 'first', position: 0 },
+      { id: 'agent', position: 1 },
+      { id: 'second', position: 2 },
+    ])
+  } finally {
+    db.close()
+  }
+})
+
 test('an upgrade keeps every row, copies the database first and stamps the new version', () => {
   const path = join(home, 'bazilion.db')
   writeUnversionedHome(path)
@@ -399,6 +445,8 @@ const SHIPPED_MIGRATIONS: Record<string, string> = {
   '002-command-rules.sql': '29a3e16e5c0b4a047e92a9f65951cf1318f2aad548d2cecee16ffbfe53d4e5ef',
   // 0.64.0: one-time schedules, the conversation a schedule runs in, who set it.
   '003-agent-schedules.sql': '3893ecdd4cf151621a28d488e6bb08417c64beec454d368a04d9ef227133fe0f',
+  // 0.65.0: the order of Teams and Agents in the list.
+  '004-list-order.sql': '19e4a57a7fa18185b573fbb1955531fe2dde6314ca51d516a9c1ce6d8659de34',
 }
 
 test('migrations that releases shipped are unchanged', () => {

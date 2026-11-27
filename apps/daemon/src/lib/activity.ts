@@ -84,10 +84,10 @@ function lastActivityAt(db: BazilionDb, paths: Paths, agentId: string): number |
 // Agent's turns since its last review, its Telegram topic, the USER.md Agents keep up to date,
 // which the Team panel loads again when a turn ends).
 const ROSTER_QUERIES = [
-  'SELECT id, name, policy_mode, telegram_icon_color, telegram_topic_name_format FROM teams ORDER BY id',
+  'SELECT id, name, policy_mode, telegram_icon_color, telegram_topic_name_format, position FROM teams ORDER BY id',
   `SELECT id, profile_id, name, model_override, status, reasoning_level, review_enabled,
      review_every_n_turns, review_model, review_reasoning_level, team_id, telegram_icon_emoji,
-     telegram_mirror_mode FROM agents ORDER BY id`,
+     telegram_mirror_mode, position FROM agents ORDER BY id`,
   'SELECT id, name, updated_at FROM profiles ORDER BY id',
   'SELECT id, name, updated_at FROM team_templates ORDER BY id',
 ] as const

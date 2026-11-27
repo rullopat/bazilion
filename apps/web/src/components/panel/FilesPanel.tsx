@@ -8,7 +8,7 @@ import { Download, Images } from 'lucide-react'
 import { shortTime } from '../../lib/activity'
 import { useHydrated } from '../../lib/use-resource'
 import { Button } from '../Button'
-import { FileFilters, useFileFilters } from '../files/FileFilters'
+import { FileFilters, KIND_WORDS, useFileFilters } from '../files/FileFilters'
 import { ResultTile } from '../files/ResultTile'
 import { archivePath } from '../files/result-utils'
 import { useResults } from '../files/use-results'
@@ -72,7 +72,7 @@ export function FilesPanel({ team }: { team: Team }) {
       )}
       {!files.loading && files.total > 0 && shown.length === 0 && (
         <p className="m-0 rounded-2xl border border-dashed border-border bg-muted/40 px-3 py-4 text-sm text-muted-foreground">
-          No {filters.kind === 'pictures' ? 'pictures' : 'documents'} among the files loaded
+          No {filters.kind === 'all' ? 'files' : KIND_WORDS[filters.kind]} among the files loaded
           {files.hasMore ? '; Show more loads older ones.' : '.'}
         </p>
       )}

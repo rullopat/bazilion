@@ -29,6 +29,8 @@ test('the route is off until chosen, and needs an OpenAI key', () => {
     ready: true,
     model: 'openai:gpt-transcribe',
     label: 'GPT Transcribe',
+    provider: 'openai',
+    maxBytes: 25_000_000,
     modelId: 'gpt-transcribe',
     apiKey: 'sk-test',
   })

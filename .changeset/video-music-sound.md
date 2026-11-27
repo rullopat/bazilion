@@ -1,0 +1,5 @@
+---
+"bazilion": minor
+---
+
+**Agents make videos, music and sound effects.** Choose a model on the new **Video** and **Music and sound** cards under Setup → Models: Grok Imagine Video 1.5 (xAI), Gemini Omni Flash (Google) or MiniMax H3 for video; ElevenLabs (music and sound effects) or Lyria 3.5 (Google, music with lyrics) for sound. Agents then have `video_generate`, which makes a clip of a few seconds with sound from a prompt or from a picture as the first frame and always runs in the background, waking the Agent when the video is saved; and `audio_generate`, for a song, a jingle, background music or a sound effect, which waits or runs in the background. What they make plays in the chat and under Files, which has Video and Audio kinds, and goes to a bound Agent's Telegram topic as a video or audio. **ElevenLabs** is a new account under Add a provider: a key for media only, with no chat models. `bazilion config set BAZILION_VIDEO_MODEL …` and `BAZILION_AUDIO_MODEL …` set them from a terminal. OpenAI's Sora and Google's Veo are not offered: both were shut down by their providers.

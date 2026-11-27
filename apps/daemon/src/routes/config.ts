@@ -159,6 +159,12 @@ configRouter.put('/fields', async (c) => {
   if (firstError) return c.json({ error: firstError, errors }, 400)
 
   const { db, authToken } = getCtx()
+  // A speech model before its voice: changing the model forgets the old one's voice.
+  accepted.sort(
+    (a, b) =>
+      Number(b.field.envVar === 'BAZILION_SPEECH_MODEL') -
+      Number(a.field.envVar === 'BAZILION_SPEECH_MODEL'),
+  )
   db.raw.transaction(() => {
     for (const { field, value } of accepted) {
       writeSetting(db, authToken, field, value)

@@ -1,5 +1,6 @@
 // The one way to narrow down saved files, in the Files tab and in the full Files view alike: what
-// kind (all, pictures, documents) and whose (the whole Team, one member, the open conversation).
+// kind (all, pictures, videos, audio, documents) and whose (the whole Team, one member, the open
+// conversation).
 
 import type { AgentResult, Team } from '@bazilion/api-types'
 import { useState } from 'react'
@@ -8,15 +9,33 @@ import { FilterSelect, type SelectOption } from '../ui/form'
 import { useWorkspace } from '../workspace/context'
 import type { ResultFilter } from './use-results'
 
-export type FileKind = 'all' | 'pictures' | 'documents'
+export type FileKind = 'all' | 'pictures' | 'video' | 'audio' | 'documents'
 
 const KINDS: ReadonlyArray<{ id: FileKind; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'pictures', label: 'Pictures' },
+  { id: 'video', label: 'Video' },
+  { id: 'audio', label: 'Audio' },
   { id: 'documents', label: 'Documents' },
 ]
 
 export const isPicture = (result: AgentResult) => result.mimeType.startsWith('image/')
+
+/** The kind a saved file is listed under. */
+export function kindOf(result: AgentResult): Exclude<FileKind, 'all'> {
+  if (isPicture(result)) return 'pictures'
+  if (result.mimeType.startsWith('video/')) return 'video'
+  if (result.mimeType.startsWith('audio/')) return 'audio'
+  return 'documents'
+}
+
+/** "pictures", "videos", "audio files": the kind in words. */
+export const KIND_WORDS: Record<Exclude<FileKind, 'all'>, string> = {
+  pictures: 'pictures',
+  video: 'videos',
+  audio: 'audio files',
+  documents: 'documents',
+}
 
 export interface FileFilterState {
   kind: FileKind
@@ -61,7 +80,7 @@ export function useFileFilters(team: Team): FileFilterState {
     options,
     filter,
     narrowed: who !== 'team',
-    matches: (result) => kind === 'all' || (kind === 'pictures') === isPicture(result),
+    matches: (result) => kind === 'all' || kindOf(result) === kind,
   }
 }
 
