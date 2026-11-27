@@ -11,6 +11,7 @@ import {
   listMcpTools,
   type McpServerConfig,
 } from '../../src/lib/mcp/pool.ts'
+import { mcpFileSaver } from '../../src/lib/mcp/resolve.ts'
 import { reapIdleResources, resources, shutdownResources } from '../../src/lib/resources.ts'
 import { fixtureTool, mcpHttpFixture } from '../fixtures/mcp-http.ts'
 
@@ -335,4 +336,54 @@ test('a stdio server that cannot start reports why', async () => {
     /MCP server stdio_missing failed to start: .*ENOENT/,
   )
   expect(resources().mcp.has(server.id)).toBe(false)
+})
+
+test('files a tool returns: text as text, others saved with the uploads, links described', async () => {
+  const { f, server } = await setup()
+  const uploads = mkdtempSync(join(tmpdir(), 'bazilion-mcp-files-'))
+  dirs.push(uploads)
+  const pdf = Buffer.from('%PDF-1.7 fixture')
+  f.setResponse({
+    content: [
+      {
+        type: 'resource',
+        resource: {
+          uri: 'file:///notes.json',
+          mimeType: 'application/json',
+          blob: Buffer.from('{"a":1}').toString('base64'),
+        },
+      },
+      {
+        type: 'resource',
+        resource: {
+          uri: 'file:///report.pdf',
+          mimeType: 'application/pdf',
+          blob: pdf.toString('base64'),
+        },
+      },
+      { type: 'resource_link', uri: 'file:///big.csv', name: 'big.csv', mimeType: 'text/csv' },
+    ],
+  })
+  const parts = await callMcpTool(
+    server,
+    'foo',
+    {},
+    {
+      connect: bearer,
+      saveOutput: mcpFileSaver({ dir: uploads, shown: '/inputs' }, 'My server'),
+    },
+  )
+  const texts = parts.map((part) => (part.type === 'text' ? part.text : ''))
+  expect(texts[0]).toBe('{"a":1}')
+  const saved = /saved to (\/inputs\/mcp\/My-server-[0-9a-f]{12}\.pdf)/.exec(texts[1] ?? '')?.[1]
+  expect(saved).toBeDefined()
+  expect(readFileSync(join(uploads, (saved ?? '').replace('/inputs/', '')))).toEqual(pdf)
+  expect(texts[2]).toContain('[Resource file:///big.csv "big.csv" (text/csv)')
+
+  // Without a place to save, a binary file is left out and said so.
+  const without = await callMcpTool(server, 'foo', {}, { connect: bearer })
+  expect(without[1]).toEqual({
+    type: 'text',
+    text: '[binary resource file:///report.pdf (application/pdf) omitted]',
+  })
 })

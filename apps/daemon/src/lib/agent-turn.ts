@@ -64,27 +64,36 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, turn.agent)
     // A tool that sends or changes something outside waits for the operator, as a risky command
     // does: in the chat, Telegram and Attention, and refused when nobody can answer this turn.
-    const mcp = await resolveMcpForTurn(db, authToken, turn.controller.signal, (request) =>
-      commandApprovalRegistry.begin(
-        {
-          id: randomUUID(),
-          turnId: turn.request.attemptId,
-          toolCallId: request.toolCallId,
-          agentId,
-          teamId: turn.agent.team.id,
-          command: request.command,
-          risks: [
-            {
-              code: 'outward-action',
-              message: 'It sends or changes something outside Bazilion.',
-              span: { start: 0, end: 0 },
-            },
-          ],
-          mode: turn.bashApprovalMode,
-          tool: request.tool,
-        },
-        request.signal ?? turn.controller.signal,
-      ),
+    const mcp = await resolveMcpForTurn(
+      db,
+      authToken,
+      turn.controller.signal,
+      (request) =>
+        commandApprovalRegistry.begin(
+          {
+            id: randomUUID(),
+            turnId: turn.request.attemptId,
+            toolCallId: request.toolCallId,
+            agentId,
+            teamId: turn.agent.team.id,
+            command: request.command,
+            risks: [
+              {
+                code: 'outward-action',
+                message: 'It sends or changes something outside Bazilion.',
+                span: { start: 0, end: 0 },
+              },
+            ],
+            mode: turn.bashApprovalMode,
+            tool: request.tool,
+          },
+          request.signal ?? turn.controller.signal,
+        ),
+      // Files a tool returns go with the uploads, where the Agent reads them (/inputs in Docker).
+      {
+        dir: join(turn.agent.agent.dir, 'uploads'),
+        shown: turn.docker ? SANDBOX_INPUTS_DIR : join(turn.agent.agent.dir, 'uploads'),
+      },
     )
     const frames = spawnWorkerTurn(
       {

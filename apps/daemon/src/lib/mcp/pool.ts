@@ -10,11 +10,12 @@ import {
   McpAbortError,
   McpClient,
   McpConnectionClosedError,
+  type McpOutputSaver,
   McpSessionExpiredError,
   type McpTransport as PiTransport,
   StdioTransport,
   StreamableHttpTransport,
-  toLlmContent,
+  toMcpModelContent,
 } from '@earendil-works/pi-mcp'
 import type { ToolResultPart } from '../../runtime/tools/types.ts'
 import type { InjectedMcpTool } from '../../runtime/worker/ipc-protocol.ts'
@@ -285,18 +286,26 @@ export async function listMcpTools(
   }
 }
 
-/** Call one tool. A tool error (`isError`) is thrown with the server's own text. */
+/**
+ * Call one tool. A tool error (`isError`) is thrown with the server's own text. Embedded text files
+ * come back as text; other files the result carries (a PDF, an archive) are saved with
+ * `saveOutput`, and the model is told where, or left out without it.
+ */
 export async function callMcpTool(
   server: McpServerConfig,
   rawName: string,
   args: Record<string, unknown>,
-  options: { connect: () => McpConnectOptions; signal?: AbortSignal },
+  options: { connect: () => McpConnectOptions; signal?: AbortSignal; saveOutput?: McpOutputSaver },
 ): Promise<ToolResultPart[]> {
   const conn = await connection(server, options.connect, options.signal)
   conn.busy++
   try {
     const result = await conn.client.callTool(rawName, args, { signal: options.signal })
-    const parts = toLlmContent(result)
+    const parts = await toMcpModelContent(
+      server.name,
+      result,
+      options.saveOutput ? { saveOutput: options.saveOutput } : {},
+    )
     if (result.isError) {
       const text = parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
       throw new Error(text || `MCP tool ${rawName} reported an error`)
