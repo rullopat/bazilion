@@ -67,10 +67,15 @@ function secretBody(question: AgentQuestion): string {
   const where = origin
     ? `Type it in Bazilion, never here: ${origin}/?${new URLSearchParams({ agent: question.agentId })}`
     : 'Type it in Bazilion on your computer (the chat with this Agent), never here.'
+  const hosts = secret.hosts ?? []
   return [
     `🔑 ${clip(`The Agent asks for a secret: ${secret.name}`, 300)}`,
     clip(secret.reason, 500),
-    `${where}\nOr in a terminal: bazilion agent secret set ${question.agentId} ${secret.name}`,
+    hosts.length > 0
+      ? clip(`It asks that web_fetch may send it to ${hosts.join(', ')}.`, 500)
+      : 'For its commands only.',
+    `${where}\nOr in a terminal: bazilion agent secret set ${question.agentId} ${secret.name}${hosts.length > 0 ? ` --hosts ${hosts.join(',')}` : ''}`,
+    'Do not reply with it here: a reply is not private and is not passed on.',
   ].join('\n\n')
 }
 
@@ -127,6 +132,7 @@ export async function sendQuestionPrompt(
       inline_keyboard: [[{ text: 'Decline', callback_data: `bq:${question.id}:a:x` }]],
     })
     actionPrompts.set(question.id, { live, messageId: sent.message_id, body })
+    secretPrompts.add(sent.message_id)
     return
   }
   if (question.question.action) {
@@ -190,6 +196,14 @@ export async function sendQuestionPrompt(
 
 /** Posted actions, so their buttons can be replaced once they are answered. */
 const actionPrompts = new Map<string, { live: TelegramLive; messageId: number; body: string }>()
+/** The messages that asked for a secret: a reply to one is never passed on. */
+const secretPrompts = new Set<number>()
+
+/** A reply to a secret request's message: it may hold the secret, so it goes nowhere. */
+export function isSecretPromptReply(message: Message): boolean {
+  const replyTo = message.reply_to_message?.message_id
+  return replyTo !== undefined && secretPrompts.has(replyTo)
+}
 
 /** A button tap on a question or action prompt; null for any other callback. */
 export function questionCallback(data: string | undefined):
@@ -270,4 +284,5 @@ export function answerActionFromTelegram(
 export function _resetQuestionPromptsForTest(): void {
   prompts.clear()
   actionPrompts.clear()
+  secretPrompts.clear()
 }

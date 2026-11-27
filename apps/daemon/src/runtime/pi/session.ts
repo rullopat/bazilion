@@ -69,8 +69,10 @@ import type {
 import {
   type AgentSecretUse,
   envSecretValues,
+  redactDeep,
   redactExactValues,
   reviewRuntimeSecrets,
+  secretForms,
 } from '../worker/runtime.ts'
 import { branchOf, type ConversationHistory, contextUse, conversationHistory } from './history.ts'
 import { readSessionFile, readSessionHeader } from './session-file.ts'
@@ -220,7 +222,16 @@ export function redactToolResults(session: AgentSession, values: readonly string
       changed = true
       return { ...part, text }
     })
-    return changed ? { ...(after ?? {}), content: redacted } : after
+    // Details are stored with the result too: a truncated output's text, an edit's diff.
+    const details = after && 'details' in after ? after.details : context.result.details
+    const cleaned = redactDeep(details, values)
+    const detailsChanged = JSON.stringify(cleaned) !== JSON.stringify(details)
+    if (!changed && !detailsChanged) return after
+    return {
+      ...(after ?? {}),
+      ...(changed ? { content: redacted } : {}),
+      ...(detailsChanged ? { details: cleaned } : {}),
+    }
   }
 }
 
@@ -380,9 +391,10 @@ export async function createBazilionSession(
   // The Agent's own secrets are taken out whatever their names.
   const redactionSecrets = [
     ...new Set(
-      [...envSecretValues(opts.env), ...turnSecrets(opts).map((secret) => secret.value)].filter(
-        Boolean,
-      ),
+      [
+        ...envSecretValues(opts.env),
+        ...turnSecrets(opts).flatMap((secret) => secretForms(secret.value)),
+      ].filter(Boolean),
     ),
   ]
   const turn = turnSurface(opts, {

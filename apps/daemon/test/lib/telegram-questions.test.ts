@@ -257,3 +257,38 @@ test("an action comes with Done and Can't; Done wakes the Agent and closes the b
   await vi.waitFor(() => expect(editMessageText).toHaveBeenCalledOnce())
   expect(String(editMessageText.mock.calls[0]?.[2])).toMatch(/Done\.$/)
 })
+
+test('a secret request asks for no value here, says its hosts, and a reply to it goes nowhere', async () => {
+  const question = questionRegistry.askSecret(
+    { agentId, conversationId },
+    { name: 'GITHUB_TOKEN', reason: 'Open the pull request', hosts: ['api.github.com'] },
+  )
+  await sendQuestionPrompt(live, 42, question)
+  const [, body, opts] = sendMessage.mock.calls[0] ?? []
+  expect(body).toContain('The Agent asks for a secret: GITHUB_TOKEN')
+  expect(body).toContain('web_fetch may send it to api.github.com')
+  expect(body).toContain(`--hosts api.github.com`)
+  expect(opts.reply_markup).toEqual({
+    inline_keyboard: [[{ text: 'Decline', callback_data: `bq:${question.id}:a:x` }]],
+  })
+  const deleted: number[] = []
+  const guarded = {
+    ...api,
+    async deleteMessage(_chat: number, id: number) {
+      deleted.push(id)
+      return true
+    },
+  } as ReplyApi
+  const outcome = await routeUpdate({ db: env.db, paths: env.paths, api: guarded, chatId: CHAT }, {
+    update_id: 2,
+    ...text('ghp_pasted_here', 50),
+  } as Update)
+  expect(outcome).toEqual({ kind: 'question_answer' })
+  expect(deleted).toEqual([70])
+  expect(replies.at(-1)?.text).toMatch(/not passed on/)
+  expect(userQueue.list(env.db, agentId).items).toEqual([])
+  // Decline from Telegram.
+  expect(await route(tap(`bq:${question.id}:a:x`))).toEqual({ kind: 'question_answer' })
+  expect(acks.at(-1)?.text).toBe('Declined.')
+  expect(questionRegistry.get(question.id)).toBeUndefined()
+})

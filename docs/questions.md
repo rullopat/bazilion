@@ -73,12 +73,18 @@ does not hold the turn. You answer when it suits you:
   a key file); `bazilion question answer <agent> <id> --decline [--note …]` declines.
 
 Storing it, from the card, the Agent's **Secrets** sheet or the CLI, answers the request: the
-Agent's next turn is told **stored** or **declined**, never the value. Each Agent's secrets are
+Agent's next turn is told **stored** or **declined**, never the value. The hosts the Agent asked
+for are on the card and in the Telegram message; the sheet and the CLI give only the hosts you
+type (`--hosts`), and the CLI says what the Agent asked for first. A reply to the Telegram message
+is never passed on, and is deleted when the bot may delete messages. Each Agent's secrets are
 encrypted in the `secrets` table and deleted with the Agent. Its commands get each as an
 environment variable of its name (host and Docker); `web_fetch` puts it in a header written
-`{{secret:NAME}}` only for its hosts, and drops the Agent's headers on a redirect to another site;
-the system prompt lists their names. Tool output is checked for the exact values, and for
-Bazilion's credentials, before the model or the transcript gets it. The Agent's **Secrets** sheet
+`{{secret:NAME}}` only for its hosts and over https, and drops the Agent's headers on a redirect to
+another site; the system prompt lists their names. Tool output (its details included) and the
+turn's own message, such as a background job's end, are checked for the values, and for
+Bazilion's credentials, before the model or the transcript gets them: the exact value, without its
+ends' whitespace, each long line of a key file, and its JSON-escaped form. A stored value loses
+the whitespace at its ends. The Agent's **Secrets** sheet
 and `bazilion agent secret list|set|rm` list, add, replace and remove them. A name that Bazilion or
 a command's process already uses (`PATH`, `OPENAI_API_KEY`, `BAZILION_*`) is refused.
 

@@ -37,3 +37,26 @@ test("a tool result reaches the model with secrets taken out, after Pi's own han
     { type: 'text', text: '[REDACTED]' },
   ])
 })
+
+test("a result's details are cleaned too, and a secret goes in the forms output shows it", async () => {
+  const { secretForms } = await import('../../src/runtime/worker/runtime.ts')
+  const key = '-----BEGIN KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END KEY-----'
+  expect(secretForms(' tok_value_1234 \n')).toEqual(
+    expect.arrayContaining([' tok_value_1234 \n', 'tok_value_1234']),
+  )
+  expect(secretForms(key)).toEqual(
+    expect.arrayContaining(['MIIEvQIBADANBgkqhkiG9w0BAQEFAASC', JSON.stringify(key).slice(1, -1)]),
+  )
+
+  const session = { agent: { afterToolCall: undefined } } as unknown as AgentSession
+  redactToolResults(session, secretForms('tok_value_1234'))
+  const hook = session.agent.afterToolCall as After
+  const out = await hook({
+    result: {
+      content: [{ type: 'text', text: 'clean' }],
+      details: { truncation: { content: 'Bearer tok_value_1234' }, lines: 3 },
+    },
+    isError: false,
+  } as unknown as Parameters<After>[0])
+  expect(out).toEqual({ details: { truncation: { content: 'Bearer [REDACTED]' }, lines: 3 } })
+})

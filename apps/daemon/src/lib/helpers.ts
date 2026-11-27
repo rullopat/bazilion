@@ -26,8 +26,10 @@ interface Running {
   controller: AbortController
   /** The turn that started it, while that turn runs. */
   parentTurnId: string | null
-  /** Its answer was given to a helper_wait. */
+  /** Its answer was given to a helper_wait, or to a wake. */
   reported: boolean
+  /** A helper_wait returned its answer. */
+  takenByWait: boolean
   ended: Promise<void>
 }
 
@@ -90,6 +92,8 @@ function wakeFor(entry: Running): void {
         : `What went wrong: ${helper.error ?? 'unknown'}`,
     ].join('\n\n'),
     at: Date.now(),
+    // A helper_wait in a later turn may take the answer before the wake starts.
+    stillWanted: () => !entry.takenByWait,
   })
 }
 
@@ -194,6 +198,7 @@ export async function startHelper(input: {
     controller,
     parentTurnId: openTurns.has(input.parentTurnId) ? input.parentTurnId : null,
     reported: false,
+    takenByWait: false,
     ended: Promise.resolve(),
   }
   // Stopping the turn that started it stops the helper too.
@@ -251,7 +256,11 @@ export async function waitForHelpers(
       signal?.addEventListener('abort', done, { once: true })
     })
   }
-  for (const entry of entries) if (entry.helper.status !== 'running') entry.reported = true
+  for (const entry of entries) {
+    if (entry.helper.status === 'running') continue
+    entry.reported = true
+    entry.takenByWait = true
+  }
   return entries.map(view)
 }
 
@@ -284,6 +293,15 @@ export function turnClosed(turnId: string): void {
     entry.parentTurnId = null
     if (entry.helper.status !== 'running') wakeFor(entry)
   }
+}
+
+/** The Agent is deleted, archived, moved or loses its browser: its helpers stop first. */
+export async function stopAgentHelpers(agentId: string): Promise<void> {
+  const running = [...helpers.values()].filter(
+    (entry) => entry.helper.agentId === agentId && entry.helper.status === 'running',
+  )
+  for (const entry of running) stop(entry, 'owner')
+  await Promise.allSettled(running.map((entry) => entry.ended))
 }
 
 /** The daemon stops: every helper stops with it. */

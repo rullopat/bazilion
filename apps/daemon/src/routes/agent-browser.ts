@@ -7,6 +7,7 @@ import { runAgentLifecycleMutation } from '../lib/agent-cancel.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from '../lib/browser/config.ts'
 import { browserStatus, closeBrowserSession, removeBrowserProfile } from '../lib/browser/pool.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { stopAgentHelpers } from '../lib/helpers.ts'
 import { newRouter, routeAgent } from './http.ts'
 
 export const agentBrowserRouter = newRouter()
@@ -20,12 +21,14 @@ agentBrowserRouter.get('/:id/browser', (c) => {
 
 agentBrowserRouter.post('/:id/browser/stop', async (c) => {
   const { id } = routeAgent(c)
+  await stopAgentHelpers(id)
   await runAgentLifecycleMutation(id, () => closeBrowserSession(id))
   return c.body(null, 204)
 })
 
 agentBrowserRouter.delete('/:id/browser/profile', async (c) => {
   const { id } = routeAgent(c)
+  await stopAgentHelpers(id)
   await runAgentLifecycleMutation(id, () => removeBrowserProfile(id, getCtx().paths))
   return c.body(null, 204)
 })

@@ -48,23 +48,25 @@ export function requestAgentSecret(
   }
 }
 
-/** Store or replace a secret from the Agent's sheet or the CLI; a waiting request is answered. */
+/**
+ * Store or replace a secret from the Agent's sheet or the CLI; a waiting request is answered. Its
+ * reason comes along, never its hosts: those the owner gives here (`--hosts`, the sheet's field),
+ * so an Agent cannot name a host the owner did not see.
+ */
 export function storeAgentSecret(
   db: BazilionDb,
   password: string,
   agentId: string,
   input: { name: string; value: unknown; reason?: unknown; hosts?: unknown },
 ): AgentSecret {
-  // A waiting request says why and for which hosts, unless the owner says otherwise.
   const asked = questionRegistry
     .list(agentId)
     .find((question) => question.question.secret?.name === input.name)?.question.secret
   const secret = setAgentSecret(db, password, agentId, {
     ...input,
     reason: input.reason ?? asked?.reason,
-    hosts: input.hosts ?? asked?.hosts,
   })
-  questionRegistry.settleSecret(agentId, secret.name)
+  questionRegistry.settleSecret(agentId, secret.name, secret.hosts)
   signalLiveChange()
   return secret
 }

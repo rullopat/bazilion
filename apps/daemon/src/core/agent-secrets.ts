@@ -151,7 +151,7 @@ export function listAgentSecrets(db: BazilionDb, password: string, agentId: stri
 
 /**
  * Store or replace one of the Agent's secrets. Omitted reason and hosts keep the ones it had.
- * The value is kept as given (a JSON key file keeps its newlines); only an empty one is refused.
+ * The value loses only its ends' whitespace (a key file keeps its inner newlines).
  */
 export function setAgentSecret(
   db: BazilionDb,
@@ -168,7 +168,8 @@ export function setAgentSecret(
     return json ? read(json, name) : null
   })()
   const stored: Stored = {
-    value: input.value,
+    // A file's last newline would keep output that prints the token without it from matching.
+    value: input.value.trim(),
     reason: input.reason === undefined ? (before?.reason ?? null) : checkSecretReason(input.reason),
     hosts: input.hosts === undefined ? (before?.hosts ?? []) : checkSecretHosts(input.hosts),
     storedAt: Date.now(),

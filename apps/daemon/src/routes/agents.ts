@@ -23,6 +23,7 @@ import {
 import { runAgentLifecycleMutation } from '../lib/agent-cancel.ts'
 import { closeBrowserSession, removeBrowserProfile } from '../lib/browser/pool.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { stopAgentHelpers } from '../lib/helpers.ts'
 import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
 import { syncAgentTopicIcon } from '../lib/telegram/topic-rename.ts'
 import { jsonBody, newRouter, routeAgent } from './http.ts'
@@ -131,6 +132,7 @@ agentsRouter.patch('/:id', async (c) => {
 agentsRouter.delete('/:id', async (c) => {
   const { db, paths } = getCtx()
   const { id } = routeAgent(c)
+  await stopAgentHelpers(id)
   await runAgentLifecycleMutation(id, () => deleteAgent(db, id))
   notifyDirectoryDirty()
   // The agent's browser and profile go with it.
@@ -143,6 +145,7 @@ agentsRouter.delete('/:id', async (c) => {
 agentsRouter.post('/:id/archive', async (c) => {
   const { db } = getCtx()
   const { id } = routeAgent(c)
+  await stopAgentHelpers(id)
   await runAgentLifecycleMutation(id, () => archiveAgent(db, id))
   notifyDirectoryDirty()
   // An archived agent runs no turns: its browser stops, the profile stays.
@@ -166,6 +169,7 @@ agentsRouter.patch('/:id/team', async (c) => {
   }
   const { db, paths } = getCtx()
   const { id } = routeAgent(c)
+  await stopAgentHelpers(id)
   await runAgentLifecycleMutation(id, () => moveAgent(db, paths, id, teamId))
   notifyDirectoryDirty()
   return c.json({ agent: resolveAgent(db, paths, id) })

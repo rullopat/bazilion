@@ -547,7 +547,8 @@ async function runTick(): Promise<void> {
             })
             triggerRepo.markFired(ctx.db, t.id, occurrence)
           })()
-        } else triggerRepo.markFired(ctx.db, t.id, occurrence)
+        } else if (t.kind !== 'once') triggerRepo.markFired(ctx.db, t.id, occurrence)
+        // A one-time schedule moved while its earlier run is open stays due for when it ends.
       } catch (error) {
         console.warn(
           JSON.stringify({

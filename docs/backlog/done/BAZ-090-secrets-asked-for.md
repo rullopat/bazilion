@@ -38,22 +38,20 @@ Agent uses it without ever seeing it. Taken from OpenClaw's `secrets`.
 - `secret_request` is a question kind like an action (no timer; `askSecret`, `settleSecret` in
   `lib/questions.ts`). The answer `{kind: 'secret', value}` is stored before the card closes;
   `decline` takes a note. The wake says only stored or declined. Storing it from the sheet or the
-  CLI answers a waiting request and takes its reason and hosts.
+  CLI answers a waiting request with its reason; hosts only as given there.
 - The turn adds the Agent's secrets to the worker's environment, Docker gets `--env NAME`, and
   jobs get them too; MCP servers do not. The system prompt lists the names.
-- `web_fetch` takes `headers`; `{{secret:NAME}}` is filled in only for its hosts, the request is
-  not cached, and the Agent's headers are dropped on a cross-origin redirect.
-- `redactToolResults` wraps Pi's `afterToolCall`: tool results reach the model and the transcript
-  with the secrets and Bazilion's credentials taken out.
+- `web_fetch` takes `headers`; `{{secret:NAME}}` only for its hosts, over https, uncached, and
+  dropped on a cross-origin redirect. A Telegram reply to the request is deleted, not passed on.
+- `redactToolResults` wraps Pi's `afterToolCall` (content and details), and the turn's message
+  is cleaned too: secrets and Bazilion's credentials, in the forms output shows them.
 - Guides: [questions](../../questions.md#secrets-an-agent-asks-for), coding environments.
-
 ## Decided while building
 
 - A secret stays with one Agent; a Team-wide secret is not part of this story.
 - `secret_request` is offered where `ask_user` is; `secret_list` in every turn.
 - A name Bazilion or a command's process uses (`PATH`, provider keys, `BAZILION_*`) is refused.
 - An Agent's secret is taken out of output whatever its length.
-
 ## Limits
 
 - Not a sandbox: a command can still send the value elsewhere or change it, and only the exact

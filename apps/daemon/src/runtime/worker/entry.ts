@@ -225,8 +225,14 @@ async function openReview(
   return { handle, review }
 }
 
-/** The prompt text, without the turn's own credentials, and an Agent turn's images. */
-function promptOf(input: WorkerInput): {
+/**
+ * The prompt text, without the turn's credentials and the Agent's secrets (a wake can carry a
+ * job's output), and an Agent turn's images.
+ */
+function promptOf(
+  input: WorkerInput,
+  secrets: readonly string[],
+): {
   text: string
   images?: Array<{ type: 'image'; data: string; mimeType: string }>
 } {
@@ -239,7 +245,7 @@ function promptOf(input: WorkerInput): {
     mimeType: image.mimeType,
   }))
   return {
-    text: redactExactValues(input.message, input.apiKey ? [input.apiKey] : []),
+    text: redactExactValues(input.message, [...secrets, ...(input.apiKey ? [input.apiKey] : [])]),
     ...(images.length > 0 ? { images } : {}),
   }
 }
@@ -297,7 +303,7 @@ async function main(): Promise<void> {
   })
 
   try {
-    const { text, images } = promptOf(input)
+    const { text, images } = promptOf(input, handle.redactionSecrets)
     await session.prompt(text, images ? { images } : undefined)
     await session.agent.waitForIdle()
     emit(

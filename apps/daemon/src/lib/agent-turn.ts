@@ -283,7 +283,7 @@ function turnHosts(
           db,
           agentId: agent.agent.id,
           teamId: agent.team.id,
-          conversationId: conversation.id,
+          conversationId: homeConversation,
           signal,
           env: secretsEnv,
           readReference: readAgentFile,
@@ -342,7 +342,7 @@ function turnHosts(
     jobHost: createJobHost({
       paths,
       agentId: agent.agent.id,
-      conversationId: conversation.id,
+      conversationId: homeConversation,
       ...(turn.docker
         ? { docker: { sandbox, namePrefix: jobContainerPrefix(paths.home) } }
         : { host: { cwd: agent.team.path, env: { ...env, ...secretEnv } } }),

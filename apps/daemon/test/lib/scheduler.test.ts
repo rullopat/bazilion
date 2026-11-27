@@ -656,6 +656,50 @@ describe('scheduler', () => {
     expect(turnCalls).toHaveLength(2)
   })
 
+  test('a one-time schedule whose run never started is due again, also when moved while one runs', async () => {
+    const start = Date.now()
+    const once = triggerRepo.insert(env.db, {
+      agentId: 'a1',
+      kind: 'once',
+      runAt: start + 1000,
+      message: 'once',
+    })
+    // Busy at its time: the run waits; paused and resumed, it has still not run.
+    registerAgent('a1', new AbortController())
+    vi.setSystemTime(start + 2000)
+    await scheduler._tickOnce()
+    expect(triggerDispatchRepo.listForTrigger(env.db, once.id)).toMatchObject([
+      { status: 'pending' },
+    ])
+    triggerRepo.setEnabled(env.db, once.id, false)
+    triggerRepo.setEnabled(env.db, once.id, true)
+    const resumed = triggerRepo.get(env.db, once.id)
+    expect(resumed && triggerRepo.onceDone(resumed)).toBe(false)
+    unregisterAgent('a1')
+    vi.setSystemTime(start + 3000)
+    await scheduler._tickOnce()
+    await scheduler._tickOnce()
+    expect(turnCalls).toEqual([{ agentId: 'a1', message: 'once' }])
+
+    // Moved while a run of it is open: it waits for that run, then runs at its new time.
+    triggerRepo.setTiming(env.db, once.id, { kind: 'once', runAt: start + 5000 })
+    const open = triggerDispatchRepo.materialize(env.db, {
+      conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
+      triggerId: once.id,
+      agentId: 'a1',
+      scheduledAt: start + 4000,
+    })
+    triggerDispatchRepo.start(env.db, open.id)
+    vi.setSystemTime(start + 6000)
+    await scheduler._tickOnce()
+    const moved = triggerRepo.get(env.db, once.id)
+    expect(moved && triggerRepo.onceDone(moved)).toBe(false)
+    triggerDispatchRepo.finish(env.db, open.id, 'succeeded', null)
+    await scheduler._tickOnce()
+    await scheduler._tickOnce()
+    expect(turnCalls).toHaveLength(2)
+  })
+
   test("an Agent's own schedule runs in its conversation, told it is its own", async () => {
     const selected = seedRegisteredConversation(env.db, env.paths, 'a1').id
     const other = seedConversationTarget(join(env.paths.agentDir('a1'), 'sessions'), env.paths.home)

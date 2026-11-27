@@ -249,7 +249,7 @@ test('a secret request outlives the turn; the value is stored, and the Agent hea
 
   // Stored another way (the sheet, the CLI): the waiting request is answered too.
   const other = registry.askSecret(where, { name: 'SENTRY_TOKEN', reason: 'Read errors' })
-  registry.settleSecret(where.agentId, 'SENTRY_TOKEN')
+  registry.settleSecret(where.agentId, 'SENTRY_TOKEN', [])
   expect(registry.get(other.id)).toBeUndefined()
   expect(takeWakes(where.agentId)[0]?.summary).toBe('The user stored SENTRY_TOKEN')
   // Only a secret request takes a secret.

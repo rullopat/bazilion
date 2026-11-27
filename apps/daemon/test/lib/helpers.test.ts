@@ -124,6 +124,18 @@ test('an answer after the turn ended wakes the Agent; stopping the turn stops it
   })
   expect(wake?.text).toContain('Found it.')
 
+  // An answer a later helper_wait takes is not given again by its wake.
+  helpers.turnOpened('turn-1b')
+  const late = await start(new AbortController(), 'turn-1b')
+  helpers.turnClosed('turn-1b')
+  answer.get(late.helper.conversationId)?.('Late answer.')
+  await settle()
+  await settle()
+  expect(await helpers.waitForHelpers('a1', [late.helper.id], 60_000)).toMatchObject([
+    { answer: 'Late answer.' },
+  ])
+  expect(wakes.takeWakes('a1')).toEqual([])
+
   helpers.turnOpened('turn-2')
   const parent = new AbortController()
   const second = await start(parent, 'turn-2')
@@ -136,6 +148,15 @@ test('an answer after the turn ended wakes the Agent; stopping the turn stops it
   })
   helpers.turnClosed('turn-2')
   expect(wakes.takeWakes('a1')).toEqual([])
+
+  // Deleting, archiving or moving the Agent stops its helpers first.
+  helpers.turnOpened('turn-2b')
+  const doomed = await start(new AbortController(), 'turn-2b')
+  await helpers.stopAgentHelpers('a1')
+  expect(helpers.listHelpers('a1').find((h) => h.id === doomed.helper.id)).toMatchObject({
+    status: 'stopped',
+    stoppedBy: 'owner',
+  })
 
   helpers.turnOpened('turn-3')
   const third = await start(new AbortController(), 'turn-3')

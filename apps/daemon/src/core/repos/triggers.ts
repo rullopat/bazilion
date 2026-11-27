@@ -109,7 +109,18 @@ export function listEnabled(db: BazilionDb): AgentTrigger[] {
 export function setEnabled(db: BazilionDb, id: string, enabled: boolean): void {
   db.raw.transaction(() => {
     db.raw.run('UPDATE agent_triggers SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id])
-    if (!enabled) cancelPendingForTrigger(db, id)
+    if (!enabled) {
+      cancelPendingForTrigger(db, id)
+      // A one-time schedule whose run was still waiting has not run: it is due again once on.
+      db.raw.run(
+        `UPDATE agent_triggers SET last_fired_at = NULL
+         WHERE id = ? AND kind = 'once' AND NOT EXISTS (
+           SELECT 1 FROM trigger_dispatches d
+           WHERE d.trigger_id = agent_triggers.id AND d.scheduled_at = agent_triggers.run_at
+             AND d.status IN ('running', 'succeeded', 'failed'))`,
+        [id],
+      )
+    }
   })()
 }
 

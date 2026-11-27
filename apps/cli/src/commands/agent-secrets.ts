@@ -3,6 +3,7 @@
 
 import { readFileSync } from 'node:fs'
 import type {
+  AgentQuestionListResponse,
   ListAgentSecretsResponse,
   SetAgentSecretRequest,
   SetAgentSecretResponse,
@@ -48,6 +49,17 @@ const setCmd = defineCommand({
     'from-file': { type: 'string', description: 'Read the value from this file (a key file)' },
   },
   async run({ args }) {
+    const client = createClient()
+    // Hosts are the owner's to give: a request's are shown, and taken only with --hosts.
+    const { questions } = await client.get<AgentQuestionListResponse>(
+      apiPath('agents', args.agent, 'questions'),
+    )
+    const asked = questions.find((question) => question.question.secret?.name === args.name)
+      ?.question.secret
+    if (asked?.hosts?.length && args.hosts === undefined)
+      console.log(
+        `The Agent asked that web_fetch may send ${args.name} to ${asked.hosts.join(', ')}. That is not given unless you pass --hosts ${asked.hosts.join(',')}.`,
+      )
     const file = args['from-file']
     const value =
       file !== undefined
@@ -66,7 +78,7 @@ const setCmd = defineCommand({
         : {}),
       ...(args.reason !== undefined ? { reason: args.reason } : {}),
     }
-    const { secret } = await createClient().put<SetAgentSecretResponse>(
+    const { secret } = await client.put<SetAgentSecretResponse>(
       apiPath('agents', args.agent, 'secrets', args.name),
       body,
     )

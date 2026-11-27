@@ -215,8 +215,10 @@ says it is a helper; it has the Agent's tools except the helper tools, `ask_user
 or schedules belongs to the conversation that started it. Its last message is its answer.
 `helper_wait` takes ids and waits until all of them end (or `wait_seconds`), showing each one's
 current step as live output; `helper_stop` ends one. Several run at once, each a worker, with no
-cap. An answer that comes after the starting turn ended wakes the Agent there; stopping that turn
-stops its helpers. The Agent's **Helpers** sheet and `bazilion agent helpers <agent> [--stop
+cap. An answer that comes after the starting turn ended wakes the Agent there, unless a later
+`helper_wait` took it; stopping that turn stops its helpers, and so does deleting, archiving or
+moving the Agent or closing or resetting its browser. A helper's background jobs and pictures
+wake the conversation that started it. The Agent's **Helpers** sheet and `bazilion agent helpers <agent> [--stop
 <id>|all]` list them (`GET /api/agents/:id/helpers`, `POST …/helpers/:helperId/stop`), and the
 panel counts the ones working. Helpers live in memory: a restart stops them, and their
 conversations stay. Usage counts each helper's conversation under its Agent.

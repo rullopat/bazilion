@@ -373,6 +373,29 @@ test('web_fetch fills in a secret only for its hosts, and drops the headers on a
     await expect(
       tools.invoke('web_fetch', JSON.stringify({ url: `${base}/x`, headers: { Host: 'x' } })),
     ).rejects.toThrow(/set by the request itself/)
+    // Over plain http a secret goes to a local server only, and a value with a line break never.
+    const tls = createToolRegistry(
+      webTools({
+        fetchImpl: fetch,
+        allowPrivate: true,
+        secrets: [
+          { name: 'API_TOKEN', value: 'x', hosts: ['api.example.com'] },
+          { name: 'SPLIT', value: 'line one\nline two', hosts: ['localhost'] },
+        ],
+      }),
+    )
+    await expect(
+      tls.invoke(
+        'web_fetch',
+        JSON.stringify({ url: 'http://api.example.com/x', headers: { A: '{{secret:API_TOKEN}}' } }),
+      ),
+    ).rejects.toThrow(/sent over https only/)
+    await expect(
+      tls.invoke(
+        'web_fetch',
+        JSON.stringify({ url: `${base}/x`, headers: { A: '{{secret:SPLIT}}' } }),
+      ),
+    ).rejects.toThrow(/would hold a line break, so it is not sent$/)
     // A refused request sends nothing.
     expect(seen.length).toBe(before)
   } finally {

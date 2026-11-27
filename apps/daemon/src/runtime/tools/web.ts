@@ -289,8 +289,14 @@ export function fillHeaders(
             ? `web_fetch: ${secretName} is only for ${secret.hosts.join(', ')}, not ${host}`
             : `web_fetch: ${secretName} is for your commands only; no host may get it from web_fetch`,
         )
+      // In clear text it could be read on the way; a local server (tests) is the exception.
+      if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(host))
+        throw new Error(`web_fetch: ${secretName} is sent over https only`)
       return secret.value
     })
+    // Never quoted: the request library's error would show the value.
+    if (/[\r\n]/.test(filled[name] as string))
+      throw new Error(`web_fetch: header ${name} would hold a line break, so it is not sent`)
   }
   return filled
 }

@@ -101,6 +101,14 @@ test('a stored secret is in the commands by name, and the model and transcript n
     expect(readFileSync(join(sessions, name), 'utf8')).not.toContain(VALUE)
   expect(chat.stdout).not.toContain(VALUE)
 
+  // A turn's own message is cleaned too: a wake carrying a background job's output takes this path.
+  const said: string[] = []
+  mock.push([capture(said, done('NOTED'))])
+  const echoed = await server.cli(['agent', 'chat', agent, '--message', `The job printed ${VALUE}`])
+  expect(echoed.exitCode, echoed.stderr).toBe(0)
+  expect(said[0]).toContain('The job printed [REDACTED]')
+  expect(said[0]).not.toContain(VALUE)
+
   const rm = await server.cli(['agent', 'secret', 'rm', agent, 'GITHUB_TOKEN'])
   expect(rm.exitCode, rm.stderr).toBe(0)
   expect((await server.cli(['agent', 'secret', 'list', agent])).stdout).toContain('(no secrets)')
@@ -174,8 +182,11 @@ test('secret_request shows a card, and storing the secret answers it', async () 
     file,
   ])
   expect(set.exitCode, set.stderr).toBe(0)
-  // The card's reason and hosts came with it.
-  expect(set.stdout).toContain('stored SENTRY_TOKEN (web_fetch: sentry.io)')
+  // The card's reason comes with it; its hosts only when given here.
+  expect(set.stdout).toContain(
+    'The Agent asked that web_fetch may send SENTRY_TOKEN to sentry.io. That is not given unless you pass --hosts sentry.io.',
+  )
+  expect(set.stdout).toMatch(/stored SENTRY_TOKEN\n/)
   expect((await server.cli(['question', 'list', agent])).stdout).toContain('(no waiting questions)')
   const list = await server.cli(['agent', 'secret', 'list', agent])
   expect(list.stdout).toContain('Read the latest errors')

@@ -199,12 +199,20 @@ function actionWake(
   })
 }
 
-/** What the Agent is told when its secret request is answered, in a turn of its own. */
-function secretWake(question: AgentQuestion, stored: boolean, note?: string) {
+/**
+ * What the Agent is told when its secret request is answered, in a turn of its own: `hosts` are
+ * the ones the secret was given, which may not be the ones it asked for.
+ */
+function secretWake(
+  question: AgentQuestion,
+  stored: boolean,
+  options: { note?: string; hosts?: readonly string[] } = {},
+) {
   const secret = question.question.secret
   if (!secret) return
   const { name } = secret
-  const hosts = secret.hosts ?? []
+  const { note } = options
+  const hosts = options.hosts ?? secret.hosts ?? []
   queueWake({
     id: `secret:${question.id}`,
     agentId: question.agentId,
@@ -298,11 +306,11 @@ export class QuestionRegistry {
    * The Agent's secret was stored some other way (its sheet, `bazilion agent secret set`): its
    * waiting request for that name is answered.
    */
-  settleSecret(agentId: string, name: string): void {
+  settleSecret(agentId: string, name: string, hosts: readonly string[]): void {
     for (const question of this.list(agentId)) {
       if (question.question.secret?.name !== name) continue
       if (this.#pending.get(question.id)?.finish({ kind: 'no_answer', reason: 'skipped' })) {
-        secretWake(question, true)
+        secretWake(question, true, { hosts })
         signalLiveChange()
       }
     }
@@ -396,7 +404,7 @@ export class QuestionRegistry {
       secretWake(
         entry.question,
         answer.kind === 'secret',
-        answer.kind === 'decline' ? answer.note : undefined,
+        answer.kind === 'decline' && answer.note ? { note: answer.note } : {},
       )
       signalLiveChange()
       return true
