@@ -25,8 +25,10 @@ once, flashes for a moment, and a teammate's message reads as a message.
 - What a load brought is marked: the messages past those on screen flash twice and fade within
   4 s (`markArrived`, `.arrived-message`; a still ring under reduced motion). A reader who had
   scrolled up stays where they are, with **New messages ↓**.
-- An open Edit holds the load until it is sent or cancelled. A pending command approval of a turn
-  from elsewhere keeps its card across a load.
+- An open Edit holds the load until it is sent or cancelled; sending it after something arrived
+  replaces nothing (the turn to replace is no longer the last), shows what arrived and keeps the
+  text. A pending command approval of a turn from elsewhere keeps its card across a load, and a
+  recovered turn stops counting as busy once the queue says no turn runs.
 - A teammate's message shows open (`parseInboxWake`): sender with avatar and a link to their
   conversation, "wrote" or "replied", its text as Markdown; Bazilion's instructions to the Agent
   are folded under **What the Agent was told**. A wake not in that form shows as before.

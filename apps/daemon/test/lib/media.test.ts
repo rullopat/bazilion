@@ -143,6 +143,35 @@ test('Gemini Omni answers with the video; MiniMax runs a job and fails with its 
       { fetch: minimax.fetch, pause: noWait },
     ),
   ).rejects.toThrow('sensitive input')
+
+  // A provider busy for a moment is asked again; a job ended in a status of its own fails.
+  const busy = network([
+    [/v2\/video_generation$/, json({ task_id: 't2' })],
+    [/query\/video_generation\/t2$/, json({ error: { message: 'overloaded' } }, 503)],
+    [
+      /query\/video_generation\/t2$/,
+      json({ task: { status: 'succeeded', content: { url: 'https://cdn.minimax.io/v.mp4' } } }),
+    ],
+    [/cdn\.minimax\.io/, bytes(MP4)],
+  ])
+  expect(
+    await generateVideo(
+      h3,
+      { prompt: 'x', seconds: 6, shape: 'square' },
+      { fetch: busy.fetch, pause: noWait },
+    ),
+  ).toMatchObject({ mimeType: 'video/mp4' })
+  const expired = network([
+    [/v2\/video_generation$/, json({ task_id: 't3' })],
+    [/query\/video_generation\/t3$/, json({ task: { status: 'expired' } })],
+  ])
+  await expect(
+    generateVideo(
+      h3,
+      { prompt: 'x', seconds: 6, shape: 'square' },
+      { fetch: expired.fetch, pause: noWait },
+    ),
+  ).rejects.toThrow('ended the job: expired')
   expect(minimax.sent[0]?.body).toMatchObject({ duration: 6, ratio: '1:1', resolution: '768P' })
 })
 
@@ -256,6 +285,32 @@ test('voices come from the provider, every page of them; speech in the chosen vo
   const spoken = await synthesize(gemini, 'Hi', 'Kore', google)
   expect(spoken).toMatchObject({ mimeType: 'audio/wav' })
   expect(spoken.bytes.length).toBe(pcm.length + 44)
+  // Samples that start like an MP3 frame (silence: FF FF) are still samples: the type decides.
+  const silence = Buffer.alloc(480, 0xff)
+  const typed = network([
+    [
+      /gemini-3\.8-flash-tts:generateContent$/,
+      json({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: 'audio/L16;codec=pcm;rate=16000',
+                    data: silence.toString('base64'),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    ],
+  ])
+  const quiet = await synthesize(gemini, 'Hi', 'Kore', typed)
+  expect(quiet.mimeType).toBe('audio/wav')
+  expect(quiet.bytes.readUInt32LE(24)).toBe(16_000)
   expect(google.sent[0]?.body).toMatchObject({
     generationConfig: { speechConfig: { voiceConfig: { voice: 'Kore' } } },
   })

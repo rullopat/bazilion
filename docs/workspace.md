@@ -88,7 +88,8 @@ What another source adds to the open conversation (a teammate's message, Telegra
 follow-up, the terminal, another tab) shows at once, also while that turn still runs, and is
 marked for a few seconds. If you were at the end you follow it; if you had scrolled up you stay
 where you are, and **New messages ↓** takes you down. Nothing you are writing changes: the draft
-and its attachments stay, and an open **Edit** holds what arrives until you send or cancel it.
+and its attachments stay, and an open **Edit** holds what arrives until you send or cancel it;
+sending it then replaces nothing, the new messages show, and your text stays in the field.
 
 The stream also carries a digest of the Teams, Agents and templates. When it changes, because a
 Team or an Agent was added, renamed, moved or archived from the CLI, by an Agent or in another

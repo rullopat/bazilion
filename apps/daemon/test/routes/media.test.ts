@@ -147,3 +147,36 @@ test('speech and dictation say when their models are off, and go through them wh
     delete process.env.XAI_API_KEY
   }
 })
+
+test('a voice belongs to its speech model: another model forgets it, the same one keeps it', async () => {
+  const { app, headers } = await boot()
+  const put = (name: string, value: string) =>
+    app.request(`/api/config/fields/${name}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ value }),
+    })
+  const voice = async () =>
+    (
+      (await (await app.request('/api/config/models', { headers })).json()) as {
+        speech: { voice: string | null }
+      }
+    ).speech.voice
+  expect((await put('BAZILION_SPEECH_MODEL', 'xai:tts')).status).toBe(200)
+  await put('BAZILION_SPEECH_VOICE', 'eve')
+  expect(await voice()).toBe('eve')
+  await put('BAZILION_SPEECH_MODEL', 'xai:tts')
+  expect(await voice()).toBe('eve')
+  await put('BAZILION_SPEECH_MODEL', 'elevenlabs:eleven_v4')
+  expect(await voice()).toBeNull()
+  // Set together, as `bazilion config set` may: the model first, so the voice stays.
+  const both = await app.request('/api/config/fields', {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({
+      values: { BAZILION_SPEECH_VOICE: 'v42', BAZILION_SPEECH_MODEL: 'minimax:speech-2.8-hd' },
+    }),
+  })
+  expect(both.status).toBe(200)
+  expect(await voice()).toBe('v42')
+})

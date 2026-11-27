@@ -236,6 +236,8 @@ export function useSessionSync({
   }, [hold, behind])
 
   return {
+    /** Another source moved the conversation while an edit was open; shown once it ends. */
+    behind,
     historyUnavailable,
     queue,
     /** The conversation this tab last knew of; null before the Agent's first turn. */

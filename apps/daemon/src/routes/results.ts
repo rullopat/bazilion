@@ -112,22 +112,24 @@ resultsRouter.get('/:id/media', (c) => {
   if (!result) return c.json({ error: 'Result not found' }, 404)
   if (!PLAYABLE.test(result.mimeType))
     return c.json({ error: 'Only sounds and videos are played. Use Download.' }, 415)
-  let bytes: Buffer
-  try {
-    bytes = results.read(db, result.id)
-  } catch {
-    return c.json({ error: 'Saved file failed integrity verification and cannot be played' }, 409)
-  }
   c.header('Content-Type', result.mimeType)
   c.header('Accept-Ranges', 'bytes')
   c.header('Content-Security-Policy', "default-src 'none'; sandbox")
   c.header('Cache-Control', 'private, max-age=3600')
   const range = /^bytes=(\d*)-(\d*)$/.exec(c.req.header('range') ?? '')
   if (!range) {
+    // The whole file is read and checked against its checksum.
+    let bytes: Buffer
+    try {
+      bytes = results.read(db, result.id)
+    } catch {
+      return c.json({ error: 'Saved file failed integrity verification and cannot be played' }, 409)
+    }
     c.header('Content-Length', String(bytes.byteLength))
     return c.body(new Uint8Array(bytes))
   }
-  const size = bytes.byteLength
+  // A part, as a player seeking asks: read alone, without the whole file.
+  const size = result.byteLength
   const [, from, to] = range
   // "bytes=-500" is the last 500 bytes; "bytes=100-" is from 100 to the end.
   const start = from ? Number(from) : Math.max(0, size - Number(to))
@@ -136,9 +138,10 @@ resultsRouter.get('/:id/media', (c) => {
     c.header('Content-Range', `bytes */${size}`)
     return c.body(null, 416)
   }
+  const part = results.readRange(db, result.id, start, end)
   c.header('Content-Range', `bytes ${start}-${end}/${size}`)
-  c.header('Content-Length', String(end - start + 1))
-  return c.body(new Uint8Array(bytes.subarray(start, end + 1)), 206)
+  c.header('Content-Length', String(part.byteLength))
+  return c.body(new Uint8Array(part), 206)
 })
 
 /** Pages and drawings the web shows in a sealed frame (BAZ-097). */

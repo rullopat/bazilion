@@ -200,7 +200,9 @@ export async function synthesize(
       )
     case 'google': {
       const body = await okJson<{
-        candidates?: { content?: { parts?: { inlineData?: { data?: string } }[] } }[]
+        candidates?: {
+          content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] }
+        }[]
       }>(
         await fetchImpl(
           `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(chosen.modelId)}:generateContent`,
@@ -219,15 +221,18 @@ export async function synthesize(
         ),
         model,
       )
-      const data = body.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)
-        ?.inlineData?.data
-      if (!data) throw new Error(`${model} returned no audio`)
-      const bytes = Buffer.from(data, 'base64')
-      // A whole WAV file, or the samples alone, which get the header they lack.
-      return asSpeech(
-        mediaType(bytes) ? bytes : wavFromPcm(bytes, GEMINI_PCM.rate, GEMINI_PCM.channels),
-        model,
-      )
+      const audio = body.candidates?.[0]?.content?.parts?.find(
+        (part) => part.inlineData?.data,
+      )?.inlineData
+      if (!audio?.data) throw new Error(`${model} returned no audio`)
+      const bytes = Buffer.from(audio.data, 'base64')
+      // A whole WAV file, or the samples alone (audio/L16, audio/pcm), which get the header they
+      // lack. The type Gemini gives decides: samples can look like another format's first bytes.
+      const type = audio.mimeType?.toLowerCase() ?? ''
+      const wav =
+        type.includes('wav') || (!type && bytes.subarray(0, 4).toString('latin1') === 'RIFF')
+      const rate = Number(/rate=(\d+)/.exec(type)?.[1]) || GEMINI_PCM.rate
+      return asSpeech(wav ? bytes : wavFromPcm(bytes, rate, GEMINI_PCM.channels), model)
     }
     case 'xai':
       return asSpeech(

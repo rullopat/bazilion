@@ -119,15 +119,18 @@ export async function drainUserQueueHead(agentId: string): Promise<boolean> {
   } catch (error) {
     failure ??= turnFailureReason(error)
   }
-  // A voice note is answered by voice too, besides the text the topic already has.
-  if (origin?.voice && done && !failure && answer.trim()) await sendVoiceReply(agentId, answer)
   // The conversation holds the turn's full error; the item keeps the reason on one line. Stop
   // pressed before the worker started surfaces as an AbortError, not as 'cancelled'.
   if (failure === 'cancelled' || prepared.controller.signal.aborted)
     await finish('cancelled', turnFailureReason('cancelled'))
   else if (failure) await finish('failed', turnFailureReason(failure))
   else if (!done) await finish('failed', 'The turn ended without a reply.')
-  else await finish('completed')
+  else {
+    await finish('completed')
+    // A voice note is answered by voice too, after the text the topic already has. Not awaited:
+    // the Agent's next message does not wait for the speech model.
+    if (origin?.voice && answer.trim()) void sendVoiceReply(agentId, answer)
+  }
   return true
 }
 

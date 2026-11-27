@@ -68,6 +68,25 @@ export function checkVideoRequest(route: VideoRouteDef, request: VideoRequest): 
 const dataUrl = (image: { bytes: Buffer; mimeType: string }) =>
   `data:${image.mimeType};base64,${image.bytes.toString('base64')}`
 
+/**
+ * A look at a running job: its JSON, or null when the provider is busy for a moment (429, 5xx)
+ * and the job should be asked about again rather than given up.
+ */
+async function look<T>(response: Response, model: string): Promise<T | null> {
+  if (response.status === 429 || response.status >= 500) {
+    await response.body?.cancel().catch(() => {})
+    return null
+  }
+  return okJson<T>(response, model)
+}
+
+/** The finished video's address: only https, from the provider's answer. */
+function videoAddress(url: string, model: string): string {
+  if (new URL(url).protocol !== 'https:')
+    throw new Error(`${model} gave a video address that is not https`)
+  return url
+}
+
 function asVideo(bytes: Buffer, model: string): MadeVideo {
   const type = mediaType(bytes)
   if (!type?.mimeType.startsWith('video/')) throw new Error(`${model} returned no video`)
@@ -106,7 +125,7 @@ export async function generateVideo(
       if (!started.request_id) throw new Error(`${model} started no job`)
       for (;;) {
         await wait(LOOK_EVERY_MS.xai, signal)
-        const job = await okJson<{
+        const job = await look<{
           status?: string
           video?: { url?: string }
           error?: { message?: string }
@@ -117,12 +136,19 @@ export async function generateVideo(
           }),
           model,
         )
-        if (job.status === 'failed') throw new Error(job.error?.message || `${model} failed`)
-        if (job.status !== 'done') continue
+        // Busy for a moment, or still making it: ask again.
+        if (!job || job.status === 'pending') continue
+        if (job.status !== 'done')
+          throw new Error(
+            job.error?.message || `${model} ended the job: ${job.status ?? 'no status'}`,
+          )
         if (!job.video?.url) throw new Error(`${model} held the video back (moderation)`)
         // A temporary address on xAI's own host: fetched without the key.
         return asVideo(
-          await okBytes(await fetchImpl(job.video.url, signal ? { signal } : {}), model),
+          await okBytes(
+            await fetchImpl(videoAddress(job.video.url, model), signal ? { signal } : {}),
+            model,
+          ),
           model,
         )
       }
@@ -219,7 +245,7 @@ export async function generateVideo(
       if (!started.task_id) throw new Error(`${model} started no job`)
       for (;;) {
         await wait(LOOK_EVERY_MS.minimax, signal)
-        const { task } = await okJson<{
+        const looked = await look<{
           task?: { status?: string; content?: { url?: string }; error?: { message?: string } }
         }>(
           await fetchImpl(
@@ -228,12 +254,19 @@ export async function generateVideo(
           ),
           model,
         )
-        if (task?.status === 'failed' || task?.status === 'cancelled')
-          throw new Error(task.error?.message || `${model} ${task.status}`)
-        if (task?.status !== 'succeeded') continue
+        // Busy for a moment, or still making it: ask again.
+        const task = looked?.task
+        if (!looked || task?.status === 'queued' || task?.status === 'running') continue
+        if (task?.status !== 'succeeded')
+          throw new Error(
+            task?.error?.message || `${model} ended the job: ${task?.status ?? 'no status'}`,
+          )
         if (!task.content?.url) throw new Error(`${model} returned no video`)
         return asVideo(
-          await okBytes(await fetchImpl(task.content.url, signal ? { signal } : {}), model),
+          await okBytes(
+            await fetchImpl(videoAddress(task.content.url, model), signal ? { signal } : {}),
+            model,
+          ),
           model,
         )
       }

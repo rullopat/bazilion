@@ -48,22 +48,26 @@ export function DictationButton({
   const [blocked, setBlocked] = useState<string | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
   const stream = useRef<MediaStream | null>(null)
+  // False once the conversation is left: nothing more is recorded or sent.
+  const alive = useRef(true)
   // Checked once on the client: the server cannot know the browser.
   useEffect(() => setBlocked(unavailable()), [])
-  // Leaving the conversation stops a recording and lets go of the microphone.
-  useEffect(
-    () => () => {
+  // Leaving the conversation stops a recording, lets go of the microphone and sends nothing.
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
       recorder.current?.stop()
       for (const track of stream.current?.getTracks() ?? []) track.stop()
-    },
-    [],
-  )
+    }
+  }, [])
 
   async function transcribe(blob: Blob, mimeType: string) {
     setPhase('transcribing')
     try {
       const body: TranscribeRequest = { mimeType, data: await base64(blob) }
       const { text } = await api<TranscribeResponse>('/api/transcription', { body })
+      if (!alive.current) return
       if (text.trim()) onText(text.trim())
       else onError('No words were heard in the recording.')
     } catch (error) {
@@ -76,6 +80,11 @@ export function DictationButton({
   async function start() {
     try {
       const media = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Left while the browser asked for the microphone: let it go at once.
+      if (!alive.current) {
+        for (const track of media.getTracks()) track.stop()
+        return
+      }
       stream.current = media
       const type = RECORDING_TYPES.find((candidate) => MediaRecorder.isTypeSupported(candidate))
       const rec = new MediaRecorder(media, type ? { mimeType: type } : undefined)
@@ -88,6 +97,7 @@ export function DictationButton({
         stream.current = null
         recorder.current = null
         const mimeType = rec.mimeType || type || 'audio/webm'
+        if (!alive.current) return
         if (chunks.length > 0) void transcribe(new Blob(chunks, { type: mimeType }), mimeType)
         else setPhase('idle')
       }

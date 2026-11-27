@@ -114,6 +114,10 @@ export function useChatSession({
   } = useCommandApprovals({ agentId, setLive })
 
   const turnBusy = streaming || recoveredTurn
+  // A recovered turn (one this tab lost the stream of) ends elsewhere: the queue says no turn runs.
+  useEffect(() => {
+    if (recoveredTurn && !streaming && sync.queue && !sync.queue.turnActive) setRecoveredTurn(false)
+  }, [recoveredTurn, streaming, sync.queue, setRecoveredTurn])
   // A turn from elsewhere (a follow-up, Telegram, a schedule) can be stopped from here too.
   const agentBusy = turnBusy || Boolean(sync.queue?.turnActive)
 
@@ -187,6 +191,15 @@ export function useChatSession({
     if (turnBusy) {
       if (!editing) return sync.enqueue(draft)
       pushNote('Wait for the current turn to finish before replacing the last message.')
+      return draft
+    }
+    if (editing && sync.behind) {
+      // Messages came while the edit was open: replacing the last turn now would cut them off.
+      // The edit ends, they show, and the text stays in the field to send or edit again.
+      setEditing(false)
+      pushNote(
+        'New messages came in while you were editing, so nothing was replaced. They are shown now; your text is back in the field.',
+      )
       return draft
     }
     if (editing) {

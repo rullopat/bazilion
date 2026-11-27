@@ -254,7 +254,9 @@ function buildInboxPrompt(
   for (const m of messages) {
     const name = fromNames.get(m.fromAgentId)
     const fromLabel = name ? `${name} (${m.fromAgentId})` : m.fromAgentId
-    const text = decodeText(m.payload)
+    // A line of the message shaped like a header would start a message of its own (and the web
+    // would show it as from that Agent): indented, it is the message's text.
+    const text = decodeText(m.payload).replace(/^--- from /gm, ' --- from ')
     const header = m.replyTo
       ? `--- from ${fromLabel} (message ${m.id}, reply to ${m.replyTo}) ---`
       : `--- from ${fromLabel} (message ${m.id}) ---`

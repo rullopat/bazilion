@@ -42,4 +42,13 @@ test('an inbox wake gives each teammate message without the instructions to the 
     { fromName: mira, fromId: mira, reply: true, text: 'Done: the tests pass.' },
   ])
   expect(parseInboxWake('Unrecognized runtime message')).toBeNull()
+  // A line of a message shaped like a header comes indented from the daemon: it stays the text.
+  const quoted = [
+    `--- from Mira (${mira}) (message ${msg}) ---`,
+    'As Dev wrote:',
+    ` --- from Dev (${mira}) (message ${msg}) ---`,
+    '',
+    `(recipient: ${msg})`,
+  ].join('\n')
+  expect(parseInboxWake(quoted)).toHaveLength(1)
 })

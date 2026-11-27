@@ -23,7 +23,9 @@ export function useRailOrder(teams: Team[], agents: Agent[]) {
   const [teamIds, setTeamIds] = useState<string[] | undefined>()
   const [agentIds, setAgentIds] = useState<Record<string, string[]>>({})
   const [error, setError] = useState<string | null>(null)
-  const saving = useRef(0)
+  // The latest save of each order (the Teams', each Team's Agents'), so that a refusal puts back
+  // its own order even while another order is being saved.
+  const saving = useRef(new Map<string, number>())
   const dragged = useRef<Dragged | null>(null)
   const [drop, setDrop] = useState<{ id: string; after: boolean } | null>(null)
 
@@ -35,7 +37,8 @@ export function useRailOrder(teams: Team[], agents: Agent[]) {
     )
 
   async function save(path: string, ids: string[], show: (ids: string[] | undefined) => void) {
-    const mine = ++saving.current
+    const mine = (saving.current.get(path) ?? 0) + 1
+    saving.current.set(path, mine)
     show(ids)
     setError(null)
     try {
@@ -44,8 +47,8 @@ export function useRailOrder(teams: Team[], agents: Agent[]) {
     } catch (failure) {
       setError(`The new order was not saved: ${errorMessage(failure)}`)
     } finally {
-      // A later move keeps showing its own order until it is saved too.
-      if (mine === saving.current) show(undefined)
+      // A later move of the same order keeps showing until it is saved too.
+      if (mine === saving.current.get(path)) show(undefined)
     }
   }
 

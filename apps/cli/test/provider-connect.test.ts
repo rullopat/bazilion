@@ -133,6 +133,12 @@ test('a hosted provider connects with its suggested models; the key is never pri
   expect(models.stdout).toMatch(/claude-fable-5-2\s+Claude Fable 5\.2\s+\d+K\s+\$[\d.]+ in/)
   expect(models.stdout).toContain('suggested')
 
+  // A media account has no chat models: its key alone is saved.
+  const media = await server.cli(['provider', 'connect', 'elevenlabs', '--key', 'el-secret-1234'])
+  expect(media.exitCode).toBe(0)
+  expect(media.stdout).toContain('elevenlabs: connected')
+  expect(media.stdout + media.stderr).not.toContain('el-secret-1234')
+
   // No suggestions for this one: the models have to be named.
   const unnamed = await server.cli(['provider', 'connect', 'mistral', '--key', 'k', '--no-test'])
   expect(unnamed.exitCode).not.toBe(0)

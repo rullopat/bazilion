@@ -97,6 +97,20 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
   })()
 }
 
+/**
+ * Bytes `start` to `end` (inclusive) of a saved file, read from the database without the whole
+ * file: what a player asks for as it seeks. The whole file is checked when it is downloaded.
+ */
+export function readRange(db: BazilionDb, id: string, start: number, end: number): Buffer {
+  const row = db.raw
+    .query<{ part: Uint8Array | null }, [number, number, string]>(
+      'SELECT substr(bytes, ?, ?) AS part FROM agent_results WHERE id = ?',
+    )
+    .get(start + 1, end - start + 1, id)
+  if (!row?.part) throw new Error('Result not found')
+  return Buffer.from(row.part)
+}
+
 /** Which results a list or an archive covers; an omitted field does not filter. */
 export interface ResultFilter {
   teamId?: string

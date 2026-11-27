@@ -1,58 +1,75 @@
 // Read aloud (BAZ-096): a button on each Agent message that plays it in the voice chosen under
 // Setup → Models. The daemon reads only the message's prose (no code blocks or tables); the audio
-// is made when asked and not saved. One message plays at a time.
+// is made when asked and not saved. One message plays at a time: the latest one pressed.
 
 import type { SpeakRequest } from '@bazilion/api-types'
 import { LoaderCircle, Square, Volume2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { apiFetch, errorMessage } from '../../lib/api'
 
-/** The one message playing, so that starting another stops it. */
-let playing: { audio: HTMLAudioElement; stop: () => void } | null = null
+/** The latest message asked to play; a reading that is not the latest does not start. */
+let latest = 0
+/** The one message playing, and how to stop it. */
+let playing: { token: number; stop: () => void } | null = null
 
 export function ReadAloud({ text }: { text: string }) {
   const [phase, setPhase] = useState<'idle' | 'loading' | 'playing'>('idle')
   const [error, setError] = useState<string | null>(null)
-  const mine = useRef<HTMLAudioElement | null>(null)
-  // A message that leaves the page stops speaking.
-  useEffect(
-    () => () => {
-      if (playing && playing.audio === mine.current) playing.stop()
-    },
-    [],
-  )
+  /** This message's reading, while it loads or plays. */
+  const mine = useRef(0)
+  const alive = useRef(true)
+  // A message that leaves the page stops speaking, and one still loading never starts.
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      if (playing && playing.token === mine.current) playing.stop()
+    }
+  }, [])
 
   async function read() {
     playing?.stop()
+    const token = ++latest
+    mine.current = token
     setError(null)
     setPhase('loading')
     try {
       const body: SpeakRequest = { text, markdown: true }
       const response = await apiFetch('/api/speech', { body })
-      const url = URL.createObjectURL(await response.blob())
+      const blob = await response.blob()
+      // Another message was pressed meanwhile, or this one left the page.
+      if (token !== latest || !alive.current) {
+        if (alive.current) setPhase('idle')
+        return
+      }
+      const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
-      mine.current = audio
       const stop = () => {
         audio.pause()
         URL.revokeObjectURL(url)
-        if (playing?.audio === audio) playing = null
-        setPhase('idle')
+        if (playing?.token === token) playing = null
+        if (alive.current) setPhase('idle')
       }
       audio.onended = stop
-      playing = { audio, stop }
+      playing = { token, stop }
       await audio.play()
       setPhase('playing')
     } catch (cause) {
+      if (!alive.current) return
       setError(errorMessage(cause))
       setPhase('idle')
     }
+  }
+
+  function stopMine() {
+    if (playing?.token === mine.current) playing.stop()
   }
 
   return (
     <span className="mt-1 flex items-center gap-2">
       <button
         type="button"
-        onClick={() => (phase === 'playing' ? playing?.stop() : void read())}
+        onClick={() => (phase === 'playing' ? stopMine() : void read())}
         disabled={phase === 'loading'}
         aria-label={phase === 'playing' ? 'Stop reading aloud' : 'Read aloud'}
         title={phase === 'playing' ? 'Stop' : 'Read aloud'}

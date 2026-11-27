@@ -63,6 +63,9 @@ export function Composer({
 }) {
   const fileInput = useRef<HTMLInputElement | null>(null)
   const [dictationError, setDictationError] = useState<string | null>(null)
+  // What the field holds now: words dictated land after what was typed meanwhile.
+  const valueRef = useRef(value)
+  valueRef.current = value
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the text, or the placeholder naming the Agent, changes.
   useLayoutEffect(() => {
@@ -161,7 +164,8 @@ export function Composer({
               agentName={agentName}
               onText={(text) => {
                 setDictationError(null)
-                onChange(value.trim() ? `${value.trimEnd()} ${text}` : text)
+                const typed = valueRef.current
+                onChange(typed.trim() ? `${typed.trimEnd()} ${text}` : text)
                 inputRef.current?.focus()
               }}
               onError={setDictationError}
