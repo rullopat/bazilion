@@ -25,7 +25,7 @@ export interface FieldOption {
  */
 export type FieldInput =
   /** Free text; `format` is checked when it is saved. */
-  | { type: 'text'; format?: 'url' | 'path' | 'docker-image' }
+  | { type: 'text'; format?: 'url' | 'path' | 'docker-image' | 'model' }
   | { type: 'choice'; options: readonly FieldOption[]; default: string }
   /** Stored as `on` or `off`; `default` is the position when nothing is stored. */
   | { type: 'switch'; on: string; off: string; default: boolean }
@@ -111,6 +111,24 @@ export const SERVICES: ServiceDef[] = [
         },
         description:
           'Off by default. API-key routes are billed per image; the ChatGPT sign-in uses your subscription.',
+      },
+    ],
+  },
+
+  {
+    id: 'command-review',
+    displayName: 'Command review',
+    // Chosen under Command review on the Models page; the field is here for `bazilion config`.
+    category: 'function',
+    hint: 'The model that answers first for dangerous commands, when Commands asks it to.',
+    fields: [
+      {
+        envVar: 'BAZILION_COMMAND_REVIEW_MODEL',
+        kind: 'config',
+        label: 'Review model',
+        placeholder: 'anthropic:claude-haiku-4-5',
+        description: 'A model in Chat, as provider:model. Without one, the owner answers.',
+        input: { type: 'text', format: 'model' },
       },
     ],
   },
@@ -322,10 +340,26 @@ export const SERVICES: ServiceDef[] = [
       {
         envVar: 'BAZILION_BASH_APPROVAL',
         kind: 'config',
-        label: 'Ask before dangerous commands',
+        label: 'Dangerous commands',
         description:
-          'In a chat you allow or deny each one. Schedules, Telegram and inbox turns deny them.',
-        input: { type: 'switch', on: 'dangerous', off: 'off', default: false },
+          'A rule you keep for an Agent (Always for this Agent) allows its commands without asking. When nobody can answer (a schedule, Telegram, an inbox wake), what would ask you is denied.',
+        input: {
+          type: 'choice',
+          default: 'off',
+          options: [
+            { value: 'off', label: 'Run them', hint: 'No command asks first.' },
+            {
+              value: 'dangerous',
+              label: 'Ask me first',
+              hint: 'You allow or deny each one in the chat, on Telegram or in Attention.',
+            },
+            {
+              value: 'review',
+              label: 'A review model first',
+              hint: 'The Command review model on the Models page allows, refuses or asks you.',
+            },
+          ],
+        },
       },
       {
         envVar: 'BAZILION_BASH_SANDBOX_IMAGE',

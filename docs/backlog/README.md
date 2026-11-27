@@ -15,7 +15,7 @@ Background commands, also among the missing tools, ship in 0.63.0 with BAZ-086.
 | ID | Story | Release |
 | --- | --- | --- |
 | [BAZ-094](in_progress/BAZ-094-migrations.md) | Upgrades keep your home: database migrations | 0.63.0 |
-| [BAZ-086](draft/BAZ-086-commands-and-files.md) | Commands that keep running, approvals that remember, file tools in Docker | 0.63.0 |
+| [BAZ-086](in_progress/BAZ-086-commands-and-files.md) | Commands that keep running, approvals that remember, file tools in Docker | 0.63.0 |
 | [BAZ-087](draft/BAZ-087-search-pages-browser.md) | Search filters, long pages kept whole, a browser for checking web apps | 0.63.0 |
 | [BAZ-088](draft/BAZ-088-questions-messages-recall-pictures.md) | Questions in one card, quiet messages, recall across conversations, pictures from pictures | 0.63.0 |
 | [BAZ-089](draft/BAZ-089-schedules-agents-set.md) | Schedules an Agent sets itself | 0.64.0 |

@@ -337,7 +337,9 @@ const RPC_HANDLERS: RpcHandlers = {
     return token
   },
   bashApproval: async (args, ctx) => {
-    const handle = host(ctx.hosts.bashApprovalHost, 'shell approval').begin(args, ctx.signal)
+    const handle = await host(ctx.hosts.bashApprovalHost, 'shell approval').begin(args, ctx.signal)
+    // A command the Agent's own rule allows runs like any other: no card for it.
+    if (handle.approval.rule) return handle.approval
     ctx.pushFrame(approvalFrame(handle.approval))
     const settled = await handle.settled
     // An auto-denied request is settled at once; only a pending one needs its outcome shown.

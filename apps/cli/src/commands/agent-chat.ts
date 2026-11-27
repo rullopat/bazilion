@@ -43,7 +43,8 @@ export function unprintedProgress(
   return { complete, fresh: complete }
 }
 
-type CommandApprovalDecision = CommandApprovalDecisionRequest['decision']
+/** `always`: allow, and keep a rule for the beginning the approval suggests. */
+type CommandApprovalDecision = CommandApprovalDecisionRequest['decision'] | 'always'
 
 export interface CommandApprovalPrompt {
   question(prompt: string): Promise<string>
@@ -86,14 +87,23 @@ export async function promptForCommandApproval(
   for (const risk of approval.risks) {
     prompt.write(`    - ${terminalSafe(risk.code)}: ${terminalSafe(risk.message)}`)
   }
+  // A single simple command can be allowed for good, for the beginning it suggests.
+  const always = tool ? undefined : approval.suggestedRule
+  if (always)
+    prompt.write(`  a: always allow this Agent commands that start with: ${terminalSafe(always)}`)
   try {
     const answer = (
       await prompt.question(
-        tool ? '  Allow this call once? [y/N] ' : '  Allow this command once? [y/N] ',
+        tool
+          ? '  Allow this call once? [y/N] '
+          : always
+            ? '  Allow this command once? [y/N/a] '
+            : '  Allow this command once? [y/N] ',
       )
     )
       .trim()
       .toLowerCase()
+    if (always && (answer === 'a' || answer === 'always')) return 'always'
     return answer === 'y' || answer === 'yes' ? 'allow' : 'deny'
   } catch {
     prompt.write('  [approval input unavailable; denying]')
@@ -109,7 +119,12 @@ export async function respondToCommandApproval(
 ): Promise<CommandApprovalDecision> {
   const decision = prompt ? await promptForCommandApproval(approval, prompt) : 'deny'
   try {
-    await client.post(apiPath('shell-approvals', approval.id), { decision })
+    await client.post(
+      apiPath('shell-approvals', approval.id),
+      decision === 'always'
+        ? { decision: 'allow', remember: { prefix: approval.suggestedRule ?? '' } }
+        : { decision },
+    )
   } catch (error) {
     // Decided meanwhile in the web UI or Telegram, or timed out: the turn goes on, and its next
     // frame says how the command was decided.

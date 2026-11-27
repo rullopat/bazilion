@@ -143,7 +143,12 @@ async function describeCommands(env: NodeJS.ProcessEnv): Promise<Described> {
   const dockerNote: Note = docker.ok
     ? { text: `Docker is running and has the image ${image}.`, tone: 'ok' }
     : { text: dockerProblem(docker.error, image), tone: 'warning' }
-  const asks = config.approvalMode === 'dangerous' ? ', asks first' : ''
+  const asks =
+    config.approvalMode === 'dangerous'
+      ? ', asks first'
+      : config.approvalMode === 'review'
+        ? ', reviewed first'
+        : ''
   const state =
     config.sandboxMode !== 'docker'
       ? on(`Runs on this computer${asks}`)

@@ -91,10 +91,39 @@ export interface CommandApproval {
    */
   tool?: string
   status: CommandApprovalStatus
+  /** Allowed without asking, by this rule of the Agent's (the prefix it matched). */
+  rule?: string
+  /** What the review model said, when one answered first (BAZILION_BASH_APPROVAL=review). */
+  review?: CommandReview
+  /**
+   * The prefix "Always for this Agent" offers: the program and its subcommand (`git push`). Only
+   * for a single simple command, the only kind a rule can allow.
+   */
+  suggestedRule?: string
   /** When the Agent asked, epoch milliseconds. */
   createdAt: number
   /** Epoch milliseconds. */
   expiresAt: number
+}
+
+/** The review model's answer: allowed, refused, or passed on to the owner. */
+export interface CommandReview {
+  decision: 'allow' | 'deny' | 'ask'
+  reason: string
+  /** `provider:model` */
+  model: string
+}
+
+/** A command an Agent may run without asking: one that starts with `prefix`, word for word. */
+export interface CommandRule {
+  id: string
+  agentId: string
+  prefix: string
+  createdAt: number
+}
+
+export interface ListCommandRulesResponse {
+  rules: CommandRule[]
 }
 
 export type SessionEvent =

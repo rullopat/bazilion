@@ -3,6 +3,7 @@ import pkg from '../package.json' with { type: 'json' }
 import { activityCommand } from './commands/activity.ts'
 import { agentCommand } from './commands/agent.ts'
 import { appCommand } from './commands/app.ts'
+import { approvalCommand } from './commands/approval.ts'
 import { attentionCommand } from './commands/attention.ts'
 import { authCommand } from './commands/auth.ts'
 import { backupCommand } from './commands/backup.ts'
@@ -74,6 +75,7 @@ const main = defineCommand({
     backup: backupCommand,
     trigger: triggerCommand,
     job: jobCommand,
+    approval: approvalCommand,
     token: tokenCommand,
     auth: authCommand,
     telegram: telegramCommand,
@@ -125,6 +127,7 @@ const HELP_GROUPS: Record<string, string[]> = {
     'inbox',
     'trigger',
     'job',
+    'approval',
   ],
   integrations: ['telegram', 'notification'],
   remote: ['login', 'token', 'session'],

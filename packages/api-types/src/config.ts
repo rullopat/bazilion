@@ -322,6 +322,13 @@ export interface ModelsResponse {
     selected: string
     routes: ImageRouteEntry[]
   }
+  /** The model that answers first for dangerous commands (BAZILION_COMMAND_REVIEW_MODEL). */
+  commandReview: {
+    /** `provider:model`, or null for none. */
+    selected: string | null
+    /** BAZILION_BASH_APPROVAL: only `review` asks the model. */
+    approvalMode: 'off' | 'dangerous' | 'review'
+  }
 }
 
 export interface ProviderTestRequest {

@@ -165,7 +165,7 @@ export function createSessionShellTools(
   options: SessionShellToolOptions = {},
 ): SessionShellTools {
   const config = resolveShellSecurityConfig(env)
-  const gated = config.approvalMode === 'dangerous'
+  const gated = config.approvalMode !== 'off'
   if (config.sandboxMode === 'off') {
     const fileTools = [hostApplyPatchTool(cwd)]
     if (!gated && !options.jobHost) {

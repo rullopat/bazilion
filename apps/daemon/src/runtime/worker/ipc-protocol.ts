@@ -256,9 +256,15 @@ export interface BashApprovalHandle {
   settled: Promise<CommandApproval>
 }
 
-/** Dangerous-command approvals, in daemon memory for the length of one turn. */
+/**
+ * Dangerous-command approvals, in daemon memory for the length of one turn. A rule or a review
+ * model may decide before anyone is asked, so the handle can take a moment to come.
+ */
 export interface BashApprovalHost {
-  begin(input: BashApprovalArgs, signal?: AbortSignal): BashApprovalHandle
+  begin(
+    input: BashApprovalArgs,
+    signal?: AbortSignal,
+  ): BashApprovalHandle | Promise<BashApprovalHandle>
 }
 
 /** Bound by the daemon to one owner turn's Agent and conversation; the worker supplies content only. */

@@ -165,12 +165,19 @@ The coding tools depend on `BAZILION_BASH_SANDBOX` and `BAZILION_BASH_APPROVAL`
 
 - **off**: Pi's own `read`, `bash`, `edit`, `write`, `grep`, `find` and `ls` run on the host, in
   the Team directory.
-- **docker**: the host tools are removed; a custom `bash` runs each command in a fresh container
-  (`runtime/shell/docker.ts`) with the Team directory at `/workspace`, `memory/`, `/inputs` and
-  attached skills read-only, no network and no host environment. A Docker failure is the
-  command's error, never a host fallback.
-- **approval**: with `BAZILION_BASH_APPROVAL=dangerous`, `bash` (host or Docker) first classifies
-  the command (`runtime/shell/security.ts`). A flagged command asks the daemon, which streams a
+- **docker**: a custom `bash` runs each command in a fresh container (`runtime/shell/docker.ts`)
+  with the Team directory at `/workspace`, `memory/`, `/inputs` and attached skills read-only, no
+  network and no host environment. A Docker failure is the command's error, never a host
+  fallback. The file tools are Bazilion's own on container paths (`runtime/shell/file-tools.ts`,
+  `container-paths.ts`).
+- `apply_patch` in both modes (`runtime/tools/apply-patch.ts`).
+- **jobs**: `bash` takes `background: true`, and `job_list`, `job_output`, `job_input` and
+  `job_stop` act on the Agent's jobs, which the daemon runs past the turn (`lib/jobs.ts`); see
+  [coding environments](coding-environments.md#background-jobs).
+- **approval**: with `BAZILION_BASH_APPROVAL=dangerous` or `review`, `bash` (host or Docker) first
+  classifies the command (`runtime/shell/security.ts`). A flagged command asks the daemon
+  (`lib/bash-approval.ts:createTurnApprovalHost`): an Agent's rule allows it at once; with
+  `review`, the review model answers next (`lib/command-review.ts`); otherwise the daemon streams a
   `command_approval` event and waits up to five minutes for `POST /api/shell-approvals/:id` (or a
   tap in Telegram, see [coding environments](coding-environments.md)), or denies at once when
   nobody can answer.
@@ -262,7 +269,7 @@ the running ones and waits for them before closing browsers, MCP connections and
 ## 9. Scheduler
 
 `apps/daemon/src/lib/scheduler.ts` ticks every 5 s (`BAZILION_SCHEDULER_TICK_MS`;
-`BAZILION_SCHEDULER=off` disables it) and does three jobs:
+`BAZILION_SCHEDULER=off` disables it) and does four jobs:
 
 - **Triggers.** An interval trigger is due when `last_fired_at + every` has passed (the creation
   time counts as the first `last_fired_at`); a cron trigger is due when the current minute matches
@@ -282,6 +289,12 @@ the running ones and waits for them before closing browsers, MCP connections and
   unread and the Agent's wakes back off from 10 s, doubling up to 5 minutes. A wake that fails,
   or cannot start, is listed in Attention as a failed turn
   ([Attention](attention-notifications.md#failed-background-turns)).
+- **Wakes.** Something an Agent started that ends after its turn (a background job) starts a
+  turn of its own when the Agent is free, in the conversation it came from, several of one
+  conversation in one turn (`lib/wakes.ts`). The turn's message starts with `[[bazilion:wake]]`
+  and the transcript shows it as an update. Wakes are kept in memory; a job's record queues its
+  wake again at the next start. One that cannot start waits and backs off like an inbox wake, and
+  shows in Attention.
 - **Learning reviews.** Agents with reviewed learning on and enough new turns get a review in a
   restricted worker with a minimal environment, whose only tool is `propose_lesson`.
 

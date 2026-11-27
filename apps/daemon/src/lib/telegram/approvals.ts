@@ -1,12 +1,13 @@
 // Commands waiting for approval, in Telegram. One that is still waiting after half a minute (the
-// operator has likely stepped away from the web chat) goes to the Agent's topic with Allow and
-// Deny. Only the paired owner can decide; other allowed members are refused. Once it settles,
+// operator has likely stepped away from the web chat) goes to the Agent's topic with Allow, Deny
+// and, for a single simple command, Always (a rule for its suggested prefix). Only the paired owner can decide; other allowed members are refused. Once it settles,
 // here or in the web UI or by timing out, the buttons are replaced by the outcome.
 
 import type { CommandApproval } from '@bazilion/api-types'
 import type { InlineKeyboardMarkup } from 'grammy/types'
+import { checkRulePrefix } from '../../core/command-rules.ts'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo } from '../../core/index.ts'
+import { agentRepo, commandRuleRepo } from '../../core/index.ts'
 import * as acl from '../../core/repos/telegram-acl.ts'
 import { commandApprovalRegistry } from '../bash-approval.ts'
 import { telegramLive } from './live.ts'
@@ -15,7 +16,9 @@ import { enqueueOutbound } from './outbound-queue.ts'
 
 /** How long a command waits in the web UI before it is also sent to Telegram. */
 export const APPROVAL_TELEGRAM_DELAY_MS = 30_000
-const CALLBACK = /^ba:([0-9a-f-]{36}):(a|d)$/
+const CALLBACK = /^ba:([0-9a-f-]{36}):(a|d|r)$/
+/** Approvals answered with Always, and the prefix kept: their outcome line says so. */
+const remembered = new Map<string, string>()
 const COMMAND_CHARS = 1_500
 
 function promptBody(agentName: string, approval: CommandApproval): string {
@@ -31,10 +34,15 @@ function promptBody(agentName: string, approval: CommandApproval): string {
     .join('\n\n')
 }
 
-function outcomeLine(status: CommandApproval['status']): string {
-  switch (status) {
-    case 'allowed':
-      return 'Allowed once.'
+function outcomeLine(approval: CommandApproval): string {
+  switch (approval.status) {
+    case 'allowed': {
+      const prefix = remembered.get(approval.id)
+      remembered.delete(approval.id)
+      return prefix
+        ? `Allowed, and from now on for commands that start with ${prefix}.`
+        : 'Allowed once.'
+    }
     case 'denied':
       return 'Denied.'
     case 'expired':
@@ -73,6 +81,16 @@ export async function sendApprovalPrompt(approval: CommandApproval): Promise<boo
         { text: 'Allow once', callback_data: `ba:${approval.id}:a` },
         { text: 'Deny', callback_data: `ba:${approval.id}:d` },
       ],
+      ...(approval.suggestedRule
+        ? [
+            [
+              {
+                text: `Always: ${clip(approval.suggestedRule, 40)}`,
+                callback_data: `ba:${approval.id}:r`,
+              },
+            ],
+          ]
+        : []),
     ],
   }
   const sent = await enqueueOutbound(live.chatId, () =>
@@ -91,7 +109,7 @@ export async function sendApprovalPrompt(approval: CommandApproval): Promise<boo
         current.api.editMessageText(
           current.chatId,
           sent.message_id,
-          `${body}\n\n${outcomeLine(result.status)}`,
+          `${body}\n\n${outcomeLine(result)}`,
           { reply_markup: { inline_keyboard: [] } },
         ),
       )
@@ -103,10 +121,11 @@ export async function sendApprovalPrompt(approval: CommandApproval): Promise<boo
 /** A button tap on an approval prompt; null for any other callback. */
 export function approvalCallback(
   data: string | undefined,
-): { approvalId: string; decision: 'allow' | 'deny' } | null {
+): { approvalId: string; decision: 'allow' | 'deny' | 'always' } | null {
   const match = data?.match(CALLBACK)
   if (!match?.[1] || !match[2]) return null
-  return { approvalId: match[1], decision: match[2] === 'a' ? 'allow' : 'deny' }
+  const decision = match[2] === 'a' ? 'allow' : match[2] === 'r' ? 'always' : 'deny'
+  return { approvalId: match[1], decision }
 }
 
 /** Decide on a command from Telegram; returns the line to show the sender. */
@@ -114,10 +133,24 @@ export function decideFromTelegram(
   db: BazilionDb,
   userId: number,
   approvalId: string,
-  decision: 'allow' | 'deny',
+  decision: 'allow' | 'deny' | 'always',
 ): string {
   if (acl.get(db, userId)?.role !== 'owner') return 'Only the owner can decide on a command.'
-  const settled = commandApprovalRegistry.respond(approvalId, decision)
+  const pending = commandApprovalRegistry.get(approvalId)
+  if (!pending) return 'That command is no longer waiting.'
+  let prefix: string | undefined
+  if (decision === 'always' && pending.suggestedRule && !pending.tool) {
+    prefix = checkRulePrefix(pending.suggestedRule, pending.command)
+    commandRuleRepo.add(db, pending.agentId, prefix)
+    remembered.set(approvalId, prefix)
+  }
+  const settled = commandApprovalRegistry.respond(
+    approvalId,
+    decision === 'deny' ? 'deny' : 'allow',
+  )
   if (!settled) return 'That command is no longer waiting.'
-  return settled.status === 'allowed' ? 'Allowed once.' : 'Denied.'
+  if (settled.status !== 'allowed') return 'Denied.'
+  return prefix
+    ? `Allowed, and from now on for commands that start with ${prefix}.`
+    : 'Allowed once.'
 }

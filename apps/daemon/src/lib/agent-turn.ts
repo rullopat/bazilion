@@ -6,20 +6,25 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { imageRoute } from '../core/image-generation-config.ts'
-import { agentReviewRepo, mergeSecretsIntoEnv } from '../core/index.ts'
+import { agentReviewRepo, commandRuleRepo, mergeSecretsIntoEnv } from '../core/index.ts'
 import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { rememberLocalModelWindow } from '../runtime/providers/pi-runtime.ts'
 import { loadPromptSkills } from '../runtime/session/prompt.ts'
-import { jobContainerPrefix, removeDockerContainers } from '../runtime/shell/docker.ts'
-import { toolEnvironment } from '../runtime/shell/security.ts'
+import {
+  containerWorkdir,
+  jobContainerPrefix,
+  removeDockerContainers,
+} from '../runtime/shell/docker.ts'
+import { resolveShellSecurityConfig, toolEnvironment } from '../runtime/shell/security.ts'
 import { buildDockerSandbox } from '../runtime/shell/tooling.ts'
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
 import { resolveAgentApiKey } from './api-key.ts'
-import { commandApprovalRegistry } from './bash-approval.ts'
+import { commandApprovalRegistry, createTurnApprovalHost } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
+import { reviewCommand } from './command-review.ts'
 import { getCtx } from './ctx.ts'
 import { createImageGenerationHost } from './image-generation.ts'
 import { createJobHost } from './jobs.ts'
@@ -133,6 +138,28 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
   }
 }
 
+/** The review model's verdict on a dangerous command, when Commands asks for one and one is chosen. */
+function reviewer(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv) {
+  const model = env.BAZILION_COMMAND_REVIEW_MODEL?.trim()
+  if (resolveShellSecurityConfig(env).approvalMode !== 'review' || !model) return undefined
+  const { db, authToken } = getCtx()
+  const { agent } = turn
+  return (
+    input: { command: string; risks: Array<{ code: string; message: string }> },
+    signal?: AbortSignal,
+  ) =>
+    reviewCommand(
+      {
+        command: input.command,
+        risks: input.risks,
+        agentName: agent.agent.name,
+        workspace: turn.docker ? containerWorkdir(turn.docker.cwd) : agent.team.path,
+        sandbox: turn.docker ? 'docker' : 'host',
+      },
+      { model, db, authToken, env, ...(signal ? { signal } : {}) },
+    )
+}
+
 /** The operator started the turn: a web or terminal chat, a follow-up queued from one, Telegram. */
 function withOperator(turn: PreparedAgentTurn): boolean {
   return turn.request.origin === 'http' || turn.request.origin === 'telegram'
@@ -152,7 +179,11 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
     }),
     userMdHost: createDbUserMdHost(db, paths),
     resultHost: createResultHost(db, agent, conversation.id, signal),
-    bashApprovalHost: commandApprovalRegistry,
+    bashApprovalHost: createTurnApprovalHost({
+      registry: commandApprovalRegistry,
+      rule: (agentId, command) => commandRuleRepo.matching(db, agentId, command)?.prefix ?? null,
+      review: reviewer(turn, secretsEnv()),
+    }),
     // ask_user waits for the owner, so only turns the owner can answer get it.
     questionHost: turn.questions
       ? {

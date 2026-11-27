@@ -7,6 +7,7 @@ import {
   INCOMPATIBLE_DATABASE_MESSAGE,
   IncompatibleDatabaseError,
   initSchema,
+  shippedSchema,
 } from '../../src/core/db/schema.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
@@ -125,6 +126,8 @@ test('comment and whitespace edits to schema.sql do not invalidate an existing h
   const home = openInMemoryDb('')
   try {
     home.raw.exec(edited)
+    // A home this release made carries its version; one without would be taken as the baseline.
+    home.raw.exec(`PRAGMA user_version = ${shippedSchema().migrations.length}`)
     // SQLite keeps comments inside CREATE statements, so the stored text really differs.
     expect(
       home.raw

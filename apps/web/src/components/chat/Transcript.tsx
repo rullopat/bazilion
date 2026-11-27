@@ -31,7 +31,11 @@ export function useMarkdownReady(): boolean {
 export interface ApprovalControls {
   busy: Record<string, boolean>
   errors: Record<string, string>
-  decide: (approval: CommandApproval, decision: 'allow' | 'deny') => void
+  decide: (
+    approval: CommandApproval,
+    decision: 'allow' | 'deny',
+    remember?: { prefix: string },
+  ) => void
 }
 
 export function Bubble({

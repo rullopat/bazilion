@@ -107,6 +107,19 @@ describe('CLI shell-command approval', () => {
     })
   })
 
+  test('a: allows the command and keeps the rule it suggests', async () => {
+    const post = vi.fn(async () => ({}))
+    const io = promptReturning('a')
+    const approval = pendingApproval({ command: 'git push origin main', suggestedRule: 'git push' })
+    await expect(respondToCommandApproval({ post }, approval, io.prompt)).resolves.toBe('always')
+    expect(io.questions).toEqual(['  Allow this command once? [y/N/a] '])
+    expect(io.output.join('\n')).toContain('commands that start with: git push')
+    expect(post).toHaveBeenCalledWith('/api/shell-approvals/approval%2Fid', {
+      decision: 'allow',
+      remember: { prefix: 'git push' },
+    })
+  })
+
   test('question failure fails closed and still posts deny', async () => {
     const output: string[] = []
     const post = vi.fn(async () => ({}))

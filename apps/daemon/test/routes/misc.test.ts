@@ -152,7 +152,7 @@ test('health fails closed on an invalid dangerous-command approval policy', asyn
   expect(report.ok).toBe(false)
   expect(report.shellSecurity.ok).toBe(false)
   expect(report.shellSecurity.error).toBe(
-    'Dangerous-command approval must be "off" or "dangerous".',
+    'Dangerous-command approval must be "off", "dangerous" or "review".',
   )
   expect(JSON.stringify(report)).not.toContain('raw-approval-sentinel')
 })

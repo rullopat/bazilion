@@ -5,7 +5,7 @@ import type {
   ProviderConfigEntry,
   SetProviderModelsResponse,
 } from '@bazilion/api-types'
-import { ChevronRight, Images, MessageSquare, Plug, Plus, X } from 'lucide-react'
+import { ChevronRight, Images, MessageSquare, Plug, Plus, ShieldCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { api, errorMessage } from '../../lib/api'
 import {
@@ -19,7 +19,8 @@ import {
 } from '../../lib/model-facts'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { Banner, Chip, CARD_ROW as ROW, SetupCard } from '../ui/parts'
+import { SelectField } from '../ui/form'
+import { Banner, CardBody, Chip, CARD_ROW as ROW, SetupCard } from '../ui/parts'
 import { ModelWindowDialog } from './ModelWindowDialog'
 import { ProviderAvatar, StateChip } from './provider-parts'
 
@@ -373,6 +374,86 @@ export function ImagesCard({
           {error}
         </div>
       )}
+    </SetupCard>
+  )
+}
+
+/**
+ * Command review: the model that answers first for a dangerous command, when Commands (Setup →
+ * Tools) asks a review model. One of Chat's models, or none.
+ */
+export function CommandReviewCard({
+  chat,
+  review,
+  onChanged,
+}: {
+  chat: ChatModelEntry[]
+  review: ModelsResponse['commandReview']
+  onChanged: () => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const selected = review.selected ?? ''
+  const known = chat.find((model) => model.value === selected)
+
+  async function choose(value: string) {
+    setSaving(true)
+    setError(null)
+    try {
+      await api('/api/config/fields/BAZILION_COMMAND_REVIEW_MODEL', {
+        method: value ? 'PUT' : 'DELETE',
+        ...(value ? { body: { value } } : {}),
+      })
+      await onChanged()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const used = review.approvalMode === 'review'
+  return (
+    <SetupCard
+      labelledBy="setup-command-review"
+      icon={<ShieldCheck className="size-5" />}
+      title="Command review"
+      description="The model that looks at a dangerous command first: it allows it, refuses it or passes it to you."
+      action={
+        <Chip tone={selected && used ? 'success' : 'neutral'}>
+          {selected ? (used ? `On: ${known?.name ?? selected}` : 'Chosen, not asked') : 'None'}
+        </Chip>
+      }
+    >
+      <CardBody>
+        <SelectField
+          label="Review model"
+          value={selected}
+          disabled={saving}
+          onChange={(value) => void choose(value)}
+          options={[
+            { value: '', label: 'None: you answer' },
+            ...chat.map((model) => ({
+              value: model.value,
+              label: model.name ?? model.id,
+              hint: model.providerName,
+            })),
+            ...(selected && !known
+              ? [{ value: selected, label: `${selected} (not in Chat)` }]
+              : []),
+          ]}
+          hint={
+            used
+              ? 'Commands asks it first. A cheap, fast model is enough: it reads one command at a time.'
+              : 'Commands (Setup → Tools) does not ask a review model now: choose “A review model first” there.'
+          }
+        />
+        {error && (
+          <p role="alert" className="m-0 text-sm text-danger">
+            {error}
+          </p>
+        )}
+      </CardBody>
     </SetupCard>
   )
 }

@@ -609,11 +609,12 @@ test.each([
   rmSync(broken, { force: true })
 })
 
-test('restore takes a backup from before schema versions, which the daemon then stamps', async () => {
+test('restore takes a backup from before schema versions, which the daemon then upgrades', async () => {
   const valid = await createBackup()
-  // What 0.26.0 to 0.62.0 wrote: the same schema, without a version.
+  // What 0.26.0 to 0.62.0 wrote: the baseline schema, without a version.
   const unversioned = await repack(valid, (dir) => {
     const db = new DatabaseSync(join(dir, 'bazilion.db'))
+    db.exec('DROP TABLE command_rules')
     db.exec('PRAGMA user_version = 0')
     db.close()
   })
@@ -624,11 +625,13 @@ test('restore takes a backup from before schema versions, which the daemon then 
       target.home,
     )
     expect(restored.exitCode, restored.stderr).toBe(0)
+    expect(restored.stdout).toContain('the daemon upgrades it on start')
     const db = openDb(join(target.home, 'bazilion.db'))
     try {
-      expect(initSchema(db)).toEqual({
-        kind: 'current',
-        version: shippedSchema().migrations.length,
+      expect(initSchema(db)).toMatchObject({
+        kind: 'upgraded',
+        from: 1,
+        to: shippedSchema().migrations.length,
       })
       expect(
         db.raw.query<{ v: number }, []>('SELECT user_version AS v FROM pragma_user_version').get(),

@@ -71,7 +71,7 @@ test('four tools on a new home, each with what it is doing', async () => {
     ['browser', 'Browser', { label: 'On: a browser per Agent', tone: 'on' }],
     ['commands', 'Commands', { label: 'Runs on this computer', tone: 'on' }],
   ])
-  expect(functions.map((card) => card.id)).toEqual(['image-generation'])
+  expect(functions.map((card) => card.id)).toEqual(['image-generation', 'command-review'])
   // Nothing is stored, and every setting says what is in effect.
   const browser = cards.find((card) => card.id === 'browser') as ServiceCard
   expect(browser.fields.every((entry) => !entry.set)).toBe(true)
@@ -100,7 +100,7 @@ test('a value is checked before it is stored', async () => {
   }
   expect(await refused('BROWSER_ENABLED', 'maybe')).toBe('BROWSER_ENABLED must be true or false')
   expect(await refused('BAZILION_BASH_APPROVAL', 'true')).toBe(
-    'BAZILION_BASH_APPROVAL must be dangerous or off',
+    'BAZILION_BASH_APPROVAL must be one of: off, dangerous, review',
   )
   expect(await refused('BAZILION_WEB_SEARCH_ROUTE', 'google')).toBe(
     'BAZILION_WEB_SEARCH_ROUTE must be one of: auto, brave, searxng, native, off',

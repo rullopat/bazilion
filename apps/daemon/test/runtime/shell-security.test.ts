@@ -134,8 +134,8 @@ describe('resolveShellSecurityConfig', () => {
   })
 
   test.each([
-    [{ BAZILION_BASH_APPROVAL: 'true' }, /must be "off" or "dangerous"/],
-    [{ BAZILION_BASH_APPROVAL: 'Dangerous' }, /must be "off" or "dangerous"/],
+    [{ BAZILION_BASH_APPROVAL: 'true' }, /must be "off", "dangerous" or "review"/],
+    [{ BAZILION_BASH_APPROVAL: 'Dangerous' }, /must be "off", "dangerous" or "review"/],
     [{ BAZILION_BASH_SANDBOX: 'true' }, /must be "off" or "docker"/],
     [{ BAZILION_BASH_SANDBOX: 'Docker' }, /must be "off" or "docker"/],
     [

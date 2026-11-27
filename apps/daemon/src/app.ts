@@ -10,6 +10,7 @@ import { agentLearningRouter } from './routes/agent-learning.ts'
 import { agentsRouter } from './routes/agents.ts'
 import { attentionRouter } from './routes/attention.ts'
 import { authRouter } from './routes/auth-login.ts'
+import { commandRulesRouter } from './routes/command-rules.ts'
 import { configRouter } from './routes/config.ts'
 import { conversationSearchRouter, conversationsRouter } from './routes/conversations.ts'
 import { eventsRouter } from './routes/events.ts'
@@ -80,6 +81,7 @@ export function createApp(): Hono {
   app.route('/api/events', eventsRouter)
   app.route('/api/notifications', notificationsRouter)
   app.route('/api/shell-approvals', shellApprovalsRouter)
+  app.route('/api/command-rules', commandRulesRouter)
   app.route('/api/profiles', profilesRouter)
   app.route('/api/skills', skillsRouter)
   app.route('/api/triggers', triggersRouter)

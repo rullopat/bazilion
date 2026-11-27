@@ -328,6 +328,25 @@ export async function createPiModel(
   return { runtime, model: endpointModel(providerName, modelId, baseUrl, window) }
 }
 
+/** One request with a system prompt, through the same runtime a turn uses; the reply's text. */
+export async function completeOnce(
+  spec: PiModelSpec & { systemPrompt: string; message: string; signal?: AbortSignal },
+): Promise<string> {
+  const { runtime, model } = await createPiModel(spec, { window: 'not needed' })
+  const reply = await runtime.completeSimple(
+    model,
+    {
+      systemPrompt: spec.systemPrompt,
+      messages: [{ role: 'user', content: spec.message, timestamp: Date.now() }],
+    },
+    spec.signal ? { signal: spec.signal } : {},
+  )
+  if (reply.stopReason === 'error' || reply.stopReason === 'aborted') {
+    throw new Error(reply.errorMessage ?? 'provider request failed')
+  }
+  return reply.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
+}
+
 /** The provider test: one short real request through the same runtime a turn uses. */
 export async function testProviderModel(
   spec: PiModelSpec & { message: string; signal?: AbortSignal },

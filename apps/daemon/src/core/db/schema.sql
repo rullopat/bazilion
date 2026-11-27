@@ -380,3 +380,13 @@ CREATE TABLE team_coding_environments (
   cwd TEXT NOT NULL DEFAULT '.'
 );
 
+
+-- Commands an Agent may run without asking: a dangerous command that starts with one of its
+-- prefixes (whole words) is allowed, when it is a single simple command (lib/bash-approval.ts).
+CREATE TABLE command_rules (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  prefix TEXT NOT NULL CHECK (length(trim(prefix)) > 0),
+  created_at INTEGER NOT NULL,
+  UNIQUE (agent_id, prefix)
+);

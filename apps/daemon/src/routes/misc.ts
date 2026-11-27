@@ -198,7 +198,7 @@ function publicShellSecurityError(error: unknown): string {
     return 'Docker image must use a valid local image reference.'
   }
   if (message.includes('BAZILION_BASH_APPROVAL')) {
-    return 'Dangerous-command approval must be "off" or "dangerous".'
+    return 'Dangerous-command approval must be "off", "dangerous" or "review".'
   }
   if (message.includes('BAZILION_BASH_SANDBOX')) {
     return 'Sandbox mode must be "off" or "docker".'

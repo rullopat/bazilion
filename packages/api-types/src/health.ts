@@ -46,7 +46,7 @@ export interface HealthReport {
     | {
         ok: true
         sandboxMode: 'off' | 'docker'
-        approvalMode: 'off' | 'dangerous'
+        approvalMode: 'off' | 'dangerous' | 'review'
         sandboxImage: string | null
         hostCodingTools: boolean
         network: 'host' | 'none'
