@@ -22,10 +22,10 @@ export function list(db: BazilionDb, agentId?: string): CommandRule[] {
   const rows = agentId
     ? db.raw
         .query<RawRule, [string]>(
-          'SELECT * FROM command_rules WHERE agent_id = ? ORDER BY created_at, id',
+          'SELECT * FROM command_rules WHERE agent_id = ? ORDER BY created_at, rowid',
         )
         .all(agentId)
-    : db.raw.query<RawRule, []>('SELECT * FROM command_rules ORDER BY created_at, id').all()
+    : db.raw.query<RawRule, []>('SELECT * FROM command_rules ORDER BY created_at, rowid').all()
   return rows.map(toRule)
 }
 
