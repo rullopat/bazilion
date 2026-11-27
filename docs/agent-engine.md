@@ -175,6 +175,7 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   such as `2-5`), in parts of a snapshot's size (`part`), and marks a page without text; it has no
   OCR (`runtime/tools/documents.ts`, with unpdf). Both read files as the file tools do: container
   paths in Docker, the workspace and uploads on the host.
+- `helper_start`, `helper_wait`, `helper_stop`: [helpers](#helpers), not in a helper's own turn.
 - `schedule_add`, `schedule_list`, `schedule_remove`: the Agent's own schedules
   (`lib/schedule-host.ts`), in every kind of turn; see [the scheduler](#9-scheduler).
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and
@@ -203,6 +204,22 @@ The coding tools depend on `BAZILION_BASH_SANDBOX` and `BAZILION_BASH_APPROVAL`
   `command_approval` event and waits up to five minutes for `POST /api/shell-approvals/:id` (or a
   tap in Telegram, see [coding environments](coding-environments.md)), or denies at once when
   nobody can answer.
+
+### Helpers
+
+`helper_start` (a task, optionally a `provider:model`) starts a helper: a turn of the same Agent
+with origin `helper`, in a new conversation titled `Helper: …` that is not selected, beside the
+Agent's own turn, which it neither waits for nor marks busy (`lib/helpers.ts`). Its first message
+says it is a helper; it has the Agent's tools except the helper tools, `ask_user` and
+`secret_request`, dangerous commands are refused as in any unattended turn, and what it delivers
+or schedules belongs to the conversation that started it. Its last message is its answer.
+`helper_wait` takes ids and waits until all of them end (or `wait_seconds`), showing each one's
+current step as live output; `helper_stop` ends one. Several run at once, each a worker, with no
+cap. An answer that comes after the starting turn ended wakes the Agent there; stopping that turn
+stops its helpers. The Agent's **Helpers** sheet and `bazilion agent helpers <agent> [--stop
+<id>|all]` list them (`GET /api/agents/:id/helpers`, `POST …/helpers/:helperId/stop`), and the
+panel counts the ones working. Helpers live in memory: a restart stops them, and their
+conversations stay. Usage counts each helper's conversation under its Agent.
 
 ## 6. Conversation commands
 

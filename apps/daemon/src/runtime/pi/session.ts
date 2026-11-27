@@ -47,6 +47,7 @@ import type { RecallSource } from '../tools/recall.ts'
 import type {
   AgentContact,
   BrowserHost,
+  HelperHost,
   ImageGenerationHost,
   InjectedMcpTool,
   JobHost,
@@ -119,6 +120,8 @@ export interface CreateBazilionSessionOptions {
   secretHost?: SecretHost
   /** One of the Agent's saved results, for view_image. */
   readResult?: (resultId: string) => Promise<ResultContent>
+  /** helper_start, helper_wait, helper_stop; never in a helper's own turn. */
+  helperHost?: HelperHost
   /** Whom the Agent can message, listed in its system prompt. */
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
@@ -327,6 +330,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     secretHost: opts.secretHost,
     secrets,
     readFile: shellTools.readFile,
+    helperHost: opts.helperHost,
     ...(opts.readResult ? { readResult: opts.readResult } : {}),
     env,
     docker,

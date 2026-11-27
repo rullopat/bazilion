@@ -267,6 +267,30 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
         icon: 'read',
         kind: 'read',
       }
+    case 'helper_start':
+      return {
+        doing: 'starting a helper',
+        verb: 'Started a helper for',
+        target: str(args?.task) ? clip(String(args?.task).split('\n')[0] ?? '') : null,
+        icon: 'tool',
+        kind: 'other',
+      }
+    case 'helper_wait':
+      return {
+        doing: 'waiting for its helpers',
+        verb: 'Waited for its helpers',
+        target: null,
+        icon: 'tool',
+        kind: 'other',
+      }
+    case 'helper_stop':
+      return {
+        doing: 'stopping a helper',
+        verb: 'Stopped a helper',
+        target: null,
+        icon: 'tool',
+        kind: 'other',
+      }
     case 'secret_request':
       return {
         doing: 'asking you for a secret',

@@ -33,6 +33,11 @@ export interface ToolHandler {
   def: ToolDef
   invoke(
     args: Record<string, unknown>,
-    context?: { toolCallId: string; signal?: AbortSignal },
+    context?: {
+      toolCallId: string
+      signal?: AbortSignal
+      /** Live output while the call runs; each replaces the one before. */
+      progress?: (text: string) => void
+    },
   ): Promise<ToolOutput>
 }

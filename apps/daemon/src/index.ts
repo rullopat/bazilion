@@ -20,6 +20,7 @@ import { isBrowserEnabled, resolveBrowserConfig } from './lib/browser/config.ts'
 import { prepareBrowser } from './lib/browser/install.ts'
 import { closeCtxForShutdown, getCtx, IncompatibleBootstrapIdentityError } from './lib/ctx.ts'
 import { claimDaemonPidFile } from './lib/daemon-liveness.ts'
+import { stopAllHelpers } from './lib/helpers.ts'
 import { recoverJobs, stopAllJobs } from './lib/jobs.ts'
 import { startNotifications } from './lib/notifications.ts'
 import { shutdownResources } from './lib/resources.ts'
@@ -114,6 +115,10 @@ const shutdown = (signal: NodeJS.Signals): void => {
   const schedulerStop = stopScheduler()
   const turnsStop = stopAgentTurns()
   // Background jobs stop with the daemon; the next start tells their Agents.
+  // Helpers are turns of their own; they stop with the daemon, as the Agents' turns do.
+  const helpersStop = stopAllHelpers().catch((e) =>
+    console.error('helpers: stop on shutdown failed:', e instanceof Error ? e.message : e),
+  )
   const jobsStop = stopAllJobs(resolvePaths()).catch((e) =>
     console.error('jobs: stop on shutdown failed:', e instanceof Error ? e.message : e),
   )
@@ -130,7 +135,7 @@ const shutdown = (signal: NodeJS.Signals): void => {
     : Promise.resolve()
   // Settle the scheduler, the follow-up queue and registered workers while IPC hosts and the DB
   // remain available.
-  const resourcesStop = Promise.all([schedulerStop, turnsStop, queueStop, jobsStop])
+  const resourcesStop = Promise.all([schedulerStop, turnsStop, queueStop, jobsStop, helpersStop])
     .then(() => shutdownResources())
     .catch((e) => console.error('resources: shutdown failed:', e instanceof Error ? e.message : e))
   Promise.race([

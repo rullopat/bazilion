@@ -14,6 +14,7 @@ const activity = (agentId: string, more: Partial<AgentActivity>): AgentActivity 
   queuePaused: false,
   followUps: 0,
   jobs: 0,
+  helpers: 0,
   lastActivityAt: null,
   results: 0,
   lastResultAt: null,

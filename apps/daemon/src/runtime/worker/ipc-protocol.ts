@@ -15,6 +15,7 @@ import type {
   BashApprovalMode,
   CommandApproval,
   CommandRisk,
+  Helper,
   Job,
   Message,
   ResultReference,
@@ -67,6 +68,9 @@ export interface RpcMethods {
   scheduleList: { args: Record<string, never>; result: ScheduleEntry[] }
   scheduleRemove: { args: { id: string }; result: ScheduleEntry }
   secretList: { args: Record<string, never>; result: AgentSecret[] }
+  helperStart: { args: { task: unknown; model?: unknown }; result: Helper }
+  helperWait: { args: { ids: string[]; waitMs: number }; result: Helper[] }
+  helperStop: { args: { id: string }; result: Helper }
   secretRequest: { args: { secret: unknown; replace: boolean }; result: SecretRequestResult }
 }
 
@@ -333,6 +337,17 @@ export interface QuestionHost {
   askSecret(secret: unknown, replace: boolean): SecretRequestResult
 }
 
+/**
+ * The turn's Agent's helpers (`helper_start`, `helper_wait`, `helper_stop`), bound by the daemon
+ * to the Agent and the conversation. Never served to a helper's own turn.
+ */
+export interface HelperHost {
+  start(input: { task: unknown; model?: unknown }): Promise<Helper>
+  /** The helpers' states once one changes, all have ended, or `waitMs` passes. */
+  wait(input: { ids: string[]; waitMs: number }, signal?: AbortSignal): Promise<Helper[]>
+  stop(input: { id: string }): Promise<Helper>
+}
+
 /** The turn's Agent's secrets, without their values: secret_list. */
 export interface SecretHost {
   list(): Promise<AgentSecret[]>
@@ -427,6 +442,7 @@ export interface WorkerHosts {
   recallHost?: RecallHost
   scheduleHost?: ScheduleHost
   secretHost?: Pick<SecretHost, 'list'>
+  helperHost?: HelperHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

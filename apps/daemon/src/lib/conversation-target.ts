@@ -14,12 +14,16 @@ function sessionsDir(paths: Paths, agentId: string): string {
   return join(paths.agentDir(agentId), 'sessions')
 }
 
-/** Start a new, empty conversation for the Agent and select it. Old ones stay in the library. */
+/**
+ * Start a new, empty conversation for the Agent and select it, unless `select` is false (a
+ * helper's own). Old ones stay in the library.
+ */
 export function startConversation(
   db: BazilionDb,
   paths: Paths,
   agentId: string,
   title?: string,
+  options: { select?: boolean } = {},
 ): Conversation {
   const agent = resolveAgent(db, paths, agentId)
   // A refused title must not leave a session file behind.
@@ -30,7 +34,7 @@ export function startConversation(
     flag: 'wx',
     mode: 0o600,
   })
-  return conversations.create(db, agentId, id, title)
+  return conversations.create(db, agentId, id, title, options)
 }
 
 /**

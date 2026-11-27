@@ -44,7 +44,7 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   the Agent tab offers to make it its name. Within a Team every Agent has its own name.
 - **The side panel** has five tabs. **Agent**: model and reasoning, saved as soon as you pick
   them with an **Undo**; the Team it belongs to; the ways into its schedules, learning, mailbox,
-  skills, Telegram topic and browser. **Team**: members (left out beside a Team's own overview),
+  background jobs, helpers, skills, secrets, Telegram topic and browser. **Team**: members (left out beside a Team's own overview),
   About you (USER.md), shared memory, settings, and the Team folder behind **Show the folder**.
   **Connections**: who may message whom and what they said lately. **Changes**: what the Team's
   workspace changed since a commit, shown only when the Team folder is a Git repository. **Files**:
@@ -54,7 +54,8 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   the Connections map ([Team Policy](team-policy.md)), Changes ([change review](change-review.md))
   and the Files gallery ([results](results.md)).
 - **Sheets** open over the workspace for the deeper pages: an Agent's schedules, learning,
-  mailbox, skills, Telegram topic and browser; a Team's About you (USER.md), memory and settings.
+  mailbox, jobs, helpers, skills, secrets, Telegram topic and browser; a Team's About you
+  (USER.md), memory and settings.
   They are built from the same cards and fields as Setup and Manage.
 
 On a narrow screen the list, the conversation and the panel take turns: pick an Agent to see its
@@ -127,7 +128,7 @@ Everything on screen is in the query string of `/`, so a link lands on the same 
 | `view` | `connections`, `changes` or `files`: a full-width view of the Team |
 | `conversation` | An earlier conversation to read |
 | `file`, `result`, `note` | The changed path, saved file or memory note that is selected |
-| `section` | The open sheet: `schedules`, `learning`, `mailbox`, `skills`, `telegram`, `browser`, `user-md`, `memory`, `settings` |
+| `section` | The open sheet: `schedules`, `learning`, `mailbox`, `jobs`, `helpers`, `skills`, `secrets`, `telegram`, `browser`, `user-md`, `memory`, `settings` |
 
 [Attention](attention-notifications.md) items link here, for example
 `/?agent=<id>&section=learning`.

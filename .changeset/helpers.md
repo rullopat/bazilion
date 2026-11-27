@@ -1,0 +1,5 @@
+---
+"bazilion": minor
+---
+
+**Helpers: short runs of the same Agent.** An Agent can split its work: `helper_start` runs another turn of the same Agent on one self-contained task, in a conversation of its own, beside its own turn, and answers at once with the helper's id; several run at once. `helper_wait` waits for their answers, showing what each one is doing as live output under the call, and `helper_stop` ends one. A helper has the Agent's tools except the helper tools and the ones that ask you something, so it cannot start helpers of its own; what it delivers or schedules belongs to the conversation that started it. An answer that comes after the Agent's turn ended starts a turn of its own there, and stopping the Agent's turn stops its helpers. The Agent's new **Helpers** sheet lists them with **Stop** and **Open** (its conversation), the panel counts the ones working, and `bazilion agent helpers <agent> [--stop <id>|all]` lists and stops them. Each helper's conversation counts in Usage under its Agent.

@@ -1,5 +1,6 @@
 // The Agent tab: who the open Agent is, what it runs on, and the ways into its deeper pages
-// (schedules, learning, mailbox, skills, secrets, Telegram, browser), which open as sheets.
+// (schedules, learning, mailbox, jobs, helpers, skills, secrets, Telegram, browser), which open as
+// sheets.
 
 import {
   chosenName,
@@ -21,6 +22,7 @@ import {
   Send,
   Sparkles,
   SquareTerminal,
+  Users,
 } from 'lucide-react'
 import { useState } from 'react'
 import { shortTime, useActivity } from '../../lib/activity'
@@ -143,6 +145,15 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
       detail: (() => {
         const running = activity.byAgent.get(agent.id)?.jobs ?? 0
         return running > 0 ? `${running} running` : 'None running'
+      })(),
+    },
+    {
+      section: 'helpers',
+      icon: Users,
+      label: 'Helpers',
+      detail: (() => {
+        const running = activity.byAgent.get(agent.id)?.helpers ?? 0
+        return running > 0 ? `${running} working` : 'None working'
       })(),
     },
     {

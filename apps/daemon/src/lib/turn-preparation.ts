@@ -10,6 +10,7 @@ import type {
   ResolvedAgent,
 } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, resolveAgent } from '../core/index.ts'
+import { modelWindowSetting } from '../core/model-windows.ts'
 import { transcriptionRoute } from '../core/transcription-config.ts'
 import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 import { type DockerTurn, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
@@ -62,7 +63,22 @@ export type TurnRequest = {
    * already registered by the scheduler.
    */
   | { origin: 'trigger' | 'inbox' | 'wake'; claim: TurnClaim }
+  /**
+   * A helper (`helper_start`): a run of the same Agent beside its own turn, in a conversation of
+   * its own, which ends with its task. It is not registered as the Agent's turn.
+   */
+  | { origin: 'helper'; helper: HelperTurn }
 )
+
+/** What a helper's turn is bound to. */
+export interface HelperTurn {
+  /** Stops the helper: its own, not the Agent's. */
+  controller: AbortController
+  /** The conversation it was started from; what it delivers and schedules goes there. */
+  parentConversationId: string
+  /** `provider:model` instead of the Agent's own. */
+  model?: string
+}
 
 /** An admitted, registered turn, ready for `runAgentTurn`. */
 export interface PreparedAgentTurn {
@@ -86,16 +102,25 @@ export async function prepareAgentTurn(request: TurnRequest): Promise<PreparedAg
   const { db, paths, authToken } = getCtx()
   const { agentId } = request
   const claim = 'claim' in request ? request.claim : undefined
-  const controller = claim?.controller ?? new AbortController()
+  const helper = request.origin === 'helper' ? request.helper : undefined
+  const controller = claim?.controller ?? helper?.controller ?? new AbortController()
   let registered = claim !== undefined
   try {
     // A scheduler turn arrives registered. Any other refuses a busy Agent before it registers,
     // so a waiting Telegram message or follow-up can run later.
-    if (!claim && isActiveAgent(agentId)) throw new AgentTurnActiveError(agentId)
-    const agent = resolveAgent(db, paths, agentId)
+    // A helper runs beside the Agent's own turn.
+    if (!claim && !helper && isActiveAgent(agentId)) throw new AgentTurnActiveError(agentId)
+    const resolved = resolveAgent(db, paths, agentId)
+    const agent = helper?.model
+      ? {
+          ...resolved,
+          model: helper.model,
+          contextWindowSetting: modelWindowSetting(db, helper.model),
+        }
+      : resolved
     assertProviderReady(db, authToken, agent.model)
     const conversation = resolveConversationTarget(db, paths, agentId, request.conversationId)
-    if (!claim) {
+    if (!claim && !helper) {
       registerAgent(agentId, controller)
       registered = true
     }

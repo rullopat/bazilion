@@ -15,6 +15,7 @@ import { commandRulesRouter } from './routes/command-rules.ts'
 import { configRouter } from './routes/config.ts'
 import { conversationSearchRouter, conversationsRouter } from './routes/conversations.ts'
 import { eventsRouter } from './routes/events.ts'
+import { agentHelpersRouter } from './routes/helpers.ts'
 import { agentJobsRouter, jobsRouter } from './routes/jobs.ts'
 import { mcpRouter } from './routes/mcp.ts'
 import {
@@ -63,6 +64,7 @@ export function createApp(): Hono {
   app.route('/api/agents', agentTelegramRouter)
   app.route('/api/agents', agentTriggersRouter)
   app.route('/api/agents', agentSecretsRouter)
+  app.route('/api/agents', agentHelpersRouter)
   app.route('/api/agents', agentJobsRouter)
   app.route('/api/agents', conversationsRouter)
   app.route('/api/agents', userQueueRouter)

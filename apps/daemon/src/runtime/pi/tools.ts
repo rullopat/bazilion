@@ -13,6 +13,7 @@ import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
 import { deliverFileTool, type FileSink, type ShowResult } from '../tools/deliver-file.ts'
 import { pdfReadTool, viewImageTool } from '../tools/documents.ts'
+import { helperTools } from '../tools/helpers.ts'
 import { homeTools } from '../tools/home.ts'
 import { imageGenerateTool } from '../tools/image-generate.ts'
 import { jobTools } from '../tools/jobs.ts'
@@ -28,6 +29,7 @@ import { userMdTools } from '../tools/user-md.ts'
 import { type WebFetchSecret, webFetchTool, webSearchTool } from '../tools/web.ts'
 import type {
   BrowserHost,
+  HelperHost,
   ImageGenerationHost,
   InjectedMcpTool,
   JobHost,
@@ -51,8 +53,18 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
     label: h.def.name,
     description: h.def.description,
     parameters: Type.Unsafe<Record<string, unknown>>(h.def.parameters as Record<string, unknown>),
-    async execute(toolCallId, params, signal) {
-      const out = await h.invoke(params as Record<string, unknown>, { toolCallId, signal })
+    async execute(toolCallId, params, signal, onUpdate) {
+      const out = await h.invoke(params as Record<string, unknown>, {
+        toolCallId,
+        signal,
+        // Live output while the call runs: what the chat shows under it.
+        ...(onUpdate
+          ? {
+              progress: (text: string) =>
+                onUpdate({ content: [{ type: 'text', text }], details: {} }),
+            }
+          : {}),
+      })
       if (typeof out === 'string') return { content: [{ type: 'text', text: out }], details: {} }
       if (Array.isArray(out)) return { content: out.map(toPiPart), details: {} }
       return { content: out.content.map(toPiPart), details: out.details }
@@ -100,6 +112,8 @@ export interface BazilionCustomToolsOpts {
   readFile?: (path: string) => Buffer
   /** One of its saved results, for view_image. */
   readResult?: (resultId: string) => Promise<ResultContent>
+  /** The helper_* tools. */
+  helperHost?: HelperHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
   /** Commands run in Docker: paths the Agent is told are the container's. */
@@ -146,6 +160,7 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.jobHost) handlers.push(...jobTools(opts.jobHost))
   if (opts.scheduleHost) handlers.push(...scheduleTools(opts.scheduleHost))
   if (opts.secretHost) handlers.push(...secretTools(opts.secretHost))
+  if (opts.helperHost) handlers.push(...helperTools(opts.helperHost))
   if (opts.readFile) {
     const sources = {
       readFile: opts.readFile,

@@ -38,6 +38,7 @@ import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
 import { reviewCommand } from './command-review.ts'
 import { getCtx } from './ctx.ts'
+import { createHelperHost, turnClosed, turnOpened } from './helpers.ts'
 import { createImageGenerationHost } from './image-generation.ts'
 import { createJobHost } from './jobs.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
@@ -60,6 +61,10 @@ export { prepareAgentTurn }
 
 export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<ChatFrame> {
   const agentId = turn.agent.agent.id
+  // A helper runs beside the Agent's own turn: it is not the Agent's running turn, in the panel or
+  // on Telegram, and its own frames go to the helper's record (lib/helpers.ts).
+  const helper = turn.request.origin === 'helper'
+  if (!helper) turnOpened(turn.request.attemptId)
   try {
     const { db, authToken } = getCtx()
     // The worker, and so every shell command of the turn, never sees Bazilion's own credentials.
@@ -129,20 +134,21 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       },
     )
 
-    mirrorTypingStart(agentId)
+    if (!helper) mirrorTypingStart(agentId)
     let completed = false
     for await (const frame of frames) {
-      void mirrorAgentTurnFrame(agentId, frame).catch((error) => {
-        console.warn(
-          JSON.stringify({
-            event: 'telegram_mirror_failed',
-            agentId,
-            origin: turn.request.origin,
-            attemptId: turn.request.attemptId,
-            errorName: error instanceof Error ? error.name : 'unknown',
-          }),
-        )
-      })
+      if (!helper)
+        void mirrorAgentTurnFrame(agentId, frame).catch((error) => {
+          console.warn(
+            JSON.stringify({
+              event: 'telegram_mirror_failed',
+              agentId,
+              origin: turn.request.origin,
+              attemptId: turn.request.attemptId,
+              errorName: error instanceof Error ? error.name : 'unknown',
+            }),
+          )
+        })
       if (frame.kind === 'done') {
         completed = true
         // The worker reports the window Pi was given; seed the daemon's sync reads with it.
@@ -150,7 +156,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         if (typeof window === 'number' && window > 0)
           rememberLocalModelWindow(turn.agent.model, window)
       }
-      noteTurnFrame(agentId, frame)
+      if (!helper) noteTurnFrame(agentId, frame)
       yield frame
     }
     // Reviewed learning counts the completed turns the owner started.
@@ -158,8 +164,11 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       agentReviewRepo.recordSuccessfulUserTurn(db, agentId)
     }
   } finally {
-    noteTurnEnd(agentId)
-    mirrorTypingStop(agentId)
+    if (!helper) {
+      noteTurnEnd(agentId)
+      mirrorTypingStop(agentId)
+      turnClosed(turn.request.attemptId)
+    }
     // A killed worker cannot remove the container its last command was running in.
     if (turn.docker) await removeDockerContainers(turn.docker.containerPrefix)
     releasePreparedAgentTurn(turn)
@@ -202,6 +211,9 @@ function turnHosts(
   const { db, paths, authToken } = getCtx()
   const { agent, conversation } = turn
   const { signal } = turn.controller
+  // What a helper delivers or schedules belongs to the conversation it was started from.
+  const helperOf = turn.request.origin === 'helper' ? turn.request.helper : undefined
+  const homeConversation = helperOf?.parentConversationId ?? conversation.id
   const secretsEnv = () => mergeSecretsIntoEnv(db, authToken)
   // The container the turn's commands run in, built from what the daemon knows of the turn.
   const sandbox = () => {
@@ -241,7 +253,7 @@ function turnHosts(
       causalParentMessageId: turn.request.causalParentMessageId,
     }),
     userMdHost: createDbUserMdHost(db, paths),
-    resultHost: createResultHost(db, agent, conversation.id, signal),
+    resultHost: createResultHost(db, agent, homeConversation, signal),
     bashApprovalHost: createTurnApprovalHost({
       registry: commandApprovalRegistry,
       rule: (agentId, command) => commandRuleRepo.matching(db, agentId, command)?.prefix ?? null,
@@ -313,8 +325,19 @@ function turnHosts(
     scheduleHost: createScheduleHost({
       db,
       agentId: agent.agent.id,
-      conversationId: conversation.id,
+      conversationId: homeConversation,
     }),
+    // Helpers start helpers of their own never: that is a rule, not a depth limit.
+    helperHost: helperOf
+      ? undefined
+      : createHelperHost({
+          db,
+          paths,
+          agentId: agent.agent.id,
+          conversationId: conversation.id,
+          turnId: turn.request.attemptId,
+          signal,
+        }),
     // Its jobs run where its commands do: in the turn's container, or on the host.
     jobHost: createJobHost({
       paths,

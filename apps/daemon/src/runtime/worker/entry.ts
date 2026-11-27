@@ -181,6 +181,13 @@ async function openAgentTurn(
         }
       : undefined,
     ...(input.secrets ? { secrets: input.secrets } : {}),
+    helperHost: served.has('helperHost')
+      ? {
+          start: (args) => call('helperStart', args),
+          wait: (args) => call('helperWait', args),
+          stop: (args) => call('helperStop', args),
+        }
+      : undefined,
     scheduleHost: served.has('scheduleHost')
       ? {
           add: (args) => call('scheduleAdd', args),
