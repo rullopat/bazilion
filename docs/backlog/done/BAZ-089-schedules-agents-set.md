@@ -1,8 +1,9 @@
 ---
 id: BAZ-089
 title: "Schedules an Agent sets itself"
-status: in_progress
+status: done
 created: 2026-11-27
+shipped: 2026-11-27
 release: v0.64.0
 ---
 

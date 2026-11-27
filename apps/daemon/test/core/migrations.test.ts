@@ -397,6 +397,8 @@ const SHIPPED_MIGRATIONS: Record<string, string> = {
   '001-baseline.sql': '1f424c75254ed4e4cfc51a9eb34b6cfef13025f01726681b6b12983c44e0d015',
   // 0.63.0: the remembered command rules.
   '002-command-rules.sql': '29a3e16e5c0b4a047e92a9f65951cf1318f2aad548d2cecee16ffbfe53d4e5ef',
+  // 0.64.0: one-time schedules, the conversation a schedule runs in, who set it.
+  '003-agent-schedules.sql': '3893ecdd4cf151621a28d488e6bb08417c64beec454d368a04d9ef227133fe0f',
 }
 
 test('migrations that releases shipped are unchanged', () => {

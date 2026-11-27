@@ -1,8 +1,9 @@
 ---
 id: BAZ-090
 title: "Secrets an Agent asks for, kept out of the conversation"
-status: in_progress
+status: done
 created: 2026-11-27
+shipped: 2026-11-27
 release: v0.64.0
 ---
 

@@ -1,8 +1,9 @@
 ---
 id: BAZ-092
 title: "Helpers: short runs of the same Agent"
-status: in_progress
+status: done
 created: 2026-11-27
+shipped: 2026-11-27
 release: v0.64.0
 ---
 

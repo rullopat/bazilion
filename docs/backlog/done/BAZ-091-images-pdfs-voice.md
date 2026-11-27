@@ -1,8 +1,9 @@
 ---
 id: BAZ-091
 title: "Images, PDFs and voice notes an Agent can read"
-status: in_progress
+status: done
 created: 2026-11-27
+shipped: 2026-11-27
 release: v0.64.0
 ---
 

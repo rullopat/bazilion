@@ -9,20 +9,15 @@ are never reused, so the gaps below are deliberate.
 ## Planned
 
 Planned after comparing OpenClaw's tools with ours (2026-11-26). 0.63.0 improved the tools Agents
-already had (BAZ-086 to BAZ-088, with background commands); 0.64.0 adds the missing ones that are
-useful, and later releases take up the rest.
+already had (BAZ-086 to BAZ-088, with background commands) and 0.64.0 added the missing ones that
+are useful (BAZ-089 to BAZ-092); later releases take up the rest.
 
 | ID | Story | Release |
 | --- | --- | --- |
-| [BAZ-089](draft/BAZ-089-schedules-agents-set.md) | Schedules an Agent sets itself | 0.64.0 |
-| [BAZ-090](draft/BAZ-090-secrets-asked-for.md) | Secrets an Agent asks for, kept out of the conversation | 0.64.0 |
-| [BAZ-091](draft/BAZ-091-images-pdfs-voice.md) | Images, PDFs and voice notes an Agent can read | 0.64.0 |
-| [BAZ-092](draft/BAZ-092-helpers.md) | Helpers: short runs of the same Agent | 0.64.0 |
 | [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | 0.65.0 and later |
 
 **Schema.** Since 0.63.0 (BAZ-094) an upgrade migrates the home instead of needing a fresh one
-([upgrading](../upgrades.md)). The `agent_triggers` changes of BAZ-089 (0.64.0) come with their
-own migration.
+([upgrading](../upgrades.md)); each schema change ships with its own migration.
 
 ## Done
 
@@ -75,3 +70,7 @@ own migration.
 | [BAZ-086](done/BAZ-086-commands-and-files.md) | Commands that keep running, approvals that remember, file tools in Docker | 0.63.0 | [coding](../coding-environments.md), [tools](../tools.md) |
 | [BAZ-087](done/BAZ-087-search-pages-browser.md) | Search filters, long pages kept whole, a browser for checking web apps | 0.63.0 | [web research](../web-research.md), [browser research](../browser-research.md) |
 | [BAZ-088](done/BAZ-088-questions-messages-recall-pictures.md) | Questions in one card, quiet messages, recall across conversations, pictures from pictures | 0.63.0 | [questions](../questions.md), [image generation](../image-generation.md) |
+| [BAZ-089](done/BAZ-089-schedules-agents-set.md) | Schedules an Agent sets itself | 0.64.0 | [agent engine](../agent-engine.md#9-scheduler) |
+| [BAZ-090](done/BAZ-090-secrets-asked-for.md) | Secrets an Agent asks for, kept out of the conversation | 0.64.0 | [questions](../questions.md#secrets-an-agent-asks-for) |
+| [BAZ-091](done/BAZ-091-images-pdfs-voice.md) | Images, PDFs and voice notes an Agent can read | 0.64.0 | [models](../models-and-providers.md#transcription), [Telegram](../telegram.md) |
+| [BAZ-092](done/BAZ-092-helpers.md) | Helpers: short runs of the same Agent | 0.64.0 | [agent engine](../agent-engine.md#helpers) |
