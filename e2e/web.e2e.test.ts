@@ -101,6 +101,7 @@ function pages(): string[] {
     `/?agent=${ids.mira}&panel=connections`,
     `/?agent=${ids.quill}&panel=files`,
     `/?agent=${ids.mira}&panel=agent&section=schedules`,
+    `/?agent=${ids.mira}&panel=agent&section=jobs`,
     `/?agent=${ids.dev}&view=changes`,
     `/?agent=${ids.mira}&view=connections`,
     '/?team=launch',

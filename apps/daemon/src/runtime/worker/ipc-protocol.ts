@@ -13,6 +13,7 @@ import type {
   BashApprovalMode,
   CommandApproval,
   CommandRisk,
+  Job,
   Message,
   ResultReference,
 } from '@bazilion/api-types'
@@ -51,6 +52,19 @@ export interface RpcMethods {
   refreshApiKey: { args: { providerName: string }; result: string }
   bashApproval: { args: BashApprovalArgs; result: CommandApproval }
   createAgent: { args: CreateAgentArgs; result: CreatedAgent }
+  jobStart: { args: { command: string }; result: JobOutputResult }
+  jobList: { args: Record<string, never>; result: Job[] }
+  jobOutput: { args: { id: string; waitSeconds?: number }; result: JobOutputResult }
+  jobInput: { args: { id: string; text?: string; interrupt?: boolean }; result: Job }
+  jobStop: { args: { id: string }; result: Job }
+}
+
+/** A job with the output the Agent had not read yet. */
+export interface JobOutputResult {
+  job: Job
+  output: string
+  /** Earlier unread output was left out (it stays in the job's log). */
+  cut: boolean
 }
 
 /** Another Agent the turn's Agent may know about: a teammate, or one Team Policy lets it reach. */
@@ -268,6 +282,21 @@ export interface TeamHost {
   createAgent(input: CreateAgentArgs): CreatedAgent | Promise<CreatedAgent>
 }
 
+/**
+ * The turn's Agent's background jobs, which the daemon runs and keeps past the turn. Bound by the
+ * daemon to the Agent and the conversation; a job of another Agent is unknown here.
+ */
+export interface JobHost {
+  start(input: { command: string }): Promise<JobOutputResult>
+  list(): Promise<Job[]>
+  output(
+    input: { id: string; waitSeconds?: number },
+    signal?: AbortSignal,
+  ): Promise<JobOutputResult>
+  input(input: { id: string; text?: string; interrupt?: boolean }): Promise<Job>
+  stop(input: { id: string }): Promise<Job>
+}
+
 /** Search runs in the daemon, which holds the backend URL and credentials. */
 export interface WebSearchHost {
   search(args: WebSearchArgs): Promise<WebSearchOutput>
@@ -289,6 +318,7 @@ export interface WorkerHosts {
   mcpHost?: McpHost
   /** Only in a turn the operator started: Agents add teammates when asked, not on their own. */
   teamHost?: TeamHost
+  jobHost?: JobHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

@@ -20,6 +20,7 @@ import { isBrowserEnabled, resolveBrowserConfig } from './lib/browser/config.ts'
 import { prepareBrowser } from './lib/browser/install.ts'
 import { closeCtxForShutdown, getCtx, IncompatibleBootstrapIdentityError } from './lib/ctx.ts'
 import { claimDaemonPidFile } from './lib/daemon-liveness.ts'
+import { recoverJobs, stopAllJobs } from './lib/jobs.ts'
 import { startNotifications } from './lib/notifications.ts'
 import { shutdownResources } from './lib/resources.ts'
 import { startScheduler, stopScheduler } from './lib/scheduler.ts'
@@ -73,6 +74,10 @@ try {
   process.exit(1)
 }
 
+// Jobs a previous daemon left (their containers were removed above): stopped, and their Agents
+// told when the scheduler next runs.
+recoverJobs(resolvePaths())
+
 const app = createApp()
 let shuttingDown = false
 let queuePump: ReturnType<typeof startUserQueuePump> | undefined
@@ -108,6 +113,10 @@ const shutdown = (signal: NodeJS.Signals): void => {
   notificationPump?.stop()
   const schedulerStop = stopScheduler()
   const turnsStop = stopAgentTurns()
+  // Background jobs stop with the daemon; the next start tells their Agents.
+  const jobsStop = stopAllJobs(resolvePaths()).catch((e) =>
+    console.error('jobs: stop on shutdown failed:', e instanceof Error ? e.message : e),
+  )
   const queueStop = queuePump?.stop() ?? Promise.resolve()
   console.log(`\nbazilion daemon caught ${signal}, shutting down…`)
   // Stop the telegram bot before HTTP server close — the in-flight getUpdates
@@ -121,7 +130,7 @@ const shutdown = (signal: NodeJS.Signals): void => {
     : Promise.resolve()
   // Settle the scheduler, the follow-up queue and registered workers while IPC hosts and the DB
   // remain available.
-  const resourcesStop = Promise.all([schedulerStop, turnsStop, queueStop])
+  const resourcesStop = Promise.all([schedulerStop, turnsStop, queueStop, jobsStop])
     .then(() => shutdownResources())
     .catch((e) => console.error('resources: shutdown failed:', e instanceof Error ? e.message : e))
   Promise.race([

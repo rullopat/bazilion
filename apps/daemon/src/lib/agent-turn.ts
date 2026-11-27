@@ -3,14 +3,17 @@
 // registration whatever happens.
 
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { imageRoute } from '../core/image-generation-config.ts'
 import { agentReviewRepo, mergeSecretsIntoEnv } from '../core/index.ts'
 import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { rememberLocalModelWindow } from '../runtime/providers/pi-runtime.ts'
-import { removeDockerContainers } from '../runtime/shell/docker.ts'
+import { loadPromptSkills } from '../runtime/session/prompt.ts'
+import { jobContainerPrefix, removeDockerContainers } from '../runtime/shell/docker.ts'
 import { toolEnvironment } from '../runtime/shell/security.ts'
+import { buildDockerSandbox } from '../runtime/shell/tooling.ts'
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
 import { resolveAgentApiKey } from './api-key.ts'
@@ -19,6 +22,7 @@ import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
 import { getCtx } from './ctx.ts'
 import { createImageGenerationHost } from './image-generation.ts'
+import { createJobHost } from './jobs.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
 import { questionRegistry } from './questions.ts'
@@ -189,5 +193,29 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
     browserHost: isBrowserEnabled(env)
       ? createBrowserHost(resolveBrowserConfig(env), { paths, agentId: agent.agent.id, signal })
       : undefined,
+    // Its jobs run where its commands do: in the turn's container, or on the host.
+    jobHost: createJobHost({
+      paths,
+      agentId: agent.agent.id,
+      conversationId: conversation.id,
+      ...(turn.docker
+        ? {
+            docker: {
+              sandbox: () => {
+                const docker = turn.docker
+                if (!docker) throw new Error('the turn has no Docker settings')
+                return buildDockerSandbox(agent.team.path, docker, {
+                  inputsDir: join(agent.agent.dir, 'uploads'),
+                  skillMounts: loadPromptSkills(paths.skillsDir, agent.skills).map((skill) => ({
+                    source: skill.hostDir,
+                    target: skill.sandboxDir,
+                  })),
+                })
+              },
+              namePrefix: jobContainerPrefix(paths.home),
+            },
+          }
+        : { host: { cwd: agent.team.path, env } }),
+    }),
   }
 }

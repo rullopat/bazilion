@@ -4,18 +4,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { resolvePaths } from '../../src/core/paths.ts'
+import { createJobHost, stopAllJobs } from '../../src/lib/jobs.ts'
+import { _resetWakesForTest, takeWakes } from '../../src/lib/wakes.ts'
 import {
   checkDockerImage,
   createDockerBashOperations,
   type DockerSandbox,
   homeContainerPrefix,
+  jobContainerPrefix,
   removeDockerContainers,
   turnContainerPrefix,
 } from '../../src/runtime/shell/docker.ts'
 
 const execFileAsync = promisify(execFile)
 const dockerEnabled = process.env.BAZILION_TEST_DOCKER === '1'
-const image = 'debian:bookworm-slim'
+// CI pulls debian:bookworm-slim; another local image can stand in for it.
+const image = process.env.BAZILION_TEST_DOCKER_IMAGE ?? 'debian:bookworm-slim'
 
 let testDir: string
 let workspace: string
@@ -144,6 +149,48 @@ describe.skipIf(!dockerEnabled)('Docker bash integration', () => {
     expect(await containersWithPrefix(turnPrefix)).toEqual([])
   }, 30_000)
 
+  test('a background job runs in a container of the turn: input, interrupt, stop', async () => {
+    _resetWakesForTest()
+    const paths = resolvePaths(testDir)
+    const jobs = createJobHost({
+      paths,
+      agentId: 'agent',
+      conversationId: 'conversation',
+      docker: { sandbox: () => sandbox(), namePrefix: jobContainerPrefix(testDir) },
+    })
+    try {
+      const { job } = await jobs.start({
+        command:
+          'trap "echo interrupted; exit 130" INT; read line; echo "got $line" > /workspace/got.txt; sleep 30 & wait',
+      })
+      expect(job).toMatchObject({ sandbox: 'docker', cwd: '/workspace', status: 'running' })
+      // Docker creates the container a moment after the job starts.
+      await waitFor(
+        async () => (await containersWithPrefix(jobContainerPrefix(testDir))).length === 1,
+      )
+      // The turn's own cleanup does not touch it.
+      await removeDockerContainers(turnPrefix)
+      expect(await containersWithPrefix(jobContainerPrefix(testDir))).toHaveLength(1)
+
+      await jobs.input({ id: job.id, text: 'hello\n' })
+      await waitFor(() => readIfThere(join(workspace, 'got.txt')).includes('got hello'))
+      await jobs.input({ id: job.id, interrupt: true })
+      const ended = await jobs.output({ id: job.id, waitSeconds: 20 })
+      const last =
+        ended.job.status === 'running' ? await jobs.output({ id: job.id, waitSeconds: 20 }) : ended
+      expect(last.job).toMatchObject({ status: 'exited', exitCode: 130 })
+      expect(ended.output + last.output).toContain('interrupted')
+
+      const server = await jobs.start({ command: 'sleep 60' })
+      await jobs.stop({ id: server.job.id })
+      expect(await containersWithPrefix(jobContainerPrefix(testDir))).toEqual([])
+      expect(takeWakes('agent')).toEqual([])
+    } finally {
+      await stopAllJobs(paths)
+      _resetWakesForTest()
+    }
+  }, 90_000)
+
   test('what a killed worker leaves is removed by its turn prefix, and only that', async () => {
     const leftover = `${turnPrefix}leftover`
     const otherTurn = `${turnContainerPrefix(testDir)}other`
@@ -174,4 +221,20 @@ async function containersWithPrefix(prefix: string): Promise<string[]> {
     { encoding: 'utf8' },
   )
   return stdout.trim().split('\n').filter(Boolean).sort()
+}
+
+function readIfThere(path: string): string {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+async function waitFor(check: () => boolean | Promise<boolean>): Promise<void> {
+  for (let i = 0; i < 200; i++) {
+    if (await check()) return
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error('timed out waiting')
 }

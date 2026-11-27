@@ -49,6 +49,7 @@ import type {
   BrowserHost,
   ImageGenerationHost,
   InjectedMcpTool,
+  JobHost,
   McpHost,
   MessagingHost,
   TeamHost,
@@ -97,6 +98,8 @@ export interface CreateBazilionSessionOptions {
   refreshApiKey?: (providerName: string) => Promise<string>
   /** Enables `agent_create`; given only in a turn the operator started. */
   teamHost?: TeamHost
+  /** Enables background jobs: bash's `background: true` and the job_* tools. */
+  jobHost?: JobHost
   /** Whom the Agent can message, listed in its system prompt. */
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
@@ -239,6 +242,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     inputsDir: join(agent.agent.dir, 'uploads'),
     skillMounts: promptSkills.map((skill) => ({ source: skill.hostDir, target: skill.sandboxDir })),
     approvalHost: opts.bashApprovalHost,
+    ...(opts.jobHost ? { jobHost: opts.jobHost } : {}),
   })
   const docker = shellTools.config.sandboxMode === 'docker'
   const customTools = createBazilionCustomTools({
@@ -255,6 +259,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     webSearchHost: opts.webSearchHost,
     askUser: opts.askUser,
     teamHost: opts.teamHost,
+    jobHost: opts.jobHost,
     env,
   })
   const promptOptions: BuildSystemPromptOptions = {

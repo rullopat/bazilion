@@ -321,6 +321,11 @@ const RPC_HANDLERS: RpcHandlers = {
       onApproval: (approval) => ctx.pushFrame(approvalFrame(approval)),
     }),
   createAgent: (args, { hosts }) => host(hosts.teamHost, 'team').createAgent(args),
+  jobStart: (args, { hosts }) => host(hosts.jobHost, 'job').start(args),
+  jobList: (_args, { hosts }) => host(hosts.jobHost, 'job').list(),
+  jobOutput: (args, ctx) => host(ctx.hosts.jobHost, 'job').output(args, ctx.signal),
+  jobInput: (args, { hosts }) => host(hosts.jobHost, 'job').input(args),
+  jobStop: (args, { hosts }) => host(hosts.jobHost, 'job').stop(args),
   refreshApiKey: async ({ providerName }, ctx) => {
     const token = await refreshApiKeyForTurn(
       providerName,

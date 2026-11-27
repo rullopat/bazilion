@@ -24,6 +24,8 @@ export interface AgentActivity {
   queuePaused: boolean
   /** Follow-ups waiting in the queue. */
   followUps: number
+  /** Background jobs running (started with bash's `background: true`). */
+  jobs: number
   /** When the selected conversation last changed (epoch ms); null before the first turn. */
   lastActivityAt: number | null
   /** Saved results of this Agent. */

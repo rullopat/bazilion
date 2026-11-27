@@ -127,10 +127,14 @@ describe('session prompt boundary', () => {
       memory: memoryBackend(),
       apiKey: 'session-prompt-access-token',
     })
-    const tools = handle.session.agent.state.tools.map((tool) => tool.name)
-    expect(tools).toContain('bash')
-    for (const hostTool of ['read', 'edit', 'write', 'grep', 'find', 'ls'])
-      expect(tools).not.toContain(hostTool)
+    const tools = handle.session.agent.state.tools
+    expect(tools.map((tool) => tool.name)).toContain('bash')
+    // The file tools are there, but Bazilion's own on container paths, never Pi's host ones.
+    for (const name of ['read', 'edit', 'write', 'grep', 'find', 'ls', 'apply_patch']) {
+      const tool = tools.find((candidate) => candidate.name === name)
+      expect(tool?.description, name).toMatch(/Paths are the container's/)
+      expect(tool?.description, name).not.toContain(teamDir)
+    }
     let providerSystemPrompt = ''
     handle.session.agent.streamFunction = (model) => completedStream(model)
     try {

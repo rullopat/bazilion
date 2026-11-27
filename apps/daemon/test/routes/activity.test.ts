@@ -58,6 +58,7 @@ test('an idle Agent with nothing produced reads as such; archived Agents are lef
       approvals: 0,
       queuePaused: false,
       followUps: 0,
+      jobs: 0,
       lastActivityAt: null,
       results: 0,
       lastResultAt: null,

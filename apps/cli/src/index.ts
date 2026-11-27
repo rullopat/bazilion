@@ -12,6 +12,7 @@ import { conversationCommand } from './commands/conversation.ts'
 import { dashboardCommand } from './commands/dashboard.ts'
 import { doctorCommand } from './commands/doctor.ts'
 import { inboxCommand } from './commands/inbox.ts'
+import { jobCommand } from './commands/job.ts'
 import { loginCommand } from './commands/login.ts'
 import { mcpCommand } from './commands/mcp.ts'
 import { memoryCommand } from './commands/memory.ts'
@@ -72,6 +73,7 @@ const main = defineCommand({
     doctor: doctorCommand,
     backup: backupCommand,
     trigger: triggerCommand,
+    job: jobCommand,
     token: tokenCommand,
     auth: authCommand,
     telegram: telegramCommand,
@@ -122,6 +124,7 @@ const HELP_GROUPS: Record<string, string[]> = {
     'send',
     'inbox',
     'trigger',
+    'job',
   ],
   integrations: ['telegram', 'notification'],
   remote: ['login', 'token', 'session'],

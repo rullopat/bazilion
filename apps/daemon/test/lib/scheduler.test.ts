@@ -629,4 +629,95 @@ describe('scheduler', () => {
     ])
     expect(turnCalls).toHaveLength(1)
   })
+
+  describe('wakes', () => {
+    async function wakes() {
+      const module = await import('../../src/lib/wakes.ts')
+      module._resetWakesForTest()
+      return module
+    }
+
+    test('a wake starts a turn in its conversation once the Agent is free', async () => {
+      const { queueWake } = await wakes()
+      const conversation = seedRegisteredConversation(env.db, env.paths, 'a1').id
+      const fired = vi.fn()
+      queueWake({
+        id: 'job:1',
+        agentId: 'a1',
+        conversationId: conversation,
+        summary: 'Background job job-1 ended with exit code 0',
+        text: 'Background job job-1 (`make`) ended with exit code 0.',
+        at: Date.now(),
+        onFired: fired,
+      })
+      const controller = new AbortController()
+      registerAgent('a1', controller)
+      await scheduler._tickOnce()
+      expect(turnCalls).toHaveLength(0)
+      unregisterAgent('a1')
+
+      await scheduler._tickOnce()
+      expect(turnCalls).toHaveLength(1)
+      expect(targets).toEqual([conversation])
+      expect(turnCalls[0]?.message).toMatch(
+        /^\[\[bazilion:wake\]\]\nBackground job job-1 ended with exit code 0\n/,
+      )
+      expect(turnCalls[0]?.message).toContain('`make`')
+      expect(fired).toHaveBeenCalledTimes(1)
+      await scheduler._tickOnce()
+      expect(turnCalls).toHaveLength(1)
+    })
+
+    test('wakes of one conversation share a turn; one no longer wanted is dropped', async () => {
+      const { queueWake } = await wakes()
+      const conversation = seedRegisteredConversation(env.db, env.paths, 'a1').id
+      for (const [id, wanted] of [
+        ['job:a', true],
+        ['job:b', false],
+        ['job:c', true],
+      ] as const) {
+        queueWake({
+          id,
+          agentId: 'a1',
+          conversationId: conversation,
+          summary: `update ${id}`,
+          text: `text ${id}`,
+          at: Date.now(),
+          stillWanted: () => wanted,
+        })
+      }
+      await scheduler._tickOnce()
+      expect(turnCalls).toHaveLength(1)
+      expect(turnCalls[0]?.message).toContain('2 updates')
+      expect(turnCalls[0]?.message).toContain('text job:a')
+      expect(turnCalls[0]?.message).toContain('text job:c')
+      expect(turnCalls[0]?.message).not.toContain('text job:b')
+    })
+
+    test('a wake whose turn cannot start waits, and Attention says why', async () => {
+      const { queueWake } = await wakes()
+      const conversation = seedRegisteredConversation(env.db, env.paths, 'a1').id
+      queueWake({
+        id: 'image:1',
+        agentId: 'a1',
+        conversationId: conversation,
+        summary: 'A picture is ready',
+        text: 'It is saved.',
+        at: Date.now(),
+      })
+      prepareError = new Error('The provider refused the credentials')
+      await scheduler._tickOnce()
+      expect(turnCalls).toHaveLength(0)
+      expect(JSON.stringify(projectAttention(env.db).items)).toContain('Turn for an update failed')
+
+      prepareError = null
+      await scheduler._tickOnce()
+      // Not yet: it waits out the pause first.
+      expect(turnCalls).toHaveLength(0)
+      vi.advanceTimersByTime(60_000)
+      await scheduler._tickOnce()
+      expect(turnCalls).toHaveLength(1)
+      expect(turnCalls[0]?.message).toContain('A picture is ready')
+    })
+  })
 })

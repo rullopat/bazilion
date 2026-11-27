@@ -8,6 +8,7 @@ import { isAgentSection, isTeamSection } from '../../lib/workspace'
 import { AgentBrowserCard } from '../AgentBrowserCard'
 import { AgentSkillsSheet } from '../AgentSkills'
 import { AgentTelegram } from '../AgentTelegram'
+import { AgentJobs } from '../agent/AgentJobs'
 import { AgentLearning } from '../agent/AgentLearning'
 import { AgentMailbox } from '../agent/AgentMailbox'
 import { AgentSchedules } from '../agent/AgentSchedules'
@@ -42,6 +43,10 @@ export function Sheets() {
       case 'mailbox':
         title = `${name}’s mailbox`
         body = <AgentMailbox key={id} agent={agent.agent} agents={agents} />
+        break
+      case 'jobs':
+        title = `${name}’s background jobs`
+        body = <AgentJobs key={id} agent={agent.agent} />
         break
       case 'skills':
         title = `${name}’s skills`

@@ -186,6 +186,16 @@ export async function removeDockerContainers(prefix: string): Promise<void> {
   }
 }
 
+/** Send `signal` to one container's main process (an interrupt, as Ctrl-C would). */
+export async function signalDockerContainer(name: string, signal: string): Promise<void> {
+  await docker(['kill', '--signal', signal, name])
+}
+
+/** The name prefix of a home's background job containers, apart from any turn's prefix. */
+export function jobContainerPrefix(home: string): string {
+  return `${homeContainerPrefix(home)}job-`
+}
+
 async function removeContainers(names: string[]): Promise<void> {
   if (names.length === 0) return
   await docker(['rm', '--force', ...names]).catch((error: unknown) => {

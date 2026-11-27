@@ -18,6 +18,7 @@ import {
   type LucideIcon,
   Send,
   Sparkles,
+  SquareTerminal,
 } from 'lucide-react'
 import { useState } from 'react'
 import { shortTime, useActivity } from '../../lib/activity'
@@ -130,6 +131,15 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
       icon: Inbox,
       label: 'Mailbox',
       detail: info ? (info.unread ? `${info.unread} unread` : 'Nothing unread') : '',
+    },
+    {
+      section: 'jobs',
+      icon: SquareTerminal,
+      label: 'Background jobs',
+      detail: (() => {
+        const running = activity.byAgent.get(agent.id)?.jobs ?? 0
+        return running > 0 ? `${running} running` : 'None running'
+      })(),
     },
     {
       section: 'skills',

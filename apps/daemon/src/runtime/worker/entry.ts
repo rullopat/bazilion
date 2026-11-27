@@ -155,6 +155,15 @@ async function openAgentTurn(
     teamHost: served.has('teamHost')
       ? { createAgent: (args) => call('createAgent', args) }
       : undefined,
+    jobHost: served.has('jobHost')
+      ? {
+          start: (args) => call('jobStart', args),
+          list: () => call('jobList', {}),
+          output: (args) => call('jobOutput', args),
+          input: (args) => call('jobInput', args),
+          stop: (args) => call('jobStop', args),
+        }
+      : undefined,
     contacts: input.contacts,
     withOperator: input.withOperator,
   })

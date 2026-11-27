@@ -12,6 +12,7 @@ import { browserTools } from '../tools/browser.ts'
 import { deliverFileTool, type FileSink } from '../tools/deliver-file.ts'
 import { homeTools } from '../tools/home.ts'
 import { imageGenerateTool } from '../tools/image-generate.ts'
+import { jobTools } from '../tools/jobs.ts'
 import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
@@ -24,6 +25,7 @@ import type {
   BrowserHost,
   ImageGenerationHost,
   InjectedMcpTool,
+  JobHost,
   McpHost,
   MessagingHost,
   TeamHost,
@@ -77,6 +79,8 @@ export interface BazilionCustomToolsOpts {
   askUser?: AskUser
   /** Adding teammates (`agent_create`), in a turn the operator started. */
   teamHost?: TeamHost
+  /** The job_* tools for background jobs. */
+  jobHost?: JobHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
 }
@@ -109,5 +113,6 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.imageGenerationHost) handlers.push(imageGenerateTool(opts.imageGenerationHost))
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   if (opts.teamHost) handlers.push(agentCreateTool(opts.teamHost))
+  if (opts.jobHost) handlers.push(...jobTools(opts.jobHost))
   return handlers.map(ourToolToPiTool)
 }

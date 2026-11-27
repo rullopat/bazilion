@@ -45,6 +45,7 @@ import { endExchangeTurn, exchangeSoFar, noteExchangeTurn } from './exchanges.ts
 import { signalLiveChange } from './live-signal.ts'
 import { dispatchPendingReviews } from './review-dispatcher.ts'
 import { turnFailureReason, turnFrameFailure } from './turn-outcome.ts'
+import { agentsWithWakes, returnWakes, takeWakes, wakeMessage } from './wakes.ts'
 
 const SCHEDULER_KEY = Symbol.for('bazilion.scheduler')
 const TICK_MS = Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000)
@@ -60,6 +61,8 @@ interface SchedulerState {
   inFlight: Set<Promise<void>>
   /** Agents whose last inbox wake could not start a turn; cleared once one starts. */
   inboxBackoff: Map<string, { delayMs: number; nextAttemptAt: number }>
+  /** The same for wakes (a job's end, a picture, an answer). */
+  wakeBackoff: Map<string, { delayMs: number; nextAttemptAt: number }>
   stopped: boolean
   stopPromise?: Promise<void>
 }
@@ -74,6 +77,7 @@ function state(): SchedulerState {
       cronCache: new Map(),
       inFlight: new Set(),
       inboxBackoff: new Map(),
+      wakeBackoff: new Map(),
       stopped: false,
     }
     g[SCHEDULER_KEY] = s
@@ -434,6 +438,94 @@ async function fireInboxWake(agentId: string): Promise<void> {
   }
 }
 
+/** Run a wake turn: what the Agent started has an update (see wakes.ts). */
+async function fireWake(agentId: string): Promise<void> {
+  const s = state()
+  const key = `wake:${agentId}`
+  if (s.stopped || s.firing.has(key) || isActiveAgent(agentId)) return
+  const backoff = s.wakeBackoff.get(agentId)
+  if (backoff && Date.now() < backoff.nextAttemptAt) return
+  const ctx = getCtx()
+  const agent = agentRepo.get(ctx.db, agentId)
+  // A deleted Agent's wakes go; an archived one's wait until it is restored.
+  if (!agent) {
+    while (takeWakes(agentId).length > 0) {}
+    return
+  }
+  if (agent.status !== 'idle') return
+  s.firing.add(key)
+  const controller = new AbortController()
+  const wakes = takeWakes(agentId)
+  const first = wakes[0]
+  if (!first) {
+    s.firing.delete(key)
+    return
+  }
+  registerAgent(agentId, controller)
+  const attemptId = `wake:${first.id}`
+  let turnStarted = false
+  try {
+    const preparedTurn = await prepareAgentTurn({
+      origin: 'wake',
+      attemptId,
+      agentId,
+      conversationId: first.conversationId,
+      message: wakeMessage(wakes),
+      attachments: [],
+      claim: { controller },
+    })
+    turnStarted = true
+    s.wakeBackoff.delete(agentId)
+    if (forgetTurnFailure(`wake-start:${agentId}`)) signalLiveChange()
+    for (const wake of wakes) wake.onFired?.()
+    let failure: string | null = null
+    try {
+      for await (const frame of runAgentTurn(preparedTurn)) {
+        const frameFailure = turnFrameFailure(frame)
+        if (frameFailure) failure ??= turnFailureReason(frameFailure)
+      }
+    } catch (error) {
+      failure ??= turnFailureReason(error)
+    }
+    if (failure && !controller.signal.aborted) {
+      rememberTurnFailure({
+        id: attemptId,
+        agentId,
+        origin: 'wake',
+        at: Date.now(),
+        reason: failure,
+      })
+      signalLiveChange()
+    }
+  } catch (error) {
+    if (!turnStarted) {
+      // Preparation released the registration. The wakes wait, and are tried after a pause.
+      returnWakes(wakes)
+      const delayMs = backoff
+        ? Math.min(backoff.delayMs * 2, INBOX_RETRY_MAX_MS)
+        : INBOX_RETRY_BASE_MS
+      s.wakeBackoff.set(agentId, { delayMs, nextAttemptAt: Date.now() + delayMs })
+      rememberTurnFailure({
+        id: `wake-start:${agentId}`,
+        agentId,
+        origin: 'wake',
+        at: Date.now(),
+        reason: turnFailureReason(error),
+      })
+      signalLiveChange()
+    }
+    console.warn(
+      JSON.stringify({
+        event: 'wake_unavailable',
+        agentId,
+        errorName: error instanceof Error ? error.name : 'unknown',
+      }),
+    )
+  } finally {
+    s.firing.delete(key)
+  }
+}
+
 async function runTick(): Promise<void> {
   const s = state()
   if (s.stopped) return
@@ -486,6 +578,7 @@ async function runTick(): Promise<void> {
     // dedup-gates and bails if the agent already has an active run.
     work.push(fireInboxWake(agentId))
   }
+  for (const agentId of agentsWithWakes()) work.push(fireWake(agentId))
   work.push(dispatchPendingReviews())
   await Promise.allSettled(work)
 }

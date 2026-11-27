@@ -6,7 +6,13 @@ import {
   defineTool,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
-import { type BashApprovalHost, createApprovalGatedBashTool } from './approval.ts'
+import { type TSchema, Type } from 'typebox'
+import type { JobHost, JobOutputResult } from '../worker/ipc-protocol.ts'
+import {
+  type BashApprovalHost,
+  createApprovalGatedBashTool,
+  requireBashApproval,
+} from './approval.ts'
 import { ContainerPaths } from './container-paths.ts'
 import {
   CONTAINER_WORKSPACE,
@@ -44,19 +50,109 @@ export interface SessionShellToolOptions {
   skillMounts?: readonly DockerMount[]
   /** Turn-scoped dangerous-command approval bridge. Omit to deny risky commands. */
   approvalHost?: BashApprovalHost
+  /** The daemon's background jobs: with it, bash takes `background: true`. */
+  jobHost?: JobHost
 }
 
 export interface SessionShellTools {
   config: ShellSecurityConfig
   /** Pi built-ins that remain host-backed and may be enabled for this session. */
   hostToolNames: readonly string[]
-  /** Same-name replacement for Pi's built-in bash when Docker or approval is active. */
+  /** Same-name replacement for Pi's built-in bash when Docker, approval or jobs are active. */
   customBash?: ToolDefinition
   /**
    * File tools of Bazilion's own: `apply_patch` always, and in Docker mode read, write, edit,
    * grep, find and ls on container paths (Pi's own take host paths, which would bypass it).
    */
   fileTools: ToolDefinition[]
+}
+
+/**
+ * The container one command (or background job) of a Docker turn runs in: the Team workspace at
+ * /workspace, its memory/ read-only, uploads at /inputs and skills under /skills. Evaluated when
+ * it is used, so the mounts are checked then.
+ */
+export function buildDockerSandbox(
+  cwd: string,
+  turn: DockerTurn,
+  mounts: { inputsDir?: string; skillMounts?: readonly DockerMount[] } = {},
+): DockerSandbox {
+  const workspace = realpathSync(cwd)
+  if (
+    turn.cwd !== '.' &&
+    !statSync(join(workspace, turn.cwd), { throwIfNoEntry: false })?.isDirectory()
+  )
+    throw new Error(`Working directory does not exist: ${containerWorkdir(turn.cwd)}`)
+  // The memory store is always mounted read-only, so a command cannot create it either.
+  mkdirSync(join(workspace, 'memory'), { recursive: true })
+  return {
+    image: turn.image,
+    workspace,
+    workdir: containerWorkdir(turn.cwd),
+    readOnlyMounts: [
+      readOnlyMount(join(workspace, 'memory'), SANDBOX_MEMORY_DIR, workspace),
+      ...(mounts.inputsDir && existsSync(mounts.inputsDir)
+        ? [readOnlyMount(mounts.inputsDir, SANDBOX_INPUTS_DIR, dirname(mounts.inputsDir))]
+        : []),
+      ...(mounts.skillMounts ?? []).map((mount) =>
+        readOnlyMount(mount.source, mount.target, dirname(mount.source)),
+      ),
+    ],
+    containerPrefix: turn.containerPrefix,
+  }
+}
+
+const BACKGROUND_HELP =
+  ' For a command that keeps running (a dev server, a watcher, a long build), pass background: true: it starts as a background job, the call answers at once with its id and what it printed so far, and job_output, job_input, job_stop and job_list act on it. A job runs until it ends or is stopped; one that ends after this turn wakes you with its end.'
+
+/** bash with `background: true`, which starts a job through the daemon instead of waiting. */
+function withBackground(
+  bash: ToolDefinition,
+  jobs: JobHost | undefined,
+  approve:
+    | ((command: string, toolCallId: string, signal?: AbortSignal) => Promise<void>)
+    | undefined,
+): ToolDefinition {
+  if (!jobs) return bash
+  const base = bash.parameters as unknown as { properties: Record<string, TSchema> }
+  const tool: ToolDefinition = {
+    ...bash,
+    description: `${bash.description}${BACKGROUND_HELP}`,
+    parameters: Type.Object({
+      ...base.properties,
+      background: Type.Optional(
+        Type.Boolean({ description: 'Start it as a background job and answer at once.' }),
+      ),
+    }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const { background, ...command } = params as { background?: boolean; command: string }
+      if (!background) return bash.execute(toolCallId, command as never, signal, onUpdate, ctx)
+      // A background command is approved like any other before it starts.
+      if (approve) await approve(command.command, toolCallId, signal)
+      const started = await jobs.start({ command: command.command })
+      return {
+        content: [{ type: 'text' as const, text: describeStartedJob(started) }],
+        details: {},
+      }
+    },
+  }
+  return tool
+}
+
+function describeStartedJob(started: JobOutputResult): string {
+  const { job } = started
+  const state =
+    job.status === 'running'
+      ? 'is running'
+      : job.status === 'exited'
+        ? `already ended, with exit code ${job.exitCode}`
+        : 'was stopped'
+  const output = started.output.trim()
+  return [
+    `Started background job ${job.id}; it ${state}.`,
+    output ? `Output so far${started.cut ? ' (the end of it)' : ''}:\n${output}` : 'No output yet.',
+    'Read more with job_output, stop it with job_stop.',
+  ].join('\n')
 }
 
 /**
@@ -69,16 +165,25 @@ export function createSessionShellTools(
   options: SessionShellToolOptions = {},
 ): SessionShellTools {
   const config = resolveShellSecurityConfig(env)
+  const gated = config.approvalMode === 'dangerous'
   if (config.sandboxMode === 'off') {
     const fileTools = [hostApplyPatchTool(cwd)]
-    if (config.approvalMode === 'off') {
+    if (!gated && !options.jobHost) {
       return { config, hostToolNames: HOST_CODING_TOOL_NAMES, fileTools }
     }
     const base = createBashToolDefinition(cwd, { operations: createLocalBashOperations() })
+    const bash = gated ? createApprovalGatedBashTool(base, options.approvalHost, cwd) : base
     return {
       config,
       hostToolNames: HOST_FILE_TOOL_NAMES,
-      customBash: createApprovalGatedBashTool(base, options.approvalHost, cwd),
+      customBash: withBackground(
+        bash as unknown as ToolDefinition,
+        options.jobHost,
+        gated
+          ? (command, id, signal) =>
+              requireBashApproval(command, id, signal, options.approvalHost, cwd)
+          : undefined,
+      ),
       fileTools,
     }
   }
@@ -90,31 +195,7 @@ export function createSessionShellTools(
     cwd: '.',
     containerPrefix,
   }
-  const sandbox = (): DockerSandbox => {
-    const workspace = realpathSync(cwd)
-    if (
-      turn.cwd !== '.' &&
-      !statSync(join(workspace, turn.cwd), { throwIfNoEntry: false })?.isDirectory()
-    )
-      throw new Error(`Working directory does not exist: ${containerWorkdir(turn.cwd)}`)
-    // The memory store is always mounted read-only, so a command cannot create it either.
-    mkdirSync(join(workspace, 'memory'), { recursive: true })
-    return {
-      image: turn.image,
-      workspace,
-      workdir: containerWorkdir(turn.cwd),
-      readOnlyMounts: [
-        readOnlyMount(join(workspace, 'memory'), SANDBOX_MEMORY_DIR, workspace),
-        ...(options.inputsDir && existsSync(options.inputsDir)
-          ? [readOnlyMount(options.inputsDir, SANDBOX_INPUTS_DIR, dirname(options.inputsDir))]
-          : []),
-        ...(options.skillMounts ?? []).map((mount) =>
-          readOnlyMount(mount.source, mount.target, dirname(mount.source)),
-        ),
-      ],
-      containerPrefix: turn.containerPrefix,
-    }
-  }
+  const sandbox = () => buildDockerSandbox(cwd, turn, options)
   const base = createBashToolDefinition(cwd, {
     operations: createDockerBashOperations(sandbox),
     exposeSessionEnvironment: false,
@@ -133,6 +214,9 @@ export function createSessionShellTools(
     ])
   }
   const workdir = containerWorkdir(turn.cwd)
+  const gatedBash = gated
+    ? createApprovalGatedBashTool(bash, options.approvalHost, CONTAINER_WORKSPACE)
+    : bash
   return {
     config: { ...config, sandboxImage: turn.image },
     hostToolNames: [],
@@ -140,10 +224,14 @@ export function createSessionShellTools(
       ...dockerFileTools(workdir, containerPaths),
       dockerApplyPatchTool(workdir, containerPaths),
     ],
-    customBash:
-      config.approvalMode === 'dangerous'
-        ? createApprovalGatedBashTool(bash, options.approvalHost, CONTAINER_WORKSPACE)
-        : bash,
+    customBash: withBackground(
+      gatedBash as unknown as ToolDefinition,
+      options.jobHost,
+      gated
+        ? (command, id, signal) =>
+            requireBashApproval(command, id, signal, options.approvalHost, CONTAINER_WORKSPACE)
+        : undefined,
+    ),
   }
 }
 
