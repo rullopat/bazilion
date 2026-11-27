@@ -1,6 +1,6 @@
--- Bazilion database schema. Clean install only: a fresh home gets this file in one transaction,
--- and an existing home must match it exactly (comments and whitespace aside) or startup refuses
--- it with reset guidance. Schema changes edit this file directly; there are no migrations.
+-- Bazilion database schema, whole: a fresh home gets this file in one transaction. An existing
+-- home is brought to it by migrations/ (see schema.ts). A change here comes with the migration
+-- that makes it, numbered after the last one; a test checks that the migrations give this file.
 
 -- Core entities: Teams, Profiles, Agents and installed skills
 CREATE TABLE teams (
@@ -380,3 +380,13 @@ CREATE TABLE team_coding_environments (
   cwd TEXT NOT NULL DEFAULT '.'
 );
 
+
+-- Commands an Agent may run without asking: a dangerous command that starts with one of its
+-- prefixes (whole words) is allowed, when it is a single simple command (lib/bash-approval.ts).
+CREATE TABLE command_rules (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  prefix TEXT NOT NULL CHECK (length(trim(prefix)) > 0),
+  created_at INTEGER NOT NULL,
+  UNIQUE (agent_id, prefix)
+);

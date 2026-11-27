@@ -1,5 +1,8 @@
+import { createHash } from 'node:crypto'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fetch as undiciFetch } from 'undici'
-import type { WebSearchHost } from '../worker/ipc-protocol.ts'
+import type { WebSearchArgs, WebSearchHost } from '../worker/ipc-protocol.ts'
 import type { ToolHandler } from './types.ts'
 import {
   type ExtractMode,
@@ -224,6 +227,11 @@ export interface WebFetchOpts {
   timeoutMs?: number
   /** Cap on raw response body bytes before parsing. Default 3 MB. */
   maxBodyBytes?: number
+  /**
+   * Where a page longer than `max_length` is saved whole: a host folder, and the same folder as
+   * the Agent sees it (`/inputs` in Docker). Without it, a long page is cut.
+   */
+  savePages?: { dir: string; shown: string }
 }
 
 /** web_search: the daemon runs the search; the worker never sees the backend or its credentials. */
@@ -232,30 +240,69 @@ export function webSearchTool(host: WebSearchHost): ToolHandler {
     def: {
       name: 'web_search',
       description:
-        'Search the web. Returns result links (and, with provider-hosted search, a written answer). Results are leads, not sources: read the pages with web_fetch and cite what you read.',
+        'Search the web. Returns result links (and, with provider-hosted search, a written answer). Results are leads, not sources: read the pages with web_fetch and cite what you read. Filters narrow it: freshness or after/before for recent or dated work, sites or exclude_sites for where it comes from, country and language. The result says which filters the search backend could not apply. The same search twice in a turn gives the first answer again.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           query: { type: 'string', maxLength: 512 },
           count: { type: 'integer', minimum: 1, maximum: 10, description: 'Default 5.' },
+          freshness: {
+            type: 'string',
+            enum: ['day', 'week', 'month', 'year'],
+            description: 'Only results from the last day, week, month or year.',
+          },
+          after: { type: 'string', description: 'Published on or after this date, YYYY-MM-DD.' },
+          before: { type: 'string', description: 'Published on or before this date, YYYY-MM-DD.' },
+          sites: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Only these sites, e.g. ["docs.python.org"].',
+          },
+          exclude_sites: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'None of these sites.',
+          },
+          country: { type: 'string', description: 'Two-letter country code, e.g. "IT".' },
+          language: { type: 'string', description: 'Two-letter language code, e.g. "it".' },
         },
         required: ['query'],
       },
     },
     async invoke(args) {
+      const list = (value: unknown) =>
+        Array.isArray(value) ? value.map((item) => String(item)) : undefined
+      const sites = list(args.sites)
+      const excludeSites = list(args.exclude_sites)
       const output = await host.search({
         query: String(args.query ?? ''),
         ...(typeof args.count === 'number' ? { count: args.count } : {}),
+        ...(typeof args.freshness === 'string'
+          ? { freshness: args.freshness as NonNullable<WebSearchArgs['freshness']> }
+          : {}),
+        ...(typeof args.after === 'string' ? { after: args.after } : {}),
+        ...(typeof args.before === 'string' ? { before: args.before } : {}),
+        ...(sites ? { sites } : {}),
+        ...(excludeSites ? { excludeSites } : {}),
+        ...(typeof args.country === 'string' ? { country: args.country } : {}),
+        ...(typeof args.language === 'string' ? { language: args.language } : {}),
       })
       const lines = output.answer
         ? [`Answer (${output.backend} search):`, output.answer, '', 'Sources:']
         : [`Results (${output.backend}):`]
       output.results.forEach((result, index) => {
         lines.push(`${index + 1}. ${result.title || result.url}`, `   ${result.url}`)
+        if (result.published) lines.push(`   Published: ${result.published}`)
         if (result.snippet) lines.push(`   ${result.snippet}`)
       })
       if (!output.results.length) lines.push('No results.')
+      if (output.unapplied?.length) {
+        lines.push(
+          '',
+          `Not applied by ${output.backend} search: ${output.unapplied.join(', ')}. Check those yourself in the pages you read.`,
+        )
+      }
       return lines.join('\n')
     },
   }
@@ -308,7 +355,7 @@ export function webFetchTool(opts?: WebFetchOpts): ToolHandler {
       const cacheKey = `${mode}|${url}`
 
       const cached = cacheGet(cache, cacheKey)
-      if (cached) return formatOutput(cached, maxLen)
+      if (cached) return formatOutput(cached, maxLen, cacheKey, opts?.savePages)
 
       let result: GuardedFetchResultShape | null = null
       try {
@@ -366,7 +413,7 @@ export function webFetchTool(opts?: WebFetchOpts): ToolHandler {
         if (result.finalUrl !== new URL(url).href)
           extracted = { ...extracted, text: `[final URL: ${result.finalUrl}]\n\n${extracted.text}` }
         cacheSet(cache, cacheKey, extracted, cacheTtlMs, cacheMax)
-        return formatOutput(extracted, maxLen)
+        return formatOutput(extracted, maxLen, cacheKey, opts?.savePages)
       } catch (err) {
         if (err instanceof SsrFBlockedError) throw new Error(`web_fetch: ${err.message}`)
         throw new Error(`web_fetch: ${describeError(err)}`)
@@ -379,8 +426,36 @@ export function webFetchTool(opts?: WebFetchOpts): ToolHandler {
 
 type GuardedFetchResultShape = Awaited<ReturnType<typeof guardedFetch>>
 
-function formatOutput(r: ExtractResult, maxLen: number): string {
+/** The page, or its first `maxLen` characters with where the whole of it was saved. */
+function formatOutput(
+  r: ExtractResult,
+  maxLen: number,
+  key: string,
+  save: WebFetchOpts['savePages'],
+): string {
   const body = r.title ? `# ${r.title}\n\n${r.text}` : r.text
-  if (body.length > maxLen) return `${body.slice(0, maxLen)}\n\n[truncated at ${maxLen} chars]`
-  return body
+  if (body.length <= maxLen) return body
+  if (!save) return `${body.slice(0, maxLen)}\n\n[truncated at ${maxLen} chars]`
+  const [mode, url = ''] = key.split(/\|(.*)/s)
+  const name = `${pageSlug(url)}-${createHash('sha256').update(key).digest('hex').slice(0, 8)}.${mode === 'text' ? 'txt' : 'md'}`
+  const dir = join(save.dir, 'web')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, name), url ? `<!-- ${url} -->\n\n${body}` : body)
+  const shown = `${save.shown.replace(/\/+$/, '')}/web/${name}`
+  return `${body.slice(0, maxLen)}\n\n[The page has ${body.length} characters; these are the first ${maxLen}. The whole page is saved at ${shown}: read or grep the rest there.]`
+}
+
+/** A file name from a page's address: its host and path, in safe characters. */
+function pageSlug(url: string): string {
+  let parts = 'page'
+  try {
+    const parsed = new URL(url)
+    parts = `${parsed.hostname}${parsed.pathname}`
+  } catch {}
+  return (
+    parts
+      .replace(/[^a-zA-Z0-9.-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'page'
+  )
 }

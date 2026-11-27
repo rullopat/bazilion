@@ -41,13 +41,17 @@ export interface DeliveredFile {
 }
 /** Save a delivered file for the tool call that delivered it. */
 export type FileSink = (file: DeliveredFile, toolCallId: string) => Promise<ResultReference>
+/** Show one of the Agent's saved results again (a picture made in the background). */
+export type ShowResult = (
+  resultId: string,
+) => Promise<{ result: ResultReference; name: string; mimeType: string }>
 
 function isWithin(root: string, candidate: string): boolean {
   const rel = relative(root, candidate)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
-export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
+export function deliverFileTool(cwd: string, sink: FileSink, show?: ShowResult): ToolHandler {
   const workspacePath = resolve(cwd)
   let workspaceRealPath: string | null = null
   try {
@@ -61,7 +65,7 @@ export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
     def: {
       name: 'deliver_file',
       description:
-        'Send a file from your workspace to the user so they can download it (web), receive it as a document (Telegram), or save it (CLI). Use this to deliver reports, exports, or any artifact you produced. Max 25 MiB.',
+        'Send a file from your workspace to the user so they can download it (web), receive it as a document (Telegram), or save it (CLI). Use this to deliver reports, exports, or any artifact you produced. Max 25 MiB. With `result` instead of `path`, show one of your saved results again (a picture made in the background, say).',
       parameters: {
         type: 'object',
         properties: {
@@ -69,12 +73,25 @@ export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
             type: 'string',
             description: 'Path to a file, relative to your workspace.',
           },
+          result: {
+            type: 'string',
+            description: 'The id of one of your saved results, instead of a path.',
+          },
         },
-        required: ['path'],
         additionalProperties: false,
       },
     },
     async invoke(args, context) {
+      if (typeof args.result === 'string' && args.result) {
+        if (!show) throw new Error('deliver_file: saved results cannot be shown in this turn')
+        const shown = await show(args.result)
+        return {
+          content: [
+            { type: 'text', text: `Showed "${shown.name}" (result ${shown.result.resultId}).` },
+          ],
+          details: { results: [shown.result] },
+        }
+      }
       const p = String(args.path ?? '')
       if (!p) throw new Error('deliver_file: path is required')
       if (isAbsolute(p)) {

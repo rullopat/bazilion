@@ -38,6 +38,8 @@ vi.mock('../../src/lib/browser/launch.ts', async (importOriginal) => ({
     if (failLaunch) throw new Error(failLaunch)
     mkdirSync(join(opts.dir, 'user-data'), { recursive: true })
     const page = {
+      on: () => {},
+      off: () => {},
       url: () => pageUrl,
       title: async () => pageTitle,
       goto: () =>

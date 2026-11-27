@@ -1,5 +1,20 @@
 import type { CommandApproval } from '@bazilion/api-types'
+import { useState } from 'react'
 import { Button } from '../Button'
+import { TextField } from '../ui/form'
+
+/** What the review model said, in a line the owner reads. */
+function reviewLine(approval: CommandApproval): string | null {
+  const review = approval.review
+  if (!review) return null
+  const verdict =
+    review.decision === 'allow'
+      ? 'allowed it'
+      : review.decision === 'deny'
+        ? 'refused it'
+        : 'passed it on to you'
+  return `The review model (${review.model}) ${verdict}: ${review.reason}`
+}
 
 const OUTCOME: Record<CommandApproval['status'], string> = {
   pending: 'Waiting for a decision.',
@@ -29,9 +44,17 @@ export function CommandApprovalCard({
   approval: CommandApproval
   busy?: boolean
   error?: string
-  onDecision?: (approval: CommandApproval, decision: 'allow' | 'deny') => void
+  onDecision?: (
+    approval: CommandApproval,
+    decision: 'allow' | 'deny',
+    remember?: { prefix: string },
+  ) => void
 }) {
   const pending = approval.status === 'pending'
+  // Always for this Agent: the beginning of commands it may run from now on, editable first.
+  const [remembering, setRemembering] = useState(false)
+  const [prefix, setPrefix] = useState(approval.suggestedRule ?? '')
+  const review = reviewLine(approval)
   return (
     <section
       className="my-3 rounded-lg border border-danger/50 bg-danger/5 p-4 text-chocolate"
@@ -70,6 +93,8 @@ export function CommandApprovalCard({
         ))}
       </ul>
 
+      {review && <p className="mt-3 text-[0.84em] leading-[1.4] text-mocha">{review}</p>}
+
       {pending ? (
         <>
           <p className="mt-3 text-[0.78em] text-mocha-light">
@@ -87,7 +112,7 @@ export function CommandApprovalCard({
               {error}
             </p>
           )}
-          {onDecision && (
+          {onDecision && !remembering && (
             <div className="mt-3 flex flex-wrap gap-2">
               <Button
                 variant="primary"
@@ -103,7 +128,37 @@ export function CommandApprovalCard({
               >
                 Allow once
               </Button>
+              {approval.suggestedRule && (
+                <Button variant="ghost" disabled={busy} onClick={() => setRemembering(true)}>
+                  Always for this Agent…
+                </Button>
+              )}
             </div>
+          )}
+          {onDecision && remembering && (
+            <form
+              className="mt-3 grid gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                onDecision(approval, 'allow', { prefix })
+              }}
+            >
+              <TextField
+                label="Allow commands that start with"
+                value={prefix}
+                onChange={setPrefix}
+                mono
+                hint="Whole words, from the start. It applies to single commands only: one joined to another with ; && | or a redirect still asks. You can remove it under Setup → Tools."
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button variant="danger" type="submit" disabled={busy || !prefix.trim()}>
+                  Allow and remember
+                </Button>
+                <Button variant="ghost" disabled={busy} onClick={() => setRemembering(false)}>
+                  Back
+                </Button>
+              </div>
+            </form>
           )}
         </>
       ) : (

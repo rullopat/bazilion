@@ -191,3 +191,13 @@ describe('browser guide', () => {
     expect(added).toBeLessThan(1_500)
   })
 })
+
+test('messages waiting unread are mentioned, so the Agent reads them', () => {
+  createProfile(env.db, env.paths, { id: 'profile', defaultModel: 'm' })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'profile', teamId: env.teamId })
+  const resolved = resolveAgent(env.db, env.paths, agent.id)
+  expect(buildSystemPrompt(resolved)).not.toContain('waiting in your inbox')
+  expect(buildSystemPrompt(resolved, { unreadMessages: 2 })).toContain(
+    '2 messages from other Agents are waiting in your inbox',
+  )
+})

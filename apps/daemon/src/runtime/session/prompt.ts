@@ -44,6 +44,8 @@ export interface BuildSystemPromptOptions {
    * teammate's message) a first-run ritual waits: there is nobody to answer its questions.
    */
   withOperator?: boolean
+  /** Messages from other Agents waiting unread: the prompt says so, so the Agent reads them. */
+  unreadMessages?: number
 }
 
 /** Teammates listed by name in the prompt; past this, the rest are counted. */
@@ -351,6 +353,13 @@ function teammateLines(agent: ResolvedAgent, options: BuildSystemPromptOptions):
       '',
       'Team Policy also lets you message these Agents of other Teams:',
       ...listed(outside, MAX_LISTED_OUTSIDE, false),
+    )
+  }
+  const unread = options.unreadMessages ?? 0
+  if (unread > 0) {
+    lines.push(
+      '',
+      `${unread === 1 ? 'A message from another Agent is' : `${unread} messages from other Agents are`} waiting in your inbox, sent for you to know rather than to act on at once: read them with \`read_inbox\` when they bear on what you are doing.`,
     )
   }
   return lines

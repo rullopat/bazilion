@@ -151,12 +151,36 @@ async function openAgentTurn(
           return result
         }
       : undefined,
+    showResult: served.has('resultHost')
+      ? async (resultId) => {
+          const shown = await call('showResult', { resultId })
+          emit({ kind: 'event', event: { type: 'file', ...shown } })
+          return shown
+        }
+      : undefined,
     bashApprovalHost: served.has('bashApprovalHost') ? ipcBashApproval(call, input) : undefined,
     teamHost: served.has('teamHost')
       ? { createAgent: (args) => call('createAgent', args) }
       : undefined,
+    recallHost: served.has('recallHost')
+      ? {
+          search: (query) => call('recallSearch', { query }),
+          read: (conversationId, from, count) =>
+            call('recallRead', { conversationId, from, ...(count !== undefined ? { count } : {}) }),
+        }
+      : undefined,
+    jobHost: served.has('jobHost')
+      ? {
+          start: (args) => call('jobStart', args),
+          list: () => call('jobList', {}),
+          output: (args) => call('jobOutput', args),
+          input: (args) => call('jobInput', args),
+          stop: (args) => call('jobStop', args),
+        }
+      : undefined,
     contacts: input.contacts,
     withOperator: input.withOperator,
+    ...(input.unreadMessages ? { unreadMessages: input.unreadMessages } : {}),
   })
 }
 

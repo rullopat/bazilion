@@ -13,7 +13,8 @@ archive, unencrypted.
 
 The backup works while the daemon runs: the archive is a tar.gz of the home around an online,
 integrity-checked SQLite snapshot. Left out: browser profiles (they hold site logins), the qmd
-search indexes (rebuilt from the memory notes) and the pidfile. A Team registered with `--link`
+search indexes (rebuilt from the memory notes), the databases kept from before upgrades
+(`upgrades/`) and the pidfile. A Team registered with `--link`
 is archived as the link only, not the project it points to: back that up yourself.
 
 Without `--recipient` the archive is plaintext and holds every stored credential, together with
@@ -30,10 +31,11 @@ bazilion backup restore home.tar.gz --home /srv/bazilion --force
 
 Stop the daemon first: restore refuses while a daemon runs on the target home. It decrypts the
 archive if needed, refuses paths that leave the home, special files and links that leave the
-home (other than linked Teams), checks the database (integrity, schema of this release, the
-`auth.json` pair) and only then swaps the restored home in. A non-empty target needs `--force`,
-which deletes its current data. The schema check means a backup can be restored only by the
-release that wrote it.
+home (other than linked Teams), checks the database (integrity, a schema this release can open,
+the `auth.json` pair) and only then swaps the restored home in. A non-empty target needs
+`--force`, which deletes its current data. A backup from an earlier release, back to 0.26.0, is
+restored as it is, and the daemon upgrades it when it next starts ([upgrades](upgrades.md)). A
+backup from a later release is refused: restore it with that release.
 
 A restored home is the home as it was when the backup was taken, access included: tokens and
 browser sessions revoked after the backup are valid again, so revoke them again
@@ -49,10 +51,10 @@ bazilion uninstall --yes          # reset without asking
 bazilion uninstall --yes --all    # also delete installed skills, then the emptied home
 ```
 
-The reset deletes `bazilion.db` (and its journals), `auth.json`, `profiles/`, `agents/`, `teams/`
-and `browsers/`, and keeps `skills/`; the next `bazilion serve` bootstraps a fresh home. `--all`
-also deletes `skills/` and then the home directory, unless it holds files Bazilion does not
-manage (they are listed and kept) or `BAZILION_HOME` is a symlink to it.
+The reset deletes `bazilion.db` (and its journals), `auth.json`, `profiles/`, `agents/`, `teams/`,
+`browsers/` and `upgrades/`, and keeps `skills/`; the next `bazilion serve` bootstraps a fresh
+home. `--all` also deletes `skills/` and then the home directory, unless it holds files Bazilion
+does not manage (they are listed and kept) or `BAZILION_HOME` is a symlink to it.
 
 Uninstall refuses while the daemon runs, refuses your home directory itself, and refuses a
 directory without `bazilion.db` that holds other files. Linked Team slots are unlinked; the

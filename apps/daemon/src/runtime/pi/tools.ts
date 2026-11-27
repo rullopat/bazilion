@@ -2,16 +2,19 @@
 // come from Pi itself; see runtime/shell/tooling.ts. A handler throws on failure, which Pi turns
 // into an error tool result.
 
+import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import type { MemoryBackend } from '../memory/types.ts'
+import { SANDBOX_INPUTS_DIR } from '../shell/tooling.ts'
 import { type AskUser, askUserTool } from '../tools/ask-user.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
-import { deliverFileTool, type FileSink } from '../tools/deliver-file.ts'
+import { deliverFileTool, type FileSink, type ShowResult } from '../tools/deliver-file.ts'
 import { homeTools } from '../tools/home.ts'
 import { imageGenerateTool } from '../tools/image-generate.ts'
+import { jobTools } from '../tools/jobs.ts'
 import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
@@ -24,6 +27,7 @@ import type {
   BrowserHost,
   ImageGenerationHost,
   InjectedMcpTool,
+  JobHost,
   McpHost,
   MessagingHost,
   TeamHost,
@@ -71,14 +75,19 @@ export interface BazilionCustomToolsOpts {
   mcpHost?: McpHost
   mcpTools?: InjectedMcpTool[]
   fileSink?: FileSink
+  showResult?: ShowResult
   imageGenerationHost?: ImageGenerationHost
   /** Daemon-run search; absent means no web_search tool. */
   webSearchHost?: WebSearchHost
   askUser?: AskUser
   /** Adding teammates (`agent_create`), in a turn the operator started. */
   teamHost?: TeamHost
+  /** The job_* tools for background jobs. */
+  jobHost?: JobHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
+  /** Commands run in Docker: paths the Agent is told are the container's. */
+  docker?: boolean
 }
 
 /**
@@ -90,7 +99,14 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
     recallTool(opts.recall),
     ...homeTools(opts.agent.agent.dir),
     bootstrapTool(opts.agent.agent.dir),
-    webFetchTool({ env: opts.env }),
+    webFetchTool({
+      env: opts.env,
+      // A long page is kept whole with the Agent's uploads, which Docker commands see at /inputs.
+      savePages: {
+        dir: join(opts.agent.agent.dir, 'uploads'),
+        shown: opts.docker ? SANDBOX_INPUTS_DIR : join(opts.agent.agent.dir, 'uploads'),
+      },
+    }),
     ...(opts.webSearchHost ? [webSearchTool(opts.webSearchHost)] : []),
   ]
   if (opts.messagingHost) {
@@ -105,9 +121,11 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.mcpHost && opts.mcpTools && opts.mcpTools.length > 0) {
     handlers.push(...mcpProxyTools(opts.mcpHost, opts.mcpTools))
   }
-  if (opts.fileSink) handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink))
+  if (opts.fileSink)
+    handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink, opts.showResult))
   if (opts.imageGenerationHost) handlers.push(imageGenerateTool(opts.imageGenerationHost))
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   if (opts.teamHost) handlers.push(agentCreateTool(opts.teamHost))
+  if (opts.jobHost) handlers.push(...jobTools(opts.jobHost))
   return handlers.map(ourToolToPiTool)
 }

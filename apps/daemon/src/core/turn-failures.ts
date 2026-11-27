@@ -5,7 +5,8 @@
 export interface RememberedTurnFailure {
   id: string
   agentId: string
-  origin: 'inbox'
+  /** Woken by new mail, or by a wake (a job that ended, a picture that is ready, an answer). */
+  origin: 'inbox' | 'wake'
   at: number
   reason: string
 }

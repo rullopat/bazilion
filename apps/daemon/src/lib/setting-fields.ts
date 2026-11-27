@@ -104,6 +104,8 @@ export function normalizeSetting(
         return { error: `${name} must be a full path, such as /usr/bin/chromium` }
       } else if (input.format === 'docker-image' && !DOCKER_IMAGE.test(value)) {
         return { error: `${name} is not a Docker image name, such as debian:bookworm-slim` }
+      } else if (input.format === 'model' && !/^[a-z0-9-]+:\S+$/.test(value)) {
+        return { error: `${name} must be a model as provider:model, such as openai:gpt-5-mini` }
       }
       // A secret is stored as pasted, without the blanks around it.
       return { value }

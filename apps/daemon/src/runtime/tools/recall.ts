@@ -14,6 +14,11 @@ export interface RecallSource {
   branch(): readonly SessionEntry[]
   /** Values never shown: the turn's credentials. */
   secrets: readonly string[]
+  /** The Agent's other conversations, searched and read by the daemon (`everywhere`). */
+  elsewhere?: {
+    search(query: string): Promise<string>
+    read(conversationId: string, from: number, count?: number): Promise<string>
+  }
 }
 
 const MAX_WORDS = 8
@@ -26,7 +31,7 @@ const MIN_SHARE = 2_000
 const BEFORE = 60
 const AFTER = 200
 
-interface Recalled {
+export interface Recalled {
   /** The message's number: its position in the conversation, from 1. */
   number: number
   heading: string
@@ -41,13 +46,23 @@ export function recallTool(source: RecallSource): ToolHandler {
     def: {
       name: 'recall',
       description:
-        "Search or read this conversation's older messages that were summarized to make room. When a conversation fills your context, its older messages are replaced by a summary, but they stay saved. When the summary leaves out something you need (an exact value, a link, a file name, the user's own words, what a tool returned), find it here rather than guessing or asking again. Give `query` to list the summarized messages that hold every word, with their numbers; give `from` (a number from a search, or 1 for the start) to read messages in full.",
+        "Search or read this conversation's older messages that were summarized to make room. When a conversation fills your context, its older messages are replaced by a summary, but they stay saved. When the summary leaves out something you need (an exact value, a link, a file name, the user's own words, what a tool returned), find it here rather than guessing or asking again. Give `query` to list the summarized messages that hold every word, with their numbers; give `from` (a number from a search, or 1 for the start) to read messages in full. With `everywhere: true`, `query` also searches every message of your other conversations, and `conversation` with `from` reads one of them.",
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
             description: 'words that must all appear in a message (case is ignored)',
+          },
+          everywhere: {
+            type: 'boolean',
+            description:
+              'search your other conversations too, every message of them: for something you or the user said or found in an earlier conversation',
+          },
+          conversation: {
+            type: 'string',
+            description:
+              'with `from`: read messages of another of your conversations, by the id a search with `everywhere` gave',
           },
           from: {
             type: 'integer',
@@ -64,6 +79,27 @@ export function recallTool(source: RecallSource): ToolHandler {
       },
     },
     async invoke(args) {
+      const elsewhere = source.elsewhere
+      if (typeof args.conversation === 'string' && args.conversation) {
+        if (!elsewhere) throw new Error('recall: other conversations cannot be read in this turn')
+        if (args.from === undefined) throw new Error('recall: give `from` with `conversation`')
+        return elsewhere.read(
+          args.conversation,
+          Number(args.from),
+          args.count === undefined ? undefined : Number(args.count),
+        )
+      }
+      if (args.everywhere === true) {
+        if (!elsewhere)
+          throw new Error('recall: other conversations cannot be searched in this turn')
+        if (typeof args.query !== 'string')
+          throw new Error('recall: give `query` with `everywhere`')
+        const here = summarizedMessages(source)
+        const there = await elsewhere.search(args.query)
+        return here.length > 0
+          ? `In this conversation's summarized part:\n${search(here, args.query)}\n\nIn your other conversations:\n${there}`
+          : there
+      }
       const summarized = summarizedMessages(source)
       if (summarized.length === 0) return NOTHING_SUMMARIZED
       if (args.from !== undefined) return read(summarized, Number(args.from), args.count)
@@ -75,10 +111,20 @@ export function recallTool(source: RecallSource): ToolHandler {
 
 /** The messages before the latest compaction's kept part, each as the model once read it. */
 function summarizedMessages(source: RecallSource): Recalled[] {
-  const { messages, compactions } = conversationHistory(source.branch())
+  const { compactions } = conversationHistory(source.branch())
   const end = compactions.at(-1)?.index ?? 0
-  return messages.slice(0, end).flatMap((message, index) => {
-    const [shown] = piMessagesToProviderView([message], source.secrets)
+  return numberedMessages(source.branch(), source.secrets, end)
+}
+
+/** A conversation's messages, numbered from 1 and as the model read them; `end` stops early. */
+export function numberedMessages(
+  branch: readonly SessionEntry[],
+  secrets: readonly string[],
+  end?: number,
+): Recalled[] {
+  const { messages } = conversationHistory(branch)
+  return messages.slice(0, end ?? messages.length).flatMap((message, index) => {
+    const [shown] = piMessagesToProviderView([message], secrets)
     if (!shown) return []
     const at = (message as { timestamp?: unknown }).timestamp
     const when =
@@ -89,7 +135,7 @@ function summarizedMessages(source: RecallSource): Recalled[] {
       {
         number: index + 1,
         heading: `#${index + 1} · ${speaker(shown)}${when}`,
-        text: redactExactValues(textOf(shown), source.secrets),
+        text: redactExactValues(textOf(shown), secrets),
       },
     ]
   })
@@ -110,6 +156,24 @@ function textOf(message: ProviderMessage): string {
   if (images > 0) parts.push(`[${images === 1 ? 'an image' : `${images} images`}]`)
   if (message.stopped) parts.push(`[${message.stopped}]`)
   return parts.join('\n')
+}
+
+/** The words of a recall search, checked. */
+export function recallWords(query: string): string[] {
+  const words = [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))]
+  if (words.join('').length < 2) throw new Error('recall: search for at least two characters')
+  if (words.length > MAX_WORDS) throw new Error(`recall: search for at most ${MAX_WORDS} words`)
+  return words
+}
+
+/** The messages that hold every word, with a snippet each. */
+export function recallHits(messages: readonly Recalled[], words: readonly string[]) {
+  return messages
+    .filter((message) => {
+      const lower = message.text.toLowerCase()
+      return words.every((word) => lower.includes(word))
+    })
+    .map((hit) => ({ ...hit, snippet: snippetOf(hit.text, words) }))
 }
 
 function search(summarized: readonly Recalled[], query: string): string {
@@ -148,11 +212,18 @@ function snippetOf(text: string, words: readonly string[]): string {
   return `${start > 0 ? '…' : ''}${flat.slice(start, end).trim()}${end < flat.length ? '…' : ''}`
 }
 
-function read(summarized: readonly Recalled[], from: number, rawCount: unknown): string {
+export function read(
+  summarized: readonly Recalled[],
+  from: number,
+  rawCount: unknown,
+  of = 'summarized',
+): string {
   const total = summarized.at(-1)?.number ?? 0
   if (!Number.isInteger(from) || from < 1) throw new Error('recall: `from` is a message number')
   if (from > total) {
-    return `Only messages 1 to ${total} were summarized; the later ones are in your context.`
+    return of === 'summarized'
+      ? `Only messages 1 to ${total} were summarized; the later ones are in your context.`
+      : `That conversation has ${total} messages.`
   }
   const count = rawCount === undefined ? READ_COUNT : Number(rawCount)
   if (!Number.isInteger(count) || count < 1 || count > MAX_READ) {
@@ -176,6 +247,6 @@ function read(summarized: readonly Recalled[], from: number, rawCount: unknown):
     used += body.length
   }
   const last = next === null ? total : next - 1
-  const head = `Messages ${from} to ${last} of the ${total} summarized${next === null ? '' : `; read on from ${next}`}:`
+  const head = `Messages ${from} to ${last} of the ${total} ${of}${next === null ? '' : `; read on from ${next}`}:`
   return [head, ...blocks].join('\n\n')
 }

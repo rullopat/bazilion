@@ -295,6 +295,7 @@ const RPC_HANDLERS: RpcHandlers = {
     return asked.result
   },
   publishResult: (args, { hosts }) => host(hosts.resultHost, 'result').publish(args),
+  showResult: ({ resultId }, { hosts }) => host(hosts.resultHost, 'result').show(resultId),
   generateImages: (args, { hosts }) =>
     host(hosts.imageGenerationHost, 'image generation').generate(args),
   webSearch: (args, { hosts }) => host(hosts.webSearchHost, 'web search').search(args),
@@ -321,6 +322,14 @@ const RPC_HANDLERS: RpcHandlers = {
       onApproval: (approval) => ctx.pushFrame(approvalFrame(approval)),
     }),
   createAgent: (args, { hosts }) => host(hosts.teamHost, 'team').createAgent(args),
+  jobStart: (args, { hosts }) => host(hosts.jobHost, 'job').start(args),
+  jobList: (_args, { hosts }) => host(hosts.jobHost, 'job').list(),
+  jobOutput: (args, ctx) => host(ctx.hosts.jobHost, 'job').output(args, ctx.signal),
+  jobInput: (args, { hosts }) => host(hosts.jobHost, 'job').input(args),
+  jobStop: (args, { hosts }) => host(hosts.jobHost, 'job').stop(args),
+  recallSearch: ({ query }, { hosts }) => host(hosts.recallHost, 'recall').search(query),
+  recallRead: ({ conversationId, from, count }, { hosts }) =>
+    host(hosts.recallHost, 'recall').read(conversationId, from, count),
   refreshApiKey: async ({ providerName }, ctx) => {
     const token = await refreshApiKeyForTurn(
       providerName,
@@ -332,7 +341,9 @@ const RPC_HANDLERS: RpcHandlers = {
     return token
   },
   bashApproval: async (args, ctx) => {
-    const handle = host(ctx.hosts.bashApprovalHost, 'shell approval').begin(args, ctx.signal)
+    const handle = await host(ctx.hosts.bashApprovalHost, 'shell approval').begin(args, ctx.signal)
+    // A command the Agent's own rule allows runs like any other: no card for it.
+    if (handle.approval.rule) return handle.approval
     ctx.pushFrame(approvalFrame(handle.approval))
     const settled = await handle.settled
     // An auto-denied request is settled at once; only a pending one needs its outcome shown.

@@ -11,6 +11,8 @@ import { groupEntries, projectMessages, type RenderEntry, type TranscriptBlock }
 import { StepsBlock } from './Steps'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
+/** A turn started by something the Agent began earlier: a job that ended, a picture, an answer. */
+const WAKE_PREFIX = '[[bazilion:wake]]\n'
 
 const noSubscription = () => () => {}
 
@@ -29,7 +31,11 @@ export function useMarkdownReady(): boolean {
 export interface ApprovalControls {
   busy: Record<string, boolean>
   errors: Record<string, string>
-  decide: (approval: CommandApproval, decision: 'allow' | 'deny') => void
+  decide: (
+    approval: CommandApproval,
+    decision: 'allow' | 'deny',
+    remember?: { prefix: string },
+  ) => void
 }
 
 export function Bubble({
@@ -50,6 +56,24 @@ export function Bubble({
   const dropClass = dropped ? 'opacity-40 [&_.bubble-content]:line-through' : ''
   switch (entry.type) {
     case 'user':
+      if (entry.content.startsWith(WAKE_PREFIX)) {
+        const body = entry.content.slice(WAKE_PREFIX.length)
+        return (
+          <details
+            data-message=""
+            className={`my-3 rounded-lg border border-fawn bg-ivory px-3 py-2 text-sm text-mocha ${dropClass}`}
+            aria-label="Update"
+          >
+            <summary className="cursor-pointer font-medium">
+              {body.split('\n', 1)[0] || 'An update'}
+            </summary>
+            <p className="mt-2 text-xs">What the Agent was told</p>
+            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">
+              {body}
+            </pre>
+          </details>
+        )
+      }
       if (entry.content.startsWith(INBOX_WAKE_PREFIX)) {
         const body = entry.content.slice(INBOX_WAKE_PREFIX.length)
         return (

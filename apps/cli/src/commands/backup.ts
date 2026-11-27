@@ -22,7 +22,12 @@ import { pipeline } from 'node:stream/promises'
 import { Decrypter, Encrypter } from 'age-encryption'
 import { defineCommand } from 'citty'
 import { extract, list } from 'tar'
-import { type SchemaObject, schemaMatches } from '../../../daemon/src/core/db/schema.ts'
+import {
+  type HomeSchema,
+  readHomeSchema,
+  type SchemaObject,
+  shippedSchema,
+} from '../../../daemon/src/core/db/schema.ts'
 import { assertDaemonStopped } from '../../../daemon/src/lib/daemon-liveness.ts'
 import { readAuthFile } from '../auth-file.ts'
 import { loadClientConfig } from '../client.ts'
@@ -161,23 +166,36 @@ async function checkArchive(file: string): Promise<void> {
   }
 }
 
-/** The restored home must open on this release: intact, same schema, matching auth.json. */
-function checkDatabase(home: string): void {
+/**
+ * The restored home must open on this release: intact, matching auth.json, and with this
+ * release's schema or an older one, which the daemon upgrades when it starts.
+ */
+function checkDatabase(home: string): Extract<HomeSchema, { kind: 'known' }> {
   const token = readAuthFile(join(home, 'auth.json')).token
   // Opened read-write only so that closing it removes the -wal/-shm files a WAL database makes.
   const db = new DatabaseSync(join(home, 'bazilion.db'))
   try {
     const integrity = db.prepare('PRAGMA integrity_check').get()
     if (integrity?.integrity_check !== 'ok') throw new Error('the database is damaged')
-    if (!schemaMatches((query) => db.prepare(query).all() as unknown as SchemaObject[])) {
-      throw new Error('the database schema differs from this release; use a backup from it')
+    const userVersion = Number(db.prepare('PRAGMA user_version').get()?.user_version ?? 0)
+    const schema = readHomeSchema(
+      (query) => db.prepare(query).all() as unknown as SchemaObject[],
+      userVersion,
+    )
+    if (schema.kind === 'newer') {
+      throw new Error('the backup comes from a newer release; restore it with that release')
     }
+    if (schema.kind !== 'known') {
+      throw new Error('the database schema is not one this release can open or upgrade')
+    }
+    // web_tokens has had these columns in every schema version so far.
     const bootstrap = db
       .prepare(
         "SELECT 1 FROM web_tokens WHERE token_hash = ? AND kind = 'bootstrap' AND revoked_at IS NULL",
       )
       .get(createHash('sha256').update(token).digest('hex'))
     if (!bootstrap) throw new Error('auth.json does not match the database')
+    return schema
   } catch (error) {
     throw new Error(`backup database is unusable: ${(error as Error).message}`)
   } finally {
@@ -229,6 +247,7 @@ const restoreCmd = defineCommand({
     }
 
     mkdirSync(dirname(home), { recursive: true })
+    let older = false
     const staging = mkdtempSync(join(dirname(home), '.bazilion-restore-'))
     try {
       // Check and extract a private copy, so the archive cannot change between the two.
@@ -247,7 +266,8 @@ const restoreCmd = defineCommand({
       // Owner-only, whatever modes the archive carried.
       chmodSync(staged, 0o700)
       for (const name of ['auth.json', 'bazilion.db']) chmodSync(join(staged, name), 0o600)
-      checkDatabase(staged)
+      const schema = checkDatabase(staged)
+      older = schema.version < shippedSchema().migrations.length
       // Again: a daemon may have started on the home while the archive was checked.
       assertDaemonStopped(home)
       installRestoredHome(staged, home)
@@ -255,6 +275,8 @@ const restoreCmd = defineCommand({
       rmSync(staging, { recursive: true, force: true })
     }
     console.log(`restored ${file} to ${home}`)
+    if (older)
+      console.log('the backup comes from an older release: the daemon upgrades it on start')
     console.log('start the daemon with: bazilion serve')
   },
 })

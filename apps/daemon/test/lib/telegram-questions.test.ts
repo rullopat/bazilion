@@ -72,7 +72,9 @@ afterEach(() => {
 })
 
 async function ask(
-  input: unknown = { prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] },
+  input: unknown = {
+    questions: [{ prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] }],
+  },
 ): Promise<{
   question: AgentQuestion
   result: Promise<AgentQuestionToolResult>
@@ -118,20 +120,20 @@ test('a question goes to its topic with one button per choice and settles into t
     message_thread_id: 42,
     reply_markup: {
       inline_keyboard: [
-        [{ text: '1. Text', callback_data: `bq:${question.id}:0` }],
-        [{ text: '2. JSON', callback_data: `bq:${question.id}:1` }],
-        [{ text: 'Skip', callback_data: `bq:${question.id}:s` }],
+        [{ text: '1. Text', callback_data: `bq:${question.id}:0:0` }],
+        [{ text: '2. JSON', callback_data: `bq:${question.id}:0:1` }],
+        [{ text: 'Skip', callback_data: `bq:${question.id}:0:s` }],
       ],
     },
   })
-  expect(await route(tap(`bq:${question.id}:1`))).toEqual({ kind: 'question_answer' })
+  expect(await route(tap(`bq:${question.id}:0:1`))).toEqual({ kind: 'question_answer' })
   expect(acks).toEqual([{ text: 'Answered.' }])
-  expect(await result).toMatchObject({ kind: 'answer', answer: { kind: 'choice', index: 1 } })
+  expect(await result).toMatchObject({ kind: 'answer', answers: [{ kind: 'choice', index: 1 }] })
   await vi.waitFor(() => expect(editMessageText).toHaveBeenCalledOnce())
   expect(editMessageText.mock.calls[0]?.[2]).toContain('Answered: JSON')
   expect(editMessageText.mock.calls[0]?.[3]).toEqual({ reply_markup: { inline_keyboard: [] } })
 
-  await route(tap(`bq:${question.id}:0`))
+  await route(tap(`bq:${question.id}:0:0`))
   expect(acks.at(-1)).toEqual({ text: 'That question is no longer open.' })
 })
 
@@ -140,7 +142,7 @@ test('a reply to the prompt answers with text instead of queueing', async () => 
   expect(await route(text('YAML, please', 50))).toEqual({ kind: 'question_answer' })
   expect(await result).toMatchObject({
     kind: 'answer',
-    answer: { kind: 'text', text: 'YAML, please' },
+    answers: [{ kind: 'text', text: 'YAML, please' }],
   })
   expect(replies).toEqual([{ text: 'Answered.' }])
   expect(userQueue.pendingCount(env.db, agentId)).toBe(0)
@@ -152,7 +154,7 @@ test('a reply to the prompt answers with text instead of queueing', async () => 
 test('other messages queue as usual and other people cannot answer', async () => {
   const { question } = await ask()
   expect(await route(text('something else'))).toMatchObject({ kind: 'agent_topic', queued: true })
-  expect(await route(tap(`bq:${question.id}:1`, 999))).toEqual({
+  expect(await route(tap(`bq:${question.id}:0:1`, 999))).toEqual({
     kind: 'unauthorized',
     userId: 999,
   })
@@ -162,14 +164,21 @@ test('other messages queue as usual and other people cannot answer', async () =>
 test('the settled prompt keeps its outcome within one Telegram message', async () => {
   // A full-length prompt plus long choices, answered with a long text.
   const { question, result } = await ask({
-    prompt: 'p'.repeat(2000),
-    choices: [1, 2, 3, 4].map((n) => ({
-      label: String(n).repeat(100),
-      description: 'd'.repeat(336),
-    })),
+    questions: [
+      {
+        prompt: 'p'.repeat(2000),
+        choices: [1, 2, 3, 4].map((n) => ({
+          label: String(n).repeat(100),
+          description: 'd'.repeat(336),
+        })),
+      },
+    ],
   })
   expect(String(sendMessage.mock.calls[0]?.[1]).length).toBeLessThanOrEqual(4096)
-  questionRegistry.answer(agentId, question.id, { kind: 'text', text: 'a'.repeat(4096) })
+  questionRegistry.answer(agentId, question.id, {
+    kind: 'answers',
+    answers: [{ kind: 'text', text: 'a'.repeat(4096) }],
+  })
   await result
   await vi.waitFor(() => expect(editMessageText).toHaveBeenCalledOnce())
   const edited = String(editMessageText.mock.calls[0]?.[2])
@@ -189,4 +198,62 @@ test('a question that settles after the bot stopped or moved chats is not edited
   await new Promise((resolve) => setImmediate(resolve))
   expect(sendMessage).toHaveBeenCalledTimes(2)
   expect(editMessageText).not.toHaveBeenCalled()
+})
+
+test('a card of two questions goes as two messages; several choices are given by reply', async () => {
+  sendMessage.mockResolvedValueOnce({ message_id: 51 }).mockResolvedValueOnce({ message_id: 52 })
+  const { question, result } = await ask({
+    questions: [
+      {
+        prompt: 'Which?',
+        choices: [{ label: 'A' }, { label: 'B' }, { label: 'C' }],
+        multiple: true,
+      },
+      { prompt: 'Tone?', choices: [{ label: 'Calm' }, { label: 'Bold' }] },
+    ],
+  })
+  expect(sendMessage).toHaveBeenCalledTimes(2)
+  expect(String(sendMessage.mock.calls[0]?.[1])).toContain('(1/2) Which?')
+  // A question with several choices has only Skip: the choices come by reply.
+  expect(sendMessage.mock.calls[0]?.[2]?.reply_markup.inline_keyboard).toEqual([
+    [{ text: 'Skip', callback_data: `bq:${question.id}:0:s` }],
+  ])
+  expect(await route(text('1 3', 51))).toEqual({ kind: 'question_answer' })
+  expect(questionRegistry.get(question.id)?.answered).toEqual([
+    { kind: 'choices', indexes: [0, 2] },
+    null,
+  ])
+  expect(await route(tap(`bq:${question.id}:1:1`))).toEqual({ kind: 'question_answer' })
+  expect(await result).toMatchObject({
+    kind: 'answer',
+    answers: [
+      { kind: 'choices', indexes: [0, 2] },
+      { kind: 'choice', index: 1 },
+    ],
+  })
+  await vi.waitFor(() => expect(editMessageText).toHaveBeenCalledTimes(2))
+  expect(editMessageText.mock.calls.map((call) => call[2]).join('\n')).toContain('Answered: A, C')
+})
+
+test("an action comes with Done and Can't; Done wakes the Agent and closes the buttons", async () => {
+  const { _resetWakesForTest, takeWakes } = await import('../../src/lib/wakes.ts')
+  _resetWakesForTest()
+  const { question, result } = await ask({
+    action: { reason: 'Sign in to the shop', instructions: 'Log in.', url: 'https://shop.example' },
+  })
+  expect(await result).toMatchObject({ kind: 'action_asked' })
+  const [, body, opts] = sendMessage.mock.calls[0] ?? []
+  expect(body).toContain('Sign in to the shop')
+  expect(body).toContain('https://shop.example')
+  expect(opts.reply_markup.inline_keyboard).toEqual([
+    [
+      { text: 'Done', callback_data: `bq:${question.id}:a:d` },
+      { text: "Can't", callback_data: `bq:${question.id}:a:c` },
+    ],
+  ])
+  expect(await route(tap(`bq:${question.id}:a:d`))).toEqual({ kind: 'question_answer' })
+  expect(acks.at(-1)).toEqual({ text: 'Done.' })
+  expect(takeWakes(agentId)[0]?.summary).toBe('The user did it: Sign in to the shop')
+  await vi.waitFor(() => expect(editMessageText).toHaveBeenCalledOnce())
+  expect(String(editMessageText.mock.calls[0]?.[2])).toMatch(/Done\.$/)
 })

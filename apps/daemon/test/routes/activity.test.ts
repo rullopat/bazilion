@@ -58,6 +58,7 @@ test('an idle Agent with nothing produced reads as such; archived Agents are lef
       approvals: 0,
       queuePaused: false,
       followUps: 0,
+      jobs: 0,
       lastActivityAt: null,
       results: 0,
       lastResultAt: null,
@@ -90,7 +91,14 @@ test('questions, a paused queue, results and the last conversation change are co
   const conversation = startConversation(env.db, env.paths, agentId)
   const { question } = questionRegistry.ask(
     { agentId, conversationId: conversation.id },
-    { prompt: 'Staging or production?', choices: [{ label: 'Staging' }, { label: 'Production' }] },
+    {
+      questions: [
+        {
+          prompt: 'Staging or production?',
+          choices: [{ label: 'Staging' }, { label: 'Production' }],
+        },
+      ],
+    },
   )
   queue.add(env.db, {
     agentId,

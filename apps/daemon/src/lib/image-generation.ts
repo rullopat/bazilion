@@ -3,7 +3,11 @@ import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter'
 import type { BazilionDb } from '../core/db/client.ts'
 import { type ImageRoute, imageRoute } from '../core/image-generation-config.ts'
 import * as results from '../core/repos/results.ts'
-import type { ImageGenerationHost, ImageGenerationInput } from '../runtime/worker/ipc-protocol.ts'
+import type {
+  ImageGenerationHost,
+  ImageGenerationInput,
+  ImageGenerationOutput,
+} from '../runtime/worker/ipc-protocol.ts'
 import {
   assertOk,
   CODEX_RESPONSES_URL,
@@ -11,6 +15,7 @@ import {
   readCapped,
   responsesStream,
 } from './openai-responses.ts'
+import { queueWake } from './wakes.ts'
 
 // image_generate: the daemon calls the selected image model and saves each image as a result.
 
@@ -52,8 +57,20 @@ export interface ImageHostOptions {
   signal: AbortSignal
   env: () => NodeJS.ProcessEnv
   codex: { connected: () => boolean; accessToken: () => Promise<string> }
+  /**
+   * The bytes of a picture the Agent names as a reference (a path in its workspace or uploads, as
+   * it sees them); throws when the path is not one it may read.
+   */
+  readReference?: (path: string) => Buffer
   /** Tests replace the network. */
   fetch?: typeof fetch
+}
+
+/** A picture to start from, checked to be an image the models take. */
+interface Reference {
+  bytes: Buffer
+  mimeType: string
+  name: string
 }
 
 type Ready = Extract<ImageRoute, { ready: true }>
@@ -62,6 +79,7 @@ type Ready = Extract<ImageRoute, { ready: true }>
 async function requestImages(
   route: Ready,
   prompt: string,
+  references: readonly Reference[],
   signal: AbortSignal,
   opts: ImageHostOptions,
 ): Promise<string[]> {
@@ -74,7 +92,18 @@ async function requestImages(
       {
         model: 'gpt-6-astra',
         instructions: 'Generate the requested image using the image generation tool.',
-        input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
+        input: [
+          {
+            role: 'user',
+            content: [
+              { type: 'input_text', text: prompt },
+              ...references.map((reference) => ({
+                type: 'input_image',
+                image_url: `data:${reference.mimeType};base64,${reference.bytes.toString('base64')}`,
+              })),
+            ],
+          },
+        ],
         tools: [
           {
             type: 'image_generation',
@@ -90,6 +119,34 @@ async function requestImages(
     )
     return output.flatMap((item) =>
       item.type === 'image_generation_call' && typeof item.result === 'string' ? [item.result] : [],
+    )
+  }
+  if (route.provider === 'openai' && references.length > 0) {
+    // Pictures to start from go to the edits endpoint, as files.
+    const form = new FormData()
+    form.append('model', route.modelId)
+    form.append('prompt', prompt)
+    form.append('n', '1')
+    form.append('size', '1024x1024')
+    form.append('output_format', 'png')
+    for (const reference of references) {
+      form.append(
+        'image[]',
+        new Blob([new Uint8Array(reference.bytes)], { type: reference.mimeType }),
+        reference.name,
+      )
+    }
+    const response = await fetchImpl('https://api.openai.com/v1/images/edits', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${route.apiKey}` },
+      body: form,
+      signal,
+      redirect: 'error',
+    })
+    await assertOk(response)
+    const body = JSON.parse(await readCapped(response)) as { data?: Array<{ b64_json?: unknown }> }
+    return (body.data ?? []).flatMap((entry) =>
+      typeof entry.b64_json === 'string' ? [entry.b64_json] : [],
     )
   }
   if (route.provider === 'openai') {
@@ -120,7 +177,16 @@ async function requestImages(
   if (!model) throw new Error(`OpenRouter image model ${route.modelId} is not available`)
   const response = await models.generateImages(
     model,
-    { input: [{ type: 'text', text: prompt }] },
+    {
+      input: [
+        { type: 'text', text: prompt },
+        ...references.map((reference) => ({
+          type: 'image' as const,
+          data: reference.bytes.toString('base64'),
+          mimeType: reference.mimeType,
+        })),
+      ],
+    },
     { apiKey: route.apiKey, signal, maxRetries: 0, fetch: cappedFetch(fetchImpl) },
   )
   if (response.stopReason !== 'stop')
@@ -141,6 +207,9 @@ function imageType(bytes: Buffer): { mimeType: string; extension: string } | nul
   return null
 }
 
+/** The largest reference picture sent; the providers refuse much smaller ones already. */
+export const MAX_REFERENCE_BYTES = 25 * 1024 * 1024
+
 /** One host per turn: it counts the turn's calls and saves images into the turn's conversation. */
 export function createImageGenerationHost(opts: ImageHostOptions): ImageGenerationHost {
   let calls = 0
@@ -153,39 +222,94 @@ export function createImageGenerationHost(opts: ImageHostOptions): ImageGenerati
         throw new Error(
           'The image name must be a plain file name (letters, digits, space, _ . -; at most 120 characters)',
         )
+      const references = (input.references ?? []).map((path) => readReference(opts, path))
       if (++calls > MAX_CALLS_PER_TURN)
         throw new Error('Image limit reached: at most four image_generate calls per turn')
       const route = imageRoute(opts.env(), opts.codex.connected())
       if (!route.ready) throw new Error(route.reason)
-      const signal = AbortSignal.any([opts.signal, AbortSignal.timeout(DEADLINE_MS)])
-      const images = (await requestImages(route, prompt, signal, opts)).slice(0, 4)
-      if (!images.length) throw new Error(`${route.model} returned no image`)
-      const decoded = images.map((data) => {
-        const bytes = Buffer.from(data, 'base64')
-        const type = imageType(bytes)
-        if (!type)
-          throw new Error(`${route.model} returned data that is not a PNG, JPEG or WebP image`)
-        return { bytes, ...type }
-      })
-      const stem = (input.name ?? 'generated-image').replace(/\.(png|jpe?g|webp)$/i, '')
-      // All images of the call are saved, or none (e.g. when the result store is full).
-      const files = opts.db.raw.transaction(() =>
-        decoded.map((image, index) => {
-          const saved = results.publish(opts.db, {
-            teamId: opts.teamId,
+      if (!input.background) {
+        const signal = AbortSignal.any([opts.signal, AbortSignal.timeout(DEADLINE_MS)])
+        return generateAndSave(route, prompt, references, input, signal, opts)
+      }
+      // In the background: the turn goes on, and the end of the turn does not stop it.
+      void generateAndSave(
+        route,
+        prompt,
+        references,
+        input,
+        AbortSignal.timeout(DEADLINE_MS),
+        opts,
+      ).then(
+        (output) =>
+          queueWake({
+            id: `image:${input.toolCallId}`,
             agentId: opts.agentId,
-            sessionId: opts.conversationId,
-            toolCallId: input.toolCallId,
-            sourceIndex: index,
-            imageModel: route.model,
-            name: `${stem}${decoded.length > 1 ? `-${index + 1}` : ''}.${image.extension}`,
-            mimeType: image.mimeType,
-            bytes: image.bytes,
-          })
-          return { name: saved.name, mimeType: saved.mimeType, result: { resultId: saved.id } }
-        }),
-      )()
-      return { model: route.model, files }
+            conversationId: opts.conversationId,
+            summary: 'A picture you asked for is ready',
+            text: [
+              `The picture is saved: ${output.files.map((file) => `"${file.name}" as result ${file.result.resultId}`).join(', ')}.`,
+              `Show it to the user with deliver_file and result set to ${output.files.map((file) => file.result.resultId).join(', then ')}, and say what it is.`,
+            ].join('\n\n'),
+            at: Date.now(),
+          }),
+        (error: unknown) =>
+          queueWake({
+            id: `image:${input.toolCallId}`,
+            agentId: opts.agentId,
+            conversationId: opts.conversationId,
+            summary: 'A picture you asked for could not be made',
+            text: `${route.model} failed: ${error instanceof Error ? error.message : String(error)}. Tell the user, and try again only if it is worth it.`,
+            at: Date.now(),
+          }),
+      )
+      return { model: route.model, files: [], pending: true }
     },
   }
+}
+
+function readReference(opts: ImageHostOptions, path: string): Reference {
+  if (typeof path !== 'string' || !path) throw new Error('A reference is a path to a picture')
+  if (!opts.readReference) throw new Error('This turn cannot read reference pictures')
+  const bytes = opts.readReference(path)
+  if (bytes.length > MAX_REFERENCE_BYTES) throw new Error(`${path} is larger than 25 MiB`)
+  const type = imageType(bytes)
+  if (!type) throw new Error(`${path} is not a PNG, JPEG or WebP picture`)
+  return { bytes, mimeType: type.mimeType, name: `reference.${type.extension}` }
+}
+
+async function generateAndSave(
+  route: Ready,
+  prompt: string,
+  references: readonly Reference[],
+  input: ImageGenerationInput,
+  signal: AbortSignal,
+  opts: ImageHostOptions,
+): Promise<ImageGenerationOutput> {
+  const images = (await requestImages(route, prompt, references, signal, opts)).slice(0, 4)
+  if (!images.length) throw new Error(`${route.model} returned no image`)
+  const decoded = images.map((data) => {
+    const bytes = Buffer.from(data, 'base64')
+    const type = imageType(bytes)
+    if (!type) throw new Error(`${route.model} returned data that is not a PNG, JPEG or WebP image`)
+    return { bytes, ...type }
+  })
+  const stem = (input.name ?? 'generated-image').replace(/\.(png|jpe?g|webp)$/i, '')
+  // All images of the call are saved, or none (e.g. when the result store is full).
+  const files = opts.db.raw.transaction(() =>
+    decoded.map((image, index) => {
+      const saved = results.publish(opts.db, {
+        teamId: opts.teamId,
+        agentId: opts.agentId,
+        sessionId: opts.conversationId,
+        toolCallId: input.toolCallId,
+        sourceIndex: index,
+        imageModel: route.model,
+        name: `${stem}${decoded.length > 1 ? `-${index + 1}` : ''}.${image.extension}`,
+        mimeType: image.mimeType,
+        bytes: image.bytes,
+      })
+      return { name: saved.name, mimeType: saved.mimeType, result: { resultId: saved.id } }
+    }),
+  )()
+  return { model: route.model, files }
 }

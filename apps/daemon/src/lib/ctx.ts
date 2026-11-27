@@ -71,11 +71,6 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
   // SQLite gives the -wal and -shm files the database file's mode.
   if (!databaseExists) chmodSync(paths.db, 0o600)
   try {
-    initSchema(db)
-
-    // When both artifacts existed at entry, validate the plaintext credential
-    // against the active bootstrap row before touching anything else. The
-    // lookup is read-only and never records use.
     let existingAuthToken: string | null = null
     if (authFileExists) {
       try {
@@ -83,6 +78,33 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
       } catch {
         throw new IncompatibleBootstrapIdentityError()
       }
+    }
+    const token = existingAuthToken
+    const schema = initSchema(db, {
+      copyDir: paths.upgradesDir,
+      // Upgrade only a database that auth.json belongs to. The query works on every schema version
+      // so far, as backup restore's check does.
+      beforeUpgrade: () => {
+        if (token === null) throw new IncompatibleBootstrapIdentityError()
+        const bootstrap = db.raw
+          .query<{ ok: number }, [string]>(
+            "SELECT 1 AS ok FROM web_tokens WHERE token_hash = ? AND kind = 'bootstrap' AND revoked_at IS NULL",
+          )
+          .get(webTokenRepo.hashToken(token))
+        if (!bootstrap) throw new IncompatibleBootstrapIdentityError()
+      },
+    })
+    if (schema.kind === 'upgraded') {
+      console.log(
+        `bazilion upgraded the database from schema ${schema.from} to ${schema.to}; ` +
+          `the database as it was is kept at ${schema.copy}`,
+      )
+    }
+
+    // When both artifacts existed at entry, validate the plaintext credential against the active
+    // bootstrap row before touching anything else (an upgrade checked it first, above). The
+    // lookup is read-only and never records use.
+    if (existingAuthToken !== null) {
       const bootstrap = webTokenRepo.findActiveByToken(db, existingAuthToken)
       if (bootstrap?.kind !== 'bootstrap') {
         throw new IncompatibleBootstrapIdentityError()

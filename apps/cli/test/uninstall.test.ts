@@ -55,7 +55,7 @@ beforeEach(() => {
   for (const file of ['bazilion.db', 'bazilion.db-wal', 'bazilion.db-shm', 'auth.json']) {
     writeFileSync(join(home, file), file)
   }
-  for (const dir of ['profiles', 'agents', 'teams', 'browsers', 'skills']) {
+  for (const dir of ['profiles', 'agents', 'teams', 'browsers', 'upgrades', 'skills']) {
     mkdirSync(join(home, dir))
     writeFileSync(join(home, dir, 'managed.txt'), dir)
   }

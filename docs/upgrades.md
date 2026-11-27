@@ -22,17 +22,42 @@ of the web UI it had not loaded yet (the Connections map, a dialog), that part i
 new release, so the tab reloads itself once to get the new version; if that cannot help, the page
 says so and offers **Reload**. Reloading open tabs after an upgrade avoids the hiccup.
 
-The database has no migrations. A release opens a home only when its schema matches the one that
-release ships (`apps/daemon/src/core/db/schema.sql`); otherwise the daemon refuses to start and
-leaves the home untouched. To move to such a release:
+## The database
 
-1. Stop the daemon and copy the whole home (`~/.bazilion` or `$BAZILION_HOME`) somewhere safe,
-   with any directory a linked Team points to. A `bazilion backup create` archive works too, but
-   only the release that wrote it can restore it ([backup](backup.md)).
-2. Run `bazilion uninstall --yes` (from a source checkout:
-   `pnpm tsx apps/cli/src/index.ts uninstall --yes`). It keeps installed skills; `--all` removes
-   them too.
-3. Start Bazilion again; it bootstraps a fresh home.
+An upgrade keeps your home. The daemon brings its database up to the new release when it starts:
 
-Nothing is imported from the old home. Keep the copy, and the release that wrote it, for as long
-as you need the old data.
+1. It copies the database to `upgrades/bazilion-schema-<version>-<time>.db` in the home, readable
+   by you only.
+2. It applies the release's migrations in one transaction and checks the result against the
+   schema the release ships. Only then does it commit, and it logs
+   `bazilion upgraded the database from schema 1 to 2; the database as it was is kept at …`.
+
+When a migration fails, nothing it did is kept: the daemon refuses to start, says why, leaves
+the home as it was and removes the copy it made. Report the message; do not reset the home. In
+the rare case the message says part of the upgrade may have been kept, put back the copy it names
+(below).
+
+Homes from 0.26.0 to 0.62.0 have no schema version. A later release takes such a home as
+version 1 when its schema is exactly the one those releases shipped, and upgrades it from there.
+
+Copies in `upgrades/` stay until you delete them. Backups leave them out, and
+`bazilion uninstall` deletes them with the rest of the home.
+
+### Going back to an earlier release
+
+A release refuses a home that a later release has already upgraded, and says so. Releases up to
+0.62.0 call that home incompatible and suggest a reset: do not reset it. To go back:
+
+1. Stop the daemon.
+2. Copy the file from `upgrades/` that the upgrade made over `bazilion.db`, and delete
+   `bazilion.db-wal` and `bazilion.db-shm`.
+3. Install the earlier release and start it.
+
+What changed in the database since that upgrade is lost; files in the home (conversations,
+memory, Team workspaces) are not touched.
+
+### Homes older than 0.26.0
+
+There are no migrations from schemas before 0.26.0. The daemon refuses such a home untouched. To
+start over, copy the whole home somewhere safe, run `bazilion uninstall --yes` (from a source
+checkout: `pnpm tsx apps/cli/src/index.ts uninstall --yes`) and start Bazilion again.

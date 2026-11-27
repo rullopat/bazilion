@@ -56,6 +56,12 @@ exchange has no length limit: it lasts as long as its Agents have work to hand e
   Stopping it stops the turns it woke, leaves its unread messages unread by anyone, and refuses
   any further message in it.
 
+A message can also be **quiet**: the sender sets `wake: false` when the recipient only needs to
+know. It waits in the inbox without starting a turn, the recipient's next turn is told how many
+messages are unread, and it reads them then. A quiet message no later turn reads stays unread; the
+Connections tab shows it with the others. An Agent that asked several teammates can wait for all
+their replies at once, taking each as it comes.
+
 This is separate from policy, which says who may message whom.
 
 ## Surfaces

@@ -43,7 +43,8 @@ trust. Messages from other bots and from anonymous admins are ignored.
 
 Everyone on the list drives Agents with your rights: with `BAZILION_BASH_SANDBOX=off` (the default)
 their messages can run commands on the host as the daemon's user. Set it to `docker`, and
-`BAZILION_BASH_APPROVAL=dangerous` so Telegram turns auto-deny classified commands, before you
+`BAZILION_BASH_APPROVAL=dangerous` (or `review`) so Telegram turns deny classified commands nobody
+answers, before you
 allow anyone else ([coding environments](coding-environments.md)).
 
 ## Service topic commands
@@ -71,13 +72,16 @@ Replies, errors, images and delivered files are mirrored into the topic. An Agen
 (`bazilion agent edit <id> --mirror minimal|verbose`, or **Telegram** in the Agent's side panel)
 adds short tool-call lines in verbose mode; those are limited to 30 a minute per Agent.
 
-When an Agent asks a question (see [questions](questions.md)), it appears in its topic with one
-button per choice and **Skip**. Tap a button, or reply to the question message with your own
-answer. The question can be answered on the web or in the CLI just as well; the first answer wins.
+When an Agent asks questions (see [questions](questions.md)), each appears in its topic with one
+button per choice and **Skip**; a question that allows several choices is answered by replying
+with their numbers. Tap a button, or reply to the question's message with your own answer. When
+it asks you to do something, the message has **Done** and **Can't**. Cards can be answered on the
+web or in the CLI just as well; the first answer wins.
 
 A command that needs your approval in a chat you are watching, on the web or in a terminal (see
 [coding environments](coding-environments.md#dangerous-command-approval)) and is still waiting
-after half a minute is posted in the topic too, with **Allow once** and **Deny**. Only the paired
+after half a minute is posted in the topic too, with **Allow once** and **Deny**, and for a single
+simple command **Always**, which also keeps a rule for its beginning (`git push`). Only the paired
 owner can use them. Once the command is decided, here, on the web or by timing out, the message
 says how.
 

@@ -49,7 +49,7 @@ test('a waiting question is listed for its Agent and answered once over HTTP', a
   const turn = new AbortController()
   const { question, result } = questionRegistry.ask(
     { agentId: agent.id, conversationId: 'conversation-1' },
-    { prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] },
+    { questions: [{ prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] }] },
     turn.signal,
   )
   try {
@@ -72,14 +72,18 @@ test('a waiting question is listed for its Agent and answered once over HTTP', a
         headers: auth,
         body: JSON.stringify(body),
       })
-    expect((await answer({ answer: { kind: 'choice', index: 1 } }, other.id)).status).toBe(404)
-    const outOfRange = await answer({ answer: { kind: 'choice', index: 4 } })
+    const one = (entry: unknown) => ({ answer: { kind: 'answers', answers: [entry] } })
+    expect((await answer(one({ kind: 'choice', index: 1 }), other.id)).status).toBe(404)
+    const outOfRange = await answer(one({ kind: 'choice', index: 4 }))
     expect(outOfRange.status).toBe(400)
     expect(await outOfRange.json()).toEqual({
       error: 'Choice 5 does not exist; this question has 2 choices',
     })
-    expect((await answer({ answer: { kind: 'text', text: 'YAML' } })).status).toBe(200)
-    expect(await result).toMatchObject({ kind: 'answer', answer: { kind: 'text', text: 'YAML' } })
+    expect((await answer(one({ kind: 'text', text: 'YAML' }))).status).toBe(200)
+    expect(await result).toMatchObject({
+      kind: 'answer',
+      answers: [{ kind: 'text', text: 'YAML' }],
+    })
     expect((await answer({ answer: { kind: 'skip' } })).status).toBe(404)
     expect(
       await (await app.request(`/api/agents/${agent.id}/questions`, { headers: auth })).json(),

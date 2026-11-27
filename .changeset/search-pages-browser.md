@@ -1,0 +1,5 @@
+---
+"bazilion": minor
+---
+
+**Search filters, long pages kept whole, a browser for checking web apps.** `web_search` takes filters: how recent (`freshness`, or `after` and `before`), which sites to keep or leave out, a country and a language; each backend applies what it can and the result names the rest. **Tavily** and **Exa** join Brave, SearXNG and the model's own search on the Web search card, and Automatic tries them after Brave and SearXNG. A search repeated in a turn is not sent again. A page longer than what `web_fetch` returns is saved whole with the Agent's uploads, and the Agent is told where, to read the rest. In the browser, `browser_errors`, `browser_network` (now with a filter and failed requests), `browser_text`, `browser_wait`, `browser_emulate` (a phone, dark mode, a locale, a time zone) and screenshots of one element help check a web app; `browser_pdf` saves a page as a PDF, and files a page downloads in an Agent's own browser are now saved with its uploads instead of being refused.

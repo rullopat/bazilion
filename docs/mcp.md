@@ -92,6 +92,11 @@ The HTTP API is `/api/mcp-servers[/:id[/test]]`. A server name may use letters, 
 - Disabling or removing a server stops running turns from calling it.
 - A tool error is returned to the Agent with the server's own message; the connection stays open.
   Calls are never retried.
+- Files in a tool's result: pictures reach the model as pictures, and text files (text, JSON,
+  XML) as text. Other files, such as a PDF or an archive, are saved with the Agent's uploads under
+  `mcp/`, named by the server and the file's contents (the same file is saved once), and the Agent
+  is told the path (`/inputs/mcp/…` in Docker mode). A link to a resource is described with its
+  name, type and size; the Agent cannot read MCP resources itself (see Limits).
 - If two servers produce the same tool name, the first server's tool is kept. Tool names that a
   model API would reject (other characters than letters, digits, `_` and `-`, or longer than 64
   characters with the prefix) are skipped with a warning.

@@ -152,12 +152,26 @@ export function releaseClaimed(db: BazilionDb, ids: readonly string[]): void {
  * delivery turns without walking every agent in the DB. Archived recipients
  * are skipped: their unread mail waits until they are unarchived.
  */
+/** How many messages addressed to the Agent are unread. */
+export function unreadCount(db: BazilionDb, agentId: string): number {
+  return (
+    db.raw
+      .query<{ n: number }, [string]>(
+        'SELECT COUNT(*) AS n FROM messages WHERE to_agent_id = ? AND read_at IS NULL',
+      )
+      .get(agentId)?.n ?? 0
+  )
+}
+
 export function listRecipientsWithUnread(db: BazilionDb): string[] {
   const rows = db.raw
     .query<{ to_agent_id: string }, []>(
+      // A message sent with wake: false waits for the recipient's next turn instead.
       `SELECT DISTINCT m.to_agent_id FROM messages m
        JOIN agents a ON a.id = m.to_agent_id
        WHERE m.read_at IS NULL AND a.status != 'archived'
+         AND NOT coalesce(
+           CASE WHEN json_valid(m.payload) THEN json_extract(m.payload, '$.wake') = 0 END, 0)
        ORDER BY m.to_agent_id`,
     )
     .all()

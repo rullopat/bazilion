@@ -14,6 +14,7 @@ import * as results from '../core/repos/results.ts'
 import * as queue from '../core/repos/user-queue.ts'
 import { isActiveAgent } from './agent-cancel.ts'
 import { commandApprovalRegistry } from './bash-approval.ts'
+import { runningJobCount } from './jobs.ts'
 import { signalLiveChange } from './live-signal.ts'
 import { questionRegistry } from './questions.ts'
 
@@ -118,6 +119,7 @@ export function readActivity(db: BazilionDb, paths: Paths): AgentActivity[] {
       approvals: approvals.filter((approval) => approval.agentId === agent.id).length,
       queuePaused: queue.isPaused(db, agent.id) && pending > 0,
       followUps: pending,
+      jobs: runningJobCount(agent.id),
       lastActivityAt: lastActivityAt(db, paths, agent.id),
       results: produced?.count ?? 0,
       lastResultAt: produced?.lastAt ?? null,

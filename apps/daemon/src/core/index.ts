@@ -15,7 +15,12 @@ export { isSetupComplete, listAvailableModels } from './availableModels.ts'
 export { replaceCuratedModels } from './curatedModels.ts'
 export type { BazilionDb } from './db/client.ts'
 export { openDb, openInMemoryDb } from './db/client.ts'
-export { IncompatibleDatabaseError, initSchema } from './db/schema.ts'
+export {
+  DatabaseUpgradeError,
+  IncompatibleDatabaseError,
+  initSchema,
+  NewerDatabaseError,
+} from './db/schema.ts'
 export { modelWindowSetting, readModelWindows, writeModelWindow } from './model-windows.ts'
 export type { Paths } from './paths.ts'
 export { resolvePaths } from './paths.ts'
@@ -35,6 +40,7 @@ export { updateProfile } from './profile/update.ts'
 export * as agentLessonProposalRepo from './repos/agentLessonProposals.ts'
 export * as agentReviewRepo from './repos/agentReviews.ts'
 export * as agentRepo from './repos/agents.ts'
+export * as commandRuleRepo from './repos/commandRules.ts'
 export { openConfig } from './repos/config.ts'
 export * as mcpServerRepo from './repos/mcpServers.ts'
 export * as messageRepo from './repos/messages.ts'

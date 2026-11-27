@@ -25,6 +25,7 @@ import { gunzipSync, gzipSync } from 'node:zlib'
 import { generateIdentity, identityToRecipient } from 'age-encryption'
 import { create, extract, Header, list } from 'tar'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
+import { initSchema, shippedSchema } from '../../daemon/src/core/db/schema.ts'
 import {
   loadProfile,
   openConfig,
@@ -158,6 +159,8 @@ test('backup create writes a tar.gz of the home around an online database snapsh
   writeFileSync(join(server.home, 'browsers', 'agent-x', 'cookies.db'), 'site-credentials')
   mkdirSync(join(server.home, 'teams', 'default', 'browsers'), { recursive: true })
   writeFileSync(join(server.home, 'teams', 'default', 'browsers', 'notes.txt'), 'work product')
+  mkdirSync(join(server.home, 'upgrades'), { recursive: true })
+  writeFileSync(join(server.home, 'upgrades', 'bazilion-schema-1-old.db'), 'an older database')
   expect(existsSync(join(server.home, 'bazilion.db-wal'))).toBe(true)
   expect(existsSync(join(server.home, DAEMON_PID_FILE))).toBe(true)
   const archive = join(tmp, `bz-backup-${randomUUID()}.tar.gz`)
@@ -186,6 +189,8 @@ test('backup create writes a tar.gz of the home around an online database snapsh
   }
   // Browser profiles hold site logins and never leave the home.
   expect(members.some((path) => path === 'browsers' || path.startsWith('browsers/'))).toBe(false)
+  // Databases kept from before schema upgrades belong to this home, not to its backups.
+  expect(members.some((path) => path === 'upgrades' || path.startsWith('upgrades/'))).toBe(false)
   rmSync(archive, { force: true })
 })
 
@@ -560,7 +565,17 @@ test.each([
       db.exec('DROP TABLE team_template_edges')
       db.close()
     },
-    /schema differs from this release/,
+    /not one this release can open or upgrade/,
+  ],
+  [
+    'a database a newer release upgraded',
+    (dir: string) => {
+      const db = new DatabaseSync(join(dir, 'bazilion.db'))
+      const version = Number(db.prepare('PRAGMA user_version').get()?.user_version)
+      db.exec(`PRAGMA user_version = ${version + 1}`)
+      db.close()
+    },
+    /comes from a newer release/,
   ],
   [
     'an auth.json that is not the database bootstrap token',
@@ -592,6 +607,43 @@ test.each([
   await expectRefused(broken, message)
   rmSync(valid, { force: true })
   rmSync(broken, { force: true })
+})
+
+test('restore takes a backup from before schema versions, which the daemon then upgrades', async () => {
+  const valid = await createBackup()
+  // What 0.26.0 to 0.62.0 wrote: the baseline schema, without a version.
+  const unversioned = await repack(valid, (dir) => {
+    const db = new DatabaseSync(join(dir, 'bazilion.db'))
+    db.exec('DROP TABLE command_rules')
+    db.exec('PRAGMA user_version = 0')
+    db.close()
+  })
+  const target = makeTarget(false)
+  try {
+    const restored = await runCli(
+      ['backup', 'restore', unversioned, '--home', target.home],
+      target.home,
+    )
+    expect(restored.exitCode, restored.stderr).toBe(0)
+    expect(restored.stdout).toContain('the daemon upgrades it on start')
+    const db = openDb(join(target.home, 'bazilion.db'))
+    try {
+      expect(initSchema(db)).toMatchObject({
+        kind: 'upgraded',
+        from: 1,
+        to: shippedSchema().migrations.length,
+      })
+      expect(
+        db.raw.query<{ v: number }, []>('SELECT user_version AS v FROM pragma_user_version').get(),
+      ).toEqual({ v: shippedSchema().migrations.length })
+    } finally {
+      db.close()
+    }
+  } finally {
+    target.cleanup()
+    rmSync(valid, { force: true })
+    rmSync(unversioned, { force: true })
+  }
 })
 
 test('restore refuses a truncated archive and leaves the target untouched', async () => {

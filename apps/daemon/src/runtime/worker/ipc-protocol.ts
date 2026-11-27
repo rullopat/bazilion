@@ -13,6 +13,7 @@ import type {
   BashApprovalMode,
   CommandApproval,
   CommandRisk,
+  Job,
   Message,
   ResultReference,
 } from '@bazilion/api-types'
@@ -22,6 +23,7 @@ import type { ToolResultPart } from '../tools/types.ts'
 export interface RpcMethods {
   askUser: { args: { question: AgentQuestionInput }; result: AgentQuestionToolResult }
   publishResult: { args: PublishResultArgs; result: ResultReference }
+  showResult: { args: { resultId: string }; result: ShownResult }
   generateImages: { args: ImageGenerationInput; result: ImageGenerationOutput }
   webSearch: { args: WebSearchArgs; result: WebSearchOutput }
   sendMessage: { args: SendMessageArgs; result: { messageId: string } }
@@ -51,6 +53,21 @@ export interface RpcMethods {
   refreshApiKey: { args: { providerName: string }; result: string }
   bashApproval: { args: BashApprovalArgs; result: CommandApproval }
   createAgent: { args: CreateAgentArgs; result: CreatedAgent }
+  jobStart: { args: { command: string }; result: JobOutputResult }
+  jobList: { args: Record<string, never>; result: Job[] }
+  jobOutput: { args: { id: string; waitSeconds?: number }; result: JobOutputResult }
+  jobInput: { args: { id: string; text?: string; interrupt?: boolean }; result: Job }
+  jobStop: { args: { id: string }; result: Job }
+  recallSearch: { args: { query: string }; result: string }
+  recallRead: { args: { conversationId: string; from: number; count?: number }; result: string }
+}
+
+/** A job with the output the Agent had not read yet. */
+export interface JobOutputResult {
+  job: Job
+  output: string
+  /** Earlier unread output was left out (it stays in the job's log). */
+  cut: boolean
 }
 
 /** Another Agent the turn's Agent may know about: a teammate, or one Team Policy lets it reach. */
@@ -164,25 +181,45 @@ export interface ImageGenerationInput {
   prompt: string
   /** Display filename stem. */
   name?: string
+  /** Pictures to start from, as paths the Agent sees (workspace or uploads). */
+  references?: string[]
+  /** Answer at once; the picture is saved when it is ready and wakes the Agent. */
+  background?: boolean
 }
 
 /** The saved images; their bytes stay in the daemon's result store. */
 export interface ImageGenerationOutput {
   model: string
   files: Array<{ name: string; mimeType: string; result: ResultReference }>
+  /** Being made in the background: nothing is saved yet. */
+  pending?: boolean
 }
 
 export interface WebSearchArgs {
   query: string
   /** Number of results, 1–10 (default 5). */
   count?: number
+  /** Only results from the last day, week, month or year. */
+  freshness?: 'day' | 'week' | 'month' | 'year'
+  /** Published on or after / on or before this date, YYYY-MM-DD. */
+  after?: string
+  before?: string
+  /** Only these sites (domains), or none of those in `excludeSites`. */
+  sites?: string[]
+  excludeSites?: string[]
+  /** ISO 3166 two-letter country code, e.g. "IT". */
+  country?: string
+  /** ISO 639-1 language code, e.g. "it". */
+  language?: string
 }
 
 /** Results to read with web_fetch; provider-hosted search also returns its written answer. */
 export interface WebSearchOutput {
-  backend: 'brave' | 'searxng' | 'openai' | 'openai-codex'
+  backend: 'brave' | 'searxng' | 'tavily' | 'exa' | 'openai' | 'openai-codex'
   answer?: string
-  results: Array<{ title: string; url: string; snippet: string }>
+  results: Array<{ title: string; url: string; snippet: string; published?: string }>
+  /** Filters asked for that this backend could not apply. */
+  unapplied?: string[]
 }
 
 // The daemon side of each tool. The daemon implements them against its repos and resources;
@@ -242,9 +279,15 @@ export interface BashApprovalHandle {
   settled: Promise<CommandApproval>
 }
 
-/** Dangerous-command approvals, in daemon memory for the length of one turn. */
+/**
+ * Dangerous-command approvals, in daemon memory for the length of one turn. A rule or a review
+ * model may decide before anyone is asked, so the handle can take a moment to come.
+ */
 export interface BashApprovalHost {
-  begin(input: BashApprovalArgs, signal?: AbortSignal): BashApprovalHandle
+  begin(
+    input: BashApprovalArgs,
+    signal?: AbortSignal,
+  ): BashApprovalHandle | Promise<BashApprovalHandle>
 }
 
 /** Bound by the daemon to one owner turn's Agent and conversation; the worker supplies content only. */
@@ -255,8 +298,17 @@ export interface QuestionHost {
   ): { question: AgentQuestion; result: Promise<AgentQuestionToolResult> }
 }
 
+/** A result already saved, to show again in the chat. */
+export interface ShownResult {
+  result: ResultReference
+  name: string
+  mimeType: string
+}
+
 export interface ResultHost {
   publish(input: PublishResultArgs): Promise<ResultReference>
+  /** One of the Agent's own saved results (a picture made in the background, say). */
+  show(resultId: string): Promise<ShownResult>
 }
 
 export interface ImageGenerationHost {
@@ -266,6 +318,27 @@ export interface ImageGenerationHost {
 /** The turn's Agent adding a teammate; bound by the daemon to that Agent and its Team. */
 export interface TeamHost {
   createAgent(input: CreateAgentArgs): CreatedAgent | Promise<CreatedAgent>
+}
+
+/**
+ * The turn's Agent's background jobs, which the daemon runs and keeps past the turn. Bound by the
+ * daemon to the Agent and the conversation; a job of another Agent is unknown here.
+ */
+export interface JobHost {
+  start(input: { command: string }): Promise<JobOutputResult>
+  list(): Promise<Job[]>
+  output(
+    input: { id: string; waitSeconds?: number },
+    signal?: AbortSignal,
+  ): Promise<JobOutputResult>
+  input(input: { id: string; text?: string; interrupt?: boolean }): Promise<Job>
+  stop(input: { id: string }): Promise<Job>
+}
+
+/** The turn's Agent's other conversations, for `recall` with `everywhere`. */
+export interface RecallHost {
+  search(query: string): Promise<string>
+  read(conversationId: string, from: number, count?: number): Promise<string>
 }
 
 /** Search runs in the daemon, which holds the backend URL and credentials. */
@@ -289,6 +362,8 @@ export interface WorkerHosts {
   mcpHost?: McpHost
   /** Only in a turn the operator started: Agents add teammates when asked, not on their own. */
   teamHost?: TeamHost
+  jobHost?: JobHost
+  recallHost?: RecallHost
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

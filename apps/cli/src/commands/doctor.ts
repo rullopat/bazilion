@@ -166,7 +166,9 @@ export function runtimeDoctorLines(report: Pick<HealthReport, 'shellSecurity'>):
   lines.push(
     shell.approvalMode === 'dangerous'
       ? '  - dangerous-command approval: on — chat can allow once; unattended turns auto-deny'
-      : '  - dangerous-command approval: off — set BAZILION_BASH_APPROVAL=dangerous to opt in',
+      : shell.approvalMode === 'review'
+        ? '  - dangerous-command approval: review — a review model first, then you; unattended turns deny what it passes on'
+        : '  - dangerous-command approval: off — set BAZILION_BASH_APPROVAL=dangerous to opt in',
   )
   return lines
 }

@@ -2,6 +2,7 @@ import {
   closeSync,
   constants,
   fstatSync,
+  ftruncateSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -10,8 +11,9 @@ import {
   readSync,
   realpathSync,
   statSync,
+  writeSync,
 } from 'node:fs'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /** Why `readContainedFile` refused a file. */
 export type ContainedFileRefusal = 'outside' | 'not_file' | 'changed' | 'too_large'
@@ -62,6 +64,35 @@ export function readContainedFile(path: string, realRoot: string, maxBytes: numb
     }
     if (length > maxBytes) throw new ContainedFileError('too_large')
     return buffer.subarray(0, length)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/**
+ * Write a regular file whose real parent stays inside `realRoot` (a canonical directory), creating
+ * it when missing. The file is opened no-follow and non-blocking (a link in its place, a FIFO or a
+ * device is refused), and the descriptor must be the file at the checked path before anything is
+ * written: on Linux by the kernel's own path for it, elsewhere by resolving the path again.
+ */
+export function writeContainedFile(path: string, realRoot: string, content: string | Buffer): void {
+  const parent = realpathSync(dirname(path))
+  if (!isContained(realRoot, parent)) throw new ContainedFileError('outside')
+  const target = join(parent, basename(path))
+  const fd = openSync(
+    target,
+    constants.O_WRONLY | constants.O_CREAT | noFollowFlag() | constants.O_NONBLOCK,
+    0o666,
+  )
+  try {
+    if (!fstatSync(fd).isFile()) throw new ContainedFileError('not_file')
+    const where = process.platform === 'linux' ? openedPath(fd) : realpathSync(target)
+    if (where !== target) throw new ContainedFileError('changed')
+    ftruncateSync(fd, 0)
+    const bytes = typeof content === 'string' ? Buffer.from(content, 'utf8') : content
+    let written = 0
+    while (written < bytes.length)
+      written += writeSync(fd, bytes, written, bytes.length - written, written)
   } finally {
     closeSync(fd)
   }
@@ -139,7 +170,7 @@ export function noFollowFlag(): number {
   return typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0
 }
 
-function isContained(root: string, candidate: string): boolean {
+export function isContained(root: string, candidate: string): boolean {
   const rel = relative(root, candidate)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }

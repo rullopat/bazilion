@@ -268,7 +268,8 @@ export async function launchBrowser(opts: LaunchOptions): Promise<AgentBrowser> 
     const { chromium } = await import('playwright')
     browser = await chromium.connectOverCDP(endpoint, { timeout: CONNECT_MS, isLocal: true })
     cdp = await browser.newBrowserCDPSession()
-    await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' })
+    // Downloads arrive as Playwright download events, which the pool saves with the Agent's
+    // uploads (pool.ts); their traffic goes through the proxy like any other.
     const context = browser.contexts()[0]
     if (!context) throw new Error('the browser has no default context')
     context.setDefaultNavigationTimeout(30_000)

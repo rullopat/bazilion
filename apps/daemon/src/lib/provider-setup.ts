@@ -231,8 +231,13 @@ export async function modelsOverview(ctx: SetupCtx): Promise<ModelsResponse> {
       )
     }
   }
+  const approval = snap.env.BAZILION_BASH_APPROVAL?.trim()
   return {
     chat: await Promise.all(chat),
+    commandReview: {
+      selected: snap.env.BAZILION_COMMAND_REVIEW_MODEL?.trim() || null,
+      approvalMode: approval === 'dangerous' || approval === 'review' ? approval : 'off',
+    },
     images: {
       selected: snap.env.BAZILION_IMAGE_MODEL || 'off',
       routes: IMAGE_ROUTES.map((route) => {

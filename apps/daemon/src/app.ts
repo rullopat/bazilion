@@ -10,9 +10,11 @@ import { agentLearningRouter } from './routes/agent-learning.ts'
 import { agentsRouter } from './routes/agents.ts'
 import { attentionRouter } from './routes/attention.ts'
 import { authRouter } from './routes/auth-login.ts'
+import { commandRulesRouter } from './routes/command-rules.ts'
 import { configRouter } from './routes/config.ts'
 import { conversationSearchRouter, conversationsRouter } from './routes/conversations.ts'
 import { eventsRouter } from './routes/events.ts'
+import { agentJobsRouter, jobsRouter } from './routes/jobs.ts'
 import { mcpRouter } from './routes/mcp.ts'
 import {
   agentMessagesRouter,
@@ -59,6 +61,7 @@ export function createApp(): Hono {
   app.route('/api/agents', agentSkillsRouter)
   app.route('/api/agents', agentTelegramRouter)
   app.route('/api/agents', agentTriggersRouter)
+  app.route('/api/agents', agentJobsRouter)
   app.route('/api/agents', conversationsRouter)
   app.route('/api/agents', userQueueRouter)
   app.route('/api/agents', questionsRouter)
@@ -78,9 +81,11 @@ export function createApp(): Hono {
   app.route('/api/events', eventsRouter)
   app.route('/api/notifications', notificationsRouter)
   app.route('/api/shell-approvals', shellApprovalsRouter)
+  app.route('/api/command-rules', commandRulesRouter)
   app.route('/api/profiles', profilesRouter)
   app.route('/api/skills', skillsRouter)
   app.route('/api/triggers', triggersRouter)
+  app.route('/api/jobs', jobsRouter)
   app.route('/api/messages', messagesRouter)
   app.route('/api/exchanges', exchangesRouter)
   app.route('/api/mcp-servers', mcpRouter)

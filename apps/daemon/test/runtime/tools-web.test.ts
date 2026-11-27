@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, expect, test } from 'vitest'
 import { type WebFetchOpts, webFetchTool } from '../../src/runtime/tools/web.ts'
 import { isPrivateIpAddress } from '../../src/runtime/tools/web-ssrf.ts'
@@ -84,6 +87,25 @@ test('web_fetch truncates at max_length', async () => {
   )
   expect(result).toContain('[truncated at 100 chars]')
   expect(typeof result === 'string' && result.length).toBeLessThan(200)
+})
+
+test('web_fetch saves a long page whole and gives its first part with the path', async () => {
+  const url = await startMock(() => new Response(`start ${'x'.repeat(5000)} end`, { status: 200 }))
+  const dir = mkdtempSync(join(tmpdir(), 'bazilion-pages-'))
+  try {
+    const [webFetch] = webTools({ allowPrivate: true, savePages: { dir, shown: '/inputs' } })
+    if (!webFetch) throw new Error('web_fetch is missing')
+    const text = String(await webFetch.invoke({ url: `${url}/docs/guide`, max_length: 100 }))
+    expect(text.startsWith('start ')).toBe(true)
+    const saved = text.match(/saved at (\/inputs\/web\/\S+\.md):/)?.[1]
+    expect(saved).toMatch(/^\/inputs\/web\/[a-z0-9.-]+-docs-guide-[0-9a-f]{8}\.md$/)
+    const file = join(dir, 'web', saved?.slice('/inputs/web/'.length) ?? '')
+    const whole = readFileSync(file, 'utf8')
+    expect(whole).toContain(`${url}/docs/guide`)
+    expect(whole).toContain(' end')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('web_fetch caps oversized bodies before extraction and flags truncation', async () => {

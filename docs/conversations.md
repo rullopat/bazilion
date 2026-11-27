@@ -42,7 +42,9 @@ stays one conversation, with its files and follow-ups; the summarized messages s
 and on the page, above a line with **Show the summary**, and are found by search. The Agent can
 reread them too: when the summary leaves out a detail it needs, such as an exact value, a link or
 your own words, it searches and reads them with `recall`, a step that shows as **Searched older
-messages for …** or **Reread older messages**. `/compact` does the same at once. The bar above the conversation says how full the window is, and
+messages for …** or **Reread older messages**. The same tool searches the Agent's other
+conversations, every message of them, and reads one, when you refer to something said or found
+there; it never sees another Agent's conversations. `/compact` does the same at once. The bar above the conversation says how full the window is, and
 `bazilion agent chat-context <agent>` prints the same figure. A reply the full window would have
 cut short is redone after the summary.
 

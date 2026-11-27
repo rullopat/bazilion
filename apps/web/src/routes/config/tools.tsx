@@ -1,8 +1,9 @@
 import type { ToolsResponse } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { ConfigPage } from '../../components/ConfigPage'
+import { CommandRulesCard } from '../../components/setup/CommandRulesCard'
 import { ToolCard } from '../../components/setup/ToolCard'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -28,16 +29,20 @@ function ToolsPage() {
       description="What Agents can do besides thinking: search, read pages, browse and run commands. Every setting here applies to all Agents."
     >
       {tools.map((card) => (
-        <ToolCard
-          key={`${card.id}:${saves[card.id] ?? 0}`}
-          card={card}
-          justSaved={lastSaved === card.id}
-          onSaved={async () => {
-            await router.invalidate({ sync: true })
-            setLastSaved(card.id)
-            setSaves((current) => ({ ...current, [card.id]: (current[card.id] ?? 0) + 1 }))
-          }}
-        />
+        <Fragment key={card.id}>
+          <ToolCard
+            key={`${card.id}:${saves[card.id] ?? 0}`}
+            card={card}
+            justSaved={lastSaved === card.id}
+            onSaved={async () => {
+              await router.invalidate({ sync: true })
+              setLastSaved(card.id)
+              setSaves((current) => ({ ...current, [card.id]: (current[card.id] ?? 0) + 1 }))
+            }}
+          />
+          {/* The rules belong with the commands they let run. */}
+          {card.id === 'commands' && <CommandRulesCard />}
+        </Fragment>
       ))}
     </ConfigPage>
   )

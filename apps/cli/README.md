@@ -63,8 +63,9 @@ Agent), `4` authentication failure.
 npm install -g bazilion@latest
 ```
 
-There are no database migrations: when a release changes the schema, the daemon refuses the old
-home and leaves it untouched. Back it up, run `bazilion uninstall --yes` and start again; see the
+An upgrade keeps your home. When a release changes the database schema, the daemon copies the
+database to `upgrades/` in the home and then migrates it when it starts; a failed upgrade changes
+nothing. To go back to an earlier release, put that copy back: see the
 [upgrade guide](https://github.com/rullopat/bazilion/blob/main/docs/upgrades.md).
 
 ## Documentation

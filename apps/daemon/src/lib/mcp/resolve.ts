@@ -3,6 +3,10 @@
 // asked side by side, and a server that cannot answer within DISCOVERY_MS is logged and skipped
 // (its connect goes on for later turns): one broken server delays a turn by at most that.
 
+import { createHash } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import type { McpOutputSaver } from '@earendil-works/pi-mcp'
 import {
   type BazilionDb,
   mcpServerRepo,
@@ -66,6 +70,8 @@ export async function resolveMcpForTurn(
   authToken: string,
   signal?: AbortSignal,
   gate?: McpApprovalGate,
+  /** Where files a tool returns are saved: the Agent's uploads, and the path it sees them at. */
+  files?: { dir: string; shown: string },
 ): Promise<{ tools: InjectedMcpTool[]; host: McpHost } | null> {
   const servers = mcpServerRepo.listEnabled(db)
   if (servers.length === 0) return null
@@ -141,8 +147,28 @@ export async function resolveMcpForTurn(
       return callMcpTool(server, toolName, args, {
         connect: () => mcpConnectOptions(db, authToken, server),
         ...(callSignal ? { signal: callSignal } : {}),
+        ...(files ? { saveOutput: mcpFileSaver(files, server.name) } : {}),
       })
     },
   }
   return { tools, host }
+}
+
+/**
+ * Saves a file an MCP tool returned under `uploads/mcp/`, named by the server and the file's own
+ * hash (the same file is saved once), and gives the path the Agent reads it at.
+ */
+export function mcpFileSaver(
+  files: { dir: string; shown: string },
+  serverName: string,
+): McpOutputSaver {
+  return async (data, extension) => {
+    const bytes = typeof data === 'string' ? Buffer.from(data) : data
+    const slug = serverName.replace(/[^a-zA-Z0-9.-]+/g, '-').replace(/^-+|-+$/g, '') || 'server'
+    const name = `${slug}-${createHash('sha256').update(bytes).digest('hex').slice(0, 12)}${extension}`
+    const dir = join(files.dir, 'mcp')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, name), bytes)
+    return `${files.shown.replace(/\/+$/, '')}/mcp/${name}`
+  }
 }

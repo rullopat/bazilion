@@ -245,3 +245,111 @@ test('stopping the turn aborts the request', async () => {
   await expect(pending).rejects.toThrow()
   expect(results.list(env.db).total).toBe(0)
 })
+
+function hostWith(readReference: (path: string) => Buffer) {
+  return createImageGenerationHost({
+    db: env.db,
+    agentId,
+    teamId: env.teamId,
+    conversationId,
+    signal: turn.signal,
+    env: () => config,
+    codex: { connected: () => true, accessToken: async () => 'codex-token' },
+    readReference,
+    fetch: fetcher,
+  })
+}
+
+test('pictures to start from go to OpenAI as files of an edit, and to ChatGPT as input images', async () => {
+  const read = vi.fn((path: string) => {
+    if (path !== 'logo.png') throw new Error(`no ${path}`)
+    return png
+  })
+  await hostWith(read).generate({
+    toolCallId: 'edit',
+    prompt: 'Make it blue',
+    references: ['logo.png'],
+  })
+  const [url, init] = fetcher.mock.calls[0] ?? []
+  expect(String(url)).toBe('https://api.openai.com/v1/images/edits')
+  const form = init?.body as FormData
+  expect(form.get('prompt')).toBe('Make it blue')
+  expect((form.get('image[]') as Blob).size).toBe(png.length)
+
+  config = { BAZILION_IMAGE_MODEL: 'openai-codex:gpt-image-2' }
+  fetcher.mockResolvedValueOnce(
+    sse([
+      { type: 'response.output_item.done', item: { type: 'image_generation_call', result: b64 } },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ]),
+  )
+  await hostWith(read).generate({
+    toolCallId: 'codex',
+    prompt: 'Vary it',
+    references: ['logo.png'],
+  })
+  const body = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))
+  expect(body.input[0].content[1]).toEqual({
+    type: 'input_image',
+    image_url: `data:image/png;base64,${b64}`,
+  })
+
+  // A reference that is not a picture, or not readable, is refused before anything is asked.
+  const notPng = vi.fn(() => Buffer.from('plain text'))
+  await expect(
+    hostWith(notPng).generate({ toolCallId: 'bad', prompt: 'x', references: ['notes.txt'] }),
+  ).rejects.toThrow(/not a PNG, JPEG or WebP/)
+  await expect(
+    hostWith(read).generate({ toolCallId: 'gone', prompt: 'x', references: ['missing.png'] }),
+  ).rejects.toThrow(/no missing.png/)
+  expect(fetcher).toHaveBeenCalledTimes(2)
+})
+
+test('a picture made in the background answers at once and wakes the Agent when saved', async () => {
+  const { _resetWakesForTest, takeWakes } = await import('../../src/lib/wakes.ts')
+  _resetWakesForTest()
+  let release: () => void = () => {}
+  fetcher.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(Response.json({ data: [{ b64_json: b64 }] }))
+      }),
+  )
+  const output = await host().generate({ toolCallId: 'later', prompt: 'A boat', background: true })
+  expect(output).toEqual({ model: 'openai:gpt-image-2', files: [], pending: true })
+  // The turn ends; the picture is still made.
+  turn.abort()
+  release()
+  await vi.waitFor(() => expect(takeWakes(agentId).length).toBe(1), { timeout: 2_000 })
+  const saved = results.list(env.db, { teamId: env.teamId }).results
+  expect(saved.map((result) => result.name)).toEqual(['generated-image.png'])
+})
+
+test('deliver_file shows a saved result again, only the Agent’s own', async () => {
+  const { createResultHost } = await import('../../src/lib/result-host.ts')
+  const { resolveAgent } = await import('../../src/core/agent/resolve.ts')
+  const agent = resolveAgent(env.db, env.paths, agentId)
+  const saved = results.publish(env.db, {
+    teamId: env.teamId,
+    agentId,
+    sessionId: conversationId,
+    toolCallId: 'made',
+    name: 'boat.png',
+    mimeType: 'image/png',
+    bytes: png,
+  })
+  const resultHost = createResultHost(env.db, agent, conversationId, turn.signal)
+  expect(await resultHost.show(saved.id)).toEqual({
+    result: { resultId: saved.id },
+    name: 'boat.png',
+    mimeType: 'image/png',
+  })
+  const other = spawnAgent(env.db, env.paths, { profileId: 'producer', teamId: env.teamId }).id
+  const otherHost = createResultHost(
+    env.db,
+    (await import('../../src/core/agent/resolve.ts')).resolveAgent(env.db, env.paths, other),
+    conversationId,
+    turn.signal,
+  )
+  await expect(otherHost.show(saved.id)).rejects.toThrow(/no saved result/)
+})

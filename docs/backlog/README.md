@@ -8,25 +8,21 @@ are never reused, so the gaps below are deliberate.
 
 ## Planned
 
-Planned after comparing OpenClaw's tools with ours (2026-11-26). 0.63.0 improves the tools Agents
-already have, 0.64.0 adds the missing ones that are useful, and later releases take up the rest.
-Background commands, also among the missing tools, ship in 0.63.0 with BAZ-086.
+Planned after comparing OpenClaw's tools with ours (2026-11-26). 0.63.0 improved the tools Agents
+already had (BAZ-086 to BAZ-088, with background commands); 0.64.0 adds the missing ones that are
+useful, and later releases take up the rest.
 
 | ID | Story | Release |
 | --- | --- | --- |
-| [BAZ-086](draft/BAZ-086-commands-and-files.md) | Commands that keep running, approvals that remember, file tools in Docker | 0.63.0 |
-| [BAZ-087](draft/BAZ-087-search-pages-browser.md) | Search filters, long pages kept whole, a browser for checking web apps | 0.63.0 |
-| [BAZ-088](draft/BAZ-088-questions-messages-recall-pictures.md) | Questions in one card, quiet messages, recall across conversations, pictures from pictures | 0.63.0 |
 | [BAZ-089](draft/BAZ-089-schedules-agents-set.md) | Schedules an Agent sets itself | 0.64.0 |
 | [BAZ-090](draft/BAZ-090-secrets-asked-for.md) | Secrets an Agent asks for, kept out of the conversation | 0.64.0 |
 | [BAZ-091](draft/BAZ-091-images-pdfs-voice.md) | Images, PDFs and voice notes an Agent can read | 0.64.0 |
 | [BAZ-092](draft/BAZ-092-helpers.md) | Helpers: short runs of the same Agent | 0.64.0 |
 | [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | 0.65.0 and later |
 
-**Schema.** The schema has not changed since 13 November 2026. Two of these stories change it:
-`command_rules` (BAZ-086) and the `agent_triggers` changes (BAZ-089). Both ship in 0.63.0, so
-upgrading needs a fresh home only once ([upgrading](../upgrades.md)), and 0.64.0 keeps the same
-schema. The other stories need no schema change.
+**Schema.** Since 0.63.0 (BAZ-094) an upgrade migrates the home instead of needing a fresh one
+([upgrading](../upgrades.md)). The `agent_triggers` changes of BAZ-089 (0.64.0) come with their
+own migration.
 
 ## Done
 
@@ -75,3 +71,7 @@ schema. The other stories need no schema change.
 | [BAZ-083](done/BAZ-083-mac-app-install.md) | Install without Node: one line, then the Bazilion app | 0.61.0 | [installing](../install.md) |
 | [BAZ-084](done/BAZ-084-context-windows.md) | Context windows: from the server or set by hand, never assumed | 0.62.0 | [models and providers](../models-and-providers.md#context-windows), [agent engine](../agent-engine.md#2-the-worker) |
 | [BAZ-085](done/BAZ-085-exchanges.md) | Exchanges between Agents: no length limit, stopped by repetition or by you | 0.62.0 | [Team Policy](../team-policy.md#exchanges-between-agents) |
+| [BAZ-094](done/BAZ-094-migrations.md) | Upgrades keep your home: database migrations | 0.63.0 | [upgrading](../upgrades.md) |
+| [BAZ-086](done/BAZ-086-commands-and-files.md) | Commands that keep running, approvals that remember, file tools in Docker | 0.63.0 | [coding](../coding-environments.md), [tools](../tools.md) |
+| [BAZ-087](done/BAZ-087-search-pages-browser.md) | Search filters, long pages kept whole, a browser for checking web apps | 0.63.0 | [web research](../web-research.md), [browser research](../browser-research.md) |
+| [BAZ-088](done/BAZ-088-questions-messages-recall-pictures.md) | Questions in one card, quiet messages, recall across conversations, pictures from pictures | 0.63.0 | [questions](../questions.md), [image generation](../image-generation.md) |

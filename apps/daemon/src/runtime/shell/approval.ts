@@ -36,7 +36,8 @@ export class BashApprovalDeniedError extends Error {
 
 type BashToolDefinition = ReturnType<typeof createBashToolDefinition>
 
-async function requireBashApproval(
+/** Ask for approval of a command the classifier finds dangerous; throws when it is not allowed. */
+export async function requireBashApproval(
   command: string,
   toolCallId: string,
   signal?: AbortSignal,

@@ -5,7 +5,8 @@ export type { CommandRisk, CommandRiskCode } from '@bazilion/api-types'
 
 export type BashSandboxMode = 'off' | 'docker'
 
-export type BashApprovalPolicy = 'off' | 'dangerous'
+/** off: never asks; dangerous: asks you; review: a review model first, then you. */
+export type BashApprovalPolicy = 'off' | 'dangerous' | 'review'
 
 export interface ShellSecurityConfig {
   sandboxMode: BashSandboxMode
@@ -344,8 +345,15 @@ export function resolveShellSecurityConfig(
   }
 
   const rawApproval = env.BAZILION_BASH_APPROVAL?.trim() ?? ''
-  if (rawApproval !== '' && rawApproval !== 'off' && rawApproval !== 'dangerous') {
-    throw new Error(`BAZILION_BASH_APPROVAL must be "off" or "dangerous", received: ${rawApproval}`)
+  if (
+    rawApproval !== '' &&
+    rawApproval !== 'off' &&
+    rawApproval !== 'dangerous' &&
+    rawApproval !== 'review'
+  ) {
+    throw new Error(
+      `BAZILION_BASH_APPROVAL must be "off", "dangerous" or "review", received: ${rawApproval}`,
+    )
   }
 
   const rawImage = env.BAZILION_BASH_SANDBOX_IMAGE?.trim() ?? ''
@@ -357,7 +365,7 @@ export function resolveShellSecurityConfig(
 
   return {
     sandboxMode: rawMode === 'docker' ? 'docker' : 'off',
-    approvalMode: rawApproval === 'dangerous' ? 'dangerous' : 'off',
+    approvalMode: rawApproval === 'dangerous' || rawApproval === 'review' ? rawApproval : 'off',
     sandboxImage: rawImage || DEFAULT_BASH_SANDBOX_IMAGE,
   }
 }

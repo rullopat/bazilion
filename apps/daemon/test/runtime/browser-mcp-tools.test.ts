@@ -42,7 +42,12 @@ test('browserTools proxy every action to the host with the agentId', async () =>
       'tabs',
       'take_screenshot',
       'console',
+      'errors',
       'network',
+      'text',
+      'wait',
+      'pdf',
+      'emulate',
     ].map((action) => `browser_${action}`),
   )
 

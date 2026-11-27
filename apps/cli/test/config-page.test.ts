@@ -160,7 +160,7 @@ test('the Commands settings are the same from the CLI and the Tools page, and ar
   // A mistyped approval mode used to be stored, and then failed every turn.
   const typo = await server.cli(['config', 'set', 'BAZILION_BASH_APPROVAL', 'Dangerous'])
   expect(typo.exitCode).not.toBe(0)
-  expect(`${typo.stdout}${typo.stderr}`).toContain('must be dangerous or off')
+  expect(`${typo.stdout}${typo.stderr}`).toContain('must be one of: off, dangerous, review')
   const set = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'docker'])
   expect(set.exitCode).toBe(0)
   expect(set.stdout).toMatch(/BAZILION_BASH_SANDBOX.*docker/)

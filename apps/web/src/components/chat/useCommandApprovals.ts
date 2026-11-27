@@ -56,14 +56,18 @@ export function useCommandApprovals({
     }
   }
 
-  async function decide(approval: CommandApproval, decision: 'allow' | 'deny') {
+  async function decide(
+    approval: CommandApproval,
+    decision: 'allow' | 'deny',
+    remember?: { prefix: string },
+  ) {
     if (approval.agentId !== agentId || approval.status !== 'pending') return
     setApprovalBusy((current) => ({ ...current, [approval.id]: true }))
     setApprovalErrors(({ [approval.id]: _cleared, ...rest }) => rest)
     try {
       const body = await api<CommandApprovalDecisionResponse>(
         `/api/shell-approvals/${encodeURIComponent(approval.id)}`,
-        { body: { decision } },
+        { body: remember ? { decision, remember } : { decision } },
       )
       if (body.approval.agentId === agentId) {
         setLive((entries) => upsertCommandApprovalEntry(entries, body.approval))

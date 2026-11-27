@@ -81,7 +81,7 @@ function agentHref(agentId: string | undefined, section?: 'learning' | 'schedule
   return `/?${query}`
 }
 
-type TurnOrigin = 'http' | 'telegram' | 'inbox'
+type TurnOrigin = 'http' | 'telegram' | 'inbox' | 'wake'
 interface TurnFailureRow {
   id: string
   agentId: string
@@ -104,11 +104,13 @@ const ORIGIN_TITLE: Record<TurnOrigin, string> = {
   http: 'Follow-up failed',
   telegram: 'Telegram message failed',
   inbox: 'Turn for new mail failed',
+  wake: 'Turn for an update failed',
 }
 const ORIGIN_COUNT: Record<TurnOrigin, [one: string, many: string]> = {
   http: ['follow-up', 'follow-ups'],
   telegram: ['Telegram message', 'Telegram messages'],
   inbox: ['turn for new mail', 'turns for new mail'],
+  wake: ['turn for an update', 'turns for an update'],
 }
 
 /** Failures with the same cause share one item: a provider kind, or the same message. */

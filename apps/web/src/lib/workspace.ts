@@ -49,6 +49,7 @@ export const AGENT_SECTIONS = [
   'schedules',
   'learning',
   'mailbox',
+  'jobs',
   'skills',
   'telegram',
   'browser',

@@ -14,6 +14,7 @@ import { parseSessionText, readSessionText } from '../runtime/pi/session-file.ts
 import { redactExactValues } from '../runtime/worker/runtime.ts'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
+const WAKE_PREFIX = '[[bazilion:wake]]\n'
 const MAX_WORDS = 8
 export const MAX_SEARCH_HITS = 50
 /** A snippet starts a few words before the first word found, so that a short line shows it. */
@@ -127,7 +128,9 @@ export async function searchConversations(
       const content = redactExactValues(
         shown.content.startsWith(INBOX_WAKE_PREFIX)
           ? shown.content.slice(INBOX_WAKE_PREFIX.length)
-          : shown.content,
+          : shown.content.startsWith(WAKE_PREFIX)
+            ? shown.content.slice(WAKE_PREFIX.length)
+            : shown.content,
         options.secrets ?? [],
       )
       // Matched as it reads, not in its Markdown: a word only in a link's address does not count,

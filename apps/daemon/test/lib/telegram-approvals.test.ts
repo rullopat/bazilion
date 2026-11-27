@@ -4,6 +4,7 @@ import type { Api } from 'grammy'
 import type { Update } from 'grammy/types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
+import { commandRuleRepo } from '../../src/core/index.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import { setTelegramTopicId } from '../../src/core/repos/agents.ts'
 import * as acl from '../../src/core/repos/telegram-acl.ts'
@@ -122,6 +123,7 @@ test('a command still waiting after the delay goes to its topic; the owner allow
           { text: 'Allow once', callback_data: `ba:${approval.id}:a` },
           { text: 'Deny', callback_data: `ba:${approval.id}:d` },
         ],
+        [{ text: 'Always: rm', callback_data: `ba:${approval.id}:r` }],
       ],
     },
   })
@@ -140,6 +142,21 @@ test('a command still waiting after the delay goes to its topic; the owner allow
 
   await route(tap(`ba:${approval.id}:d`))
   expect(acks.at(-1)).toEqual({ text: 'That command is no longer waiting.' })
+})
+
+test('Always allows the command and keeps a rule for the Agent', async () => {
+  const { approval, settled } = begin()
+  expect(await sendApprovalPrompt(approval)).toBe(true)
+  expect(await route(tap(`ba:${approval.id}:r`))).toEqual({ kind: 'approval_decision' })
+  expect(acks.at(-1)).toEqual({
+    text: 'Allowed, and from now on for commands that start with rm.',
+  })
+  expect((await settled).status).toBe('allowed')
+  expect(commandRuleRepo.list(env.db, agentId).map((rule) => rule.prefix)).toEqual(['rm'])
+  await vi.waitFor(() => expect(editMessageText).toHaveBeenCalledOnce())
+  expect(editMessageText.mock.calls[0]?.[2]).toContain(
+    'from now on for commands that start with rm',
+  )
 })
 
 test('a command decided in the web UI before the delay never reaches Telegram', async () => {

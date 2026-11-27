@@ -105,7 +105,9 @@ export function RuntimeCard({
           <Fact label="Dangerous-command approval">
             {shell.approvalMode === 'dangerous'
               ? 'On — chat can allow once; unattended turns auto-deny'
-              : 'Off'}
+              : shell.approvalMode === 'review'
+                ? 'On — a review model answers first, then you; unattended turns deny what it passes on'
+                : 'Off'}
           </Fact>
         </Facts>
       ) : (

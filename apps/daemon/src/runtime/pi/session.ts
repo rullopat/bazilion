@@ -42,15 +42,17 @@ import type { BashApprovalHost } from '../shell/approval.ts'
 import { containerWorkdir, homeContainerPrefix } from '../shell/docker.ts'
 import { createSessionShellTools, type DockerTurn } from '../shell/tooling.ts'
 import type { AskUser } from '../tools/ask-user.ts'
-import type { FileSink } from '../tools/deliver-file.ts'
+import type { FileSink, ShowResult } from '../tools/deliver-file.ts'
 import type { RecallSource } from '../tools/recall.ts'
 import type {
   AgentContact,
   BrowserHost,
   ImageGenerationHost,
   InjectedMcpTool,
+  JobHost,
   McpHost,
   MessagingHost,
+  RecallHost,
   TeamHost,
   UserMdHost,
   WebSearchHost,
@@ -88,6 +90,8 @@ export interface CreateBazilionSessionOptions {
   imageGenerationHost?: ImageGenerationHost
   /** Enables `deliver_file`, the agent's outbound file channel. */
   fileSink?: FileSink
+  /** `deliver_file` with `result`: one of the Agent's saved results, shown again. */
+  showResult?: ShowResult
   webSearchHost?: WebSearchHost
   /** Turn-scoped bridge for dangerous bash commands. Omit to deny them. */
   bashApprovalHost?: BashApprovalHost
@@ -97,10 +101,16 @@ export interface CreateBazilionSessionOptions {
   refreshApiKey?: (providerName: string) => Promise<string>
   /** Enables `agent_create`; given only in a turn the operator started. */
   teamHost?: TeamHost
+  /** Enables background jobs: bash's `background: true` and the job_* tools. */
+  jobHost?: JobHost
+  /** The Agent's other conversations, for `recall` with `everywhere`. */
+  recallHost?: RecallHost
   /** Whom the Agent can message, listed in its system prompt. */
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
   withOperator?: boolean
+  /** Messages from other Agents waiting unread, said in the system prompt. */
+  unreadMessages?: number
 }
 
 export interface BazilionSessionHandle {
@@ -239,6 +249,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     inputsDir: join(agent.agent.dir, 'uploads'),
     skillMounts: promptSkills.map((skill) => ({ source: skill.hostDir, target: skill.sandboxDir })),
     approvalHost: opts.bashApprovalHost,
+    ...(opts.jobHost ? { jobHost: opts.jobHost } : {}),
   })
   const docker = shellTools.config.sandboxMode === 'docker'
   const customTools = createBazilionCustomTools({
@@ -251,11 +262,14 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     mcpHost: opts.mcpHost,
     mcpTools: opts.mcpTools,
     fileSink: opts.fileSink,
+    ...(opts.showResult ? { showResult: opts.showResult } : {}),
     imageGenerationHost: opts.imageGenerationHost,
     webSearchHost: opts.webSearchHost,
     askUser: opts.askUser,
     teamHost: opts.teamHost,
+    jobHost: opts.jobHost,
     env,
+    docker,
   })
   const promptOptions: BuildSystemPromptOptions = {
     skills: promptSkills,
@@ -268,6 +282,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     contacts: opts.contacts ?? [],
     canCreateAgents: opts.teamHost !== undefined,
     withOperator: opts.withOperator ?? true,
+    ...(opts.unreadMessages ? { unreadMessages: opts.unreadMessages } : {}),
   }
   return {
     cwd,
@@ -275,7 +290,11 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     // the container's working directory instead.
     modelCwd: docker ? containerWorkdir(opts.docker?.cwd ?? '.') : cwd,
     docker,
-    tools: shellTools.customBash ? [...customTools, shellTools.customBash] : customTools,
+    tools: [
+      ...customTools,
+      ...shellTools.fileTools,
+      ...(shellTools.customBash ? [shellTools.customBash] : []),
+    ],
     hostToolNames: shellTools.hostToolNames,
     promptOptions,
   }
@@ -297,6 +316,7 @@ export async function createBazilionSession(
   const turn = turnSurface(opts, {
     branch: () => sessionManager.getBranch(),
     secrets: redactionSecrets,
+    ...(opts.recallHost ? { elsewhere: opts.recallHost } : {}),
   })
   return openPiSession({
     model: {

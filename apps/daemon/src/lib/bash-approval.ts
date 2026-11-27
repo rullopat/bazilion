@@ -1,4 +1,5 @@
-import type { CommandApproval } from '@bazilion/api-types'
+import type { CommandApproval, CommandReview } from '@bazilion/api-types'
+import { suggestRule } from '../core/command-rules.ts'
 import type {
   BashApprovalArgs,
   BashApprovalHandle,
@@ -30,7 +31,12 @@ export class CommandApprovalRegistry implements BashApprovalHost {
     this.#timeoutMs = timeoutMs
   }
 
-  begin(input: BashApprovalArgs, signal?: AbortSignal): BashApprovalHandle {
+  begin(
+    input: BashApprovalArgs,
+    signal?: AbortSignal,
+    extra: { review?: CommandReview } = {},
+  ): BashApprovalHandle {
+    const suggested = input.tool ? undefined : suggestRule(input.command)
     const approval: CommandApproval = {
       id: input.id,
       turnId: input.turnId,
@@ -40,6 +46,8 @@ export class CommandApprovalRegistry implements BashApprovalHost {
       command: input.command,
       risks: input.risks,
       ...(input.tool ? { tool: input.tool } : {}),
+      ...(suggested ? { suggestedRule: suggested } : {}),
+      ...(extra.review ? { review: extra.review } : {}),
       status: 'pending',
       createdAt: Date.now(),
       expiresAt: Date.now() + this.#timeoutMs,
@@ -106,3 +114,54 @@ function logged(approval: CommandApproval): CommandApproval {
 }
 
 export const commandApprovalRegistry = new CommandApprovalRegistry()
+
+/** An approval decided at once, without asking anyone. */
+function decided(
+  input: BashApprovalArgs,
+  status: 'allowed' | 'denied' | 'cancelled',
+  extra: { rule?: string; review?: CommandReview },
+): BashApprovalHandle {
+  const approval = logged({
+    id: input.id,
+    turnId: input.turnId,
+    toolCallId: input.toolCallId,
+    agentId: input.agentId,
+    teamId: input.teamId,
+    command: input.command,
+    risks: input.risks,
+    status,
+    ...extra,
+    createdAt: Date.now(),
+    expiresAt: Date.now(),
+  })
+  return { approval, settled: Promise.resolve(approval) }
+}
+
+/**
+ * The approvals of one turn's shell commands: an Agent's rule allows a command at once; with a
+ * review model, it answers next, and what it passes on goes to the owner (or, with nobody there,
+ * is denied) through the registry.
+ */
+export function createTurnApprovalHost(options: {
+  registry: CommandApprovalRegistry
+  /** The prefix of the Agent's rule that allows the command, if any. */
+  rule: (agentId: string, command: string) => string | null
+  review?: (input: BashApprovalArgs, signal?: AbortSignal) => Promise<CommandReview>
+}): BashApprovalHost {
+  return {
+    async begin(input, signal) {
+      if (!input.tool) {
+        const rule = options.rule(input.agentId, input.command)
+        if (rule) return decided(input, 'allowed', { rule })
+        if (options.review) {
+          const review = await options.review(input, signal)
+          if (signal?.aborted) return decided(input, 'cancelled', { review })
+          if (review.decision === 'allow') return decided(input, 'allowed', { review })
+          if (review.decision === 'deny') return decided(input, 'denied', { review })
+          return options.registry.begin(input, signal, { review })
+        }
+      }
+      return options.registry.begin(input, signal)
+    },
+  }
+}

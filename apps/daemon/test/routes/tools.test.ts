@@ -71,7 +71,7 @@ test('four tools on a new home, each with what it is doing', async () => {
     ['browser', 'Browser', { label: 'On: a browser per Agent', tone: 'on' }],
     ['commands', 'Commands', { label: 'Runs on this computer', tone: 'on' }],
   ])
-  expect(functions.map((card) => card.id)).toEqual(['image-generation'])
+  expect(functions.map((card) => card.id)).toEqual(['image-generation', 'command-review'])
   // Nothing is stored, and every setting says what is in effect.
   const browser = cards.find((card) => card.id === 'browser') as ServiceCard
   expect(browser.fields.every((entry) => !entry.set)).toBe(true)
@@ -100,10 +100,10 @@ test('a value is checked before it is stored', async () => {
   }
   expect(await refused('BROWSER_ENABLED', 'maybe')).toBe('BROWSER_ENABLED must be true or false')
   expect(await refused('BAZILION_BASH_APPROVAL', 'true')).toBe(
-    'BAZILION_BASH_APPROVAL must be dangerous or off',
+    'BAZILION_BASH_APPROVAL must be one of: off, dangerous, review',
   )
   expect(await refused('BAZILION_WEB_SEARCH_ROUTE', 'google')).toBe(
-    'BAZILION_WEB_SEARCH_ROUTE must be one of: auto, brave, searxng, native, off',
+    'BAZILION_WEB_SEARCH_ROUTE must be one of: auto, brave, searxng, tavily, exa, native, off',
   )
   expect(await refused('BROWSER_IDLE_MS', '15 minutes')).toBe(
     'BROWSER_IDLE_MS must be a whole number',
@@ -177,7 +177,7 @@ test('web search says what is in effect and what each choice would meet', async 
   let search = await tool('web-search')
   expect(optionNote(search, 'BAZILION_WEB_SEARCH_ROUTE', 'auto')).toMatchObject({
     tone: 'warning',
-    text: expect.stringContaining('save a Brave key or a SearXNG address'),
+    text: expect.stringContaining('save a Brave, Tavily or Exa key or a SearXNG address'),
   })
   expect(optionNote(search, 'BAZILION_WEB_SEARCH_ROUTE', 'brave')).toEqual({
     text: 'No Brave API key is saved yet.',
@@ -195,6 +195,13 @@ test('web search says what is in effect and what each choice would meet', async 
     text: 'Now: SearXNG.',
     tone: 'ok',
   })
+
+  await save({ BAZILION_WEB_SEARCH_ROUTE: 'tavily' })
+  expect((await tool('web-search')).state).toEqual({ label: 'Needs a Tavily key', tone: 'warning' })
+  await save({ TAVILY_API_KEY: 'tvly-test' })
+  expect((await tool('web-search')).state).toEqual({ label: 'Using Tavily', tone: 'on' })
+  await save({ BAZILION_WEB_SEARCH_ROUTE: 'exa', EXA_API_KEY: 'exa-test' })
+  expect((await tool('web-search')).state).toEqual({ label: 'Using Exa', tone: 'on' })
 
   await save({ BAZILION_WEB_SEARCH_ROUTE: 'off' })
   expect((await tool('web-search')).state).toEqual({ label: 'Off', tone: 'off' })

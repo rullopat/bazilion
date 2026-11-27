@@ -55,8 +55,11 @@ export type TurnRequest = {
     }
   /** A Telegram message: its topic can answer ask_user. */
   | { origin: 'telegram' }
-  /** A scheduled trigger or an inbox wake, already registered by the scheduler. */
-  | { origin: 'trigger' | 'inbox'; claim: TurnClaim }
+  /**
+   * A scheduled trigger, an inbox wake or a wake (something the Agent started has an update),
+   * already registered by the scheduler.
+   */
+  | { origin: 'trigger' | 'inbox' | 'wake'; claim: TurnClaim }
 )
 
 /** An admitted, registered turn, ready for `runAgentTurn`. */

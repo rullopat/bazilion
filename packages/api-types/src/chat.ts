@@ -25,6 +25,8 @@ export interface ChatRequest {
 
 export interface CommandApprovalDecisionRequest {
   decision: 'allow' | 'deny'
+  /** With `allow`: allow commands of this Agent that start with this prefix from now on. */
+  remember?: { prefix: string }
 }
 
 export interface CommandApprovalDecisionResponse {

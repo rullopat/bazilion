@@ -11,6 +11,7 @@ import { AddProviderDialog } from '../../components/setup/AddProviderDialog'
 import { ModelPicker } from '../../components/setup/ModelPicker'
 import {
   ChatModelsCard,
+  CommandReviewCard,
   ImagesCard,
   ProvidersCard,
   StatusLine,
@@ -105,6 +106,7 @@ function ModelsPage() {
         onChanged={reload}
       />
       <ImagesCard images={models.images} onConnect={(id) => open({ add: id })} onChanged={reload} />
+      <CommandReviewCard chat={models.chat} review={models.commandReview} onChanged={reload} />
       <ProvidersCard
         providers={listed}
         total={providers.length}
