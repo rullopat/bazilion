@@ -12,6 +12,7 @@ import { type AskUser, askUserTool } from '../tools/ask-user.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
 import { deliverFileTool, type FileSink, type ShowResult } from '../tools/deliver-file.ts'
+import { pdfReadTool, viewImageTool } from '../tools/documents.ts'
 import { homeTools } from '../tools/home.ts'
 import { imageGenerateTool } from '../tools/image-generate.ts'
 import { jobTools } from '../tools/jobs.ts'
@@ -32,6 +33,7 @@ import type {
   JobHost,
   McpHost,
   MessagingHost,
+  ResultContent,
   ScheduleHost,
   SecretHost,
   TeamHost,
@@ -94,6 +96,10 @@ export interface BazilionCustomToolsOpts {
   secretHost?: SecretHost
   /** The Agent's secrets with their values, for web_fetch headers. */
   secrets?: readonly WebFetchSecret[]
+  /** Files the Agent names, read as its file tools would: view_image and pdf_read. */
+  readFile?: (path: string) => Buffer
+  /** One of its saved results, for view_image. */
+  readResult?: (resultId: string) => Promise<ResultContent>
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
   /** Commands run in Docker: paths the Agent is told are the container's. */
@@ -140,5 +146,12 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.jobHost) handlers.push(...jobTools(opts.jobHost))
   if (opts.scheduleHost) handlers.push(...scheduleTools(opts.scheduleHost))
   if (opts.secretHost) handlers.push(...secretTools(opts.secretHost))
+  if (opts.readFile) {
+    const sources = {
+      readFile: opts.readFile,
+      ...(opts.readResult ? { readResult: opts.readResult } : {}),
+    }
+    handlers.push(viewImageTool(sources), pdfReadTool(sources))
+  }
   return handlers.map(ourToolToPiTool)
 }

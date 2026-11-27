@@ -151,6 +151,9 @@ async function openAgentTurn(
           return result
         }
       : undefined,
+    readResult: served.has('resultHost')
+      ? (resultId) => call('readResult', { resultId })
+      : undefined,
     showResult: served.has('resultHost')
       ? async (resultId) => {
           const shown = await call('showResult', { resultId })

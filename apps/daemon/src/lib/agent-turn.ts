@@ -3,8 +3,7 @@
 // registration whatever happens.
 
 import { randomUUID } from 'node:crypto'
-import { realpathSync } from 'node:fs'
-import { join, posix, resolve } from 'node:path'
+import { join, posix } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { agentSecretValues, listAgentSecrets } from '../core/agent-secrets.ts'
 import { imageRoute } from '../core/image-generation-config.ts'
@@ -17,7 +16,7 @@ import {
 import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { rememberLocalModelWindow } from '../runtime/providers/pi-runtime.ts'
-import { isContained, readContainedFile } from '../runtime/safe-files.ts'
+import { readFromRoots } from '../runtime/safe-files.ts'
 import { loadPromptSkills } from '../runtime/session/prompt.ts'
 import { ContainerPaths } from '../runtime/shell/container-paths.ts'
 import {
@@ -28,6 +27,7 @@ import {
 } from '../runtime/shell/docker.ts'
 import { resolveShellSecurityConfig, toolEnvironment } from '../runtime/shell/security.ts'
 import { buildDockerSandbox, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
+import { MAX_PICTURE_BYTES } from '../runtime/tools/pictures.ts'
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
@@ -38,7 +38,7 @@ import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
 import { reviewCommand } from './command-review.ts'
 import { getCtx } from './ctx.ts'
-import { createImageGenerationHost, MAX_REFERENCE_BYTES } from './image-generation.ts'
+import { createImageGenerationHost } from './image-generation.ts'
 import { createJobHost } from './jobs.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
@@ -220,19 +220,12 @@ function turnHosts(
   const readAgentFile = (path: string): Buffer => {
     if (!turn.docker) {
       // The workspace and the Agent's uploads only, links resolved, as deliver_file reads.
-      const wanted = resolve(agent.team.path, path)
-      for (const root of [agent.team.path, join(agent.agent.dir, 'uploads')]) {
-        let real: string
-        try {
-          real = realpathSync(root)
-        } catch {
-          continue
-        }
-        if (isContained(root, wanted) || isContained(real, wanted)) {
-          return readContainedFile(wanted, real, MAX_REFERENCE_BYTES)
-        }
-      }
-      throw new Error(`${path} is not in your workspace or uploads`)
+      return readFromRoots(
+        path,
+        [agent.team.path, join(agent.agent.dir, 'uploads')],
+        agent.team.path,
+        MAX_PICTURE_BYTES,
+      )
     }
     const current = sandbox()
     const files = new ContainerPaths([

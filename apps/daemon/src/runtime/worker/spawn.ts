@@ -296,6 +296,7 @@ const RPC_HANDLERS: RpcHandlers = {
   },
   publishResult: (args, { hosts }) => host(hosts.resultHost, 'result').publish(args),
   showResult: ({ resultId }, { hosts }) => host(hosts.resultHost, 'result').show(resultId),
+  readResult: ({ resultId }, { hosts }) => host(hosts.resultHost, 'result').read(resultId),
   generateImages: (args, { hosts }) =>
     host(hosts.imageGenerationHost, 'image generation').generate(args),
   webSearch: (args, { hosts }) => host(hosts.webSearchHost, 'web search').search(args),

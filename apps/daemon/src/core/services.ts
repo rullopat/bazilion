@@ -9,6 +9,7 @@
 
 import { IMAGE_ROUTES } from './image-generation-config.ts'
 import { PROVIDERS } from './providers.ts'
+import { TRANSCRIPTION_ROUTES } from './transcription-config.ts'
 
 export type FieldKind = 'secret' | 'config'
 
@@ -111,6 +112,31 @@ export const SERVICES: ServiceDef[] = [
         },
         description:
           'Off by default. API-key routes are billed per image; the ChatGPT sign-in uses your subscription.',
+      },
+    ],
+  },
+
+  {
+    id: 'transcription',
+    displayName: 'Transcription',
+    // Chosen under Transcription on the Models page; the field is here for `bazilion config`.
+    category: 'function',
+    hint: 'Voice notes and audio you send, turned into words before the turn.',
+    fields: [
+      {
+        envVar: 'BAZILION_TRANSCRIPTION_MODEL',
+        kind: 'config',
+        label: 'Transcription model',
+        input: {
+          type: 'choice',
+          default: 'off',
+          options: [
+            { value: 'off', label: 'Off' },
+            ...TRANSCRIPTION_ROUTES.map((route) => ({ value: route.id, label: route.label })),
+          ],
+        },
+        description:
+          'Off by default: an Agent then gets the audio file without its words. Billed per minute of audio.',
       },
     ],
   },

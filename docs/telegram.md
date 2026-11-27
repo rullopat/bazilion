@@ -58,10 +58,13 @@ allow anyone else ([coding environments](coding-environments.md)).
 
 ## In an Agent topic
 
-Plain messages, photos and files go to the Agent's follow-up queue and run one turn at a time; a
-👀 reaction shows the message was received. Photos reach the model as images; other files are
-saved for the Agent to read (up to 20 MB). If a queued message fails, is cancelled or is
-removed, the bot replies to it.
+Plain messages, photos, voice notes and files go to the Agent's follow-up queue and run one turn
+at a time; a 👀 reaction shows the message was received. Photos reach the model as images; other
+files are saved for the Agent to read (up to 20 MB), a PDF with `pdf_read`. A voice note or audio
+file is transcribed before the turn when a model is chosen under **Transcription** on
+**Setup → Models**: the turn's message carries its words and the file's path
+([models](models-and-providers.md#transcription)). Without one the Agent gets the file alone. If
+a queued message fails, is cancelled or is removed, the bot replies to it.
 
 - `/queue` lists waiting messages; `/queue drop <n|all>` removes them.
 - `/stop` cancels the running turn and, when messages are waiting, pauses the queue; `/resume`

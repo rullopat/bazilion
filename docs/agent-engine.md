@@ -17,7 +17,8 @@ same two functions:
    and its conversation, refuses a
    disabled provider or a disconnected ChatGPT account, registers the turn's `AbortController`
    under the Agent id, prepares the Docker settings when `BAZILION_BASH_SANDBOX=docker`, reads the
-   workspace `AGENTS.md` files and saves non-image attachments to `uploads/`. Trigger and inbox
+   workspace `AGENTS.md` files and saves non-image attachments to `uploads/`, transcribing audio
+   when a Transcription model is chosen (`lib/transcription.ts`). Trigger and inbox
    turns arrive already registered by the scheduler.
 2. `runAgentTurn` (`apps/daemon/src/lib/agent-turn.ts`) builds the daemon hosts behind the
    worker's tools, starts the worker with `spawnWorkerTurn`, relays its frames (mirroring them to
@@ -168,6 +169,12 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   and `web_fetch` headers written `{{secret:NAME}}` (`lib/agent-secrets.ts`); see
   [questions](questions.md#secrets-an-agent-asks-for). Tool results go to the model with secrets
   and Bazilion's credentials taken out (`redactToolResults` in `runtime/pi/session.ts`).
+- `view_image` shows the model pictures: files in the workspace or uploads, URLs (through the
+  `web_fetch` guard) and saved results, PNG, JPEG, GIF or WebP up to 25 MiB each; a model that
+  takes no images gets Pi's note instead. `pdf_read` gives a PDF's text page by page (`pages`
+  such as `2-5`), in parts of a snapshot's size (`part`), and marks a page without text; it has no
+  OCR (`runtime/tools/documents.ts`, with unpdf). Both read files as the file tools do: container
+  paths in Docker, the workspace and uploads on the host.
 - `schedule_add`, `schedule_list`, `schedule_remove`: the Agent's own schedules
   (`lib/schedule-host.ts`), in every kind of turn; see [the scheduler](#9-scheduler).
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and

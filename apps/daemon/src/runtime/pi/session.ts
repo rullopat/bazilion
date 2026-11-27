@@ -53,6 +53,7 @@ import type {
   McpHost,
   MessagingHost,
   RecallHost,
+  ResultContent,
   ScheduleHost,
   SecretHost,
   TeamHost,
@@ -116,6 +117,8 @@ export interface CreateBazilionSessionOptions {
   scheduleHost?: ScheduleHost
   /** secret_list, and secret_request where the owner can answer (`askSecret`). */
   secretHost?: SecretHost
+  /** One of the Agent's saved results, for view_image. */
+  readResult?: (resultId: string) => Promise<ResultContent>
   /** Whom the Agent can message, listed in its system prompt. */
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
@@ -323,6 +326,8 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     scheduleHost: opts.scheduleHost,
     secretHost: opts.secretHost,
     secrets,
+    readFile: shellTools.readFile,
+    ...(opts.readResult ? { readResult: opts.readResult } : {}),
     env,
     docker,
   })

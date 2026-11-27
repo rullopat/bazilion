@@ -26,6 +26,7 @@ export interface RpcMethods {
   askUser: { args: { question: AgentQuestionInput }; result: AgentQuestionToolResult }
   publishResult: { args: PublishResultArgs; result: ResultReference }
   showResult: { args: { resultId: string }; result: ShownResult }
+  readResult: { args: { resultId: string }; result: ResultContent }
   generateImages: { args: ImageGenerationInput; result: ImageGenerationOutput }
   webSearch: { args: WebSearchArgs; result: WebSearchOutput }
   sendMessage: { args: SendMessageArgs; result: { messageId: string } }
@@ -346,10 +347,19 @@ export interface ShownResult {
   mimeType: string
 }
 
+/** A saved result's bytes, base64, for view_image. */
+export interface ResultContent {
+  name: string
+  mimeType: string
+  data: string
+}
+
 export interface ResultHost {
   publish(input: PublishResultArgs): Promise<ResultReference>
   /** One of the Agent's own saved results (a picture made in the background, say). */
   show(resultId: string): Promise<ShownResult>
+  /** The bytes of one of the Agent's own saved results. */
+  read(resultId: string): Promise<ResultContent>
 }
 
 export interface ImageGenerationHost {

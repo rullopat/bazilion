@@ -246,6 +246,27 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
         icon: 'question',
         kind: 'other',
       }
+    case 'view_image':
+      return {
+        doing: 'looking at pictures',
+        verb: 'Looked at',
+        target: (() => {
+          const count = ['paths', 'urls', 'results']
+            .map((key) => (Array.isArray(args?.[key]) ? (args?.[key] as unknown[]).length : 0))
+            .reduce((a, b) => a + b, 0)
+          return count === 1 ? 'a picture' : `${count} pictures`
+        })(),
+        icon: 'image',
+        kind: 'read',
+      }
+    case 'pdf_read':
+      return {
+        doing: `reading ${baseName(String(args?.path ?? 'a PDF'))}`,
+        verb: 'Read',
+        target: str(args?.path) ? String(args?.path) : null,
+        icon: 'read',
+        kind: 'read',
+      }
     case 'secret_request':
       return {
         doing: 'asking you for a secret',

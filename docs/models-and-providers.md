@@ -98,6 +98,18 @@ Each row on the page says who uses the model. Removing a model an Agent template
 moves the template to another model and says so; an Agent with its own model on a removed model
 is refused until it gets another one in its **Agent** tab.
 
+## Transcription
+
+**Transcription** on the Models page chooses what turns voice notes and audio you send, on
+Telegram or attached in a chat, into words before the turn: **GPT Transcribe** through an OpenAI
+API key (billed per minute of audio), or **Off**. The turn's message then carries the words, and
+the file is saved with the uploads all the same. A file that cannot be transcribed says why in
+the message. Off, the default, changes nothing: the Agent gets the file. From a terminal:
+`bazilion config set BAZILION_TRANSCRIPTION_MODEL openai:gpt-transcribe`.
+
+Audio files an Agent finds in its workspace are not transcribed, only the ones you send. A
+transcription is not a turn, so it does not show in [Usage](usage.md).
+
 ## What they cost
 
 [Usage](usage.md) adds up the tokens and cost Pi records for every reply. Providers paid per use

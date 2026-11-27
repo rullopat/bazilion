@@ -10,6 +10,7 @@ import type {
   ResolvedAgent,
 } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, resolveAgent } from '../core/index.ts'
+import { transcriptionRoute } from '../core/transcription-config.ts'
 import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 import { type DockerTurn, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import type { RepositoryInstructions } from '../runtime/worker/runtime.ts'
@@ -26,6 +27,7 @@ import { dockerTurn } from './coding-environment.ts'
 import { resolveConversationTarget, titleConversationFromMessage } from './conversation-target.ts'
 import { getCtx } from './ctx.ts'
 import { loadRepositoryInstructions } from './repository-instructions.ts'
+import { transcriptNotes } from './transcription.ts'
 
 /** The scheduler's registration of a trigger or inbox turn, which preparation takes over. */
 interface TurnClaim {
@@ -116,11 +118,16 @@ export async function prepareAgentTurn(request: TurnRequest): Promise<PreparedAg
       documents,
       docker ? { referenceDir: SANDBOX_INPUTS_DIR } : {},
     )
+    // Audio you sent comes with its words when a Transcription model is chosen; the file is
+    // saved above all the same.
+    const transcripts = await transcriptNotes(transcriptionRoute(env), documents, {
+      signal: controller.signal,
+    })
     return {
       request,
       agent,
       conversation,
-      message: [request.message, fileNote].filter(Boolean).join('\n\n'),
+      message: [request.message, transcripts, fileNote].filter(Boolean).join('\n\n'),
       images,
       ...(docker ? { docker } : {}),
       repositoryInstructions,

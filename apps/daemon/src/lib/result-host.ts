@@ -35,5 +35,15 @@ export function createResultHost(
         throw new Error(`deliver_file: you have no saved result ${resultId}`)
       return { result: { resultId: saved.id }, name: saved.name, mimeType: saved.mimeType }
     },
+    async read(resultId: string) {
+      const saved = typeof resultId === 'string' ? results.get(db, resultId) : null
+      if (!saved || saved.agentId !== agent.agent.id)
+        throw new Error(`you have no saved result ${resultId}`)
+      return {
+        name: saved.name,
+        mimeType: saved.mimeType,
+        data: results.read(db, saved.id).toString('base64'),
+      }
+    },
   }
 }

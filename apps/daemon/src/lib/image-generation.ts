@@ -3,6 +3,7 @@ import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter'
 import type { BazilionDb } from '../core/db/client.ts'
 import { type ImageRoute, imageRoute } from '../core/image-generation-config.ts'
 import * as results from '../core/repos/results.ts'
+import { MAX_PICTURE_BYTES, pictureType } from '../runtime/tools/pictures.ts'
 import type {
   ImageGenerationHost,
   ImageGenerationInput,
@@ -194,22 +195,6 @@ async function requestImages(
   return response.output.flatMap((part) => (part.type === 'image' ? [part.data] : []))
 }
 
-function imageType(bytes: Buffer): { mimeType: string; extension: string } | null {
-  if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
-    return { mimeType: 'image/png', extension: 'png' }
-  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
-    return { mimeType: 'image/jpeg', extension: 'jpg' }
-  if (
-    bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
-    bytes.subarray(8, 12).toString('ascii') === 'WEBP'
-  )
-    return { mimeType: 'image/webp', extension: 'webp' }
-  return null
-}
-
-/** The largest reference picture sent; the providers refuse much smaller ones already. */
-export const MAX_REFERENCE_BYTES = 25 * 1024 * 1024
-
 /** One host per turn: it counts the turn's calls and saves images into the turn's conversation. */
 export function createImageGenerationHost(opts: ImageHostOptions): ImageGenerationHost {
   let calls = 0
@@ -271,9 +256,11 @@ function readReference(opts: ImageHostOptions, path: string): Reference {
   if (typeof path !== 'string' || !path) throw new Error('A reference is a path to a picture')
   if (!opts.readReference) throw new Error('This turn cannot read reference pictures')
   const bytes = opts.readReference(path)
-  if (bytes.length > MAX_REFERENCE_BYTES) throw new Error(`${path} is larger than 25 MiB`)
-  const type = imageType(bytes)
-  if (!type) throw new Error(`${path} is not a PNG, JPEG or WebP picture`)
+  if (bytes.length > MAX_PICTURE_BYTES) throw new Error(`${path} is larger than 25 MiB`)
+  const type = pictureType(bytes)
+  // The image models take these three; a GIF is not one of them.
+  if (!type || type.mimeType === 'image/gif')
+    throw new Error(`${path} is not a PNG, JPEG or WebP picture`)
   return { bytes, mimeType: type.mimeType, name: `reference.${type.extension}` }
 }
 
@@ -289,8 +276,9 @@ async function generateAndSave(
   if (!images.length) throw new Error(`${route.model} returned no image`)
   const decoded = images.map((data) => {
     const bytes = Buffer.from(data, 'base64')
-    const type = imageType(bytes)
-    if (!type) throw new Error(`${route.model} returned data that is not a PNG, JPEG or WebP image`)
+    const type = pictureType(bytes)
+    if (!type || type.mimeType === 'image/gif')
+      throw new Error(`${route.model} returned data that is not a PNG, JPEG or WebP image`)
     return { bytes, ...type }
   })
   const stem = (input.name ?? 'generated-image').replace(/\.(png|jpe?g|webp)$/i, '')

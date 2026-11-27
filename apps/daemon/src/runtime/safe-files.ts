@@ -174,3 +174,28 @@ export function isContained(root: string, candidate: string): boolean {
   const rel = relative(root, candidate)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
+
+/**
+ * A file an Agent names on the host, read only when it lies in one of `roots` (its workspace, its
+ * uploads), links resolved, as `deliver_file` reads. At most `maxBytes`, else the file's own size.
+ */
+export function readFromRoots(
+  path: string,
+  roots: readonly string[],
+  cwd: string,
+  maxBytes?: number,
+): Buffer {
+  const wanted = resolve(cwd, path)
+  for (const root of roots) {
+    let real: string
+    try {
+      real = realpathSync(root)
+    } catch {
+      continue
+    }
+    if (isContained(root, wanted) || isContained(real, wanted)) {
+      return readContainedFile(wanted, real, maxBytes ?? statSync(wanted).size)
+    }
+  }
+  throw new Error(`${path} is not in your workspace or uploads`)
+}
