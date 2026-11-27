@@ -44,8 +44,9 @@ in your place, and the file tools work in Docker as they do on the host. Taken f
 
 - `src/runtime/shell/`: `tooling.ts` (file tools in Docker, `apply_patch`), `docker.ts` (detached
   containers), `approval.ts` (rules, review). `src/lib/jobs.ts` with its RPC methods and the wake.
-- `src/lib/bash-approval.ts`, a `command_rules` table, `src/core/services.ts` (the new choice and
-  model function), routes, `packages/api-types`, `apps/cli/src/commands/`, the panel.
+- `src/lib/bash-approval.ts`, a `command_rules` table and its migration, `src/core/services.ts`
+  (the new choice and model function), routes, `packages/api-types`, `apps/cli/src/commands/`,
+  the panel.
 - Guides: [coding environments](../../coding-environments.md),
   [agent engine](../../agent-engine.md#5-tools), [tools](../../tools.md).
 
@@ -55,4 +56,4 @@ in your place, and the file tools work in Docker as they do on the host. Taken f
   the browser. Opening it is a separate decision.
 - A rule matches the start of a command, so `git push` also covers `git push --force`. To decide:
   whether the classifier's worst risks still ask under a rule.
-- `command_rules` changes the schema; see [the plan](../README.md#planned).
+- `command_rules` comes with its migration ([BAZ-094](../in_progress/BAZ-094-migrations.md)).

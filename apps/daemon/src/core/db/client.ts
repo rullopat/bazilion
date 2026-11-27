@@ -12,6 +12,8 @@ export interface QueryableDatabase {
   run(sql: string, params?: unknown[]): { changes: number; lastInsertRowid: number | bigint }
   exec(sql: string): void
   transaction<T>(fn: () => T): () => T
+  /** Whether a transaction is open: SQLite ends one by itself on some errors (a full disk). */
+  inTransaction(): boolean
 }
 
 export interface BazilionDb {
@@ -83,16 +85,23 @@ function wrap(rawDb: DatabaseSync): QueryableDatabase {
           else rawDb.exec(`RELEASE SAVEPOINT ${savepoint}`)
           return result
         } catch (err) {
-          if (outermost) rawDb.exec('ROLLBACK')
-          else {
-            rawDb.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`)
-            rawDb.exec(`RELEASE SAVEPOINT ${savepoint}`)
+          // After an error that made SQLite roll back by itself, there is nothing left to undo,
+          // and a ROLLBACK would replace the error that says what happened.
+          if (rawDb.isTransaction) {
+            if (outermost) rawDb.exec('ROLLBACK')
+            else {
+              rawDb.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+              rawDb.exec(`RELEASE SAVEPOINT ${savepoint}`)
+            }
           }
           throw err
         } finally {
           transactionDepth--
         }
       }
+    },
+    inTransaction() {
+      return rawDb.isTransaction
     },
   }
 }

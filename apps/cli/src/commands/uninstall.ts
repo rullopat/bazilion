@@ -13,6 +13,7 @@ const RESET_ENTRIES = [
   'agents',
   'teams',
   'browsers',
+  'upgrades',
   DAEMON_PID_FILE,
   'bazilion.db-wal',
   'bazilion.db-shm',

@@ -14,6 +14,7 @@ Background commands, also among the missing tools, ship in 0.63.0 with BAZ-086.
 
 | ID | Story | Release |
 | --- | --- | --- |
+| [BAZ-094](in_progress/BAZ-094-migrations.md) | Upgrades keep your home: database migrations | 0.63.0 |
 | [BAZ-086](draft/BAZ-086-commands-and-files.md) | Commands that keep running, approvals that remember, file tools in Docker | 0.63.0 |
 | [BAZ-087](draft/BAZ-087-search-pages-browser.md) | Search filters, long pages kept whole, a browser for checking web apps | 0.63.0 |
 | [BAZ-088](draft/BAZ-088-questions-messages-recall-pictures.md) | Questions in one card, quiet messages, recall across conversations, pictures from pictures | 0.63.0 |
@@ -23,10 +24,10 @@ Background commands, also among the missing tools, ship in 0.63.0 with BAZ-086.
 | [BAZ-092](draft/BAZ-092-helpers.md) | Helpers: short runs of the same Agent | 0.64.0 |
 | [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | 0.65.0 and later |
 
-**Schema.** The schema has not changed since 13 November 2026. Two of these stories change it:
-`command_rules` (BAZ-086) and the `agent_triggers` changes (BAZ-089). Both ship in 0.63.0, so
-upgrading needs a fresh home only once ([upgrading](../upgrades.md)), and 0.64.0 keeps the same
-schema. The other stories need no schema change.
+**Schema.** BAZ-094 comes first: from 0.63.0 on, an upgrade migrates the home instead of
+needing a fresh one, a 0.62.0 home included ([upgrading](../upgrades.md)). Two later stories
+change the schema, each with its own migration: `command_rules` (BAZ-086, 0.63.0) and the
+`agent_triggers` changes (BAZ-089, 0.64.0).
 
 ## Done
 

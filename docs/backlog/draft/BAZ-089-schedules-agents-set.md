@@ -36,7 +36,7 @@ from OpenClaw's `automations` (`cron`).
 - `src/runtime/tools/schedule.ts`, a schedule host with its RPC methods, `src/lib/scheduler.ts`,
   `src/lib/cron.ts`, the triggers repository in `src/core/repos/`.
 - `agent_triggers` gains the `once` kind with its time, the conversation to run in, and the Agent
-  that set it.
+  that set it, with the migration that rebuilds the table.
 - `src/routes/triggers.ts`, `packages/api-types`, `apps/cli/src/commands/trigger.ts`, the
   Schedules sheet.
 - Guide: [agent engine](../../agent-engine.md#9-scheduler).
@@ -47,6 +47,6 @@ from OpenClaw's `automations` (`cron`).
   an Agent that keeps adding schedules, and remove them.
 - A one-time schedule missed while the daemon was stopped follows the scheduler's existing rule
   for missed times.
-- The `agent_triggers` change ships early, with 0.63.0's schema, so the home is reset only once
-  ([the plan](../README.md#planned)).
+- The `agent_triggers` change rebuilds the table in its migration
+  ([BAZ-094](../in_progress/BAZ-094-migrations.md)), keeping every schedule and its runs.
 - An Agent cannot change a schedule you set. To decide: whether it may pause one.

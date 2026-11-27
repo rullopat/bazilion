@@ -155,8 +155,8 @@ bazilion backup restore <file> [--identity key.txt] [--force]    # with the daem
 bazilion uninstall [--yes] [--all]           # reset the home; --all also removes skills
 ```
 
-There are no database migrations: a release with a new schema refuses an old home. Back it up,
-reset it and start again ([backup](docs/backup.md), [upgrades](docs/upgrades.md)).
+An upgrade keeps the home: the daemon copies the database aside, then migrates it to the new
+release when it starts ([upgrades](docs/upgrades.md), [backup](docs/backup.md)).
 
 ## Development
 

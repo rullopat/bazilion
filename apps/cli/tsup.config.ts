@@ -23,13 +23,16 @@ export default defineConfig({
   async onSuccess() {
     const distDir = join(process.cwd(), 'dist')
 
-    // Copy the database schema next to the bundled payloads. `schema.ts`
-    // resolves it relative to `import.meta.url`, which lands in `dist/`;
-    // tsup only emits JS, so stage the SQL here manually.
+    // Copy the database schema and its migrations next to the bundled payloads. `schema.ts`
+    // resolves them relative to `import.meta.url`, which lands in `dist/`; tsup only emits JS,
+    // so stage the SQL here manually.
     copyFileSync(
       join(process.cwd(), '../daemon/src/core/db/schema.sql'),
       join(distDir, 'schema.sql'),
     )
+    cpSync(join(process.cwd(), '../daemon/src/core/db/migrations'), join(distDir, 'migrations'), {
+      recursive: true,
+    })
     // The published package ships the repository's licence text.
     copyFileSync(join(process.cwd(), '../../LICENSE'), join(distDir, 'LICENSE'))
     // The Bazilion app's icon on macOS (`bazilion app install`), made by scripts/app-icon.sh.

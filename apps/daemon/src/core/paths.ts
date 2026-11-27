@@ -28,6 +28,8 @@ export interface Paths {
    * state and is excluded from backup/export.
    */
   browsersDir: string
+  /** The database as it was before each schema upgrade, kept until the owner deletes it. */
+  upgradesDir: string
   profileDir(id: string): string
   agentDir(id: string): string
   skillDir(name: string): string
@@ -48,6 +50,7 @@ export function resolvePaths(home?: string): Paths {
     skillsDir: join(root, 'skills'),
     teamsDir: join(root, 'teams'),
     browsersDir: join(root, 'browsers'),
+    upgradesDir: join(root, 'upgrades'),
     profileDir(id) {
       return join(root, 'profiles', id)
     },

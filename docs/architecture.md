@@ -73,9 +73,13 @@ The database uses `node:sqlite` with WAL and foreign keys; transactions are expl
 and a second daemon, `backup restore` and `uninstall` refuse a home whose pidfile names a live
 process.
 
-`apps/daemon/src/core/db/schema.sql` is the whole schema, and schema changes edit it directly. An
-empty database gets it in one transaction; an existing one must match it (comments and whitespace
-aside), otherwise the daemon refuses to start. There are no migrations: see [upgrades](upgrades.md).
+`apps/daemon/src/core/db/schema.sql` is the whole schema: an empty database gets it in one
+transaction, with the latest schema version in `PRAGMA user_version`. An older database is brought
+to it by `apps/daemon/src/core/db/migrations/` (`NNN-name.sql` turns version NNN - 1 into NNN;
+`001-baseline.sql` is the schema of 0.26.0 to 0.62.0). The daemon copies the database into
+`upgrades/` first and applies the migrations in one transaction, which commits only when the result
+matches `schema.sql` (comments and spacing aside). A newer or unknown database is refused
+untouched. See [upgrades](upgrades.md).
 
 ## Authentication and secrets
 

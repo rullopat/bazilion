@@ -33,9 +33,9 @@ There is no build step for development: `tsx` runs the TypeScript directly.
   `~/.bazilion` (`BAZILION_HOME`). `src/index.ts` writes the pidfile, bootstraps the home
   (`src/lib/ctx.ts`), starts the scheduler, Telegram and the queue pump, then serves `src/app.ts`,
   which mounts `src/routes/` behind `src/lib/middleware-auth.ts`.
-  - `src/core/`: the schema (`db/schema.sql`), repositories, domain operations (agents, teams,
-    profiles, skills), paths, secrets, `services.ts` (the `/config` fields) and `providers.ts`
-    (one entry per LLM provider).
+  - `src/core/`: the schema (`db/schema.sql`, `db/migrations/`), repositories, domain operations
+    (agents, teams, profiles, skills), paths, secrets, `services.ts` (the `/config` fields) and
+    `providers.ts` (one entry per LLM provider).
   - `src/lib/`: turn preparation and running (`turn-preparation.ts`, `agent-turn.ts`),
     `scheduler.ts`, auth, and one module or directory per feature (browser, MCP, Telegram, …).
   - `src/runtime/`: `pi/` (Pi session, event translation, tool adapter), `session/` (the system
@@ -70,9 +70,14 @@ Paths in this section are relative to `apps/daemon/`.
   settings and with Pi's resource discovery off; keep it that way.
 - Only the daemon imports daemon code at runtime. Exceptions: the CLI's offline commands
   (`backup restore`, `uninstall`) and the CLI tests.
-- `src/core/db/schema.sql` is the whole schema and is edited directly. A home whose schema
-  differs is refused at startup; there are no migrations, so a schema change means resetting dev
-  homes (`bazilion uninstall --yes`).
+- `src/core/db/schema.sql` is the whole schema, which a fresh home gets. Every change to it comes
+  with a migration, `src/core/db/migrations/NNN-name.sql`, numbered after the last one, that turns
+  the previous version into it; `001-baseline.sql` is frozen (the schema of 0.26.0 to 0.62.0).
+  `test/core/migrations.test.ts` checks that the migrations give exactly `schema.sql`, and pins
+  each shipped migration by hash (add one there when its release ships). At startup
+  the daemon copies the database into `upgrades/`, migrates it in one transaction and refuses a
+  newer or unknown schema untouched. The owner's home holds real work: never make a change that
+  needs a reset.
 - `bazilion.db` and `auth.json` are a pair: the bootstrap token in `auth.json` seeds secret
   encryption and cannot be revoked. Effective settings: process env over secrets over config.
 - Agent fetches go through `src/runtime/tools/web-ssrf.ts`, browser traffic through
@@ -104,7 +109,9 @@ Daemon paths are again relative to `apps/daemon/`.
 - An Agent tool: a handler in `src/runtime/tools/`, added in `src/runtime/pi/tools.ts`. When it
   needs the daemon (the database, credentials, a long-lived resource), add a host in `src/lib/`,
   an RPC method and the worker-side proxy.
-- A table or column: edit `src/core/db/schema.sql` and its repository in `src/core/repos/`.
+- A table or column: edit `src/core/db/schema.sql`, add the migration that makes the same change
+  (keeping every row; a rebuilt table recreates its indexes), and update its repository in
+  `src/core/repos/`.
 
 ## Tests
 
@@ -149,8 +156,9 @@ Daemon paths are again relative to `apps/daemon/`.
 
 - Build features directly for one local user, without admission, lease, receipt, evidence or
   qualification ceremony.
-- No legacy paths, compatibility shims, feature flags for cutover, deprecation periods or
-  migrations: change the code directly.
+- No legacy paths, compatibility shims, feature flags for cutover or deprecation periods: change
+  the code directly. Database migrations are the exception: an upgrade keeps the owner's home
+  (asked for on 2026-11-27).
 - Every management feature ships in both the CLI and the web UI.
 - Linux first; macOS runs plain host execution and is untested; Windows is unsupported.
 - Docker is the only sandbox (`BAZILION_BASH_SANDBOX=off|docker`) and applies to every kind of

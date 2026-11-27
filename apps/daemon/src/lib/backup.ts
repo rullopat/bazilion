@@ -71,7 +71,10 @@ export function createBackupArchive(paths: Paths, snapshot: BackupSnapshot) {
           entry === DAEMON_PID_FILE ||
           /^teams\/[^/]+\/memory\/\.qmd-index\.sqlite/.test(entry) ||
           entry === 'browsers' ||
-          entry.startsWith('browsers/')
+          entry.startsWith('browsers/') ||
+          // The databases kept from before schema upgrades belong to this home, not to a backup.
+          entry === 'upgrades' ||
+          entry.startsWith('upgrades/')
         )
       },
       onWriteEntry(entry) {

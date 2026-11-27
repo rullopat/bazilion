@@ -8,7 +8,13 @@ import { writeSync } from 'node:fs'
 import { isLoopbackHost, publicOriginConfig } from '@bazilion/api-types'
 import { serve } from '@hono/node-server'
 import { createApp } from './app.ts'
-import { IncompatibleDatabaseError, mergeSecretsIntoEnv, resolvePaths } from './core/index.ts'
+import {
+  DatabaseUpgradeError,
+  IncompatibleDatabaseError,
+  mergeSecretsIntoEnv,
+  NewerDatabaseError,
+  resolvePaths,
+} from './core/index.ts'
 import { stopAgentTurns } from './lib/agent-cancel.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './lib/browser/config.ts'
 import { prepareBrowser } from './lib/browser/install.ts'
@@ -49,6 +55,8 @@ try {
 } catch (error) {
   const detail =
     error instanceof IncompatibleDatabaseError ||
+    error instanceof NewerDatabaseError ||
+    error instanceof DatabaseUpgradeError ||
     error instanceof IncompatibleBootstrapIdentityError
       ? error.message
       : error instanceof Error

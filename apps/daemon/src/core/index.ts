@@ -15,7 +15,12 @@ export { isSetupComplete, listAvailableModels } from './availableModels.ts'
 export { replaceCuratedModels } from './curatedModels.ts'
 export type { BazilionDb } from './db/client.ts'
 export { openDb, openInMemoryDb } from './db/client.ts'
-export { IncompatibleDatabaseError, initSchema } from './db/schema.ts'
+export {
+  DatabaseUpgradeError,
+  IncompatibleDatabaseError,
+  initSchema,
+  NewerDatabaseError,
+} from './db/schema.ts'
 export { modelWindowSetting, readModelWindows, writeModelWindow } from './model-windows.ts'
 export type { Paths } from './paths.ts'
 export { resolvePaths } from './paths.ts'

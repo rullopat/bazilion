@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
-import { type SchemaObject, schemaMatches } from '../../src/core/db/schema.ts'
+import { readHomeSchema, type SchemaObject } from '../../src/core/db/schema.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as results from '../../src/core/repos/results.ts'
 import { createBackupSnapshot } from '../../src/lib/backup.ts'
@@ -46,7 +46,10 @@ test('the backup snapshot keeps result bytes as they were when it was taken', as
     results.remove(env.db, resultId)
     const restored = new DatabaseSync(snapshot.database, { readOnly: true })
     try {
-      expect(schemaMatches((query) => restored.prepare(query).all() as SchemaObject[])).toBe(true)
+      const version = Number(restored.prepare('PRAGMA user_version').get()?.user_version)
+      const read = (query: string) => restored.prepare(query).all() as SchemaObject[]
+      // The snapshot keeps the schema version, so a restore knows which release wrote it.
+      expect(readHomeSchema(read, version)).toMatchObject({ kind: 'known', stamped: true })
       const row = restored.prepare('SELECT bytes FROM agent_results WHERE id = ?').get(resultId)
       expect(Buffer.from(row?.bytes as Uint8Array).toString()).toBe('immutable')
     } finally {
