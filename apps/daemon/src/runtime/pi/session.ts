@@ -46,6 +46,7 @@ import type { FileSink, ShowResult } from '../tools/deliver-file.ts'
 import type { RecallSource } from '../tools/recall.ts'
 import type {
   AgentContact,
+  AudioHost,
   BrowserHost,
   HelperHost,
   ImageGenerationHost,
@@ -57,8 +58,11 @@ import type {
   ResultContent,
   ScheduleHost,
   SecretHost,
+  SpeechHost,
   TeamHost,
+  TranscriptionHost,
   UserMdHost,
+  VideoHost,
   WebSearchHost,
   WorkspaceHost,
 } from '../worker/ipc-protocol.ts'
@@ -127,6 +131,11 @@ export interface CreateBazilionSessionOptions {
   helperHost?: HelperHost
   /** screen and theme, sent to the tabs showing the conversation. */
   workspaceHost?: WorkspaceHost
+  /** The media tools, each while its model is chosen and ready. */
+  videoHost?: VideoHost
+  audioHost?: AudioHost
+  speechHost?: SpeechHost
+  transcriptionHost?: TranscriptionHost
   /** Whom the Agent can message, listed in its system prompt. */
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
@@ -346,6 +355,10 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     readFile: shellTools.readFile,
     helperHost: opts.helperHost,
     workspaceHost: opts.workspaceHost,
+    videoHost: opts.videoHost,
+    audioHost: opts.audioHost,
+    speechHost: opts.speechHost,
+    transcriptionHost: opts.transcriptionHost,
     ...(opts.readResult ? { readResult: opts.readResult } : {}),
     env,
     docker,

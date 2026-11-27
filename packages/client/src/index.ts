@@ -95,8 +95,18 @@ export function createClient(cfg: ClientConfig) {
     if (buffer.trim()) yield JSON.parse(buffer) as T
   }
 
-  async function binary(path: string): Promise<Uint8Array> {
-    const res = await fetch(`${cfg.serverUrl}${path}`, { headers: authHeaders, redirect: 'error' })
+  /** A binary answer: a GET, or a POST of `body` as JSON (speech read out). */
+  async function binary(path: string, body?: unknown): Promise<Uint8Array> {
+    const res = await fetch(`${cfg.serverUrl}${path}`, {
+      ...(body === undefined
+        ? { headers: authHeaders }
+        : {
+            method: 'POST',
+            headers: { ...authHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+      redirect: 'error',
+    })
     if (!res.ok) throw await failure(res)
     return new Uint8Array(await res.arrayBuffer())
   }

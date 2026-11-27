@@ -1,22 +1,28 @@
 import type {
   ChatModelEntry,
   ImageRouteEntry,
+  MediaRouteEntry,
   ModelsResponse,
   ProviderConfigEntry,
   SetProviderModelsResponse,
+  SpeakRequest,
+  SpeechVoicesResponse,
 } from '@bazilion/api-types'
 import {
   AudioLines,
   ChevronRight,
+  Clapperboard,
   Images,
   MessageSquare,
+  Music,
   Plug,
   Plus,
   ShieldCheck,
+  Speech,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
-import { api, errorMessage } from '../../lib/api'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { api, apiFetch, errorMessage } from '../../lib/api'
 import {
   credentialLine,
   factsLine,
@@ -26,6 +32,7 @@ import {
   usedByLine,
   windowLine,
 } from '../../lib/model-facts'
+import { useResource } from '../../lib/use-resource'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { SelectField } from '../ui/form'
@@ -319,13 +326,186 @@ export function TranscriptionCard({
       labelledBy="setup-transcription"
       icon={<AudioLines className="size-5" />}
       title="Transcription"
-      description="What turns voice notes and audio you send, in chat or on Telegram, into words before the turn."
-      offText="Voice notes are not transcribed: Agents get the file"
+      description="What turns speech into words: voice notes and audio you send (before the turn), dictation in the chat, and recordings an Agent transcribes."
+      offText="Voice notes are not transcribed and there is no dictation: Agents get the file"
       unknown="a transcription route"
       choice={transcription}
       onConnect={onConnect}
       onChanged={onChanged}
     />
+  )
+}
+
+/** Videos: one model makes short clips with sound for every Agent, or none does (BAZ-095). */
+export function VideoCard({
+  video,
+  onConnect,
+  onChanged,
+}: {
+  video: ModelsResponse['video']
+  onConnect: (providerId: string) => void
+  onChanged: () => Promise<void>
+}) {
+  return (
+    <RouteCard
+      field="BAZILION_VIDEO_MODEL"
+      labelledBy="setup-video"
+      icon={<Clapperboard className="size-5" />}
+      title="Video"
+      description="What Agents make short videos with, from a prompt or a picture. They run in the background."
+      offText="Agents have no video tool"
+      unknown="a video route"
+      choice={video}
+      onConnect={onConnect}
+      onChanged={onChanged}
+    />
+  )
+}
+
+/** Music and sound: one model makes songs, background music and sound effects (BAZ-095). */
+export function AudioCard({
+  audio,
+  onConnect,
+  onChanged,
+}: {
+  audio: ModelsResponse['audio']
+  onConnect: (providerId: string) => void
+  onChanged: () => Promise<void>
+}) {
+  return (
+    <RouteCard
+      field="BAZILION_AUDIO_MODEL"
+      labelledBy="setup-audio"
+      icon={<Music className="size-5" />}
+      title="Music and sound"
+      description="What Agents make songs, jingles, background music and sound effects with."
+      offText="Agents have no music or sound tool"
+      unknown="a music and sound route"
+      choice={audio}
+      onConnect={onConnect}
+      onChanged={onChanged}
+    />
+  )
+}
+
+/**
+ * Speech: one model reads text out for every Agent (`speak`, Read aloud in the chat, voice replies
+ * on Telegram), in the voice chosen here (BAZ-096).
+ */
+export function SpeechCard({
+  speech,
+  onConnect,
+  onChanged,
+}: {
+  speech: ModelsResponse['speech']
+  onConnect: (providerId: string) => void
+  onChanged: () => Promise<void>
+}) {
+  const ready = speech.routes.some((route) => route.id === speech.selected && route.ready)
+  return (
+    <RouteCard
+      field="BAZILION_SPEECH_MODEL"
+      labelledBy="setup-speech"
+      icon={<Speech className="size-5" />}
+      title="Speech"
+      description="What Agents speak with: the speak tool, Read aloud in the chat, and voice replies when you send a voice note on Telegram."
+      offText="Agents do not speak; Read aloud is not offered"
+      unknown="a speech route"
+      choice={speech}
+      onConnect={onConnect}
+      onChanged={onChanged}
+    >
+      {ready && <VoiceRow key={speech.selected} chosen={speech.voice} onChanged={onChanged} />}
+    </RouteCard>
+  )
+}
+
+/** The voice the speech model reads in, from its provider's list, with a sample to hear. */
+function VoiceRow({
+  chosen,
+  onChanged,
+}: {
+  chosen: string | null
+  onChanged: () => Promise<void>
+}) {
+  const voices = useResource(
+    (signal) => api<SpeechVoicesResponse>('/api/speech/voices', { signal }),
+    [],
+  )
+  const [error, setError] = useState<string | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const player = useRef<HTMLAudioElement | null>(null)
+  useEffect(() => () => player.current?.pause(), [])
+  const list = voices.data?.voices ?? []
+  const current = chosen && list.some((voice) => voice.id === chosen) ? chosen : (list[0]?.id ?? '')
+
+  async function choose(id: string) {
+    setError(null)
+    try {
+      await api('/api/config/fields/BAZILION_SPEECH_VOICE', { method: 'PUT', body: { value: id } })
+      await onChanged()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  async function sample() {
+    const voice = list.find((entry) => entry.id === current)
+    setError(null)
+    setPlaying(true)
+    try {
+      const body: SpeakRequest = {
+        text: `Hello, this is ${voice?.name ?? 'the voice you chose'}. This is how your Agents will sound.`,
+        ...(current ? { voice: current } : {}),
+      }
+      const response = await apiFetch('/api/speech', { body })
+      const url = URL.createObjectURL(await response.blob())
+      player.current?.pause()
+      const audio = new Audio(url)
+      player.current = audio
+      audio.onended = () => {
+        URL.revokeObjectURL(url)
+        setPlaying(false)
+      }
+      await audio.play()
+    } catch (cause) {
+      setError(errorMessage(cause))
+      setPlaying(false)
+    }
+  }
+
+  return (
+    <div className={`${ROW} flex-wrap items-end gap-3 py-3`}>
+      {voices.error ? (
+        <p role="alert" className="m-0 text-sm text-danger">
+          The voices could not be listed: {voices.error}
+        </p>
+      ) : (
+        <>
+          <SelectField
+            label="Voice"
+            value={current}
+            disabled={!voices.data || list.length === 0}
+            placeholder={voices.data ? 'No voices listed' : 'Loading the voices…'}
+            options={list.map((voice) => ({
+              value: voice.id,
+              label: voice.name,
+              ...(voice.detail ? { hint: voice.detail } : {}),
+            }))}
+            onChange={(id) => void choose(id)}
+            className="min-w-56 flex-1"
+          />
+          <Button variant="ghost" disabled={!current || playing} onClick={() => void sample()}>
+            {playing ? 'Playing…' : 'Play a sample'}
+          </Button>
+        </>
+      )}
+      {error && (
+        <p role="alert" className="m-0 basis-full text-sm text-danger">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -341,6 +521,7 @@ function RouteCard({
   choice,
   onConnect,
   onChanged,
+  children,
 }: {
   field: string
   labelledBy: string
@@ -351,9 +532,11 @@ function RouteCard({
   offText: string
   /** What the setting should name, for a value that names none. */
   unknown: string
-  choice: { selected: string; routes: ImageRouteEntry[] }
+  choice: { selected: string; routes: (ImageRouteEntry | MediaRouteEntry)[] }
   onConnect: (providerId: string) => void
   onChanged: () => Promise<void>
+  /** Rows of the chosen route's own settings, under the choices. */
+  children?: ReactNode
 }) {
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -404,7 +587,7 @@ function RouteCard({
         </Chip>
       }
     >
-      {choice.routes.map((route: ImageRouteEntry) =>
+      {choice.routes.map((route) =>
         row(
           route.id,
           <>
@@ -441,6 +624,7 @@ function RouteCard({
         true,
         null,
       )}
+      {children}
       {choice.selected !== 'off' && !selected && (
         <div role="alert" className={`${ROW} py-3 text-sm text-warning`}>
           {field} is set to “{choice.selected}”, which is not {unknown}. Choose one above.

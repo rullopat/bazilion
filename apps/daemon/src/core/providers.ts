@@ -43,6 +43,11 @@ export interface ProviderDef {
   /** Listed first under "Add a provider" and on the first-run screen. */
   popular?: boolean
   /**
+   * An account for media only (speech, music, sound, transcription): it has no chat models, so
+   * connecting it saves its key and Chat never lists it.
+   */
+  media?: boolean
+  /**
    * The models the connect form ticks to begin with, the capable one first: it becomes the
    * Default template's model on a first run. Kept by hand; a test fails when Pi's catalog drops one.
    */
@@ -329,6 +334,12 @@ export const PROVIDERS: readonly ProviderDef[] = [
     label: 'Access token',
     placeholder: 'hf_...',
   }),
+  {
+    ...apiKey('elevenlabs', 'ElevenLabs', 'ELEVENLABS_API_KEY', {
+      hint: 'Voices, music, sound effects and transcription · elevenlabs.io',
+    }),
+    media: true,
+  },
   {
     id: 'cloudflare-ai-gateway',
     displayName: 'Cloudflare AI Gateway',

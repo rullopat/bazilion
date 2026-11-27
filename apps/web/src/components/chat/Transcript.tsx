@@ -11,6 +11,7 @@ import { useWorkspaceOptional } from '../workspace/context'
 import { CommandApprovalCard } from './CommandApprovalCard'
 import { groupEntries, projectMessages, type RenderEntry, type TranscriptBlock } from './entries'
 import { ProgressContext, progressBoard } from './Progress'
+import { ReadAloud } from './ReadAloud'
 import { StepsBlock } from './Steps'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
@@ -91,6 +92,8 @@ export function Bubble({
   approvals?: ApprovalControls
 }) {
   const dropClass = dropped ? 'opacity-40 [&_.bubble-content]:line-through' : ''
+  // Read aloud is offered while a speech model is ready (BAZ-096).
+  const readAloud = useWorkspaceOptional()?.speech.speech ?? false
   switch (entry.type) {
     case 'user':
       if (entry.content.startsWith(WAKE_PREFIX)) {
@@ -194,13 +197,17 @@ export function Bubble({
       )
     case 'assistant':
       return (
-        <div data-message="" className={`my-4 flex flex-col items-start ${dropClass}`}>
+        <div
+          data-message=""
+          className={`group/message my-4 flex flex-col items-start ${dropClass}`}
+        >
           <span className="sr-only">agent</span>
           <div
             className="md-content bubble-content w-full leading-[1.55] text-chocolate"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: marked output sanitized by DOMPurify.
             dangerouslySetInnerHTML={{ __html: renderMd(entry.content, markdownReady) }}
           />
+          {readAloud && entry.content.trim() && <ReadAloud text={entry.content} />}
         </div>
       )
     case 'images':

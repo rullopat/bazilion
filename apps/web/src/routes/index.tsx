@@ -12,6 +12,7 @@ import type {
   ResolvedAgent,
   SessionHeadResponse,
   SessionMessagesResponse,
+  SpeechStatusResponse,
   Team,
   TeamTemplate,
 } from '@bazilion/api-types'
@@ -100,12 +101,16 @@ const fetchWorkspace = createServerFn({ method: 'GET' })
   .validator((data: { agentId?: string }) => data)
   .handler(async ({ data }) => {
     const client = daemonClient()
-    const [agents, profiles, teamTemplates, teams, activity] = await Promise.all([
+    const [agents, profiles, teamTemplates, teams, activity, speech] = await Promise.all([
       client.get<Agent[]>('/api/agents?includeArchived=false'),
       client.get<Profile[]>('/api/profiles'),
       client.get<TeamTemplate[]>('/api/team-templates'),
       client.get<Team[]>('/api/teams'),
       client.get<ActivityResponse>('/api/activity'),
+      // Read aloud and dictation show only while their models are ready.
+      client
+        .get<SpeechStatusResponse>('/api/speech/status')
+        .catch((): SpeechStatusResponse => ({ speech: false, transcription: false })),
     ])
     let selected: SelectedAgent | null = null
     if (data.agentId) {
@@ -135,6 +140,7 @@ const fetchWorkspace = createServerFn({ method: 'GET' })
       teams,
       selected,
       activity: activity.agents,
+      speech,
       openGroups: parseOpenGroupsCookie(getCookie(SIDEBAR_OPEN_GROUPS_COOKIE)),
       panel: parsePanelCookie(getCookie(PANEL_COOKIE)),
       railWidth: parseRailWidthCookie(getCookie(RAIL_WIDTH_COOKIE)),
@@ -300,8 +306,19 @@ function WorkspacePage() {
       team,
       conversationId,
       search,
+      speech: data.speech,
     }),
-    [agents, teams, data.profiles, data.teamTemplates, open, team, conversationId, search],
+    [
+      agents,
+      teams,
+      data.profiles,
+      data.teamTemplates,
+      open,
+      team,
+      conversationId,
+      search,
+      data.speech,
+    ],
   )
 
   const header = (

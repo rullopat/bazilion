@@ -17,6 +17,7 @@ import {
   telegramAttemptId,
 } from './telegram/origin.ts'
 import { notifyTelegramQueueOutcome } from './telegram/queue-notice.ts'
+import { sendVoiceReply } from './telegram/voice-reply.ts'
 import { turnFailureReason, turnFrameFailure } from './turn-outcome.ts'
 
 // The follow-up queue in the daemon: input queued while an Agent is busy runs afterwards as its
@@ -106,14 +107,20 @@ export async function drainUserQueueHead(agentId: string): Promise<boolean> {
   }
   let failure: string | null = null
   let done = false
+  // The answer, for a voice reply to a voice note.
+  let answer = ''
   try {
     for await (const frame of runAgentTurn(prepared)) {
       failure ??= turnFrameFailure(frame)
       if (frame.kind === 'done') done = true
+      if (frame.kind === 'event' && frame.event.type === 'assistant_message')
+        answer = frame.event.text
     }
   } catch (error) {
     failure ??= turnFailureReason(error)
   }
+  // A voice note is answered by voice too, besides the text the topic already has.
+  if (origin?.voice && done && !failure && answer.trim()) await sendVoiceReply(agentId, answer)
   // The conversation holds the turn's full error; the item keeps the reason on one line. Stop
   // pressed before the worker started surfaces as an AbortError, not as 'cancelled'.
   if (failure === 'cancelled' || prepared.controller.signal.aborted)

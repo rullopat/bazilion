@@ -24,6 +24,7 @@ export interface PublishResultInput {
   name: string
   mimeType: string
   bytes: Uint8Array
+  /** The model that made it: a picture, a video, a sound, speech. */
   imageModel?: string
 }
 

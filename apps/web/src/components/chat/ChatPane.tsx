@@ -335,6 +335,7 @@ function AgentChat({
         agentBusy={chat.agentBusy}
         onStop={() => void chat.stop()}
         inputRef={inputRef}
+        dictation={workspace?.speech.transcription ?? false}
       />
     </section>
   )

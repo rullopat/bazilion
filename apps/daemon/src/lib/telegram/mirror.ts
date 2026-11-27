@@ -15,6 +15,7 @@
 import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/api-types'
 import { InputFile } from 'grammy'
 import { agentRepo } from '../../core/index.ts'
+import { SPEECH_ROUTES } from '../../core/media-routes.ts'
 import * as results from '../../core/repos/results.ts'
 import { type ProgressStep, progressCard } from '../../runtime/tools/workspace.ts'
 import { scheduleApprovalPrompt } from './approvals.ts'
@@ -184,7 +185,25 @@ async function mirrorImages(
   }
 }
 
-/** Send an agent-delivered file, read from the saved results, as a Telegram document. Never throws. */
+/** The most a bot may upload to Telegram, as its Bot API documents (50 MB). */
+const TELEGRAM_UPLOAD_BYTES = 50 * 1000 * 1000
+
+/** How a saved file goes out: a video, a voice note (speech), a song, or a document. */
+export function telegramKind(
+  mimeType: string,
+  model: string | null,
+): 'video' | 'voice' | 'audio' | 'document' {
+  if (mimeType === 'video/mp4') return 'video'
+  const voiceFormat = ['audio/mpeg', 'audio/ogg', 'audio/mp4'].includes(mimeType)
+  if (voiceFormat && model && SPEECH_ROUTES.some((route) => route.model === model)) return 'voice'
+  if (mimeType === 'audio/mpeg' || mimeType === 'audio/mp4') return 'audio'
+  return 'document'
+}
+
+/**
+ * Send an agent-delivered file, read from the saved results: a video plays, speech is a voice
+ * note, a song is in the player, anything else is a document. Never throws.
+ */
 async function mirrorFile(
   live: TelegramLive,
   topicId: number,
@@ -192,12 +211,29 @@ async function mirrorFile(
   ev: { name: string; result: { resultId: string } },
 ): Promise<void> {
   try {
+    const saved = results.get(live.db, ev.result.resultId)
+    if (saved && saved.byteLength > TELEGRAM_UPLOAD_BYTES) {
+      await enqueueOutbound(live.chatId, () =>
+        live.api.sendMessage(
+          live.chatId,
+          `${ev.name} is larger than the 50 MB a bot may send; it is under Files in Bazilion.`,
+          { message_thread_id: topicId },
+        ),
+      )
+      return
+    }
     const buf = results.read(live.db, ev.result.resultId)
-    await enqueueOutbound(live.chatId, () =>
-      live.api.sendDocument(live.chatId, new InputFile(buf, ev.name), {
-        message_thread_id: topicId,
-        caption: ev.name,
-      }),
+    const file = new InputFile(buf, ev.name)
+    const options = { message_thread_id: topicId, caption: ev.name }
+    const kind = telegramKind(saved?.mimeType ?? '', saved?.imageModel ?? null)
+    await enqueueOutbound<unknown>(live.chatId, () =>
+      kind === 'video'
+        ? live.api.sendVideo(live.chatId, file, { ...options, supports_streaming: true })
+        : kind === 'voice'
+          ? live.api.sendVoice(live.chatId, file, { message_thread_id: topicId })
+          : kind === 'audio'
+            ? live.api.sendAudio(live.chatId, file, options)
+            : live.api.sendDocument(live.chatId, file, options),
     )
   } catch (e) {
     if (isThreadGoneError(e)) {

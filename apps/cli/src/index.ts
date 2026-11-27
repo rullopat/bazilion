@@ -28,6 +28,7 @@ import { sendCommand } from './commands/send.ts'
 import { serveCommand } from './commands/serve.ts'
 import { sessionCommand } from './commands/session.ts'
 import { skillCommand } from './commands/skill.ts'
+import { speechCommand } from './commands/speech.ts'
 import { teamCommand } from './commands/team.ts'
 import { teamTemplateCommand } from './commands/team-template.ts'
 import { telegramCommand } from './commands/telegram.ts'
@@ -55,6 +56,7 @@ const main = defineCommand({
     attention: attentionCommand,
     usage: usageCommand,
     result: resultCommand,
+    speech: speechCommand,
     conversation: conversationCommand,
     queue: queueCommand,
     question: questionCommand,
@@ -113,7 +115,17 @@ async function resolveSubCommand(
 // --help` uses citty's renderer. A command missing from these groups is listed under "other".
 const HELP_GROUPS: Record<string, string[]> = {
   setup: ['serve', 'dashboard', 'open', 'app', 'doctor', 'backup', 'uninstall'],
-  catalog: ['profile', 'team-template', 'team', 'skill', 'provider', 'config', 'auth', 'mcp'],
+  catalog: [
+    'profile',
+    'team-template',
+    'team',
+    'skill',
+    'provider',
+    'config',
+    'speech',
+    'auth',
+    'mcp',
+  ],
   agents: [
     'attention',
     'usage',

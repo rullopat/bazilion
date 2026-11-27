@@ -1,7 +1,8 @@
 import type { Attachment } from '@bazilion/api-types'
 import { FileText, Paperclip } from 'lucide-react'
-import { type RefObject, useLayoutEffect, useRef } from 'react'
+import { type RefObject, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '../Button'
+import { DictationButton } from './Dictation'
 import { isImageMime } from './entries'
 
 const MAX_INPUT_HEIGHT = 200
@@ -42,6 +43,7 @@ export function Composer({
   agentBusy,
   onStop,
   inputRef,
+  dictation = false,
 }: {
   agentName: string
   value: string
@@ -56,8 +58,11 @@ export function Composer({
   agentBusy: boolean
   onStop: () => void
   inputRef: RefObject<HTMLTextAreaElement | null>
+  /** A transcription model is ready: the microphone is offered (BAZ-096). */
+  dictation?: boolean
 }) {
   const fileInput = useRef<HTMLInputElement | null>(null)
+  const [dictationError, setDictationError] = useState<string | null>(null)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the text, or the placeholder naming the Agent, changes.
   useLayoutEffect(() => {
@@ -141,15 +146,28 @@ export function Composer({
             event.target.value = ''
           }}
         />
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
-          title="attach images or files"
-          aria-label="attach files"
-          className="flex h-11 items-center justify-center rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire"
-        >
-          <Paperclip className="size-[18px]" aria-hidden="true" />
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            title="attach images or files"
+            aria-label="attach files"
+            className="flex h-11 items-center justify-center rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire"
+          >
+            <Paperclip className="size-[18px]" aria-hidden="true" />
+          </button>
+          {dictation && (
+            <DictationButton
+              agentName={agentName}
+              onText={(text) => {
+                setDictationError(null)
+                onChange(value.trim() ? `${value.trimEnd()} ${text}` : text)
+                inputRef.current?.focus()
+              }}
+              onError={setDictationError}
+            />
+          )}
+        </div>
         <textarea
           ref={inputRef}
           // The / shortcut brings the keyboard here.
@@ -196,6 +214,11 @@ export function Composer({
             </Button>
           )}
         </div>
+        {dictationError && (
+          <p role="alert" className="col-span-full m-0 text-xs text-danger">
+            {dictationError}
+          </p>
+        )}
         <p className="col-span-full m-0 hidden text-xs text-mocha-light sm:block">
           Enter sends · Shift+Enter adds a line · /help lists commands
         </p>

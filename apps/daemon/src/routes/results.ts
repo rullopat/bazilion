@@ -102,6 +102,45 @@ resultsRouter.get('/:id/download', (c) => {
   }
 })
 
+/** Audio and video a page plays where it was delivered (BAZ-095, BAZ-096). */
+const PLAYABLE = /^(audio|video)\/[a-z0-9.+-]+$/
+
+// A sound or a video to play in the page, inline and in parts, so that a player can seek.
+resultsRouter.get('/:id/media', (c) => {
+  const db = getCtx().db
+  const result = results.get(db, c.req.param('id'))
+  if (!result) return c.json({ error: 'Result not found' }, 404)
+  if (!PLAYABLE.test(result.mimeType))
+    return c.json({ error: 'Only sounds and videos are played. Use Download.' }, 415)
+  let bytes: Buffer
+  try {
+    bytes = results.read(db, result.id)
+  } catch {
+    return c.json({ error: 'Saved file failed integrity verification and cannot be played' }, 409)
+  }
+  c.header('Content-Type', result.mimeType)
+  c.header('Accept-Ranges', 'bytes')
+  c.header('Content-Security-Policy', "default-src 'none'; sandbox")
+  c.header('Cache-Control', 'private, max-age=3600')
+  const range = /^bytes=(\d*)-(\d*)$/.exec(c.req.header('range') ?? '')
+  if (!range) {
+    c.header('Content-Length', String(bytes.byteLength))
+    return c.body(new Uint8Array(bytes))
+  }
+  const size = bytes.byteLength
+  const [, from, to] = range
+  // "bytes=-500" is the last 500 bytes; "bytes=100-" is from 100 to the end.
+  const start = from ? Number(from) : Math.max(0, size - Number(to))
+  const end = from && to ? Math.min(Number(to), size - 1) : size - 1
+  if (!(start <= end && start < size)) {
+    c.header('Content-Range', `bytes */${size}`)
+    return c.body(null, 416)
+  }
+  c.header('Content-Range', `bytes ${start}-${end}/${size}`)
+  c.header('Content-Length', String(end - start + 1))
+  return c.body(new Uint8Array(bytes.subarray(start, end + 1)), 206)
+})
+
 /** Pages and drawings the web shows in a sealed frame (BAZ-097). */
 const CANVAS_TYPES = new Set(['text/html', 'image/svg+xml'])
 

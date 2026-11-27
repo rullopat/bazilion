@@ -31,6 +31,7 @@ import { questionsRouter } from './routes/questions.ts'
 import { resultsRouter } from './routes/results.ts'
 import { shellApprovalsRouter } from './routes/shell-approvals.ts'
 import { agentSkillsRouter, skillsRouter } from './routes/skills.ts'
+import { speechRouter, transcriptionRouter } from './routes/speech.ts'
 import { teamCodingEnvironmentRouter } from './routes/team-coding-environment.ts'
 import { teamMemoryRouter } from './routes/team-memory.ts'
 import { teamPolicyRouter } from './routes/team-policy.ts'
@@ -78,6 +79,8 @@ export function createApp(): Hono {
   app.route('/api/teams', teamTelegramRouter)
   app.route('/api/team-templates', teamTemplatesRouter)
   app.route('/api/results', resultsRouter)
+  app.route('/api/speech', speechRouter)
+  app.route('/api/transcription', transcriptionRouter)
   app.route('/api/attention', attentionRouter)
   app.route('/api/activity', activityRouter)
   app.route('/api/usage', usageRouter)

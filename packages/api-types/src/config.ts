@@ -157,6 +157,8 @@ export interface ProviderConfigEntry {
   suggested: string[]
   /** How many chat models the bundled catalog has for it. */
   catalogSize: number
+  /** An account for media only (speech, music, sound, transcription): no chat models. */
+  media?: boolean
   /** It reports its own model list (local servers and some hosted APIs). */
   listsModels: boolean
   /** A local server's address in use. */
@@ -315,6 +317,62 @@ export interface ImageRouteEntry {
 }
 
 /** One way to turn speech into words: a model through one provider's account. */
+/** One way to make or hear media: a model on one provider's account (BAZ-095, BAZ-096). */
+export interface MediaRouteEntry {
+  /** The setting's value that selects it. */
+  id: string
+  model: string
+  provider: string
+  providerName: string
+  billing: string
+  ready: boolean
+  /** What it still needs, when it is not ready ("a Gemini API key"). */
+  needs?: string
+}
+
+/** One voice of the chosen speech model, as its provider lists it. */
+export interface SpeechVoice {
+  id: string
+  name: string
+  /** Its language, accent or kind, when the provider says. */
+  detail?: string
+}
+
+/** `POST /api/speech`: text read out by the chosen speech model; the answer is the audio. */
+export interface SpeakRequest {
+  text: string
+  /** A voice of the model; the chosen one (BAZILION_SPEECH_VOICE) when absent. */
+  voice?: string
+  /** The text is a Markdown message: only its prose is read (Read aloud). */
+  markdown?: boolean
+}
+
+/** `GET /api/speech/status`: what the web chat offers, Read aloud and dictation. */
+export interface SpeechStatusResponse {
+  /** A speech model is chosen and ready: Read aloud. */
+  speech: boolean
+  /** A transcription model is chosen and ready: dictation. */
+  transcription: boolean
+}
+
+/** `POST /api/transcription`: a recording turned into words (dictation in the web chat). */
+export interface TranscribeRequest {
+  mimeType: string
+  /** The recording, base64. */
+  data: string
+}
+
+export interface TranscribeResponse {
+  text: string
+  model: string
+}
+
+/** `GET /api/speech/voices`: the voices of the chosen speech model. */
+export interface SpeechVoicesResponse {
+  model: string
+  voices: SpeechVoice[]
+}
+
 export interface TranscriptionRouteEntry {
   /** The value of BAZILION_TRANSCRIPTION_MODEL that selects it. */
   id: string
@@ -334,6 +392,12 @@ export interface ModelsResponse {
     selected: string
     routes: ImageRouteEntry[]
   }
+  /** What Agents make videos with (BAZILION_VIDEO_MODEL). */
+  video: { selected: string; routes: MediaRouteEntry[] }
+  /** What Agents make music and sound effects with (BAZILION_AUDIO_MODEL). */
+  audio: { selected: string; routes: MediaRouteEntry[] }
+  /** What Agents speak with (BAZILION_SPEECH_MODEL), in which voice (BAZILION_SPEECH_VOICE). */
+  speech: { selected: string; routes: MediaRouteEntry[]; voice: string | null }
   /** What voice notes and audio you send are transcribed with, before the turn. */
   transcription: {
     /** The selected route's id, or `off`. */

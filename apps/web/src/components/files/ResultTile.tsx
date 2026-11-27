@@ -1,6 +1,6 @@
 import type { AgentResult } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
-import { Download, FileText } from 'lucide-react'
+import { Download, FileText, Music } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ApiError, api, apiFetch, errorMessage } from '../../lib/api'
 import type { WorkspaceSearch } from '../../lib/workspace'
@@ -8,6 +8,7 @@ import { Button } from '../Button'
 import { CanvasFrame, isCanvas } from './CanvasFrame'
 import {
   formatBytes,
+  isPlayable,
   isPreviewImage,
   isPreviewText,
   kindLabel,
@@ -113,6 +114,26 @@ export function ResultTile({
         loading="lazy"
         className="block aspect-[4/3] w-full bg-card object-contain p-1.5"
       />
+    ) : result.mimeType.startsWith('video/') ? (
+      // A still of the video's start: it plays where it was delivered and under Files.
+      <video
+        src={`${resultPath(result.id, 'media')}#t=0.1`}
+        preload="metadata"
+        muted
+        aria-hidden="true"
+        tabIndex={-1}
+        className="pointer-events-none block aspect-[4/3] w-full bg-chocolate object-contain"
+      />
+    ) : result.mimeType.startsWith('audio/') ? (
+      <span
+        aria-hidden="true"
+        className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 bg-card text-mocha"
+      >
+        <Music className="size-7" />
+        <span className="max-w-full truncate px-2 font-mono text-xs font-medium uppercase tracking-wide">
+          {kindLabel(result.mimeType, result.name)}
+        </span>
+      </span>
     ) : isPreviewText(result) ? (
       <TextFace result={result} />
     ) : (
@@ -219,6 +240,7 @@ export function ResultTile({
         {download}
       </div>
       {isCanvas(result) && <CanvasFrame result={result} />}
+      {isPlayable(result) && <Player result={result} />}
       {text !== null && (
         <pre className="m-0 max-h-80 overflow-auto whitespace-pre-wrap break-words border-t border-border bg-card p-3 text-xs">
           {text}
@@ -229,6 +251,32 @@ export function ResultTile({
           {error}
         </p>
       )}
+    </div>
+  )
+}
+
+/** A sound or a video, played in place. Seeking asks the daemon for parts of the file. */
+function Player({ result }: { result: AgentResult }) {
+  const src = resultPath(result.id, 'media')
+  return result.mimeType.startsWith('video/') ? (
+    // biome-ignore lint/a11y/useMediaCaption: a generated video comes without captions.
+    <video
+      controls
+      preload="metadata"
+      src={src}
+      aria-label={result.name}
+      className="block max-h-96 w-full border-t border-border bg-chocolate"
+    />
+  ) : (
+    <div className="border-t border-border bg-card px-2.5 py-2">
+      {/* biome-ignore lint/a11y/useMediaCaption: generated sound and speech come without captions. */}
+      <audio
+        controls
+        preload="metadata"
+        src={src}
+        aria-label={result.name}
+        className="block w-full"
+      />
     </div>
   )
 }
