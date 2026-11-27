@@ -55,9 +55,3 @@ A release refuses a home that a later release has already upgraded, and says so.
 
 What changed in the database since that upgrade is lost; files in the home (conversations,
 memory, Team workspaces) are not touched.
-
-### Homes older than 0.26.0
-
-There are no migrations from schemas before 0.26.0. The daemon refuses such a home untouched. To
-start over, copy the whole home somewhere safe, run `bazilion uninstall --yes` (from a source
-checkout: `pnpm tsx apps/cli/src/index.ts uninstall --yes`) and start Bazilion again.
