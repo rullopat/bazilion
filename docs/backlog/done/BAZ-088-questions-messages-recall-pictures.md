@@ -1,8 +1,9 @@
 ---
 id: BAZ-088
 title: "Questions in one card, quiet messages, recall across conversations, pictures from pictures"
-status: in_progress
+status: done
 created: 2026-11-27
+shipped: 2026-11-27
 release: v0.63.0
 ---
 

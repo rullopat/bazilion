@@ -364,6 +364,8 @@ const SHIPPED_MIGRATIONS: Record<string, string> = {
   // The schema of 0.26.0 to 0.62.0 (`git show bazilion@0.62.0:apps/daemon/src/core/db/schema.sql`),
   // with a header comment of its own.
   '001-baseline.sql': '1f424c75254ed4e4cfc51a9eb34b6cfef13025f01726681b6b12983c44e0d015',
+  // 0.63.0: the remembered command rules.
+  '002-command-rules.sql': '29a3e16e5c0b4a047e92a9f65951cf1318f2aad548d2cecee16ffbfe53d4e5ef',
 }
 
 test('migrations that releases shipped are unchanged', () => {

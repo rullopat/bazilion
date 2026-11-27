@@ -48,5 +48,5 @@ from OpenClaw's `automations` (`cron`).
 - A one-time schedule missed while the daemon was stopped follows the scheduler's existing rule
   for missed times.
 - The `agent_triggers` change rebuilds the table in its migration
-  ([BAZ-094](../in_progress/BAZ-094-migrations.md)), keeping every schedule and its runs.
+  ([BAZ-094](../done/BAZ-094-migrations.md)), keeping every schedule and its runs.
 - An Agent cannot change a schedule you set. To decide: whether it may pause one.

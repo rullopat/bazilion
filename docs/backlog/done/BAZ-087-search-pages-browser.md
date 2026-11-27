@@ -1,8 +1,9 @@
 ---
 id: BAZ-087
 title: "Search filters, long pages kept whole, a browser for checking web apps"
-status: in_progress
+status: done
 created: 2026-11-27
+shipped: 2026-11-27
 release: v0.63.0
 ---
 

@@ -1,8 +1,9 @@
 ---
 id: BAZ-086
 title: "Commands that keep running, approvals that remember, file tools in Docker"
-status: in_progress
+status: done
 created: 2026-11-27
+shipped: 2026-11-27
 release: v0.63.0
 ---
 
