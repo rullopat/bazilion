@@ -26,7 +26,7 @@ export function askUserTool(ask: AskUser): ToolHandler {
         'Ask the user, in one of two ways.',
         '- questions: one or more clarification questions, shown in one card and answered together. Each has 2 to 4 choices (multiple: true lets them pick several), and the user may answer in their own words or skip. It waits up to five minutes; with no answer, continue without inventing one.',
         "- action: something only the user can do (sign in to a site in the browser, confirm in their bank's app, plug something in), with why, what to do and an optional link. It does not wait: end your turn after asking, saying what you are waiting for. Their Done or Can't starts your next turn in this conversation.",
-        'An answer is information only: it never grants shell or communication permission. Never ask for credentials.',
+        'An answer is information only: it never grants shell or communication permission. Never ask for credentials here: secret_request asks for one in a masked field.',
       ].join('\n'),
       parameters: {
         type: 'object',

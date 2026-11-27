@@ -246,6 +246,46 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
         icon: 'question',
         kind: 'other',
       }
+    case 'secret_request':
+      return {
+        doing: 'asking you for a secret',
+        verb: 'Asked you for',
+        target: str(args?.name) ? String(args?.name) : null,
+        icon: 'question',
+        kind: 'other',
+      }
+    case 'secret_list':
+      return {
+        doing: 'listing its secrets',
+        verb: 'Listed its secrets',
+        target: null,
+        icon: 'note',
+        kind: 'other',
+      }
+    case 'schedule_add':
+      return {
+        doing: 'setting a schedule',
+        verb: 'Set a schedule',
+        target: null,
+        icon: 'note',
+        kind: 'other',
+      }
+    case 'schedule_list':
+      return {
+        doing: 'listing its schedules',
+        verb: 'Listed its schedules',
+        target: null,
+        icon: 'note',
+        kind: 'other',
+      }
+    case 'schedule_remove':
+      return {
+        doing: 'removing a schedule',
+        verb: 'Removed a schedule',
+        target: null,
+        icon: 'note',
+        kind: 'other',
+      }
     case 'propose_lesson':
       return {
         doing: 'proposing a lesson',

@@ -333,6 +333,13 @@ const RPC_HANDLERS: RpcHandlers = {
   scheduleAdd: (args, { hosts }) => host(hosts.scheduleHost, 'schedule').add(args),
   scheduleList: (_args, { hosts }) => host(hosts.scheduleHost, 'schedule').list(),
   scheduleRemove: ({ id }, { hosts }) => host(hosts.scheduleHost, 'schedule').remove(id),
+  secretList: (_args, { hosts }) => host(hosts.secretHost, 'secret').list(),
+  secretRequest: async ({ secret, replace }, ctx) => {
+    const asked = host(ctx.hosts.questionHost, 'question').askSecret(secret, replace)
+    if (asked.kind === 'asked')
+      ctx.pushFrame({ kind: 'event', event: { type: 'agent_question', question: asked.question } })
+    return asked
+  },
   refreshApiKey: async ({ providerName }, ctx) => {
     const token = await refreshApiKeyForTurn(
       providerName,

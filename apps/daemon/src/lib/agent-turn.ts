@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { realpathSync } from 'node:fs'
 import { join, posix, resolve } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
+import { agentSecretValues, listAgentSecrets } from '../core/agent-secrets.ts'
 import { imageRoute } from '../core/image-generation-config.ts'
 import {
   agentReviewRepo,
@@ -30,6 +31,7 @@ import { buildDockerSandbox, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling
 import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
+import { requestAgentSecret } from './agent-secrets.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { commandApprovalRegistry, createTurnApprovalHost } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
@@ -62,6 +64,9 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     const { db, authToken } = getCtx()
     // The worker, and so every shell command of the turn, never sees Bazilion's own credentials.
     const env = toolEnvironment(mergeSecretsIntoEnv(db, authToken), authToken)
+    // The Agent's own secrets join the worker's environment, and so its commands', by name.
+    const secrets = agentSecretValues(db, authToken, agentId)
+    const secretEnv = Object.fromEntries(secrets.map((secret) => [secret.name, secret.value]))
     const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, turn.agent)
     // A tool that sends or changes something outside waits for the operator, as a risky command
     // does: in the chat, Telegram and Attention, and refused when nobody can answer this turn.
@@ -112,12 +117,13 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         contacts: agentContacts(db, agentId),
         withOperator: withOperator(turn),
         unreadMessages: messageRepo.unreadCount(db, agentId),
+        secrets: secrets.map(({ name, hosts }) => ({ name, hosts })),
       },
       {
-        env,
+        env: { ...env, ...secretEnv },
         signal: turn.controller.signal,
         diagnosticSink: (diagnostic) => console.warn(`[worker ${agentId}] ${diagnostic}`),
-        ...turnHosts(turn, env),
+        ...turnHosts(turn, env, secretEnv),
         mcpHost: mcp?.host,
         apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
       },
@@ -188,7 +194,11 @@ function withOperator(turn: PreparedAgentTurn): boolean {
 }
 
 /** The daemon side of the turn's tools, each bound to this turn's Agent, conversation and signal. */
-function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts {
+function turnHosts(
+  turn: PreparedAgentTurn,
+  env: NodeJS.ProcessEnv,
+  secretEnv: Readonly<Record<string, string>>,
+): WorkerHosts {
   const { db, paths, authToken } = getCtx()
   const { agent, conversation } = turn
   const { signal } = turn.controller
@@ -199,6 +209,7 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
     if (!docker) throw new Error('the turn has no Docker settings')
     return buildDockerSandbox(agent.team.path, docker, {
       inputsDir: join(agent.agent.dir, 'uploads'),
+      secretEnv,
       skillMounts: loadPromptSkills(paths.skillsDir, agent.skills).map((skill) => ({
         source: skill.hostDir,
         target: skill.sandboxDir,
@@ -252,8 +263,16 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
               question,
               askSignal,
             ),
+          askSecret: (secret, replace) =>
+            requestAgentSecret(db, authToken, {
+              agentId: agent.agent.id,
+              conversationId: conversation.id,
+              secret,
+              replace,
+            }),
         }
       : undefined,
+    secretHost: { list: async () => listAgentSecrets(db, authToken, agent.agent.id) },
     imageGenerationHost: imageRoute(env, codexConnected).ready
       ? createImageGenerationHost({
           db,
@@ -310,7 +329,7 @@ function turnHosts(turn: PreparedAgentTurn, env: NodeJS.ProcessEnv): WorkerHosts
       conversationId: conversation.id,
       ...(turn.docker
         ? { docker: { sandbox, namePrefix: jobContainerPrefix(paths.home) } }
-        : { host: { cwd: agent.team.path, env } }),
+        : { host: { cwd: agent.team.path, env: { ...env, ...secretEnv } } }),
     }),
   }
 }

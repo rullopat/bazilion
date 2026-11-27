@@ -5,8 +5,11 @@ import type {
   AgentQuestionInput,
   AgentQuestionItem,
   AgentQuestionItemAnswer,
+  AgentQuestionSecret,
   AgentQuestionToolResult,
 } from '@bazilion/api-types'
+import { setAgentSecret } from '../core/agent-secrets.ts'
+import { getCtx } from './ctx.ts'
 import { signalLiveChange } from './live-signal.ts'
 import { queueWake } from './wakes.ts'
 
@@ -134,6 +137,16 @@ export function parseQuestionAnswer(
     if (answer.kind === 'cannot') return { kind: 'cannot', ...note }
     throw new Error('An action is answered with done or cannot')
   }
+  if (question.secret) {
+    if (answer.kind === 'decline') return { kind: 'decline', ...note }
+    if (answer.kind === 'secret') {
+      // Kept as given: a key file keeps its newlines. Never echoed in an error.
+      if (typeof answer.value !== 'string' || !answer.value.trim())
+        throw new Error('The secret is empty')
+      return { kind: 'secret', value: answer.value }
+    }
+    throw new Error('A secret request is answered with the secret or decline')
+  }
   if (answer.kind === 'skip') return { kind: 'skip' }
   const items = question.questions ?? []
   if (answer.kind !== 'answers' || !Array.isArray(answer.answers))
@@ -186,6 +199,52 @@ function actionWake(
   })
 }
 
+/** What the Agent is told when its secret request is answered, in a turn of its own. */
+function secretWake(question: AgentQuestion, stored: boolean, note?: string) {
+  const secret = question.question.secret
+  if (!secret) return
+  const { name } = secret
+  const hosts = secret.hosts ?? []
+  queueWake({
+    id: `secret:${question.id}`,
+    agentId: question.agentId,
+    conversationId: question.conversationId,
+    summary: stored ? `The user stored ${name}` : `The user declined to give ${name}`,
+    text: stored
+      ? [
+          `The user stored the secret you asked for: ${name}. You never see its value.`,
+          `Your commands have it as the environment variable ${name}.`,
+          hosts.length > 0
+            ? `web_fetch puts it in a header you write as {{secret:${name}}}, for ${hosts.join(', ')} only.`
+            : '',
+          'Carry on with what you needed it for.',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : [
+          `The user declined to give ${name}.`,
+          note ? `Their note: ${note}` : '',
+          'Find another way, or tell them what that means for the work.',
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+    at: Date.now(),
+  })
+}
+
+/** Stores a secret the owner gave in a secret request's card. */
+export type SecretStore = (agentId: string, secret: AgentQuestionSecret, value: string) => void
+
+const storeInHome: SecretStore = (agentId, secret, value) => {
+  const { db, authToken } = getCtx()
+  setAgentSecret(db, authToken, agentId, {
+    name: secret.name,
+    value,
+    reason: secret.reason,
+    hosts: secret.hosts ?? [],
+  })
+}
+
 /**
  * Process-local questions, like shell approvals: an Agent's `ask_user` card waits here until the
  * owner answers from web, CLI or Telegram, the card expires, or the turn ends; the first complete
@@ -195,9 +254,58 @@ function actionWake(
 export class QuestionRegistry {
   readonly #pending = new Map<string, Pending>()
   readonly #waitMs: number
+  readonly #storeSecret: SecretStore
 
-  constructor(waitMs = QUESTION_WAIT_MS) {
+  constructor(waitMs = QUESTION_WAIT_MS, storeSecret: SecretStore = storeInHome) {
     this.#waitMs = waitMs
+    this.#storeSecret = storeSecret
+  }
+
+  /**
+   * Ask the owner for a secret. Like an action it outlives the turn; the owner's answer stores it
+   * and wakes the Agent. A request for a name already waiting is that same request.
+   */
+  askSecret(
+    context: { agentId: string; conversationId: string },
+    secret: AgentQuestionSecret,
+  ): AgentQuestion {
+    const waiting = this.list(context.agentId).find(
+      (question) => question.question.secret?.name === secret.name,
+    )
+    if (waiting) return waiting
+    const question: AgentQuestion = {
+      id: randomUUID(),
+      agentId: context.agentId,
+      conversationId: context.conversationId,
+      question: { secret },
+      createdAt: Date.now(),
+      expiresAt: null,
+    }
+    this.#pending.set(question.id, {
+      question,
+      result: Promise.resolve<AgentQuestionToolResult>({
+        questionId: question.id,
+        question: question.question,
+        kind: 'action_asked',
+      }),
+      finish: () => this.#pending.delete(question.id),
+    })
+    signalLiveChange()
+    return question
+  }
+
+  /**
+   * The Agent's secret was stored some other way (its sheet, `bazilion agent secret set`): its
+   * waiting request for that name is answered.
+   */
+  settleSecret(agentId: string, name: string): void {
+    for (const question of this.list(agentId)) {
+      if (question.question.secret?.name !== name) continue
+      if (this.#pending.get(question.id)?.finish({ kind: 'no_answer', reason: 'skipped' })) {
+        secretWake(question, true)
+        signalLiveChange()
+      }
+    }
   }
 
   /** Register a card or an action. A card's `result` settles on its answer, the timeout or `signal`. */
@@ -280,6 +388,21 @@ export class QuestionRegistry {
     const entry = this.#pending.get(id)
     if (!entry || entry.question.agentId !== agentId) return false
     const answer = parseQuestionAnswer(value, entry.question.question)
+    const secret = entry.question.question.secret
+    if (secret && (answer.kind === 'secret' || answer.kind === 'decline')) {
+      // Stored before the request is closed: a refused name leaves the card open.
+      if (answer.kind === 'secret') this.#storeSecret(agentId, secret, answer.value)
+      if (!entry.finish({ kind: 'no_answer', reason: 'skipped' })) return false
+      secretWake(
+        entry.question,
+        answer.kind === 'secret',
+        answer.kind === 'decline' ? answer.note : undefined,
+      )
+      signalLiveChange()
+      return true
+    }
+    if (answer.kind === 'secret' || answer.kind === 'decline')
+      throw new Error('Only a secret request takes a secret')
     if (answer.kind === 'done' || answer.kind === 'cannot') {
       if (!entry.finish({ kind: 'no_answer', reason: 'skipped' })) return false
       actionWake(entry.question, answer)

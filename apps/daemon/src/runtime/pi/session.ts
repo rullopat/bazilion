@@ -54,6 +54,7 @@ import type {
   MessagingHost,
   RecallHost,
   ScheduleHost,
+  SecretHost,
   TeamHost,
   UserMdHost,
   WebSearchHost,
@@ -63,7 +64,12 @@ import type {
   RepositoryInstructions,
   ReviewProviderRuntime,
 } from '../worker/runtime.ts'
-import { envSecretValues, reviewRuntimeSecrets } from '../worker/runtime.ts'
+import {
+  type AgentSecretUse,
+  envSecretValues,
+  redactExactValues,
+  reviewRuntimeSecrets,
+} from '../worker/runtime.ts'
 import { branchOf, type ConversationHistory, contextUse, conversationHistory } from './history.ts'
 import { readSessionFile, readSessionHeader } from './session-file.ts'
 import { createBazilionCustomTools } from './tools.ts'
@@ -108,12 +114,28 @@ export interface CreateBazilionSessionOptions {
   recallHost?: RecallHost
   /** The Agent's schedules: schedule_add, schedule_list, schedule_remove. */
   scheduleHost?: ScheduleHost
+  /** secret_list, and secret_request where the owner can answer (`askSecret`). */
+  secretHost?: SecretHost
   /** Whom the Agent can message, listed in its system prompt. */
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
   withOperator?: boolean
   /** Messages from other Agents waiting unread, said in the system prompt. */
   unreadMessages?: number
+  /** The Agent's own secrets, by name; their values are in `env`. */
+  secrets?: readonly AgentSecretUse[]
+}
+
+/** One of the Agent's secrets in this turn: its value, from the environment, and its hosts. */
+interface TurnSecret extends AgentSecretUse {
+  value: string
+}
+
+function turnSecrets(opts: TurnOptions): TurnSecret[] {
+  return (opts.secrets ?? []).flatMap((secret) => {
+    const value = opts.env[secret.name]
+    return value ? [{ ...secret, value }] : []
+  })
 }
 
 export interface BazilionSessionHandle {
@@ -173,6 +195,29 @@ export function compactionFor(window: number): {
   }
 }
 
+/**
+ * Credentials taken out of every tool result before the model, and so the transcript, gets it:
+ * a command that prints a secret shows the model `[REDACTED]`. Wraps the hook Pi installs for its
+ * own result handling; `values` is read at each call, so a token refreshed mid-turn counts.
+ */
+export function redactToolResults(session: AgentSession, values: readonly string[]): void {
+  const piAfter = session.agent.afterToolCall
+  session.agent.afterToolCall = async (context, signal) => {
+    const after = piAfter ? await piAfter(context, signal) : undefined
+    if (values.length === 0) return after
+    const content = after?.content ?? context.result.content
+    let changed = false
+    const redacted = content.map((part) => {
+      if (part.type !== 'text') return part
+      const text = redactExactValues(part.text, values)
+      if (text === part.text) return part
+      changed = true
+      return { ...part, text }
+    })
+    return changed ? { ...(after ?? {}), content: redacted } : after
+  }
+}
+
 async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle> {
   const { runtime: modelRuntime, model } = await createPiModel(spec.model)
   const settingsManager = SettingsManager.inMemory({
@@ -218,6 +263,7 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
   })
 
   const { refreshApiKey, redactionSecrets } = spec
+  redactToolResults(session, redactionSecrets)
   if (refreshApiKey) {
     const providerName = spec.model.providerName
     // Pi asks before every provider request, so a token that expires mid-turn is replaced.
@@ -244,6 +290,7 @@ type TurnOptions = Omit<CreateBazilionSessionOptions, 'conversation'>
  */
 function turnSurface(opts: TurnOptions, recall: RecallSource) {
   const { agent, paths, env } = opts
+  const secrets = turnSecrets(opts)
   const cwd = agent.team.path
   const promptSkills = loadPromptSkills(paths.skillsDir, agent.skills)
   const shellTools = createSessionShellTools(cwd, env, {
@@ -253,6 +300,8 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     skillMounts: promptSkills.map((skill) => ({ source: skill.hostDir, target: skill.sandboxDir })),
     approvalHost: opts.bashApprovalHost,
     ...(opts.jobHost ? { jobHost: opts.jobHost } : {}),
+    // Host commands inherit them from the worker's environment; a container is given them.
+    secretEnv: Object.fromEntries(secrets.map((secret) => [secret.name, secret.value])),
   })
   const docker = shellTools.config.sandboxMode === 'docker'
   const customTools = createBazilionCustomTools({
@@ -272,6 +321,8 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     teamHost: opts.teamHost,
     jobHost: opts.jobHost,
     scheduleHost: opts.scheduleHost,
+    secretHost: opts.secretHost,
+    secrets,
     env,
     docker,
   })
@@ -287,6 +338,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     canCreateAgents: opts.teamHost !== undefined,
     withOperator: opts.withOperator ?? true,
     ...(opts.unreadMessages ? { unreadMessages: opts.unreadMessages } : {}),
+    secrets: secrets.map(({ name, hosts }) => ({ name, hosts })),
   }
   return {
     cwd,
@@ -316,7 +368,14 @@ export async function createBazilionSession(
   mkdirSync(join(paths.agentDir(agent.agent.id), 'sessions'), { recursive: true })
   const sessionManager = openConversation(agent, paths, opts.conversation)
   // One list: a ChatGPT token refreshed during the turn joins it, and recall leaves it out too.
-  const redactionSecrets = [...new Set(envSecretValues(opts.env).filter(Boolean))]
+  // The Agent's own secrets are taken out whatever their names.
+  const redactionSecrets = [
+    ...new Set(
+      [...envSecretValues(opts.env), ...turnSecrets(opts).map((secret) => secret.value)].filter(
+        Boolean,
+      ),
+    ),
+  ]
   const turn = turnSurface(opts, {
     branch: () => sessionManager.getBranch(),
     secrets: redactionSecrets,

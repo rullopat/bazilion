@@ -20,10 +20,11 @@ import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
 import { type RecallSource, recallTool } from '../tools/recall.ts'
 import { scheduleTools } from '../tools/schedule.ts'
+import { secretTools } from '../tools/secrets.ts'
 import { agentCreateTool } from '../tools/team.ts'
 import type { ToolHandler, ToolResultPart } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
-import { webFetchTool, webSearchTool } from '../tools/web.ts'
+import { type WebFetchSecret, webFetchTool, webSearchTool } from '../tools/web.ts'
 import type {
   BrowserHost,
   ImageGenerationHost,
@@ -32,6 +33,7 @@ import type {
   McpHost,
   MessagingHost,
   ScheduleHost,
+  SecretHost,
   TeamHost,
   UserMdHost,
   WebSearchHost,
@@ -88,6 +90,10 @@ export interface BazilionCustomToolsOpts {
   jobHost?: JobHost
   /** The schedule_* tools. */
   scheduleHost?: ScheduleHost
+  /** secret_list, and secret_request when it can ask. */
+  secretHost?: SecretHost
+  /** The Agent's secrets with their values, for web_fetch headers. */
+  secrets?: readonly WebFetchSecret[]
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
   /** Commands run in Docker: paths the Agent is told are the container's. */
@@ -110,6 +116,7 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
         dir: join(opts.agent.agent.dir, 'uploads'),
         shown: opts.docker ? SANDBOX_INPUTS_DIR : join(opts.agent.agent.dir, 'uploads'),
       },
+      ...(opts.secrets?.length ? { secrets: opts.secrets } : {}),
     }),
     ...(opts.webSearchHost ? [webSearchTool(opts.webSearchHost)] : []),
   ]
@@ -132,5 +139,6 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.teamHost) handlers.push(agentCreateTool(opts.teamHost))
   if (opts.jobHost) handlers.push(...jobTools(opts.jobHost))
   if (opts.scheduleHost) handlers.push(...scheduleTools(opts.scheduleHost))
+  if (opts.secretHost) handlers.push(...secretTools(opts.secretHost))
   return handlers.map(ourToolToPiTool)
 }

@@ -7,6 +7,7 @@ import { browserCommand } from './agent-browser.ts'
 import { chatCommand } from './agent-chat.ts'
 import { contextCommands } from './agent-context.ts'
 import { learningCommands } from './agent-learning.ts'
+import { agentSecretCommand } from './agent-secrets.ts'
 import { agentSkillCommand } from './agent-skills.ts'
 
 const spawnCmd = defineCommand({
@@ -194,5 +195,6 @@ export const agentCommand = defineCommand({
     skill: agentSkillCommand,
     move: moveCmd,
     browser: browserCommand,
+    secret: agentSecretCommand,
   },
 })

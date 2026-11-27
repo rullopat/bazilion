@@ -60,6 +60,15 @@ export interface AgentTurnWorkerSpec {
   withOperator: boolean
   /** Messages from other Agents waiting unread (sent without waking it), for its system prompt. */
   unreadMessages?: number
+  /** The Agent's own secrets, by name: their values are in the worker's environment. */
+  secrets?: AgentSecretUse[]
+}
+
+/** One of the Agent's secrets, as a turn uses it. */
+export interface AgentSecretUse {
+  name: string
+  /** The hosts web_fetch may send it to in a header; empty means commands only. */
+  hosts: string[]
 }
 
 /** A learning review: a digest of recent turns, answered only through `propose_lesson`. */

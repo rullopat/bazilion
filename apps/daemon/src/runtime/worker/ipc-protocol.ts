@@ -10,6 +10,7 @@ import type {
   AgentQuestion,
   AgentQuestionInput,
   AgentQuestionToolResult,
+  AgentSecret,
   AgentTrigger,
   BashApprovalMode,
   CommandApproval,
@@ -64,7 +65,14 @@ export interface RpcMethods {
   scheduleAdd: { args: ScheduleAddArgs; result: ScheduleEntry }
   scheduleList: { args: Record<string, never>; result: ScheduleEntry[] }
   scheduleRemove: { args: { id: string }; result: ScheduleEntry }
+  secretList: { args: Record<string, never>; result: AgentSecret[] }
+  secretRequest: { args: { secret: unknown; replace: boolean }; result: SecretRequestResult }
 }
+
+/** What `secret_request` comes back with: the card it showed, or the secret already stored. */
+export type SecretRequestResult =
+  | { kind: 'asked'; question: AgentQuestion }
+  | { kind: 'stored'; secret: AgentSecret }
 
 /** A schedule the Agent sets: the message and exactly one of the timings. */
 export interface ScheduleAddArgs {
@@ -320,6 +328,15 @@ export interface QuestionHost {
     question: unknown,
     signal?: AbortSignal,
   ): { question: AgentQuestion; result: Promise<AgentQuestionToolResult> }
+  /** A secret request card, unless the secret is stored and not to be replaced. */
+  askSecret(secret: unknown, replace: boolean): SecretRequestResult
+}
+
+/** The turn's Agent's secrets, without their values: secret_list. */
+export interface SecretHost {
+  list(): Promise<AgentSecret[]>
+  /** Only where the owner can answer (the question host is served). */
+  request?(secret: unknown, replace: boolean): Promise<SecretRequestResult>
 }
 
 /** A result already saved, to show again in the chat. */
@@ -399,6 +416,7 @@ export interface WorkerHosts {
   jobHost?: JobHost
   recallHost?: RecallHost
   scheduleHost?: ScheduleHost
+  secretHost?: Pick<SecretHost, 'list'>
   /** Present only for `openai-codex`, whose access token expires during long turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
 }

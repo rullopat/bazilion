@@ -54,6 +54,7 @@ export function AgentQuestions({
 }
 
 function QuestionCard({ item, agentName }: { item: AgentQuestion; agentName: string }) {
+  if (item.question.secret) return <SecretCard item={item} agentName={agentName} />
   if (item.question.action) return <ActionCard item={item} agentName={agentName} />
   const items = item.question.questions ?? []
   const single = items.length === 1 && items[0] && !items[0].multiple ? items[0] : null
@@ -367,6 +368,98 @@ function QuestionsCard({ item, agentName }: { item: AgentQuestion; agentName: st
         </div>
       </fieldset>
       <Footer item={item} error={error} />
+    </article>
+  )
+}
+
+/**
+ * A secret the Agent asks for by name. The value goes to the daemon's store from this masked
+ * field and is never shown again, to the Agent or here; Store or Decline starts its next turn.
+ */
+export function SecretCard({ item, agentName }: { item: AgentQuestion; agentName: string }) {
+  const secret = item.question.secret
+  const [value, setValue] = useState('')
+  const [note, setNote] = useState('')
+  const { busy, answered, error, submit } = useAnswer(item)
+  if (!secret) return null
+  if (answered !== null) return <Answered prompt={secret.name} answered={answered} />
+  const hosts = secret.hosts ?? []
+  return (
+    <article className="min-w-0 rounded-2xl border border-warning/35 bg-warning/[0.07] px-4 py-3.5">
+      <p className="m-0 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-warning">
+        <span className="size-[7px] shrink-0 rounded-full bg-warning" aria-hidden="true" />
+        {agentName} asks for a secret
+      </p>
+      <p className="m-0 mt-1.5 break-words font-mono text-base font-semibold text-charcoal">
+        {secret.name}
+      </p>
+      <p className="m-0 mt-1 whitespace-pre-wrap break-words text-sm text-mocha">{secret.reason}</p>
+      <p className="m-0 mt-1 text-sm text-mocha">
+        {hosts.length > 0
+          ? `Its commands get it, and web pages it fetches from ${hosts.join(', ')}.`
+          : 'Its commands get it; no website does.'}{' '}
+        {agentName} never sees the value.
+      </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (!value.trim()) return
+          const given = value
+          setValue('')
+          void submit({ kind: 'secret', value: given }, 'Stored')
+        }}
+        className="m-0 mt-3 min-w-0"
+      >
+        <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
+          <legend className="sr-only">Give or decline {secret.name}</legend>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="password"
+              aria-label={`The value of ${secret.name}`}
+              placeholder="Paste the secret"
+              autoComplete="off"
+              spellCheck={false}
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              className="min-h-10 min-w-0 flex-1 basis-56 font-mono text-sm"
+            />
+            <Button variant="primary" type="submit" className="min-h-10" disabled={!value.trim()}>
+              Store
+            </Button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              aria-label="A note for the Agent"
+              placeholder="A note if you decline (optional)"
+              value={note}
+              maxLength={4096}
+              onChange={(event) => setNote(event.target.value)}
+              className="min-h-10 min-w-0 flex-1 basis-48 text-sm"
+            />
+            <Button
+              variant="ghost"
+              className="min-h-10"
+              onClick={() =>
+                void submit(
+                  { kind: 'decline', ...(note.trim() ? { note: note.trim() } : {}) },
+                  'Declined',
+                )
+              }
+            >
+              Decline
+            </Button>
+          </div>
+        </fieldset>
+      </form>
+      <p className="m-0 mt-2 text-xs text-mocha">
+        Stored encrypted with this Agent; you can replace or remove it in its settings. Your answer
+        starts {agentName}'s next turn.
+      </p>
+      {error && (
+        <p role="alert" className="m-0 mt-2 text-sm text-danger">
+          {error}
+        </p>
+      )}
     </article>
   )
 }

@@ -52,6 +52,8 @@ export interface SessionShellToolOptions {
   approvalHost?: BashApprovalHost
   /** The daemon's background jobs: with it, bash takes `background: true`. */
   jobHost?: JobHost
+  /** The Agent's secrets, by name, for Docker commands (host commands inherit them). */
+  secretEnv?: Readonly<Record<string, string>>
 }
 
 export interface SessionShellTools {
@@ -75,7 +77,11 @@ export interface SessionShellTools {
 export function buildDockerSandbox(
   cwd: string,
   turn: DockerTurn,
-  mounts: { inputsDir?: string; skillMounts?: readonly DockerMount[] } = {},
+  mounts: {
+    inputsDir?: string
+    skillMounts?: readonly DockerMount[]
+    secretEnv?: Readonly<Record<string, string>>
+  } = {},
 ): DockerSandbox {
   const workspace = realpathSync(cwd)
   if (
@@ -99,6 +105,9 @@ export function buildDockerSandbox(
       ),
     ],
     containerPrefix: turn.containerPrefix,
+    ...(mounts.secretEnv && Object.keys(mounts.secretEnv).length > 0
+      ? { env: mounts.secretEnv }
+      : {}),
   }
 }
 

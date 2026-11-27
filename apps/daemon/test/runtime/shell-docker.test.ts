@@ -127,6 +127,20 @@ describe('docker run arguments', () => {
     expect(args.slice(-3)).toEqual(['local/toolchain:1', '-c', 'make test'])
   })
 
+  test("pass the Agent's secrets by name only; the docker client has their values", async () => {
+    const withSecrets = sandbox({ env: { GITHUB_TOKEN: 'ghp_value_never_in_argv' } })
+    const args = dockerRunArgs(withSecrets, `${prefix}abc`, 'gh repo list')
+    expect(args.filter((_, i) => args[i - 1] === '--env')).toEqual([
+      'HOME=/tmp',
+      'TMPDIR=/tmp',
+      'LANG=C.UTF-8',
+      'GITHUB_TOKEN',
+    ])
+    expect(args.join(' ')).not.toContain('ghp_value_never_in_argv')
+    const { dockerSpawnEnv } = await import('../../src/runtime/shell/docker.ts')
+    expect(dockerSpawnEnv(withSecrets).GITHUB_TOKEN).toBe('ghp_value_never_in_argv')
+  })
+
   test('refuse a host path that cannot be one --mount field', () => {
     expect(() => dockerRunArgs(sandbox({ workspace: '/srv/a,b' }), 'x', 'true')).toThrow(
       /cannot mount a path containing a comma/,

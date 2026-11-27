@@ -11,6 +11,10 @@ Agents research the web with two tools:
   `max_length` (20,000 characters by default) is saved whole with the Agent's uploads
   (`uploads/web/` in its folder, `/inputs/web/` in Docker), and the Agent gets the first part and
   the path, to read or grep the rest.
+- `web_fetch` takes `headers` for an API that needs a key. One of the Agent's secrets written
+  `{{secret:NAME}}` is filled in only when the URL's host is one of that secret's hosts; a request
+  with headers is not cached, and its headers are dropped on a redirect to another site
+  ([secrets](questions.md#secrets-an-agent-asks-for)).
 
 `web_search` takes filters: `freshness` (`day`, `week`, `month`, `year`) or `after`/`before`
 (`YYYY-MM-DD`, which win over a freshness given with them), `sites` and `exclude_sites`, `country`

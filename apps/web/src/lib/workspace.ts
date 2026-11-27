@@ -51,6 +51,7 @@ export const AGENT_SECTIONS = [
   'mailbox',
   'jobs',
   'skills',
+  'secrets',
   'telegram',
   'browser',
 ] as const

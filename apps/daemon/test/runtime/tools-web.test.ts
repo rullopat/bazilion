@@ -319,3 +319,63 @@ test('web tools provide only web_fetch; search is daemon-owned', () => {
   expect(tools.has('web_fetch')).toBe(true)
   expect(tools.has('web_search')).toBe(false)
 })
+
+test('web_fetch fills in a secret only for its hosts, and drops the headers on a redirect away', async () => {
+  const seen: Array<{ path: string; auth: string | null; key: string | null }> = []
+  const other = await startMockServer((req) => {
+    seen.push({
+      path: new URL(req.url).pathname,
+      auth: req.headers.get('authorization'),
+      key: req.headers.get('x-api-key'),
+    })
+    return new Response('elsewhere', { headers: { 'content-type': 'text/plain' } })
+  })
+  try {
+    const base = await startMock((req) => {
+      const path = new URL(req.url).pathname
+      seen.push({
+        path,
+        auth: req.headers.get('authorization'),
+        key: req.headers.get('x-api-key'),
+      })
+      if (path === '/away') return Response.redirect(`${other.url}/landed`, 302)
+      return new Response('ok', { headers: { 'content-type': 'text/plain' } })
+    })
+    const secrets = [{ name: 'API_TOKEN', value: 'tok_secret_value', hosts: ['localhost'] }]
+    const tools = createToolRegistry(webTools({ fetchImpl: fetch, allowPrivate: true, secrets }))
+    const headers = { Authorization: 'Bearer {{secret:API_TOKEN}}', 'X-Api-Key': 'plain' }
+    expect(await tools.invoke('web_fetch', JSON.stringify({ url: `${base}/one`, headers }))).toBe(
+      'ok',
+    )
+    expect(seen[0]).toEqual({ path: '/one', auth: 'Bearer tok_secret_value', key: 'plain' })
+
+    // The other server has another port, so another origin: none of the Agent's headers go there.
+    const away = `${base}/away`
+    await tools.invoke('web_fetch', JSON.stringify({ url: away, headers }))
+    expect(seen.at(-1)).toEqual({ path: '/landed', auth: null, key: null })
+
+    const before = seen.length
+    await expect(
+      tools.invoke(
+        'web_fetch',
+        JSON.stringify({
+          url: other.url.replace('localhost', '127.0.0.1'),
+          headers: { Authorization: 'Bearer {{secret:API_TOKEN}}' },
+        }),
+      ),
+    ).rejects.toThrow(/API_TOKEN is only for localhost, not 127\.0\.0\.1/)
+    await expect(
+      tools.invoke(
+        'web_fetch',
+        JSON.stringify({ url: `${base}/x`, headers: { A: '{{secret:NOPE}}' } }),
+      ),
+    ).rejects.toThrow(/you have no secret NOPE/)
+    await expect(
+      tools.invoke('web_fetch', JSON.stringify({ url: `${base}/x`, headers: { Host: 'x' } })),
+    ).rejects.toThrow(/set by the request itself/)
+    // A refused request sends nothing.
+    expect(seen.length).toBe(before)
+  } finally {
+    await other.stop()
+  }
+})

@@ -2,6 +2,7 @@
 // web: types, a few constants and the public-origin rule, with no Node-only imports.
 
 export * from './activity.ts'
+export * from './agent-secrets.ts'
 export * from './agents.ts'
 export * from './attention.ts'
 export * from './auth.ts'

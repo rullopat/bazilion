@@ -197,3 +197,65 @@ test('an action does not hold the turn, waits until answered, and the answer wak
     registry.ask(where, { action: { reason: 'r', instructions: 'i', url: 'javascript:alert(1)' } }),
   ).toThrow(/http/)
 })
+
+test('a secret request outlives the turn; the value is stored, and the Agent hears only the outcome', async () => {
+  const { _resetWakesForTest, takeWakes } = await import('../../src/lib/wakes.ts')
+  _resetWakesForTest()
+  const stored: Array<{ agentId: string; name: string; value: string }> = []
+  const registry = new QuestionRegistry(60_000, (agentId, secret, value) => {
+    if (value === 'refuse me') throw new Error('not stored')
+    stored.push({ agentId, name: secret.name, value })
+  })
+  const where = context()
+  const secret = {
+    name: 'GITHUB_TOKEN',
+    reason: 'Open the pull request',
+    hosts: ['api.github.com'],
+  }
+  const asked = registry.askSecret(where, secret)
+  expect(asked).toMatchObject({ question: { secret }, expiresAt: null })
+  // Asking again for the same name is the same card.
+  expect(registry.askSecret(where, secret).id).toBe(asked.id)
+  expect(() => registry.answer(where.agentId, asked.id, { kind: 'done' })).toThrow(
+    /answered with the secret or decline/,
+  )
+  expect(() => registry.answer(where.agentId, asked.id, { kind: 'secret', value: '  ' })).toThrow(
+    /empty/,
+  )
+  // A store that refuses leaves the card open.
+  expect(() =>
+    registry.answer(where.agentId, asked.id, { kind: 'secret', value: 'refuse me' }),
+  ).toThrow(/not stored/)
+  expect(registry.get(asked.id)).toBeDefined()
+
+  expect(registry.answer(where.agentId, asked.id, { kind: 'secret', value: 'ghp_real' })).toBe(true)
+  expect(stored).toEqual([{ agentId: where.agentId, name: 'GITHUB_TOKEN', value: 'ghp_real' }])
+  expect(registry.get(asked.id)).toBeUndefined()
+  const [wake] = takeWakes(where.agentId)
+  expect(wake).toMatchObject({
+    conversationId: where.conversationId,
+    summary: 'The user stored GITHUB_TOKEN',
+  })
+  expect(wake?.text).toContain('{{secret:GITHUB_TOKEN}}')
+  expect(wake?.text).not.toContain('ghp_real')
+
+  const declined = registry.askSecret(where, { name: 'NPM_TOKEN', reason: 'Publish' })
+  expect(
+    registry.answer(where.agentId, declined.id, { kind: 'decline', note: 'Use the CI one' }),
+  ).toBe(true)
+  expect(takeWakes(where.agentId)[0]?.text).toMatch(
+    /declined to give NPM_TOKEN[\s\S]*Use the CI one/,
+  )
+
+  // Stored another way (the sheet, the CLI): the waiting request is answered too.
+  const other = registry.askSecret(where, { name: 'SENTRY_TOKEN', reason: 'Read errors' })
+  registry.settleSecret(where.agentId, 'SENTRY_TOKEN')
+  expect(registry.get(other.id)).toBeUndefined()
+  expect(takeWakes(where.agentId)[0]?.summary).toBe('The user stored SENTRY_TOKEN')
+  // Only a secret request takes a secret.
+  const card = registry.ask(where, input)
+  expect(() =>
+    registry.answer(where.agentId, card.question.id, { kind: 'secret', value: 'x' }),
+  ).toThrow()
+  _resetWakesForTest()
+})

@@ -1,9 +1,10 @@
 // The Agent tab: who the open Agent is, what it runs on, and the ways into its deeper pages
-// (schedules, learning, mailbox, skills, Telegram, browser), which open as sheets.
+// (schedules, learning, mailbox, skills, secrets, Telegram, browser), which open as sheets.
 
 import {
   chosenName,
   type ListAgentLessonProposalsResponse,
+  type ListAgentSecretsResponse,
   type ListInboxResponse,
   type ListTriggersResponse,
   type ResolvedAgent,
@@ -15,6 +16,7 @@ import {
   ChevronRight,
   Globe,
   Inbox,
+  KeyRound,
   type LucideIcon,
   Send,
   Sparkles,
@@ -69,16 +71,18 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
   // What the rows say at a glance; a sheet closing or a turn ending may have changed it.
   const glance = useResource(
     async (signal) => {
-      const [triggers, proposals, unread] = await Promise.all([
+      const [triggers, proposals, unread, secrets] = await Promise.all([
         api<ListTriggersResponse>(`${base}/triggers`, { signal }),
         api<ListAgentLessonProposalsResponse>(`${base}/lesson-proposals`, { signal }),
         api<ListInboxResponse>(`${base}/messages?unread=1`, { signal }),
+        api<ListAgentSecretsResponse>(`${base}/secrets`, { signal }),
       ])
       return {
         schedules: triggers.triggers.filter((trigger) => trigger.enabled).length,
         schedulesOff: triggers.triggers.filter((trigger) => !trigger.enabled).length,
         proposals: proposals.proposals.filter((proposal) => proposal.status === 'pending').length,
         unread: unread.messages.length,
+        secrets: secrets.secrets.length,
       }
     },
     [base, search.section],
@@ -149,6 +153,12 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
         resolved.profile.skillsMode === 'all' && resolved.skills.length === 0
           ? 'From the template'
           : `${resolved.skills.length} attached`,
+    },
+    {
+      section: 'secrets',
+      icon: KeyRound,
+      label: 'Secrets',
+      detail: info ? (info.secrets ? `${info.secrets} stored` : 'None') : '',
     },
     ...(telegram.data?.configured
       ? [

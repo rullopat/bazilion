@@ -1,8 +1,9 @@
 // Agent questions in Telegram. Each question of a waiting card goes to the Agent's topic as a
 // message of its own, with one button per choice and Skip; the owner taps a button or replies to
 // the message with their own answer (for a question with several choices: their numbers). The card
-// is answered once each question is. An action comes with Done and Can't. Once a card settles (here,
-// on web or CLI, or by timing out) the buttons are replaced by the outcome.
+// is answered once each question is. An action comes with Done and Can't. A secret request comes
+// with a link to its masked field on the web, never asking for the value here, and Decline. Once a
+// card settles (here, on web or CLI, or by timing out) the buttons are replaced by the outcome.
 
 import type {
   AgentQuestion,
@@ -12,13 +13,18 @@ import type {
   AgentQuestionToolResult,
 } from '@bazilion/api-types'
 import type { InlineKeyboardMarkup, Message } from 'grammy/types'
+import { publicOrigin } from '../notification-message.ts'
 import { questionRegistry } from '../questions.ts'
 import { type TelegramLive, telegramLive } from './live.ts'
 import { clip, TELEGRAM_SAFE_BUDGET } from './markdown.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
 
-/** `bq:<card>:<question>:<choice|s>` for a question, `bq:<card>:a:<d|c>` for an action. */
-const CALLBACK = /^bq:([0-9a-f-]{36}):(?:(\d+):(\d+|s)|a:(d|c))$/
+/**
+ * `bq:<card>:<question>:<choice|s>` for a question, `bq:<card>:a:<d|c>` for an action and
+ * `bq:<card>:a:x` to decline a secret request.
+ */
+const CALLBACK = /^bq:([0-9a-f-]{36}):(?:(\d+):(\d+|s)|a:(d|c|x))$/
+const ACTION_ANSWERS = { d: 'done', c: 'cannot', x: 'decline' } as const
 const FOOTER = 'Tap a choice, or reply to this message with your own answer.'
 const FOOTER_MULTIPLE =
   'Reply to this message with the numbers of your choices (such as 1 3), or your own answer.'
@@ -48,6 +54,24 @@ function actionBody(question: AgentQuestion): string {
   ]
     .filter(Boolean)
     .join('\n\n')
+}
+
+/**
+ * A secret request: what it is for and where to type it. A Telegram message is not masked, so the
+ * value is never asked for here.
+ */
+function secretBody(question: AgentQuestion): string {
+  const secret = question.question.secret
+  if (!secret) return ''
+  const origin = publicOrigin(process.env)
+  const where = origin
+    ? `Type it in Bazilion, never here: ${origin}/?${new URLSearchParams({ agent: question.agentId })}`
+    : 'Type it in Bazilion on your computer (the chat with this Agent), never here.'
+  return [
+    `🔑 ${clip(`The Agent asks for a secret: ${secret.name}`, 300)}`,
+    clip(secret.reason, 500),
+    `${where}\nOr in a terminal: bazilion agent secret set ${question.agentId} ${secret.name}`,
+  ].join('\n\n')
 }
 
 function answerLine(item: AgentQuestionItem, answer: AgentQuestionItemAnswer | undefined): string {
@@ -97,6 +121,14 @@ export async function sendQuestionPrompt(
   topicId: number,
   question: AgentQuestion,
 ): Promise<void> {
+  if (question.question.secret) {
+    const body = secretBody(question)
+    const sent = await post(live, topicId, body, {
+      inline_keyboard: [[{ text: 'Decline', callback_data: `bq:${question.id}:a:x` }]],
+    })
+    actionPrompts.set(question.id, { live, messageId: sent.message_id, body })
+    return
+  }
   if (question.question.action) {
     const body = actionBody(question)
     const sent = await post(live, topicId, `${body}\n\n${ACTION_FOOTER}`, {
@@ -160,16 +192,20 @@ export async function sendQuestionPrompt(
 const actionPrompts = new Map<string, { live: TelegramLive; messageId: number; body: string }>()
 
 /** A button tap on a question or action prompt; null for any other callback. */
-export function questionCallback(
-  data: string | undefined,
-):
+export function questionCallback(data: string | undefined):
   | { questionId: string; index: number; answer: AgentQuestionItemAnswer }
-  | { questionId: string; action: Extract<AgentQuestionAnswer, { kind: 'done' | 'cannot' }> }
+  | {
+      questionId: string
+      action: Extract<AgentQuestionAnswer, { kind: 'done' | 'cannot' | 'decline' }>
+    }
   | null {
   const match = data?.match(CALLBACK)
   if (!match?.[1]) return null
   if (match[4])
-    return { questionId: match[1], action: { kind: match[4] === 'd' ? 'done' : 'cannot' } }
+    return {
+      questionId: match[1],
+      action: { kind: ACTION_ANSWERS[match[4] as keyof typeof ACTION_ANSWERS] },
+    }
   if (match[2] === undefined || match[3] === undefined) return null
   return {
     questionId: match[1],
@@ -214,17 +250,17 @@ export function answerFromTelegram(
   return 'That question is no longer open.'
 }
 
-/** Answer an action from Telegram; the Agent's next turn starts with it. */
+/** Answer an action, or decline a secret request, from Telegram; the Agent's next turn starts with it. */
 export function answerActionFromTelegram(
   questionId: string,
-  answer: Extract<AgentQuestionAnswer, { kind: 'done' | 'cannot' }>,
+  answer: Extract<AgentQuestionAnswer, { kind: 'done' | 'cannot' | 'decline' }>,
 ): string {
   const question = questionRegistry.get(questionId)
   if (!question || !questionRegistry.answer(question.agentId, questionId, answer))
     return 'That is no longer waiting.'
   const posted = actionPrompts.get(questionId)
   actionPrompts.delete(questionId)
-  const line = answer.kind === 'done' ? 'Done.' : "Can't."
+  const line = answer.kind === 'done' ? 'Done.' : answer.kind === 'decline' ? 'Declined.' : "Can't."
   if (posted)
     void settle(posted.live, posted.messageId, `${posted.body}\n\n${line}`)?.catch(() => undefined)
   return line

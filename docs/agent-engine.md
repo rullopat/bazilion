@@ -163,6 +163,11 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   by default its own), only in a turn you started and at most six per turn
   (`lib/team-host.ts`). The new Agent's `AGENTS.md` starts with its role and who made it, it gets
   no first-run ritual, and in a restricted Team it is connected with its creator both ways.
+- `secret_request` (where `ask_user` is) and `secret_list`: secrets by name; the value goes from a
+  masked card to the daemon's store and reaches the Agent's commands as an environment variable
+  and `web_fetch` headers written `{{secret:NAME}}` (`lib/agent-secrets.ts`); see
+  [questions](questions.md#secrets-an-agent-asks-for). Tool results go to the model with secrets
+  and Bazilion's credentials taken out (`redactToolResults` in `runtime/pi/session.ts`).
 - `schedule_add`, `schedule_list`, `schedule_remove`: the Agent's own schedules
   (`lib/schedule-host.ts`), in every kind of turn; see [the scheduler](#9-scheduler).
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and

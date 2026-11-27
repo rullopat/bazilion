@@ -19,10 +19,12 @@ shows a card the moment it is asked, wherever the turn started, and drops it onc
 skipped, timed out or cancelled anywhere.
 
 An answer is information only: it grants no shell or communication permission. Do not answer a
-question with credentials; put those in the configuration.
+question with credentials: an Agent asks for those with `secret_request`
+([below](#secrets-an-agent-asks-for)), and Bazilion's own keys go in the configuration.
 
 Turns nobody is watching (scheduled triggers, inbox wake-ups, queued web messages, piped CLI
-chats, reviews) do not get the tool.
+chats, reviews) do not get `ask_user` or `secret_request`. `secret_list`, which shows an Agent its
+secrets' names, is in every turn.
 
 ## Answering
 
@@ -55,4 +57,31 @@ chats, reviews) do not get the tool.
 
 Waiting questions and actions live only in the daemon's memory: restarting the daemon or
 cancelling the turn ends a question without an answer, and an action the Agent waits on is
-forgotten on a restart (it has no time limit otherwise).
+forgotten on a restart (it has no time limit otherwise), as is a waiting secret request.
+
+## Secrets an Agent asks for
+
+When an Agent needs a token or a password, `secret_request` asks for it by name
+(`GITHUB_TOKEN`), with why, and optionally the hosts `web_fetch` may send it to. Like an action it
+does not hold the turn. You answer when it suits you:
+
+- **Web:** the card has a masked field with **Store**, and **Decline** with an optional note. The
+  value goes to the daemon and is not shown again, here or to the Agent.
+- **Telegram:** a message is not masked, so it says where to type the secret (a link to the chat
+  when the web is published, else the command) and has **Decline**.
+- **Terminal:** `bazilion agent secret set <agent> <NAME>` reads it without echo (`--from-file` for
+  a key file); `bazilion question answer <agent> <id> --decline [--note …]` declines.
+
+Storing it, from the card, the Agent's **Secrets** sheet or the CLI, answers the request: the
+Agent's next turn is told **stored** or **declined**, never the value. Each Agent's secrets are
+encrypted in the `secrets` table and deleted with the Agent. Its commands get each as an
+environment variable of its name (host and Docker); `web_fetch` puts it in a header written
+`{{secret:NAME}}` only for its hosts, and drops the Agent's headers on a redirect to another site;
+the system prompt lists their names. Tool output is checked for the exact values, and for
+Bazilion's credentials, before the model or the transcript gets it. The Agent's **Secrets** sheet
+and `bazilion agent secret list|set|rm` list, add, replace and remove them. A name that Bazilion or
+a command's process already uses (`PATH`, `OPENAI_API_KEY`, `BAZILION_*`) is refused.
+
+This keeps the value out of the conversation; it is not a sandbox. A command can still send it
+elsewhere or change it, and only the exact value is taken out of output. A Docker command has no
+network, so there a token helps only local tools.

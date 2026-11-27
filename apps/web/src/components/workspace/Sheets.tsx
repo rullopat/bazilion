@@ -12,6 +12,7 @@ import { AgentJobs } from '../agent/AgentJobs'
 import { AgentLearning } from '../agent/AgentLearning'
 import { AgentMailbox } from '../agent/AgentMailbox'
 import { AgentSchedules } from '../agent/AgentSchedules'
+import { AgentSecrets } from '../agent/AgentSecrets'
 import { TeamMemory } from '../team/TeamMemory'
 import { TeamSettings } from '../team/TeamSettings'
 import { TeamUserMd } from '../team/TeamUserMd'
@@ -51,6 +52,10 @@ export function Sheets() {
       case 'skills':
         title = `${name}’s skills`
         body = <AgentSkillsSheet key={id} agentId={id} agentName={name} attached={agent.skills} />
+        break
+      case 'secrets':
+        title = `${name}’s secrets`
+        body = <AgentSecrets key={id} agent={agent.agent} />
         break
       case 'telegram':
         title = `${name} on Telegram`
