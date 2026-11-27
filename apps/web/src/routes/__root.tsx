@@ -16,6 +16,7 @@ import '@fontsource/jetbrains-mono/latin-400.css'
 import '@fontsource/jetbrains-mono/latin-500.css'
 import { Footer } from '../components/Footer'
 import { TopBar } from '../components/TopBar'
+import { UpdatedNotice } from '../components/UpdatedNotice'
 import { AttentionCountProvider } from '../lib/attention-count'
 import { fetchAuthState, isSetupOpen, PUBLIC_PATHS } from '../lib/auth'
 import { DesktopNotifier } from '../lib/desktop-notifications'
@@ -117,6 +118,7 @@ function RootComponent() {
             <DesktopNotifier />
             <RosterWatcher />
             <StaleBuildReloader />
+            {!isLogin && <UpdatedNotice />}
             <PageTitleProvider>
               {isLogin ? (
                 <Outlet />

@@ -505,6 +505,68 @@ test('Teams and Agents move in the list and stay there; the list is as wide as i
   expect(session.problems).toEqual([])
 })
 
+test('a tab open across an upgrade says so, and its reload keeps what was typed', async () => {
+  const session = await open()
+  await session.go(`/?agent=${ids.sage}`, 1500)
+  const field = session.page.getByRole('textbox', { name: 'Message Sage' })
+  const notice = session.page.getByRole('status').filter({ hasText: 'Bazilion was updated' })
+  // The page and the web server are one build (the client and the server bundles share its id):
+  // the requests the chat made as it opened say nothing.
+  await pw(notice).toHaveCount(0)
+  await field.fill('A note I have not sent yet')
+  // As after an upgrade: the server now answers from another build.
+  await session.page.route('**/api/**', async (route) => {
+    // The event stream passes as it is (it has no headers a page can read).
+    if (route.request().url().includes('/api/events')) return route.continue()
+    try {
+      const response = await route.fetch()
+      await route.fulfill({
+        response,
+        headers: { ...response.headers(), 'x-bazilion-build': 'a-newer-build' },
+      })
+    } catch {
+      // The server is restarting: the request fails, as it would.
+      await route.abort().catch(() => {})
+    }
+  })
+  // The daemon restarts for the upgrade; the page's live feed comes back and asks which build
+  // answers now.
+  await instance.restart()
+  await pw(notice).toBeVisible({ timeout: 30_000 })
+  await session.page.unroute('**/api/**')
+  await Promise.all([
+    session.page.waitForEvent('framenavigated'),
+    notice.getByRole('button', { name: 'Reload' }).click(),
+  ])
+  await session.page.waitForLoadState('load')
+  await pw(session.page.getByRole('textbox', { name: 'Message Sage' })).toHaveValue(
+    'A note I have not sent yet',
+    { timeout: 10_000 },
+  )
+  await pw(notice).toHaveCount(0)
+  await session.page.getByRole('textbox', { name: 'Message Sage' }).fill('')
+  // Requests failed while the daemon was down, as they should; the page itself did not.
+  expect(session.problems.filter((problem) => problem.startsWith('page error'))).toEqual([])
+})
+
+test('an Agent dragged with the mouse moves in its Team', async () => {
+  const session = await open()
+  await session.go(`/?agent=${ids.scout}`, 1500)
+  const names = async () =>
+    (await instance.api<Array<{ name: string; teamId: string }>>('/api/agents'))
+      .filter((agent) => agent.teamId === 'research')
+      .map((agent) => agent.name)
+  const before = await names()
+  const rail = session.page.getByRole('navigation', { name: 'Teams and agents' })
+  const last = before.at(-1) ?? ''
+  const first = before[0] ?? ''
+  const row = (name: string) => rail.getByRole('link').filter({ hasText: name }).first()
+  await row(last).dragTo(row(first), { targetPosition: { x: 40, y: 4 } })
+  await pw.poll(names, { timeout: 5_000 }).toEqual([last, ...before.slice(0, -1)])
+  await instance.api('/api/teams/research/agents/order', { method: 'PUT', body: { ids: before } })
+  expect(session.problems).toEqual([])
+})
+
 test('a Team and an Agent made outside the page show up without a reload', async () => {
   const session = await open()
   // Dev's Team, Mira's too, is open in the list.

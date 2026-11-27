@@ -1,4 +1,4 @@
-import { type ErrorComponentProps, useRouter } from '@tanstack/react-router'
+import type { ErrorComponentProps } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { isStaleBuildError, reloadForNewBuild } from '../lib/stale-build'
 import { Button } from './Button'
@@ -6,7 +6,6 @@ import { PageShell } from './Page'
 
 /** The router's error view for every route: a loader failed. The top nav stays usable. */
 export function RouteErrorState({ error }: ErrorComponentProps) {
-  const router = useRouter()
   const stale = isStaleBuildError(error)
   // Opened before an upgrade: the new build is one reload away.
   useEffect(() => {
@@ -44,7 +43,9 @@ export function RouteErrorState({ error }: ErrorComponentProps) {
           {error.message}
         </pre>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => void router.invalidate()}>
+          {/* A whole reload: the server may have come back as a newer build (an upgrade), which
+              data asked for by this page's old code would not show. */}
+          <Button variant="primary" onClick={() => window.location.reload()}>
             Retry
           </Button>
           <a className="ghost-btn" href="/">

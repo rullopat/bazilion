@@ -3,7 +3,7 @@
 
 import type { Agent, Team } from '@bazilion/api-types'
 import { Link } from '@tanstack/react-router'
-import { ArrowDown, ArrowUp, ChevronRight, Ellipsis, PanelRight } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronRight, Ellipsis, GripVertical, PanelRight } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { teamSummary, type useActivity } from '../../../lib/activity'
 import type { useWorkspace } from '../context'
@@ -56,6 +56,11 @@ export function TeamGroup({
       className={`group/team relative mb-1 rounded-lg last:mb-0 ${mark ? DROP_MARK_CLASS[mark] : ''}`}
       {...order.dropTarget(team.id)}
     >
+      {/* Dragging the header moves the Team; the grip says so when pointed at. */}
+      <GripVertical
+        aria-hidden="true"
+        className="pointer-events-none absolute -left-1.5 top-2.5 size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover/team:opacity-100"
+      />
       <details
         open={isOpen}
         onToggle={(event) => {
@@ -67,6 +72,7 @@ export function TeamGroup({
       >
         <summary
           {...order.dragSource({ kind: 'team', id: team.id })}
+          title="Drag to move the Team"
           className={`flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-lg py-1 pl-2 pr-16 text-sm transition-colors hover:bg-accent/60 [&::-webkit-details-marker]:hidden ${
             current ? 'bg-muted text-foreground' : 'text-mocha'
           }`}

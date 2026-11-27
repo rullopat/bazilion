@@ -63,9 +63,14 @@ export function RailResizer({ width, onWidth }: { width: number; onWidth: (rem: 
         }
       }}
     >
+      {/* Always there, faint: a line along the edge and a grip at its middle, stronger on hover. */}
       <span
         aria-hidden="true"
-        className="my-3 w-0.5 rounded-full bg-transparent transition-colors group-hover/resize:bg-ring group-focus-visible/resize:bg-ring"
+        className="my-3 w-px rounded-full bg-border transition-colors group-hover/resize:w-0.5 group-hover/resize:bg-ring group-focus-visible/resize:w-0.5 group-focus-visible/resize:bg-ring"
+      />
+      <span
+        aria-hidden="true"
+        className="absolute top-1/2 h-8 w-1.5 -translate-y-1/2 rounded-full border border-border bg-card transition-colors group-hover/resize:border-ring group-focus-visible/resize:border-ring"
       />
     </div>
   )

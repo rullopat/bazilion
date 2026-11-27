@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { apiFetch } from './api'
 
 const CHANNEL = 'bazilion-live'
 const LOCK = 'bazilion-live'
@@ -102,9 +103,14 @@ export function LiveProvider({ enabled, children }: { enabled: boolean; children
     }
     let releaseLock: () => void = () => {}
 
+    let wasDown = false
     const status = (value: boolean) => {
       setConnected(value)
       share({ kind: 'status', connected: value })
+      // Back after the stream was down, as after a restart for an upgrade: one request says
+      // which build answers now (lib/build.ts).
+      if (value && wasDown) void apiFetch('/api/activity').catch(() => {})
+      wasDown = !value
     }
 
     const open = () => {

@@ -1,6 +1,7 @@
 // The browser's one way to call the daemon: same-origin /api/* requests through the gateway,
 // which forwards the session cookie. State-changing requests echo the CSRF cookie in a header.
 
+import { BUILD_HEADER, noteServerBuild } from './build'
 import { CSRF_COOKIES, readCookie } from './cookies'
 
 export class ApiError extends Error {
@@ -60,6 +61,7 @@ export async function apiFetch(path: string, init: ApiInit = {}): Promise<Respon
     body = JSON.stringify(init.body)
   }
   const response = await fetch(path, { method, headers, body, signal: init.signal })
+  noteServerBuild(response.headers.get(BUILD_HEADER))
   if (!response.ok) throw await failure(response)
   return response
 }

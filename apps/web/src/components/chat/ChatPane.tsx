@@ -52,8 +52,30 @@ export interface ChatPaneProps {
   onConversationChange?: (conversationId: string | null) => void
 }
 
-/** Unsent text per Agent, kept while the page is open. */
-const drafts = new Map<string, string>()
+/** Unsent text per Agent, kept for the tab: across other Agents and a reload. */
+const drafts = {
+  key: (agentId: string) => `bz_draft:${agentId}`,
+  /** Kept for the tab, so a reload (after an upgrade, say) does not lose it. */
+  get(agentId: string): string | undefined {
+    try {
+      return window.sessionStorage.getItem(this.key(agentId)) ?? undefined
+    } catch {
+      return undefined
+    }
+  },
+  set(agentId: string, text: string) {
+    try {
+      window.sessionStorage.setItem(this.key(agentId), text)
+    } catch {
+      // Storage refused (private mode, full): the draft lasts as long as the field.
+    }
+  },
+  delete(agentId: string) {
+    try {
+      window.sessionStorage.removeItem(this.key(agentId))
+    } catch {}
+  },
+}
 
 export const CHAT_FRAME =
   'relative flex h-full flex-col overflow-hidden rounded-[16px] border border-frost bg-snow shadow-baziu-sm'
@@ -87,7 +109,12 @@ function AgentChat({
     onConversation: onConversationChange,
   })
   // What was typed and not sent waits here while another Agent is open (for this page only).
-  const [input, setInputState] = useState(() => drafts.get(agentId) ?? '')
+  const [input, setInputState] = useState('')
+  // Read after the first paint: the server renders the field empty, so the page matches it.
+  useEffect(() => {
+    const kept = drafts.get(agentId)
+    if (kept) setInputState((current) => current || kept)
+  }, [agentId])
   // Editing the last message borrows the composer; cancelling gives back what was in it. While
   // editing, the draft kept for this Agent is what was there before, never the edited message.
   const beforeEdit = useRef('')
