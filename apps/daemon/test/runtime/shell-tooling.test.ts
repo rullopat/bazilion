@@ -5,7 +5,7 @@ import {
   type BashApprovalHost,
   createApprovalGatedBashTool,
 } from '../../src/runtime/shell/approval.ts'
-import { createSessionShellTools } from '../../src/runtime/shell/tooling.ts'
+import { createSessionShellTools, redactedOutput } from '../../src/runtime/shell/tooling.ts'
 
 const containerPrefix = `bazilion-${'1'.repeat(12)}-`
 
@@ -26,13 +26,13 @@ const toolContext = {
   },
 } as never
 
-test('shell security off preserves the complete existing host coding-tool surface', () => {
+test('with shell security off, bash is still Bazilion’s own, which redacts its output', () => {
   const result = createSessionShellTools('/tmp/team', {})
 
   expect(result.config.sandboxMode).toBe('off')
   expect(result.config.approvalMode).toBe('off')
-  expect(result.hostToolNames).toEqual(['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'])
-  expect(result.customBash).toBeUndefined()
+  expect(result.hostToolNames).toEqual(['read', 'edit', 'write', 'grep', 'find', 'ls'])
+  expect(result.bash).toMatchObject({ name: 'bash', label: 'bash' })
 })
 
 test('dangerous approval on the host replaces only bash with a sequential custom tool', () => {
@@ -42,12 +42,12 @@ test('dangerous approval on the host replaces only bash with a sequential custom
 
   expect(result.config).toMatchObject({ sandboxMode: 'off', approvalMode: 'dangerous' })
   expect(result.hostToolNames).toEqual(['read', 'edit', 'write', 'grep', 'find', 'ls'])
-  expect(result.customBash).toMatchObject({
+  expect(result.bash).toMatchObject({
     name: 'bash',
     label: 'bash',
     executionMode: 'sequential',
   })
-  expect(result.customBash?.description).toContain('require operator approval')
+  expect(result.bash.description).toContain('require operator approval')
 })
 
 test('Docker mode exposes a custom bash and no host-backed coding tools', () => {
@@ -60,12 +60,12 @@ test('Docker mode exposes a custom bash and no host-backed coding tools', () => 
   expect(result.config.sandboxMode).toBe('docker')
   expect(result.config.approvalMode).toBe('off')
   expect(result.hostToolNames).toEqual([])
-  expect(result.customBash).toMatchObject({
+  expect(result.bash).toMatchObject({
     name: 'bash',
     label: 'bash (Docker sandbox)',
   })
-  expect(result.customBash?.description).toContain('network-disabled Docker container')
-  expect(result.customBash?.description).toContain('Host files and credentials are unavailable')
+  expect(result.bash.description).toContain('network-disabled Docker container')
+  expect(result.bash.description).toContain('Host files and credentials are unavailable')
 })
 
 test('Docker plus dangerous approval wraps the Docker bash without restoring host tools', () => {
@@ -76,13 +76,13 @@ test('Docker plus dangerous approval wraps the Docker bash without restoring hos
   )
 
   expect(result.hostToolNames).toEqual([])
-  expect(result.customBash).toMatchObject({
+  expect(result.bash).toMatchObject({
     name: 'bash',
     label: 'bash (Docker sandbox)',
     executionMode: 'sequential',
   })
-  expect(result.customBash?.description).toContain('network-disabled Docker container')
-  expect(result.customBash?.description).toContain('require operator approval')
+  expect(result.bash.description).toContain('network-disabled Docker container')
+  expect(result.bash.description).toContain('require operator approval')
 })
 
 test('safe commands bypass the approval host and execute the selected backend', async () => {
@@ -192,4 +192,33 @@ test('paths inside the workspace count as project-local, the workspace itself do
     ).rejects.toBeInstanceOf(BashApprovalDeniedError)
   expect(requestApproval).toHaveBeenCalledTimes(3)
   expect(exec).toHaveBeenCalledTimes(3)
+})
+
+test('command output loses the turn’s credentials as it arrives: split, added late, around bytes', async () => {
+  const values = ['SECRETVALUE-0123456789']
+  const backend: BashOperations = {
+    async exec(_command, _cwd, { onData }) {
+      onData(Buffer.from('a SECRETVA'))
+      onData(Buffer.from('LUE-0123456789 b\n'))
+      // A token refreshed during the command.
+      values.push('LATE-TOKEN-abcdef')
+      onData(Buffer.from([0xff, 0x00, 0xc3]))
+      onData(Buffer.from([0xa9, 0x20]))
+      onData(Buffer.from('LATE-TOKEN-abcdef'))
+      return { exitCode: 0 }
+    },
+  }
+  const chunks: Buffer[] = []
+  const result = await redactedOutput(backend, values).exec('true', '/', {
+    onData: (data) => chunks.push(data),
+  })
+  expect(result).toEqual({ exitCode: 0 })
+  expect(Buffer.concat(chunks)).toEqual(
+    Buffer.concat([
+      Buffer.from('a [REDACTED] b\n'),
+      // Bytes that are no text, and a character split across chunks, pass as they came.
+      Buffer.from([0xff, 0x00, 0xc3, 0xa9, 0x20]),
+      Buffer.from('[REDACTED]'),
+    ]),
+  )
 })

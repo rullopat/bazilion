@@ -11,6 +11,7 @@ import type {
   SessionEvent,
   ToolResultImage,
 } from '@bazilion/api-types'
+import { scriptCallsText } from '../../lib/tool-steps'
 
 export interface ToolItem {
   /** `progress` is the live output tail of a running call, replaced by its result. */
@@ -21,8 +22,15 @@ export interface ToolItem {
 }
 
 export type RenderEntry =
-  | { type: 'user'; content: string; images?: ToolResultImage[]; files?: { name: string }[] }
-  | { type: 'assistant'; content: string }
+  | {
+      type: 'user'
+      content: string
+      images?: ToolResultImage[]
+      files?: { name: string }[]
+      /** When it was sent, in milliseconds since the epoch (BAZ-101). */
+      at?: number
+    }
+  | { type: 'assistant'; content: string; at?: number }
   | { type: 'tool'; items: ToolItem[] }
   | { type: 'images'; images: ToolResultImage[] }
   | { type: 'result'; resultId: string }
@@ -56,6 +64,7 @@ export function draftEntry(text: string, attachments: Attachment[]): RenderEntry
   return {
     type: 'user',
     content: text,
+    at: Date.now(),
     ...(images.length > 0 ? { images } : {}),
     ...(files.length > 0 ? { files } : {}),
   }
@@ -94,12 +103,17 @@ export function projectMessages(
       entries.push({
         type: 'user',
         content: message.content,
+        ...(message.at ? { at: message.at } : {}),
         ...(message.images?.length ? { images: message.images } : {}),
       })
     } else if (message.role === 'assistant') {
       if (message.content) {
         openTool = null
-        entries.push({ type: 'assistant', content: message.content })
+        entries.push({
+          type: 'assistant',
+          content: message.content,
+          ...(message.at ? { at: message.at } : {}),
+        })
       }
       for (const call of message.toolCalls ?? []) {
         toolBox().items.push({ kind: 'call', id: call.id, name: call.name, body: call.arguments })
@@ -113,7 +127,10 @@ export function projectMessages(
         kind: message.isError || /^error:/i.test(message.content) ? 'error' : 'result',
         id: message.toolCallId ?? '',
         name: message.toolName ?? '',
-        body: message.content,
+        // A script's step lists the calls it made before what it returned (BAZ-100).
+        body: message.calls?.length
+          ? `${scriptCallsText(message.calls)}\n\n${message.content}`
+          : message.content,
       })
       for (const result of message.results ?? []) {
         entries.push({ type: 'result', resultId: result.resultId })
@@ -260,9 +277,10 @@ function appendToolItem(entries: RenderEntry[], item: ToolItem): RenderEntry[] {
 function setAssistantText(entries: RenderEntry[], text: (previous: string) => string) {
   const last = entries[entries.length - 1]
   if (last?.type === 'assistant') {
-    return [...entries.slice(0, -1), { type: 'assistant' as const, content: text(last.content) }]
+    return [...entries.slice(0, -1), { ...last, content: text(last.content) }]
   }
-  return [...entries, { type: 'assistant' as const, content: text('') }]
+  // Stamped as it arrives; the saved history's own time replaces it when the turn ends.
+  return [...entries, { type: 'assistant' as const, content: text(''), at: Date.now() }]
 }
 
 /** Fold one live event into the turn's entries. Events without a visible entry change nothing. */
@@ -294,10 +312,12 @@ export function applyEvent(entries: RenderEntry[], event: SessionEvent): RenderE
             }
           : entry,
       )
+      const text = event.type === 'tool_result' ? event.result : event.error
+      const body = event.calls?.length ? `${scriptCallsText(event.calls)}\n\n${text}` : text
       const item: ToolItem =
         event.type === 'tool_result'
-          ? { kind: 'result', id: event.id, name: event.name, body: event.result }
-          : { kind: 'error', id: event.id, name: event.name, body: event.error }
+          ? { kind: 'result', id: event.id, name: event.name, body }
+          : { kind: 'error', id: event.id, name: event.name, body }
       const next = appendToolItem(cleared, item)
       return event.type === 'tool_result' && event.images?.length
         ? [...next, { type: 'images', images: event.images }]

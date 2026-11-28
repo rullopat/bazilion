@@ -29,12 +29,19 @@ export interface BuildSystemPromptOptions {
    * Include the bundled browser operating guide. Supplied only
    * when the ordinary browser tools are actually admitted — the SAME host
    * presence that registers the `browser_*` tools, so guidance and
-   * capability never drift apart. Restricted reviews never set it.
-   * `'attached'` when the tools drive the user's own browser (BROWSER_ATTACH).
+   * capability never drift apart.
+   * `'attached'` when the tools drive the user's own browser (in this conversation).
    */
   browserGuide?: boolean | 'attached'
+  /** The turn has `browser_use`: the browser conversations start with (BAZ-102). */
+  browserDefault?: 'own' | 'yours'
   /** Web research guidance, when the turn has web_search. */
   searchGuide?: boolean
+  /**
+   * MCP connections whose tools wait to be found (BAZ-100): their group name (`mcp__github`), the
+   * operator's name for them, and how many tools each has.
+   */
+  connections?: readonly { group: string; name: string; tools: number }[]
   /** Whom the Agent can message: its teammates, and Agents of other Teams it may reach. */
   contacts?: readonly AgentContact[]
   /** The turn offers `agent_create`. */
@@ -62,10 +69,10 @@ export interface PromptSection {
     | 'agent-home'
     | 'skills'
     | 'search-guide'
+    | 'connections'
     | 'browser-guide'
     | 'team'
     | 'user'
-    | 'lessons'
     | 'secrets'
     | 'memory'
   text: string
@@ -268,11 +275,18 @@ export function buildSystemPromptSections(
     })
   }
 
+  if (options.connections && options.connections.length > 0) {
+    parts.push({ id: 'connections', text: connectionsSection(options.connections) })
+  }
+
   // Browser operating guide — only when the browser tools are admitted (T10).
   if (options.browserGuide) {
     parts.push({
       id: 'browser-guide',
-      text: browserGuideSection(options.browserGuide === 'attached'),
+      text: browserGuideSection(
+        options.browserGuide === 'attached',
+        options.browserDefault ? { byDefault: options.browserDefault } : undefined,
+      ),
     })
   }
 
@@ -297,14 +311,6 @@ export function buildSystemPromptSections(
     parts.push({
       id: 'user',
       text: `# About the User\n\nThis team's USER.md is empty. As you learn STABLE facts about the human (preferences, role, working hours, how they like to be addressed), populate it via \`user_md_get\` then \`user_md_write\` (always get first — you need the etag). Reserve this for things you're confident are durable — project knowledge belongs in \`memory_write\`, personal notes about yourself in \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the team sees the new content in their system prompt on their next turn automatically.**`,
-    })
-  }
-
-  const reviewedLessons = boundReviewedLessons(agent.privateLessons)
-  if (reviewedLessons.length > 0) {
-    parts.push({
-      id: 'lessons',
-      text: `# Reviewed lessons\n\nThese private lessons were explicitly approved by the human for your behavior. Follow them when relevant; current user instructions and higher-priority policy still win.\n\n${reviewedLessons.map((lesson) => `- ${lesson}`).join('\n')}`,
     })
   }
 
@@ -385,16 +391,18 @@ function teammateLines(agent: ResolvedAgent, options: BuildSystemPromptOptions):
   return lines
 }
 
-function boundReviewedLessons(lessons: readonly string[], maxCharacters = 8_000): string[] {
-  const selected: string[] = []
-  let used = 0
-  for (const raw of lessons) {
-    const lesson = raw.trim()
-    if (!lesson) continue
-    const remaining = maxCharacters - used
-    if (remaining <= 0) break
-    selected.push(lesson.slice(0, remaining))
-    used += Math.min(lesson.length, remaining)
-  }
-  return selected
+/** The MCP connections whose tools are found with `tool_search` or called from a script. */
+function connectionsSection(
+  connections: readonly { group: string; name: string; tools: number }[],
+): string {
+  return [
+    '# Connections',
+    '',
+    "These connections' tools are not loaded yet. Load the ones a task needs with `tool_search` (they stay loaded for this conversation), or call them from a `codemode` script, where they are `tools.<name>` and `searchTools()` finds them.",
+    '',
+    ...connections.map(
+      (connection) =>
+        `- ${connection.name} (\`${connection.group}\`): ${connection.tools} tool${connection.tools === 1 ? '' : 's'}`,
+    ),
+  ].join('\n')
 }

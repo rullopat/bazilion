@@ -1,26 +1,16 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { Api, AssistantMessage, Model } from '@earendil-works/pi-ai'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
-import { SessionManager, type ToolDefinition } from '@earendil-works/pi-coding-agent'
-import { Type } from 'typebox'
+import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { afterEach, describe, expect, test } from 'vitest'
 import { resolvePaths } from '../../src/core/paths.ts'
 import { loadRepositoryInstructions } from '../../src/lib/repository-instructions.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
-import {
-  createBazilionSession,
-  createRestrictedReviewSession,
-  describeTurn,
-} from '../../src/runtime/pi/session.ts'
-import {
-  cleanupMinimalWorkerScratch,
-  createMinimalWorkerScratch,
-} from '../../src/runtime/worker/runtime.ts'
+import { createBazilionSession, describeTurn } from '../../src/runtime/pi/session.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
-import { startMockServer } from './mock-server.ts'
 
 const cleanup: string[] = []
 
@@ -64,14 +54,12 @@ describe('session prompt boundary', () => {
     expect(handle.session.settingsManager.getCompactionEnabled()).toBe(true)
     expect(handle.session.settingsManager.getCompactionReserveTokens()).toBe(16_384)
     expect(handle.session.settingsManager.getCompactionKeepRecentTokens()).toBe(20_000)
-    expect(
-      handle.session
-        .getAllTools()
-        .some(
-          (tool) =>
-            ['codemode', 'tool_search'].includes(tool.name) || tool.name.startsWith('mcp__'),
-        ),
-    ).toBe(false)
+    // Pi's own codemode is given in code (BAZ-100); the repository's .pi extension never runs, and
+    // with no MCP tools there is nothing for tool_search to find.
+    const toolNames = handle.session.getAllTools().map((tool) => tool.name)
+    expect(toolNames).toContain('codemode')
+    expect(handle.session.getActiveToolNames()).not.toContain('tool_search')
+    expect(toolNames.some((name) => name.startsWith('mcp__'))).toBe(false)
     let providerSystemPrompt = ''
     let calls = 0
     handle.session.agent.streamFunction = (model) => {
@@ -155,58 +143,6 @@ describe('session prompt boundary', () => {
     expect(providerSystemPrompt).not.toContain(root)
   })
 
-  test('restricted review provider context contains no host or package paths', async () => {
-    const root = temporaryRoot()
-    const scratch = createMinimalWorkerScratch(root)
-    const proposalTool: ToolDefinition = {
-      name: 'propose_lesson',
-      label: 'propose_lesson',
-      description: 'Return a bounded proposal set.',
-      parameters: Type.Object({}),
-      async execute() {
-        return { content: [{ type: 'text', text: 'ok' }], details: {} }
-      },
-    }
-    const handle = await createRestrictedReviewSession({
-      runtime: {
-        providerName: 'openai-codex',
-        modelId: 'gpt-5.6-sol',
-        reasoningLevel: 'low',
-        apiKey: 'review-prompt-access-token',
-      },
-      scratch,
-      systemPrompt: 'Restricted reviewer instructions. Use propose_lesson only.',
-      tools: [proposalTool],
-      refreshApiKey: async () => 'review-prompt-access-token',
-    })
-    expect(handle.session.agent.state.tools.map((tool) => tool.name)).toEqual([proposalTool.name])
-    let providerSystemPrompt = ''
-    handle.session.agent.streamFunction = (model) => {
-      // 0.87.1 composes the effective prompt at request time; the session
-      // getter exposes it (the transcript's leading system message is empty).
-      providerSystemPrompt = handle.session.systemPrompt
-      return completedStream(model)
-    }
-
-    try {
-      await handle.session.prompt('bounded review digest')
-    } finally {
-      handle.dispose()
-      cleanupMinimalWorkerScratch(scratch)
-    }
-
-    // 0.87.1 composes the cwd as a <cwd> block; assert the semantic content.
-    expect(providerSystemPrompt).toContain(
-      'Restricted reviewer instructions. Use propose_lesson only.',
-    )
-    expect(providerSystemPrompt).toContain('<cwd>\n/review\n</cwd>')
-    expect(providerSystemPrompt).not.toContain(root)
-    expect(providerSystemPrompt).not.toContain('node_modules')
-    // T10: restricted turns run a daemon-authored system prompt; the browser
-    // guide is never composed into them.
-    expect(providerSystemPrompt).not.toContain('# Browser research')
-  })
-
   test('the context description matches the tools and prompt a session gets', async () => {
     const root = temporaryRoot()
     const paths = resolvePaths(root)
@@ -278,114 +214,6 @@ describe('session prompt boundary', () => {
       handle.dispose()
     }
   })
-
-  test('a session asks for a refreshed token only for its own provider', async () => {
-    const root = temporaryRoot()
-    const scratch = createMinimalWorkerScratch(root)
-    const requests: string[] = []
-    const handle = await createRestrictedReviewSession({
-      runtime: {
-        providerName: 'azure-openai',
-        modelId: 'gpt-6.1-sol',
-        reasoningLevel: 'low',
-        apiKey: 'azure-initial-fixture-token',
-      },
-      scratch,
-      systemPrompt: 'Restricted reviewer instructions.',
-      tools: [],
-      refreshApiKey: async (provider) => {
-        requests.push(provider)
-        return 'azure-rotated-fixture-token'
-      },
-    })
-    try {
-      // Pi asks by its own provider id ("azure"); other providers get nothing.
-      for (const provider of ['openai', 'azure-openai-responses']) {
-        expect(await handle.session.agent.getApiKey?.(provider)).toBeUndefined()
-      }
-      let sentKey: string | undefined
-      handle.session.agent.streamFunction = (model, _context, options) => {
-        sentKey = options?.apiKey
-        return completedStream(model)
-      }
-      await handle.session.prompt('bounded review digest')
-      expect(sentKey).toBe('azure-rotated-fixture-token')
-      expect(new Set(requests)).toEqual(new Set(['azure-openai']))
-      expect(handle.redactionSecrets).toContain('azure-rotated-fixture-token')
-    } finally {
-      handle.dispose()
-      cleanupMinimalWorkerScratch(scratch)
-    }
-  })
-
-  test('a static key reaches the provider from memory without a refresher', async () => {
-    const root = temporaryRoot()
-    const scratch = createMinimalWorkerScratch(root)
-    const auth: Array<string | null> = []
-    const provider = await startMockServer((req) => {
-      auth.push(req.headers.get('authorization'))
-      const chunk = (body: unknown) => `data: ${JSON.stringify(body)}\n\n`
-      return new Response(
-        chunk({ choices: [{ index: 0, delta: { role: 'assistant', content: 'done' } }] }) +
-          chunk({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }) +
-          'data: [DONE]\n\n',
-        { headers: { 'content-type': 'text/event-stream' } },
-      )
-    })
-    const handle = await createRestrictedReviewSession({
-      runtime: {
-        providerName: 'fireworks',
-        modelId: 'accounts/fixture/models/upstream',
-        reasoningLevel: 'low',
-        apiKey: 'fireworks-static-fixture-key',
-        baseUrl: `${provider.url}/v1`,
-        // The catalog does not know this model: the review takes the window set for it.
-        contextWindow: 131_072,
-      },
-      scratch,
-      systemPrompt: 'Restricted reviewer instructions.',
-      tools: [],
-    })
-    try {
-      await handle.session.prompt('bounded review digest')
-      expect(auth).toEqual(['Bearer fireworks-static-fixture-key'])
-    } finally {
-      handle.dispose()
-      cleanupMinimalWorkerScratch(scratch)
-      await provider.stop()
-    }
-  })
-
-  test('materializes explicit Vertex credentials only inside turn scratch', async () => {
-    const root = temporaryRoot()
-    const scratch = createMinimalWorkerScratch(root)
-    const content = JSON.stringify({ type: 'service_account', private_key: 'vertex-secret' })
-    const handle = await createRestrictedReviewSession({
-      runtime: {
-        providerName: 'google-vertex',
-        modelId: 'gemini-3.6-flash',
-        reasoningLevel: 'low',
-        credentialEnv: [
-          { name: 'GOOGLE_CLOUD_PROJECT', value: 'project-one' },
-          { name: 'GOOGLE_CLOUD_LOCATION', value: 'europe-west1' },
-        ],
-        credentialFile: { envName: 'GOOGLE_APPLICATION_CREDENTIALS', content },
-      },
-      scratch,
-      systemPrompt: 'Restricted reviewer instructions.',
-      tools: [],
-      refreshApiKey: async () => '',
-    })
-    const credentialPath = join(scratch.tempDir, 'provider-credential.json')
-    try {
-      expect(readFileSync(credentialPath, 'utf8')).toBe(content)
-      expect(statSync(credentialPath).mode & 0o777).toBe(0o600)
-      expect(credentialPath.startsWith(scratch.root)).toBe(true)
-    } finally {
-      handle.dispose()
-      cleanupMinimalWorkerScratch(scratch)
-    }
-  })
 })
 
 function temporaryRoot(): string {
@@ -402,11 +230,6 @@ function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
       name: 'Agent One',
       modelOverride: 'openai-codex:gpt-5.6-sol',
       reasoningLevel: 'high',
-      reviewEnabled: true,
-      reviewEveryNTurns: 8,
-      reviewModel: 'openai-codex:gpt-5.6-sol',
-      reviewReasoningLevel: 'low',
-      reviewTurnsSinceLast: 0,
       status: 'idle',
       dir: agentDir,
       teamId: 'team-1',
@@ -437,7 +260,6 @@ function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
       createdAt: 0,
     },
     skills: ['audit-skill'],
-    privateLessons: [],
     contextWindowSetting: null,
   }
 }

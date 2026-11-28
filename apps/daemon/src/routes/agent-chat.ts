@@ -328,7 +328,7 @@ agentChatRouter.get('/:id/chat/context', (c) =>
       teamHost: { createAgent: reportOnly },
       contacts: agentContacts(db, resolved.agent.id),
       fileSink: reportOnly,
-      ...(isBrowserEnabled(env) ? { browserHost: { invoke: reportOnly } } : {}),
+      ...(isBrowserEnabled(env) ? { browserHost: { invoke: reportOnly, use: reportOnly } } : {}),
       ...(searchRoute(env, resolved.model, codexConnected).backend
         ? { webSearchHost: { search: reportOnly } }
         : {}),

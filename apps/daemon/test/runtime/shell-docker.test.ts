@@ -248,8 +248,7 @@ describe('the Docker bash tool', () => {
     command = 'true',
   ) {
     const tools = createSessionShellTools(teamDir, { BAZILION_BASH_SANDBOX: 'docker' }, options)
-    if (!tools.customBash) throw new Error('Docker mode must provide bash')
-    return tools.customBash.execute('call-1', { command }, undefined, undefined, toolContext)
+    return tools.bash.execute('call-1', { command }, undefined, undefined, toolContext)
   }
 
   test('mounts the Team read/write, its memory, uploads and skills read-only', async () => {

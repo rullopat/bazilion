@@ -1,6 +1,6 @@
 // /api/attention: what needs the operator's attention (questions and commands Agents are waiting
-// on, failed reviews and triggers, lesson proposals, stopped message chains, interrupted
-// follow-ups), and acknowledging what only informs.
+// on, failed schedules and background turns, stopped message chains, interrupted follow-ups), and
+// acknowledging what only informs.
 
 import type { AttentionKind, AttentionState } from '@bazilion/api-types'
 import {

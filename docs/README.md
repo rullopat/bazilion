@@ -26,8 +26,6 @@ Start with the [README](../README.md): install, first run and the CLI.
 - [Usage and cost](usage.md): tokens and money per day, Team, Agent, model and conversation
 - [Conversations](conversations.md), the [follow-up queue](follow-up-queue.md) and
   [questions](questions.md)
-- [Reviewed learning](backlog/done/BAZ-003-reviewed-learning.md): lessons an Agent proposes from
-  its conversations, used only after you approve them
 - [Team Policy and Team templates](team-policy.md)
 - [Coding](coding-environments.md): shell, Docker sandbox, repository instructions
 - [Change review and live tool output](change-review.md)

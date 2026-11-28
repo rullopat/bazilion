@@ -16,7 +16,7 @@ test('the workspace address keeps what it understands and drops the rest', () =>
       file: 'site/index.html',
       result: 'r1',
       conversation: 'c1',
-      section: 'learning',
+      section: 'mailbox',
       note: 'brand/voice.md',
       extra: 'ignored',
     }),
@@ -28,7 +28,7 @@ test('the workspace address keeps what it understands and drops the rest', () =>
     file: 'site/index.html',
     result: 'r1',
     conversation: 'c1',
-    section: 'learning',
+    section: 'mailbox',
     note: 'brand/voice.md',
   })
   expect(parseWorkspaceSearch({ panel: 'none' }).panel).toBe('none')

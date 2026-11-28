@@ -4,6 +4,7 @@ import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { acknowledgeAttention } from '../../src/core/attention.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import { openConfig } from '../../src/core/repos/config.ts'
+import * as conversations from '../../src/core/repos/conversations.ts'
 import * as settings from '../../src/core/repos/notifications.ts'
 import { sendAttentionNotifications } from '../../src/lib/notifications.ts'
 import { setTelegramLive } from '../../src/lib/telegram/live.ts'
@@ -13,19 +14,20 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 let env: TestEnv
 let agentId: string
 const sendMessage = vi.fn()
-const all = [
-  'lesson_proposal',
-  'review_failure',
-  'trigger_failure',
-  'agent_loop_break',
-  'queue_interrupted',
-] as const
+const all = ['trigger_failure', 'agent_loop_break', 'queue_interrupted'] as const
+const CONVERSATION = '11111111-1111-4111-8111-111111111111'
 
-function failReview(id: string, updatedAt: number): void {
+/** A schedule's run that failed at `at`. */
+function failSchedule(id: string, at: number): void {
   env.db.raw.run(
-    `INSERT INTO agent_reviews (id,agent_id,status,trigger_kind,last_error,created_at,updated_at)
-    VALUES (?,?,'failed','manual','PRIVATE_ERROR',?,?)`,
-    [id, agentId, updatedAt, updatedAt],
+    `INSERT INTO agent_triggers (id,agent_id,kind,interval_sec,message,created_at)
+    VALUES (?,?,'interval',60,'run',1)`,
+    [`trigger-${id}`, agentId],
+  )
+  env.db.raw.run(
+    `INSERT INTO trigger_dispatches (id,trigger_id,agent_id,conversation_id,scheduled_at,status,finished_at,error)
+    VALUES (?,?,?,?,?,'failed',?,'PRIVATE_ERROR')`,
+    [id, `trigger-${id}`, agentId, CONVERSATION, at, at],
   )
 }
 
@@ -33,6 +35,7 @@ beforeEach(() => {
   env = makeTestEnv()
   createProfile(env.db, env.paths, { id: 'notices', defaultModel: 'lmstudio:test' })
   agentId = spawnAgent(env.db, env.paths, { profileId: 'notices', teamId: env.teamId }).id
+  conversations.create(env.db, agentId, CONVERSATION)
   openConfig(env.db).set('TELEGRAM_SERVICE_TOPIC_ID', '7')
   sendMessage.mockReset().mockResolvedValue({ message_id: 99 })
   setTelegramLive({
@@ -54,14 +57,14 @@ afterEach(() => {
 })
 
 test('each new open item goes to the service topic once', async () => {
-  failReview('review', 2_000)
+  failSchedule('run', 2_000)
   await sendAttentionNotifications(env.db, 3_000)
   await sendAttentionNotifications(env.db, 4_000)
   expect(sendMessage).toHaveBeenCalledOnce()
   const [chatId, text, opts] = sendMessage.mock.calls[0] ?? []
   expect(chatId).toBe(-100)
   expect(opts).toMatchObject({ message_thread_id: 7, parse_mode: 'HTML' })
-  expect(text).toContain('Agent review failed')
+  expect(text).toContain('Scheduled trigger failed')
   expect(text).not.toContain('PRIVATE_ERROR')
   // Sending never resolves the item.
   expect(
@@ -71,16 +74,16 @@ test('each new open item goes to the service topic once', async () => {
 })
 
 test('items from before switching on, unselected kinds and resolved items are not sent', async () => {
-  failReview('old', 500)
-  failReview('acknowledged', 2_000)
-  acknowledgeAttention(env.db, 'review_failure:acknowledged', true)
+  failSchedule('old', 500)
+  failSchedule('acknowledged', 2_000)
+  acknowledgeAttention(env.db, 'trigger_failure:acknowledged', true)
   settings.save(env.db, {
     enabled: true,
-    kinds: ['trigger_failure'],
+    kinds: ['agent_loop_break'],
     timezone: 'UTC',
     quietHours: null,
   })
-  failReview('unselected', 2_000)
+  failSchedule('unselected', 2_000)
   await sendAttentionNotifications(env.db, 3_000)
   expect(sendMessage).not.toHaveBeenCalled()
 })
@@ -92,7 +95,7 @@ test('quiet hours and a failed send defer the notice to a later tick', async () 
     timezone: 'UTC',
     quietHours: { start: '00:00', end: '06:00' },
   })
-  failReview('review', 2_000)
+  failSchedule('run', 2_000)
   const night = Date.UTC(2026, 0, 1, 2, 0)
   await sendAttentionNotifications(env.db, night)
   expect(sendMessage).not.toHaveBeenCalled()
@@ -106,15 +109,15 @@ test('quiet hours and a failed send defer the notice to a later tick', async () 
 })
 
 test('an item that closes and opens again is sent again; nothing goes out while off or stopped', async () => {
-  failReview('review', 2_000)
+  failSchedule('run', 2_000)
   await sendAttentionNotifications(env.db, 3_000)
-  acknowledgeAttention(env.db, 'review_failure:review', true)
+  acknowledgeAttention(env.db, 'trigger_failure:run', true)
   await sendAttentionNotifications(env.db, 4_000)
-  acknowledgeAttention(env.db, 'review_failure:review', false)
+  acknowledgeAttention(env.db, 'trigger_failure:run', false)
   await sendAttentionNotifications(env.db, 5_000)
   expect(sendMessage).toHaveBeenCalledTimes(2)
 
-  failReview('later', 6_000)
+  failSchedule('later', 6_000)
   setTelegramLive(null)
   await sendAttentionNotifications(env.db, 7_000)
   settings.save(env.db, { enabled: false, kinds: [...all], timezone: 'UTC', quietHours: null })

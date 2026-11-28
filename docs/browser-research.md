@@ -4,10 +4,35 @@ Each Agent has a browser of its own: the Chrome, Brave, Edge or Chromium install
 running on a persistent profile, so cookies and logins carry over from turn to turn. Agents use it
 through the `browser_*` tools: they read pages as accessibility snapshots, click, type, fill forms,
 switch tabs and take screenshots. Every Agent turn gets these tools while `BROWSER_ENABLED` is on
-(the default); learning reviews do not.
+(the default).
 
 Agents can work in the browser you already have open instead, with your logins: see
-[Your running browser](#your-running-browser).
+[Your running browser](#your-running-browser). The setting is the default, and you can tell an
+Agent which one to use in a conversation: see
+[Its own or yours, per conversation](#its-own-or-yours-per-conversation).
+
+## Its own or yours, per conversation
+
+**Which browser, unless you say otherwise** on the **Browser** card (`BROWSER_ATTACH`) is where
+every conversation starts: the Agent's own browser unless you change it. In a conversation, ask
+the Agent to "use my Chrome" or "use your own browser": it switches with `browser_use`, and its
+browser tools work there for the rest of that conversation, in later turns too. Other
+conversations keep the default.
+
+- Moving to your Chrome asks you first, in the conversation and on Telegram, as a risky command
+  does: on every site you are signed in to, the Agent acts as you, and a page it reads must not
+  be able to talk it into that. **Allow** lasts for the conversation. In a turn nobody can answer
+  (a schedule, a teammate's message), the move is refused and the Agent says so. With your Chrome
+  as the default, nothing is asked.
+- Going back to its own browser needs nothing. A move made without asking, while your Chrome was
+  the default, ends when you change the default: the conversation goes back to the Agent's own
+  browser.
+- A helper starts in the browser of the conversation that started it; it cannot move to your
+  Chrome itself, since nobody can approve that in a helper's turn.
+- Your Chrome is reached when the Agent switches, so a Chrome that has not allowed remote debugging
+  says so then.
+- An Agent works in one browser at a time: switching closes the other one; its profile and logins
+  stay. **Browser** in the Agent's side panel names the one it is using.
 
 ## Which browser
 
@@ -57,7 +82,7 @@ are under **More settings**, or with `bazilion config set <KEY> <value>`:
 | --- | --- | --- |
 | `BROWSER_ENABLED` | `true` | Give Agent turns the browser tools. |
 | `BROWSER_EXECUTABLE_PATH` | discovery | Browser binary to run. Without it: see [Which browser](#which-browser). |
-| `BROWSER_ATTACH` | `false` | `true` makes Agents work in [your running browser](#your-running-browser). |
+| `BROWSER_ATTACH` | `false` | `true` makes conversations start in [your running browser](#your-running-browser); a conversation can [switch](#its-own-or-yours-per-conversation). |
 | `BROWSER_ATTACH_URL` | found | DevTools address of the running browser, such as `http://127.0.0.1:9222`. Without it, Bazilion finds the running Chrome or Chromium. |
 | `BROWSER_HEADLESS` | `true` | `false` opens a visible window on the desktop the daemon runs in. Not used with a running browser. |
 | `BROWSER_ALLOW_PRIVATE_NETWORK` | `false` | Let pages reach loopback and private addresses by turning the SSRF proxy off. Local development only. |
@@ -73,12 +98,13 @@ the site, and sign in in the window that appears. The login stays in that Agent'
 
 ## Your running browser
 
-With `BROWSER_ATTACH=true`, Agents do not get browsers of their own. They work in the Chrome or
+With `BROWSER_ATTACH=true`, or in a conversation you switched to it, Agents work in the Chrome or
 Chromium you have open, signed in wherever you are.
 
 1. In Chrome 144 or later, open `chrome://inspect/#remote-debugging` and allow remote debugging.
 2. Choose **My running Chrome** on the **Browser** card under **Setup → Tools**, or run
-   `bazilion config set BROWSER_ATTACH true`.
+   `bazilion config set BROWSER_ATTACH true`; or ask an Agent in a conversation to use your
+   Chrome.
 3. At an Agent's first browser action, Chrome asks whether to allow the connection. Allow it within
    a minute.
 
@@ -109,7 +135,7 @@ What changes in this mode:
   download that a page starts in a tab it has just opened can get through before Bazilion knows the
   tab is the Agent's.
 - `BROWSER_HEADLESS` and `BROWSER_EXECUTABLE_PATH` are not used, and an Agent's saved profile is
-  left as it is for when you turn the mode off.
+  left as it is for when it works in its own browser again.
 
 ## Network
 

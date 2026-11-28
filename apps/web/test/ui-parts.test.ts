@@ -418,13 +418,13 @@ test('a filter select is named for assistive technology though its label is not 
       onChange: nothing,
       options: [
         { value: 'all', label: 'All kinds' },
-        { value: 'lesson_proposal', label: 'Lesson proposals' },
+        { value: 'turn_failure', label: 'Failed turns' },
       ],
     }),
   )
   expect(attribute(select, 'button', 'aria-label')).toBe('Kind')
   expect(select).toMatch(/>All kinds<\/span>/)
-  expect(select).not.toContain('Lesson proposals')
+  expect(select).not.toContain('Failed turns')
 })
 
 test('a row menu is one button named for what it is about, its items out of sight until opened', () => {

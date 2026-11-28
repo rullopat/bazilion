@@ -4,6 +4,7 @@ import { FileText } from 'lucide-react'
 import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react'
 import { type InboxNote, inboxUpdateLabel, parseInboxWake } from '../../lib/inbox-presentation'
 import { renderMd } from '../../lib/md'
+import { dayKey, dayLabel, fullTime, timeOfDay } from '../../lib/message-time'
 import { formatContext } from '../../lib/model-facts'
 import { AgentAvatar } from '../AgentAvatar'
 import { ResultTile } from '../files/ResultTile'
@@ -40,6 +41,36 @@ export interface ApprovalControls {
     decision: 'allow' | 'deny',
     remember?: { prefix: string },
   ) => void
+}
+
+/**
+ * When a message was sent, small, as in a messaging app (BAZ-101); pointing at it shows the whole
+ * date. Shown once the page runs in the browser: the time zone is the browser's, not the server's.
+ */
+function MessageTime({ at, ready }: { at: number | undefined; ready: boolean }) {
+  if (!at || !ready) return null
+  return (
+    <time
+      dateTime={new Date(at).toISOString()}
+      title={fullTime(at)}
+      className="shrink-0 text-[0.72rem] tabular-nums text-mocha"
+    >
+      {timeOfDay(at)}
+    </time>
+  )
+}
+
+/** The line before a day's first message: Today, Yesterday, a weekday or a date. */
+function DayDivider({ at }: { at: number }) {
+  return (
+    <div className="my-5 flex items-center gap-3 text-[0.78rem] text-mocha">
+      <span className="h-px flex-1 bg-frost" aria-hidden="true" />
+      <p className="m-0 rounded-full border border-frost bg-card px-2.5 py-0.5 font-medium">
+        {dayLabel(at)}
+      </p>
+      <span className="h-px flex-1 bg-frost" aria-hidden="true" />
+    </div>
+  )
 }
 
 /** A teammate's message that woke the Agent: who wrote it, whether it is a reply, its text. */
@@ -104,8 +135,9 @@ export function Bubble({
             className={`my-3 rounded-lg border border-fawn bg-ivory px-3 py-2 text-sm text-mocha ${dropClass}`}
             aria-label="Update"
           >
-            <summary className="cursor-pointer font-medium">
-              {body.split('\n', 1)[0] || 'An update'}
+            <summary className="flex cursor-pointer items-baseline gap-2 font-medium">
+              <span className="min-w-0 flex-1">{body.split('\n', 1)[0] || 'An update'}</span>
+              <MessageTime at={entry.at} ready={markdownReady} />
             </summary>
             <p className="mt-2 text-xs">What the Agent was told</p>
             <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">
@@ -129,7 +161,10 @@ export function Bubble({
                 />
               ))}
               <details className="px-1 text-xs text-mocha">
-                <summary className="cursor-pointer">What the Agent was told</summary>
+                <summary className="flex cursor-pointer items-baseline gap-2">
+                  <span className="min-w-0 flex-1">What the Agent was told</span>
+                  <MessageTime at={entry.at} ready={markdownReady} />
+                </summary>
                 <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words">
                   {body}
                 </pre>
@@ -142,7 +177,10 @@ export function Bubble({
             className={`my-3 rounded-lg border border-fawn bg-ivory px-3 py-2 text-sm text-mocha ${dropClass}`}
             aria-label="Teammate update"
           >
-            <summary className="cursor-pointer font-medium">{inboxUpdateLabel(body)}</summary>
+            <summary className="flex cursor-pointer items-baseline gap-2 font-medium">
+              <span className="min-w-0 flex-1">{inboxUpdateLabel(body)}</span>
+              <MessageTime at={entry.at} ready={markdownReady} />
+            </summary>
             <p className="mt-2 text-xs">Original message and Agent instructions</p>
             <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">
               {body}
@@ -181,17 +219,22 @@ export function Bubble({
             </div>
           )}
           {entry.content && <UserText content={entry.content} />}
-          {onEdit && (
-            // Under the message it changes; shown on hover and keyboard focus, and always on a
-            // touch screen, which has no hover.
-            <button
-              type="button"
-              onClick={onEdit}
-              title="Edit and resend: replaces the last turn"
-              className="mt-1 rounded-md px-2 py-0.5 text-xs font-semibold text-mocha opacity-0 transition hover:bg-sapphire-glow hover:text-sapphire focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
-            >
-              Edit
-            </button>
+          {(onEdit || (entry.at && markdownReady)) && (
+            <div className="mt-1 flex items-center gap-2">
+              {onEdit && (
+                // Under the message it changes; shown on hover and keyboard focus, and always on
+                // a touch screen, which has no hover.
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  title="Edit and resend: replaces the last turn"
+                  className="rounded-md px-2 py-0.5 text-xs font-semibold text-mocha opacity-0 transition hover:bg-sapphire-glow hover:text-sapphire focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                >
+                  Edit
+                </button>
+              )}
+              <MessageTime at={entry.at} ready={markdownReady} />
+            </div>
           )}
         </div>
       )
@@ -207,7 +250,12 @@ export function Bubble({
             // biome-ignore lint/security/noDangerouslySetInnerHtml: marked output sanitized by DOMPurify.
             dangerouslySetInnerHTML={{ __html: renderMd(entry.content, markdownReady) }}
           />
-          {readAloud && entry.content.trim() && <ReadAloud text={entry.content} />}
+          {((entry.at && markdownReady) || (readAloud && entry.content.trim())) && (
+            <div className="mt-1 flex items-center gap-2">
+              <MessageTime at={entry.at} ready={markdownReady} />
+              {readAloud && entry.content.trim() && <ReadAloud text={entry.content} />}
+            </div>
+          )}
         </div>
       )
     case 'images':
@@ -433,8 +481,16 @@ export function TranscriptBlocks({
       next++
     }
   }
+  // A line before the first message of each day, once the browser's time zone is known.
+  let day: string | null = null
   for (const block of groupEntries(entries)) {
     flush(block.index)
+    const at =
+      markdownReady && block.type === 'entry' && 'at' in block.entry ? block.entry.at : undefined
+    if (at && dayKey(at) !== day) {
+      day = dayKey(at)
+      out.push(<DayDivider key={`day-${block.index}`} at={at} />)
+    }
     const dropped = replacedFrom >= 0 && block.index >= replacedFrom
     out.push(
       block.type === 'work' ? (

@@ -1,6 +1,6 @@
 // The per-turn worker process. It reads one `WorkerInput` from stdin, runs one Pi session (an
-// Agent turn, whatever its origin, or a learning review), writes NDJSON frames to stdout and
-// reaches every daemon-owned tool over Node IPC (`ipc-protocol.ts`). It never opens the database.
+// Agent turn, whatever its origin), writes NDJSON frames to stdout and reaches every daemon-owned
+// tool over Node IPC (`ipc-protocol.ts`). It never opens the database.
 
 import { randomUUID } from 'node:crypto'
 import type { ChatFrame } from '@bazilion/api-types'
@@ -9,17 +9,8 @@ import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
 import { paceToolProgress, piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
 import { conversationHistory } from '../pi/history.ts'
-import {
-  type BazilionSessionHandle,
-  createBazilionSession,
-  createRestrictedReviewSession,
-} from '../pi/session.ts'
+import { type BazilionSessionHandle, createBazilionSession } from '../pi/session.ts'
 import type { BashApprovalHost } from '../shell/approval.ts'
-import {
-  createLessonReview,
-  type LessonReview,
-  REVIEW_SYSTEM_PROMPT,
-} from '../tools/propose-lesson.ts'
 import { workerFailureMessage } from './cancellation.ts'
 import { createProcessIpcClient, type WorkerIpcCall } from './ipc-client.ts'
 import type { MediaOutput } from './ipc-protocol.ts'
@@ -27,13 +18,9 @@ import { WorkerOutput } from './output.ts'
 import {
   parseWorkerInput,
   redactExactValues,
-  reviewRuntimeSecrets,
   type WorkerFrame,
   type WorkerInput,
 } from './runtime.ts'
-
-type AgentTurnInput = Extract<WorkerInput, { kind: 'agent_turn' }>
-type ReviewInput = Extract<WorkerInput, { kind: 'restricted_review' }>
 
 const output = new WorkerOutput(process.stdout)
 let exiting: Promise<never> | undefined
@@ -59,7 +46,7 @@ function ipcRefresher(input: WorkerInput, call: WorkerIpcCall) {
   return (providerName: string) => call('refreshApiKey', { providerName })
 }
 
-function ipcBashApproval(call: WorkerIpcCall, input: AgentTurnInput): BashApprovalHost {
+function ipcBashApproval(call: WorkerIpcCall, input: WorkerInput): BashApprovalHost {
   return {
     async requestApproval(request) {
       const approval = await call('bashApproval', {
@@ -80,7 +67,7 @@ function ipcBashApproval(call: WorkerIpcCall, input: AgentTurnInput): BashApprov
 
 /** An Agent turn's session, with an IPC proxy for each tool host the daemon serves this turn. */
 async function openAgentTurn(
-  input: AgentTurnInput,
+  input: WorkerInput,
   call: WorkerIpcCall,
 ): Promise<BazilionSessionHandle> {
   const served = new Set(input.hosts)
@@ -119,7 +106,14 @@ async function openAgentTurn(
         }
       : undefined,
     browserHost: served.has('browserHost')
-      ? { invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }) }
+      ? {
+          invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }),
+          use: (browser, options) =>
+            call('browserUse', {
+              browser,
+              ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+            }),
+        }
       : undefined,
     mcpHost: served.has('mcpHost')
       ? {
@@ -227,28 +221,14 @@ async function openAgentTurn(
       : undefined,
     contacts: input.contacts,
     withOperator: input.withOperator,
+    ...(input.browser ? { browser: input.browser } : {}),
     ...(input.unreadMessages ? { unreadMessages: input.unreadMessages } : {}),
   })
 }
 
-async function openReview(
-  input: ReviewInput,
-  call: WorkerIpcCall,
-): Promise<{ handle: BazilionSessionHandle; review: LessonReview }> {
-  const review = createLessonReview(input.evidence)
-  const handle = await createRestrictedReviewSession({
-    runtime: input.runtime,
-    scratch: input.scratch,
-    systemPrompt: REVIEW_SYSTEM_PROMPT,
-    tools: [review.tool],
-    refreshApiKey: ipcRefresher(input, call),
-  })
-  return { handle, review }
-}
-
 /**
  * The prompt text, without the turn's credentials and the Agent's secrets (a wake can carry a
- * job's output), and an Agent turn's images.
+ * job's output), and the turn's images.
  */
 function promptOf(
   input: WorkerInput,
@@ -257,9 +237,6 @@ function promptOf(
   text: string
   images?: Array<{ type: 'image'; data: string; mimeType: string }>
 } {
-  if (input.kind === 'restricted_review') {
-    return { text: redactExactValues(input.message, reviewRuntimeSecrets(input.runtime)) }
-  }
   const images = (input.images ?? []).map((image) => ({
     type: 'image' as const,
     data: image.data,
@@ -292,10 +269,7 @@ async function main(): Promise<void> {
   const input = await readInput()
   if (aborted) return exitWorker(0)
   const call = createProcessIpcClient()
-  const { handle, review } =
-    input.kind === 'agent_turn'
-      ? { handle: await openAgentTurn(input, call), review: undefined }
-      : await openReview(input, call)
+  const handle = await openAgentTurn(input, call)
   if (aborted) {
     handle.dispose()
     return exitWorker(0)
@@ -312,14 +286,6 @@ async function main(): Promise<void> {
     }),
   )
   const unsubscribe = session.subscribe((piEvent) => {
-    if (
-      review &&
-      piEvent.type === 'tool_execution_end' &&
-      piEvent.toolName === 'propose_lesson' &&
-      review.recordCall(piEvent.isError)
-    ) {
-      void session?.abort()
-    }
     for (const event of translatePiEvent(piEvent, handle.redactionSecrets)) events.send(event)
   })
 
@@ -327,11 +293,7 @@ async function main(): Promise<void> {
     const { text, images } = promptOf(input, handle.redactionSecrets)
     await session.prompt(text, images ? { images } : undefined)
     await session.agent.waitForIdle()
-    emit(
-      review
-        ? { kind: 'review_result', proposals: review.result() }
-        : finishedFrame(session, handle.redactionSecrets),
-    )
+    emit(finishedFrame(session, handle.redactionSecrets))
   } catch (error) {
     const message = workerFailureMessage(
       error instanceof Error ? error.message : String(error),

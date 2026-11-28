@@ -35,12 +35,10 @@ concurrently.
 install runs `dist/worker.js`), detached into its own process group, with stdio
 `['pipe', 'pipe', 'pipe', 'ipc']`:
 
-- **stdin**: one `WorkerInput` JSON document (`runtime/worker/runtime.ts`), either an
-  `agent_turn` or a `restricted_review`, listing the daemon hosts that serve it. The worker
-  offers a tool only when its host is listed.
+- **stdin**: one `WorkerInput` JSON document (`runtime/worker/runtime.ts`), an `agent_turn`
+  listing the daemon hosts that serve it. The worker offers a tool only when its host is listed.
 - **stdout**: NDJSON `ChatFrame`s (`packages/api-types/src/events.ts`): `{kind:'event', event}`
-  per `SessionEvent`, then exactly one `{kind:'done', messages}` or `{kind:'fatal', error}`. A
-  learning review ends with `{kind:'review_result', proposals}` instead.
+  per `SessionEvent`, then exactly one `{kind:'done', messages}` or `{kind:'fatal', error}`.
 - **stderr**: read into a bounded, redacted diagnostic.
 - **IPC**: the worker calls `{type:'rpc', id, method, args}` and the daemon answers
   `{type:'rpc-reply', id, ok, result|error}`. `RpcMethods` in `ipc-protocol.ts` is the whole
@@ -99,7 +97,9 @@ and refreshes from the secrets table; only the access token comes back.
 3. **Agent Home**: what the private home is for, and `home_*` versus `memory_write`.
 4. **Available Skills**: each attached skill's `SKILL.md` body and its runtime directory (the host
    directory, or its read-only `/skills/...` mount in Docker mode).
-5. **Web research** and the **browser guide**, when those tools are present.
+5. **Web research**, **Connections** (the MCP connections whose tools wait to be found, with
+   their tool counts) and the **browser guide** (the browser this conversation uses, and when to
+   switch), when those tools are present.
 6. **Team**: the workspace path (`/workspace` in Docker mode), the rule that an `AGENTS.md`
    governs its directory and everything below it, and **Your teammates**: every other Agent of the
    Team by name and id, split by whether Team Policy lets this Agent message it, plus the Agents of
@@ -108,8 +108,7 @@ and refreshes from the secrets table; only the access token comes back.
    `send_message` takes either name.
 7. **About the User**: the Team's USER.md, and how to update it with `user_md_get` /
    `user_md_write`.
-8. **Reviewed lessons**: private lessons you approved, up to 8,000 characters.
-9. **Memory**: the Team-shared memory and when to use it, and `recall` for a detail a summary of
+8. **Memory**: the Team-shared memory and when to use it, and `recall` for a detail a summary of
    the conversation left out.
 
 ## 4. The turn loop
@@ -168,7 +167,10 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   masked card to the daemon's store and reaches the Agent's commands as an environment variable
   and `web_fetch` headers written `{{secret:NAME}}` (`lib/agent-secrets.ts`); see
   [questions](questions.md#secrets-an-agent-asks-for). Tool results go to the model with secrets
-  and Bazilion's credentials taken out (`redactToolResults` in `runtime/pi/session.ts`).
+  and Bazilion's credentials taken out (`redactToolResults` in `runtime/pi/session.ts`). A
+  command's output loses them as it arrives, so the file Pi writes the whole of a long one to,
+  in the system's temporary folder, holds none either (`redactedOutput` in
+  `runtime/shell/tooling.ts`).
 - `view_image` shows the model pictures: files in the workspace or uploads, URLs (through the
   `web_fetch` guard) and saved results, PNG, JPEG, GIF or WebP up to 25 MiB each; a model that
   takes no images gets Pi's note instead. `pdf_read` gives a PDF's text page by page (`pages`
@@ -191,6 +193,10 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   and `theme` the light or dark theme, in the browser tabs that show the conversation (a live
   event, `lib/workspace-host.ts`); `canvas` saves an HTML page or SVG drawing that the chat shows
   in a sealed frame. See [the workspace](workspace.md#the-agent-in-the-workspace).
+- `browser_use`: switches the conversation between the Agent's own browser and your running
+  Chrome; the browser tools then work there until it switches back. Moving to your Chrome waits
+  for your approval unless it is the default (`lib/browser/host.ts`); see
+  [the managed browser](browser-research.md#its-own-or-yours-per-conversation).
 - `user_md_get` / `user_md_write`, `deliver_file`, `image_generate`, `ask_user`, `browser_*` and
   `mcp__<server>__<tool>`: each present when its host is. `deliver_file` with `result` shows one of
   the Agent's saved results again. `ask_user` takes a card of `questions` or an `action` (see
@@ -217,6 +223,32 @@ The coding tools depend on `BAZILION_BASH_SANDBOX` and `BAZILION_BASH_APPROVAL`
   `command_approval` event and waits up to five minutes for `POST /api/shell-approvals/:id` (or a
   tap in Telegram, see [coding environments](coding-environments.md)), or denies at once when
   nobody can answer.
+
+### Tool search and Code Mode
+
+Every turn has Pi's own `codemode` and, when it has MCP tools, `tool_search`, added in code as
+Pi extensions (`runtime/pi/tool-reach.ts`); nothing is discovered from disk.
+
+- MCP tools are not declared to the model: the prompt lists their connections, `tool_search`
+  loads the ones a task needs (BM25 over names and descriptions), and they stay loaded for the
+  rest of the conversation (each turn applies the loads its branch recorded again).
+- `codemode` runs a JavaScript script in a QuickJS sandbox with no network, files or timers: it
+  reaches the world only through `tools.<name>(args)`, any of the turn's tools, MCP tools that
+  are not loaded included, and keeps small values across scripts with `store` and `load`. Only
+  what the script prints or returns reaches the model. `ask_user`, `secret_request`,
+  `browser_use` and `tool_search` are the model's own and cannot be called from a script.
+- Calls a script makes go through the same checks as the model's: a dangerous command or a tool
+  that asks first waits for you. The conversation shows the script as one step, **Ran a script**,
+  with the calls it made and their state, live and afterwards, and the files and pictures they
+  saved; the calls are not steps of their own.
+- Scripts get no `models` (Pi's classifiers and image models). A long output is cut, and the
+  whole of it written to a file in the system's temporary folder, as a long command output is;
+  a Docker turn cannot read it.
+- Credentials are taken out of what a script's calls return, structured results included (a call
+  resolves to the object its tool declares, such as bash's `exit_code`), and of the record of
+  those calls kept with its result (`redactNestedCalls`, an extension, since Pi runs those calls
+  with its own hooks); and out of a long output's file once the script returns
+  (`redactScriptOutputFile`).
 
 ### Helpers
 
@@ -361,8 +393,6 @@ the running ones and waits for them before closing browsers, MCP connections and
   and the transcript shows it as an update. Wakes are kept in memory; a job's record queues its
   wake again at the next start. One that cannot start waits and backs off like an inbox wake, and
   shows in Attention.
-- **Learning reviews.** Agents with reviewed learning on and enough new turns get a review in a
-  restricted worker with a minimal environment, whose only tool is `propose_lesson`.
 
 Scheduled turns are ordinary turns: their transcript is the same JSONL, and
 `trigger_dispatches` keeps only delivery state.

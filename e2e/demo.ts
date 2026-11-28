@@ -136,6 +136,31 @@ Thank you for writing with us.
 export function demoScripts(ids: () => Partial<DemoIds>): Script[] {
   return [
     {
+      // BAZ-100: an MCP connection's tools found when needed, then one script for several calls.
+      match: /what changed in the last release/i,
+      steps: () => [
+        {
+          text: 'Let me find the release tools.',
+          tools: [{ name: 'tool_search', args: { query: 'release notes lookup' } }],
+        },
+        {
+          tools: [
+            {
+              name: 'codemode',
+              args: {
+                code: [
+                  'const list = await tools.mcp__releases__release_list({})',
+                  'const latest = list.split(", ")[0]',
+                  'return await tools.mcp__releases__release_lookup({ version: latest })',
+                ].join('\n'),
+              },
+            },
+          ],
+        },
+        { text: 'Paperboat 2.4 added dark mode, and notes now sync while offline.' },
+      ],
+    },
+    {
       // BAZ-097: a progress card that a second call updates, and a drawing in the chat.
       match: /track the launch checklist/i,
       steps: () => [

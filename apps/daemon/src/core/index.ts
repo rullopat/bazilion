@@ -37,8 +37,6 @@ export {
   DEFAULT_TOOLS,
 } from './profile/templates.ts'
 export { updateProfile } from './profile/update.ts'
-export * as agentLessonProposalRepo from './repos/agentLessonProposals.ts'
-export * as agentReviewRepo from './repos/agentReviews.ts'
 export * as agentRepo from './repos/agents.ts'
 export * as commandRuleRepo from './repos/commandRules.ts'
 export { openConfig } from './repos/config.ts'

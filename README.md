@@ -76,9 +76,7 @@ is not supported.
   and `deliver_file` for [saved results](docs/results.md).
 - **Around a chat**: [conversations](docs/conversations.md), a
   [follow-up queue](docs/follow-up-queue.md), [questions](docs/questions.md) the Agent asks you,
-  [reviewed learning](docs/backlog/done/BAZ-003-reviewed-learning.md) (lessons you approve, under
-  **Learning** in the Agent's side panel or with `bazilion agent review-config`), and
-  **Attention** for what needs you.
+  and **Attention** for what needs you.
 
 ## CLI
 

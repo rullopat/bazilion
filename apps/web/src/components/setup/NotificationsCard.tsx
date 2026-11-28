@@ -15,8 +15,6 @@ import { CheckboxRow, Problem, SaveBar, SwitchRow, saveStatus, TextField } from 
 import { CardBody, CardForm, Chip, Notice, SetupCard, Waiting } from '../ui/parts'
 
 const KINDS: Record<AttentionRecordedKind, string> = {
-  lesson_proposal: 'Lesson proposals',
-  review_failure: 'Review failures',
   trigger_failure: 'Scheduled trigger failures',
   agent_loop_break: 'Agents going round in circles',
   queue_interrupted: 'Queues paused after restart',

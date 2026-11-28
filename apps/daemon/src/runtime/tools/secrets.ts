@@ -52,6 +52,8 @@ export function secretTools(host: SecretHost): ToolHandler[] {
   const request = host.request
   if (!request) return tools
   tools.push({
+    // Asking the operator is the model's to do, never a script's (BAZ-100).
+    reach: 'model-only',
     def: {
       name: 'secret_request',
       description: [

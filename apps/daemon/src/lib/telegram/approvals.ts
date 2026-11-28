@@ -24,9 +24,11 @@ const COMMAND_CHARS = 1_500
 function promptBody(agentName: string, approval: CommandApproval): string {
   const risks = [...new Set(approval.risks.map((risk) => risk.message))].join(' ')
   return [
-    approval.tool
-      ? `⚠️ ${agentName} wants to use ${approval.tool}, which sends or changes something outside:`
-      : `⚠️ ${agentName} wants to run a command that needs your approval:`,
+    approval.risks.some((risk) => risk.code === 'your-browser')
+      ? `⚠️ ${agentName} wants to work in your running Chrome, signed in as you:`
+      : approval.tool
+        ? `⚠️ ${agentName} wants to use ${approval.tool}, which sends or changes something outside:`
+        : `⚠️ ${agentName} wants to run a command that needs your approval:`,
     clip(approval.command, COMMAND_CHARS),
     risks ? `Why it asks: ${clip(risks, 500)}` : '',
   ]
@@ -35,6 +37,11 @@ function promptBody(agentName: string, approval: CommandApproval): string {
 }
 
 function outcomeLine(approval: CommandApproval): string {
+  // Moving to the operator's Chrome lasts for the conversation (BAZ-102).
+  if (approval.risks.some((risk) => risk.code === 'your-browser')) {
+    if (approval.status === 'allowed') return 'Allowed for this conversation.'
+    if (approval.status === 'denied') return 'Denied: it keeps its own browser.'
+  }
   switch (approval.status) {
     case 'allowed': {
       const prefix = remembered.get(approval.id)

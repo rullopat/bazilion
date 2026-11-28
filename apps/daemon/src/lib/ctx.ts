@@ -1,6 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import {
-  agentReviewRepo,
   type BazilionDb,
   initSchema,
   openDb,
@@ -11,6 +10,11 @@ import {
   webTokenRepo,
 } from '../core/index.ts'
 import { recoverInterrupted as recoverInterruptedQueue } from '../core/repos/user-queue.ts'
+import {
+  type ApprovedLessons,
+  keepApprovedLessons,
+  readApprovedLessons,
+} from './approved-lessons.ts'
 
 let _db: BazilionDb | null = null
 let _paths: Paths | null = null
@@ -80,6 +84,7 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
       }
     }
     const token = existingAuthToken
+    let approvedLessons: ApprovedLessons[] = []
     const schema = initSchema(db, {
       copyDir: paths.upgradesDir,
       // Upgrade only a database that auth.json belongs to. The query works on every schema version
@@ -92,9 +97,12 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
           )
           .get(webTokenRepo.hashToken(token))
         if (!bootstrap) throw new IncompatibleBootstrapIdentityError()
+        // An upgrade from before 0.66.0 drops reviewed learning: its lessons go to AGENTS.md.
+        approvedLessons = readApprovedLessons(db)
       },
     })
     if (schema.kind === 'upgraded') {
+      keepApprovedLessons(paths, approvedLessons)
       console.log(
         `bazilion upgraded the database from schema ${schema.from} to ${schema.to}; ` +
           `the database as it was is kept at ${schema.copy}`,
@@ -111,10 +119,9 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
       }
     }
 
-    // Work a daemon stop cut short fails and is not run again: a trigger run, a learning review,
-    // a follow-up (whose queue is paused).
+    // Work a daemon stop cut short fails and is not run again: a trigger run, a follow-up (whose
+    // queue is paused).
     triggerDispatchRepo.failInterrupted(db)
-    agentReviewRepo.failInterrupted(db)
     recoverInterruptedQueue(db)
 
     if (existingAuthToken === null) {

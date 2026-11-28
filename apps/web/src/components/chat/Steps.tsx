@@ -92,7 +92,10 @@ function useWaitsOnYou(): (step: Step) => boolean {
   const agentId = workspace?.agent?.agent.id
   const blocked = agentId !== undefined && activity?.stateOf(agentId).kind === 'needs'
   return (step) =>
-    blocked && step.status === 'running' && (step.name === 'ask_user' || step.name === 'bash')
+    blocked &&
+    step.status === 'running' &&
+    // A script waits on you when a call it made does: a command or a tool to approve.
+    (step.name === 'ask_user' || step.name === 'bash' || step.name === 'codemode')
 }
 
 function StepList({ steps }: { steps: Step[] }) {
@@ -254,9 +257,11 @@ function StepDetail({ step, args }: { step: Step; args: Record<string, unknown> 
   const input =
     step.name === 'bash' && typeof args?.command === 'string'
       ? args.command
-      : args
-        ? JSON.stringify(args, null, 2)
-        : step.args
+      : step.name === 'codemode' && typeof args?.code === 'string'
+        ? args.code
+        : args
+          ? JSON.stringify(args, null, 2)
+          : step.args
   return (
     <div className={`${mono} max-h-72 overflow-y-auto`}>
       {input && (

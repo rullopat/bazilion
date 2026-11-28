@@ -31,8 +31,12 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   The handle on the list's right edge, a faint line with a grip at its middle, makes it wider or
   narrower (drag it, or the arrow keys when it has the focus; a double-click puts it back); the
   width is kept per browser. Unsent text is kept per Agent for the tab, a reload included.
-- **The conversation** is the chat with the open Agent. Tool calls read as steps (`Ran`, `Read`,
-  `Wrote` with the lines added and removed); click one for its input and output. A message to a
+- **The conversation** is the chat with the open Agent. Each message shows the time it was sent
+  under it (point at it for the whole date), and a line before the first message of each day
+  says **Today**, **Yesterday**, the weekday within the last week or the date, in your browser's
+  language and time zone. Tool calls read as steps (`Ran`, `Read`, `Wrote` with the lines added
+  and removed); click one for its input and output. A script the Agent ran (**Ran a script**)
+  lists the calls it made, ✓ for each that worked, before what it returned. A message to a
   teammate is a hand-off card with what that teammate is doing now, or `not sent` when the call
   failed. Files an Agent delivers show
   where they were delivered, pictures as pictures. When a turn wrote files, **Review changes**
@@ -55,7 +59,7 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   itself another name in its IDENTITY.md shows it too (`Sally · Sales Director`);
   the Agent tab offers to make it its name. Within a Team every Agent has its own name.
 - **The side panel** has five tabs. **Agent**: model and reasoning, saved as soon as you pick
-  them with an **Undo**; the Team it belongs to; the ways into its schedules, learning, mailbox,
+  them with an **Undo**; the Team it belongs to; the ways into its schedules, mailbox,
   background jobs, helpers, skills, secrets, Telegram topic and browser. **Team**: members (left out beside a Team's own overview),
   About you (USER.md), shared memory, settings, and the Team folder behind **Show the folder**.
   **Connections**: who may message whom and what they said lately. **Changes**: what the Team's
@@ -65,8 +69,8 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
 - **Three full-width views** take the place of the conversation, with the list folded to avatars:
   the Connections map ([Team Policy](team-policy.md)), Changes ([change review](change-review.md))
   and the Files gallery ([results](results.md)).
-- **Sheets** open over the workspace for the deeper pages: an Agent's schedules, learning,
-  mailbox, jobs, helpers, skills, secrets, Telegram topic and browser; a Team's About you
+- **Sheets** open over the workspace for the deeper pages: an Agent's schedules, mailbox,
+  jobs, helpers, skills, secrets, Telegram topic and browser; a Team's About you
   (USER.md), memory and settings.
   They are built from the same cards and fields as Setup and Manage.
 
@@ -161,10 +165,10 @@ Everything on screen is in the query string of `/`, so a link lands on the same 
 | `view` | `connections`, `changes` or `files`: a full-width view of the Team |
 | `conversation` | An earlier conversation to read |
 | `file`, `result`, `note` | The changed path, saved file or memory note that is selected |
-| `section` | The open sheet: `schedules`, `learning`, `mailbox`, `jobs`, `helpers`, `skills`, `secrets`, `telegram`, `browser`, `user-md`, `memory`, `settings` |
+| `section` | The open sheet: `schedules`, `mailbox`, `jobs`, `helpers`, `skills`, `secrets`, `telegram`, `browser`, `user-md`, `memory`, `settings` |
 
 [Attention](attention-notifications.md) items link here, for example
-`/?agent=<id>&section=learning`.
+`/?agent=<id>&section=schedules`.
 
 ## What "new" means
 

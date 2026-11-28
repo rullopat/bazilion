@@ -2,9 +2,11 @@
 // retries; Bazilion supplies the model (credentials in memory only), the appended system prompt,
 // the tool list and the explicit conversation file. Nothing is discovered from disk: no Pi
 // extensions, skills, prompt templates, themes or context files, so a repository's `.pi/` cannot
-// run code. Pi's scratch state lives in `<home>/pi`, apart from any `~/.pi` of the operator.
+// run code. The only extensions are Pi's own `codemode` and `tool_search`, given in code
+// (`tool-reach.ts`). Pi's scratch state lives in `<home>/pi`, apart from any `~/.pi` of the
+// operator.
 
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ContextUse, ConversationTarget, ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
@@ -43,6 +45,7 @@ import { containerWorkdir, homeContainerPrefix } from '../shell/docker.ts'
 import { createSessionShellTools, type DockerTurn } from '../shell/tooling.ts'
 import type { AskUser } from '../tools/ask-user.ts'
 import type { FileSink, ShowResult } from '../tools/deliver-file.ts'
+import { mcpGroupName } from '../tools/mcp.ts'
 import type { RecallSource } from '../tools/recall.ts'
 import type {
   AgentContact,
@@ -66,21 +69,26 @@ import type {
   WebSearchHost,
   WorkspaceHost,
 } from '../worker/ipc-protocol.ts'
-import type {
-  MinimalWorkerScratch,
-  RepositoryInstructions,
-  ReviewProviderRuntime,
-} from '../worker/runtime.ts'
+import type { RepositoryInstructions } from '../worker/runtime.ts'
 import {
   type AgentSecretUse,
   envSecretValues,
   redactDeep,
   redactExactValues,
-  reviewRuntimeSecrets,
   secretForms,
 } from '../worker/runtime.ts'
 import { branchOf, type ConversationHistory, contextUse, conversationHistory } from './history.ts'
 import { readSessionFile, readSessionHeader } from './session-file.ts'
+import {
+  CODEMODE,
+  reachToolDescriptions,
+  reachToolNames,
+  redactNestedCalls,
+  redactScriptOutputFile,
+  restoreLoadedTools,
+  surfaceNestedResults,
+  toolReachExtensions,
+} from './tool-reach.ts'
 import { createBazilionCustomTools } from './tools.ts'
 
 export interface CreateBazilionSessionOptions {
@@ -142,6 +150,8 @@ export interface CreateBazilionSessionOptions {
   withOperator?: boolean
   /** Messages from other Agents waiting unread, said in the system prompt. */
   unreadMessages?: number
+  /** The browser this conversation works in; absent, the default (BAZ-102). */
+  browser?: 'own' | 'yours'
   /** The Agent's own secrets, by name; their values are in `env`. */
   secrets?: readonly AgentSecretUse[]
 }
@@ -169,15 +179,6 @@ export interface BazilionSessionHandle {
   dispose(): void
 }
 
-export interface CreateRestrictedReviewSessionOptions {
-  runtime: ReviewProviderRuntime
-  scratch: MinimalWorkerScratch
-  systemPrompt: string
-  tools: ToolDefinition[]
-  /** The ChatGPT token refresher; static credentials stay in Pi's in-memory store. */
-  refreshApiKey?: (providerName: string) => Promise<string>
-}
-
 interface PiSessionSpec {
   model: PiModelSpec
   reasoningLevel: string
@@ -185,13 +186,13 @@ interface PiSessionSpec {
   cwd: string
   piAgentDir: string
   sessionManager: SessionManager
-  /** Replaces Pi's base prompt; otherwise `appendSystemPrompt` is appended to it. */
-  systemPrompt?: string
   appendSystemPrompt?: string
   agentsFiles?: Array<{ path: string; content: string }>
   tools: ToolDefinition[]
   /** Pi's own (host-backed) coding tools to enable alongside `tools`. */
   hostToolNames?: readonly string[]
+  /** An Agent's turn: Pi's `codemode` and `tool_search` too (BAZ-100). */
+  toolReach?: boolean
   redactionSecrets: string[]
   refreshApiKey?: (providerName: string) => Promise<string>
 }
@@ -217,8 +218,9 @@ export function compactionFor(window: number): {
 
 /**
  * Credentials taken out of every tool result before the model, and so the transcript, gets it:
- * a command that prints a secret shows the model `[REDACTED]`. Wraps the hook Pi installs for its
- * own result handling; `values` is read at each call, so a token refreshed mid-turn counts.
+ * a command that prints a secret shows the model `[REDACTED]`; a script's long output also out
+ * of the file Pi wrote its whole text to. Wraps the hook Pi installs for its own result handling;
+ * `values` is read at each call, so a token refreshed mid-turn counts.
  */
 export function redactToolResults(session: AgentSession, values: readonly string[]): void {
   const piAfter = session.agent.afterToolCall
@@ -236,6 +238,7 @@ export function redactToolResults(session: AgentSession, values: readonly string
     })
     // Details are stored with the result too: a truncated output's text, an edit's diff.
     const details = after && 'details' in after ? after.details : context.result.details
+    if (context.toolCall.name === CODEMODE) redactScriptOutputFile(details, values)
     const cleaned = redactDeep(details, values)
     const detailsChanged = JSON.stringify(cleaned) !== JSON.stringify(details)
     if (!changed && !detailsChanged) return after
@@ -271,19 +274,26 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    ...(spec.systemPrompt !== undefined ? { systemPrompt: spec.systemPrompt } : {}),
     ...(spec.appendSystemPrompt ? { appendSystemPrompt: [spec.appendSystemPrompt] } : {}),
     agentsFilesOverride: () => ({ agentsFiles: spec.agentsFiles ?? [] }),
+    ...(spec.toolReach
+      ? {
+          extensionFactories: [...toolReachExtensions(), redactNestedCalls(spec.redactionSecrets)],
+        }
+      : {}),
   })
   await resourceLoader.reload()
 
-  // Pi's `tools` list is exclusive: a tool missing from it is disabled even when defined.
+  // Pi's `tools` list is exclusive: a tool missing from it is disabled even when defined. Tools
+  // found by search are the exception: registered, but out of the list (`tool-reach.ts`).
   const { session } = await createAgentSession({
     cwd: spec.cwd,
     agentDir: spec.piAgentDir,
     model,
     thinkingLevel: toPiThinkingLevel(spec.reasoningLevel),
-    tools: [...(spec.hostToolNames ?? []), ...spec.tools.map((tool) => tool.name)],
+    tools: spec.toolReach
+      ? reachToolNames(spec.hostToolNames ?? [], spec.tools)
+      : [...(spec.hostToolNames ?? []), ...spec.tools.map((tool) => tool.name)],
     customTools: spec.tools,
     sessionManager: spec.sessionManager,
     settingsManager,
@@ -293,6 +303,11 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
 
   const { refreshApiKey, redactionSecrets } = spec
   redactToolResults(session, redactionSecrets)
+  let stopSurfacing = () => {}
+  if (spec.toolReach) {
+    restoreLoadedTools(session)
+    stopSurfacing = surfaceNestedResults(session)
+  }
   if (refreshApiKey) {
     const providerName = spec.model.providerName
     // Pi asks before every provider request, so a token that expires mid-turn is replaced.
@@ -308,7 +323,14 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
       }
     }
   }
-  return { session, redactionSecrets, dispose: () => session.dispose() }
+  return {
+    session,
+    redactionSecrets,
+    dispose: () => {
+      stopSurfacing()
+      session.dispose()
+    },
+  }
 }
 
 type TurnOptions = Omit<CreateBazilionSessionOptions, 'conversation'>
@@ -331,6 +353,8 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     ...(opts.jobHost ? { jobHost: opts.jobHost } : {}),
     // Host commands inherit them from the worker's environment; a container is given them.
     secretEnv: Object.fromEntries(secrets.map((secret) => [secret.name, secret.value])),
+    // The turn's one list of credentials, which recall leaves out too.
+    redact: recall.secrets,
   })
   const docker = shellTools.config.sandboxMode === 'docker'
   const customTools = createBazilionCustomTools({
@@ -366,11 +390,13 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
   const promptOptions: BuildSystemPromptOptions = {
     skills: promptSkills,
     sandboxMode: shellTools.config.sandboxMode,
-    // The guides ride along exactly when their tools are admitted.
-    ...(opts.browserHost
-      ? { browserGuide: resolveBrowserConfig(env).attach ? ('attached' as const) : true }
-      : {}),
+    // The guides ride along exactly when their tools are admitted. The browser is the one this
+    // conversation switched to, or the default (BAZ-102).
+    ...(opts.browserHost ? browserGuideOf(env, opts.browser, opts.browserHost) : {}),
     ...(opts.webSearchHost ? { searchGuide: true } : {}),
+    ...(opts.mcpHost && opts.mcpTools?.length
+      ? { connections: mcpConnections(opts.mcpTools) }
+      : {}),
     contacts: opts.contacts ?? [],
     canCreateAgents: opts.teamHost !== undefined,
     withOperator: opts.withOperator ?? true,
@@ -383,14 +409,36 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     // the container's working directory instead.
     modelCwd: docker ? containerWorkdir(opts.docker?.cwd ?? '.') : cwd,
     docker,
-    tools: [
-      ...customTools,
-      ...shellTools.fileTools,
-      ...(shellTools.customBash ? [shellTools.customBash] : []),
-    ],
+    tools: [...customTools, ...shellTools.fileTools, shellTools.bash],
     hostToolNames: shellTools.hostToolNames,
     promptOptions,
   }
+}
+
+/** The browser guide's options: which browser the conversation is in, and its default. */
+function browserGuideOf(
+  env: NodeJS.ProcessEnv,
+  browser: 'own' | 'yours' | undefined,
+  host: BrowserHost,
+) {
+  const byDefault = resolveBrowserConfig(env).attach ? ('yours' as const) : ('own' as const)
+  const current = browser ?? byDefault
+  return {
+    browserGuide: current === 'yours' ? ('attached' as const) : true,
+    ...(host.use ? { browserDefault: byDefault } : {}),
+  }
+}
+
+/** The MCP connections a turn's tools come from, for the prompt: group, name, tool count. */
+function mcpConnections(tools: readonly InjectedMcpTool[]) {
+  const byGroup = new Map<string, { group: string; name: string; tools: number }>()
+  for (const tool of tools) {
+    const group = mcpGroupName(tool)
+    const known = byGroup.get(group)
+    if (known) known.tools++
+    else byGroup.set(group, { group, name: tool.serverName ?? group, tools: 1 })
+  }
+  return [...byGroup.values()]
 }
 
 /** A Pi session for one Agent turn (worker) or for `/compact` (daemon). */
@@ -438,6 +486,7 @@ export async function createBazilionSession(
     })),
     tools: turn.tools,
     hostToolNames: turn.hostToolNames,
+    toolReach: true,
     redactionSecrets,
     refreshApiKey: opts.refreshApiKey,
   })
@@ -470,10 +519,16 @@ export function describeTurn(opts: TurnOptions): {
     const define = HOST_TOOL_DEFINITIONS[name]
     return define ? [define(turn.modelCwd)] : []
   })
+  // Tools found by search are not declared until loaded: they cost nothing up front.
+  const declared = turn.tools.filter((tool) => tool.exposure !== 'deferred')
   return {
     systemPrompt: buildSystemPrompt(opts.agent, turn.promptOptions),
     promptSections: buildSystemPromptSections(opts.agent, turn.promptOptions),
-    tools: [...hostTools, ...turn.tools],
+    tools: [
+      ...hostTools,
+      ...declared,
+      ...reachToolDescriptions(declared.length < turn.tools.length),
+    ],
   }
 }
 
@@ -504,50 +559,6 @@ export function conversationUsage(conversation: SessionManager): {
       .buildSessionContext()
       .messages.reduce((total, message) => total + estimateTokens(message), 0),
   }
-}
-
-/** The scratch-only learning reviewer: exactly the caller's proposal tool, no workspace. */
-export async function createRestrictedReviewSession(
-  opts: CreateRestrictedReviewSessionOptions,
-): Promise<BazilionSessionHandle> {
-  const { runtime, scratch } = opts
-  return openPiSession({
-    model: {
-      providerName: runtime.providerName,
-      modelId: runtime.modelId,
-      env: reviewCredentialEnv(runtime, scratch),
-      ...(runtime.apiKey ? { apiKey: runtime.apiKey } : {}),
-      ...(runtime.baseUrl ? { baseUrl: runtime.baseUrl } : {}),
-      ...(runtime.contextWindow ? { contextWindow: runtime.contextWindow } : {}),
-    },
-    reasoningLevel: runtime.reasoningLevel,
-    cwd: '/review',
-    piAgentDir: scratch.piAgentDir,
-    sessionManager: SessionManager.create(scratch.reviewCwd, scratch.reviewSessionDir),
-    systemPrompt: opts.systemPrompt,
-    tools: opts.tools,
-    redactionSecrets: [...new Set(reviewRuntimeSecrets(runtime))],
-    refreshApiKey: opts.refreshApiKey,
-  })
-}
-
-/** The review's projected credential fields; Vertex JSON becomes a 0600 file in its scratch. */
-function reviewCredentialEnv(
-  runtime: ReviewProviderRuntime,
-  scratch: MinimalWorkerScratch,
-): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const field of runtime.credentialEnv ?? []) env[field.name] = field.value
-  if (runtime.credentialFile) {
-    const path = join(scratch.tempDir, 'provider-credential.json')
-    writeFileSync(path, runtime.credentialFile.content, {
-      encoding: 'utf8',
-      mode: 0o600,
-      flag: 'wx',
-    })
-    env[runtime.credentialFile.envName] = path
-  }
-  return env
 }
 
 function toPiThinkingLevel(level: string): ThinkingLevel {

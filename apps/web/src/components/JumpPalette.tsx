@@ -196,11 +196,16 @@ export function JumpPalette({
     setQuery('')
     setActive(0)
     setEnterPending(false)
+    // Each opening waits for its own lists: an Agent added since counts as the one here.
+    setLoaded(false)
     setDark(document.documentElement.classList.contains('dark'))
   }, [open])
 
+  // The lists load while the palette is open, and for the Add an Agent dialog it opens: that
+  // closes the palette, which must not stop the lists the dialog is waiting for.
+  const listsWanted = open || spawning
   useEffect(() => {
-    if (!open) return
+    if (!listsWanted) return
     const controller = new AbortController()
     const signal = controller.signal
     Promise.all([
@@ -249,7 +254,7 @@ export function JumpPalette({
         if (!signal.aborted) setLoaded(true)
       })
     return () => controller.abort()
-  }, [open])
+  }, [listsWanted])
 
   const destinations = useMemo<Destination[]>(() => {
     const teamName = new Map(teams.map((team) => [team.id, team.name]))
@@ -543,7 +548,7 @@ export function JumpPalette({
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
-      {spawning && (
+      {spawning && loaded && (
         <SpawnDialog
           profiles={profiles}
           teams={teams}

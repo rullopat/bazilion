@@ -6,7 +6,6 @@ import { authMiddleware } from './lib/middleware-auth.ts'
 import { activityRouter } from './routes/activity.ts'
 import { agentBrowserRouter } from './routes/agent-browser.ts'
 import { agentChatRouter } from './routes/agent-chat.ts'
-import { agentLearningRouter } from './routes/agent-learning.ts'
 import { agentSecretsRouter } from './routes/agent-secrets.ts'
 import { agentsRouter } from './routes/agents.ts'
 import { attentionRouter } from './routes/attention.ts'
@@ -59,7 +58,6 @@ export function createApp(): Hono {
   app.route('/api/agents', agentsRouter)
   app.route('/api/agents', agentChatRouter)
   app.route('/api/agents', agentBrowserRouter)
-  app.route('/api/agents', agentLearningRouter)
   app.route('/api/agents', agentMessagesRouter)
   app.route('/api/agents', agentSkillsRouter)
   app.route('/api/agents', agentTelegramRouter)

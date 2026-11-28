@@ -1,6 +1,8 @@
 // Tool calls in words: what a running turn is doing (the rail) and what a finished step did (the
 // transcript). Pure functions over a tool's name and arguments, so both read the same way.
 
+import type { ScriptCall } from '@bazilion/api-types'
+
 export type StepIcon =
   | 'terminal'
   | 'read'
@@ -331,13 +333,33 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
         icon: 'note',
         kind: 'other',
       }
-    case 'propose_lesson':
+    case 'browser_use': {
+      // Which browser the conversation works in from here on (BAZ-102).
+      const yours = args?.browser === 'yours'
       return {
-        doing: 'proposing a lesson',
-        verb: 'Proposed a lesson',
+        doing: yours ? 'moving to your Chrome' : 'moving to its own browser',
+        verb: yours ? 'Moved to your Chrome' : 'Moved to its own browser',
         target: null,
-        icon: 'note',
-        kind: 'other',
+        icon: 'web',
+        kind: 'web',
+      }
+    }
+    case 'codemode':
+      // A script that calls the Agent's tools (BAZ-100); the calls it made show under it.
+      return {
+        doing: 'running a script',
+        verb: 'Ran a script',
+        target: null,
+        icon: 'terminal',
+        kind: 'command',
+      }
+    case 'tool_search':
+      return {
+        doing: 'searching its tools',
+        verb: 'Searched tools for',
+        target: str(args?.query) ? clip(String(args?.query)) : null,
+        icon: 'search',
+        kind: 'read',
       }
     default:
       break
@@ -370,6 +392,19 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
     }
   }
   return { doing: `using ${tool}`, verb: 'Used', target: tool, icon: 'tool', kind: 'other' }
+}
+
+const CALL_MARK: Record<ScriptCall['status'], string> = {
+  ok: '✓',
+  error: '✗',
+  cancelled: '–',
+  running: '…',
+  unfinished: '…',
+}
+
+/** "✓ memory_search" per line: the calls a script made, as its step lists them. */
+export function scriptCallsText(calls: readonly ScriptCall[]): string {
+  return calls.map((call) => `${CALL_MARK[call.status]} ${call.name}`).join('\n')
 }
 
 const KIND_LABEL: Record<StepKind, [one: string, many: string]> = {

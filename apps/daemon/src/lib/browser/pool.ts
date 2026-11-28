@@ -395,16 +395,20 @@ export function browserStatus(
   paths: Paths,
   enabled: boolean,
 ): BrowserStatus {
+  const session = resources().browsers.get(agentId)
   const status: BrowserStatus = {
     agentId,
     enabled,
     // A browser that crashed or whose window was closed stays registered until
     // its next call or the reaper, but is not running.
-    running: resources().browsers.get(agentId)?.browser.running ?? false,
+    running: session?.browser.running ?? false,
     profilePresent: existsSync(paths.browserDir(agentId)),
   }
   const launchError = launchErrors.get(agentId)
-  if (config.attach) {
+  // The browser it is using now, which a conversation may have switched (BAZ-102); otherwise the
+  // default.
+  const attached = status.running && session ? session.key.startsWith('attach|') : config.attach
+  if (attached) {
     status.browser = {
       name: config.attachUrl ?? 'The running Chrome or Chromium',
       mode: 'attached',

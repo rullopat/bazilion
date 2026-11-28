@@ -35,8 +35,7 @@ A conversation summary is counted for the model of the reply before it.
 
 ## What it leaves out
 
-- Calls outside a conversation: an Agent's learning review, provider tests in Setup, and
-  generated images.
+- Calls outside a conversation: provider tests in Setup, and generated images.
 - Conversations that are gone: a deleted Agent's, and a history that cannot be read (Usage says
   how many it skipped).
 - An Agent moved to another Team counts for the Team it is in now.

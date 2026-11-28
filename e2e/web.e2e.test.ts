@@ -633,7 +633,13 @@ test('an Agent added with its job starts on it, and a Team has each name once', 
     // Adding it opened its conversation, its first line ready to be typed.
     await pw(session.page.getByPlaceholder('Message Rhea')).toBeVisible()
     // Another "mira" in Launch is refused, whatever its case. Jump to adds to the open Agent's
-    // Team, without leaving the page while it is still loading.
+    // Team, without leaving the page while it is still loading, and chosen before the palette's
+    // lists arrive (held back here), the dialog still gets them.
+    const lists = '**/api/teams'
+    await session.page.route(lists, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await route.continue()
+    })
     await session.page.keyboard.press('Control+k')
     await session.page.keyboard.type('Add an Agent')
     await session.page
@@ -641,6 +647,7 @@ test('an Agent added with its job starts on it, and a Team has each name once', 
       .first()
       .click()
     await pw(dialog.getByLabel('Team')).toContainText('Launch')
+    await session.page.unroute(lists)
     await dialog.getByLabel('Name').fill('mira')
     await dialog.getByRole('button', { name: 'Add the Agent' }).click()
     await pw(dialog.getByRole('alert')).toContainText('Launch already has an Agent named mira.')
@@ -929,4 +936,53 @@ test('a compacted conversation keeps its earlier messages under a divider, the A
     await pw(page.getByRole('meter', { name: 'Conversation size' })).toHaveCount(meter ? 1 : 0)
   }
   expect(session.problems).toEqual([])
+})
+
+test('an Agent finds a connection’s tools when it needs them, runs one script for several calls, and each message has its time', async () => {
+  // An MCP server of the test's own, over stdio, as an operator would add one.
+  const fixture = join(import.meta.dirname, 'mcp-releases.mjs')
+  const server = await instance.api<{ id: string }>('/api/mcp-servers', {
+    method: 'POST',
+    body: { name: 'releases', transport: 'stdio', command: process.execPath, args: [fixture] },
+  })
+  try {
+    const session = await open()
+    const page = session.page
+    await session.go(`/?agent=${ids.scout}`, 1500)
+    const log = page.getByRole('log', { name: 'Conversation with Scout' })
+    const composer = page.getByPlaceholder('Message Scout')
+    await composer.fill('What changed in the last release?')
+    await composer.press('Enter')
+    await pw(
+      log.getByText('Paperboat 2.4 added dark mode, and notes now sync while offline.'),
+    ).toBeVisible({
+      timeout: 20_000,
+    })
+    // The search, then one step for the whole script, with the calls it made under it.
+    await pw(
+      log.getByRole('button', { name: /Searched tools for release notes lookup/ }),
+    ).toBeVisible()
+    const script = log.getByRole('button', { name: /Ran a script/ })
+    await script.click()
+    await pw(log).toContainText('✓ mcp__releases__release_list')
+    await pw(log).toContainText('✓ mcp__releases__release_lookup')
+    await pw(log).toContainText('Paperboat 2.4 (2026-11-20): dark mode')
+    // The calls inside the script are not steps of their own.
+    await pw(log.getByRole('button', { name: /mcp__releases__release_lookup/ })).toHaveCount(0)
+
+    // A line for the day, and the time under each message (BAZ-101), the same after a reload.
+    for (const reload of [false, true]) {
+      if (reload) await session.go(`/?agent=${ids.scout}`, 1500)
+      await pw(log.getByText('Today', { exact: true }).first()).toBeVisible()
+      const times = log.locator('time')
+      expect(await times.count()).toBeGreaterThanOrEqual(2)
+      const title = await times.last().getAttribute('title')
+      expect(title).toMatch(/\d{4}/)
+      expect(await times.last().textContent()).toMatch(/^\d{1,2}:\d{2}/)
+    }
+    expect(await accessibilityProblems(page, 'a script and message times')).toEqual([])
+    expect(session.problems).toEqual([])
+  } finally {
+    await instance.api(`/api/mcp-servers/${server.id}`, { method: 'DELETE' }).catch(() => {})
+  }
 })

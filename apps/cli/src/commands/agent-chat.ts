@@ -94,11 +94,14 @@ export async function promptForCommandApproval(
   try {
     const answer = (
       await prompt.question(
-        tool
-          ? '  Allow this call once? [y/N] '
-          : always
-            ? '  Allow this command once? [y/N/a] '
-            : '  Allow this command once? [y/N] ',
+        // Moving to the operator's Chrome lasts for the conversation (BAZ-102).
+        approval.risks.some((risk) => risk.code === 'your-browser')
+          ? '  Allow it for this conversation? [y/N] '
+          : tool
+            ? '  Allow this call once? [y/N] '
+            : always
+              ? '  Allow this command once? [y/N/a] '
+              : '  Allow this command once? [y/N] ',
       )
     )
       .trim()

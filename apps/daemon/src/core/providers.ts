@@ -184,14 +184,6 @@ export const PROVIDERS: readonly ProviderDef[] = [
         label: 'GCP region',
         placeholder: 'us-central1',
       },
-      {
-        envVar: 'GOOGLE_VERTEX_CREDENTIALS_JSON',
-        kind: 'secret',
-        label: 'Explicit credentials JSON (learning reviews)',
-        description:
-          'Service-account or ADC JSON given only to the learning-review worker, which cannot read ambient ADC files.',
-        advanced: true,
-      },
     ],
   },
   { ...apiKey('azure-openai', 'Azure OpenAI', 'AZURE_OPENAI_API_KEY'), piName: 'azure' },

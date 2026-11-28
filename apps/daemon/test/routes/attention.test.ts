@@ -53,24 +53,29 @@ async function fixture() {
      VALUES ('agent', 'profile', 'Agent', 'idle', 'team', ?)`,
     [now],
   )
+  // A schedule's run that failed, which can be acknowledged, and a follow-up queue a restart
+  // paused, which only resuming it clears.
+  const conversations = await import('../../src/core/repos/conversations.ts')
+  const { INTERRUPTED_BY_RESTART } = await import('../../src/core/repos/user-queue.ts')
+  const conversation = '11111111-1111-4111-8111-111111111111'
+  conversations.create(ctx.db, 'agent', conversation)
   ctx.db.raw.run(
-    `INSERT INTO agent_reviews
-       (id, agent_id, status, trigger_kind, last_error, created_at, updated_at)
-     VALUES ('failed-review', 'agent', 'failed', 'manual', 'safe failure', ?, ?)`,
-    [now - 2, now - 1],
+    `INSERT INTO agent_triggers (id, agent_id, kind, interval_sec, message, created_at)
+     VALUES ('trigger', 'agent', 'interval', 60, 'run', ?)`,
+    [now],
   )
   ctx.db.raw.run(
-    `INSERT INTO agent_reviews
-       (id, agent_id, status, trigger_kind, proposal_count,
-        finished_at, created_at, updated_at)
-     VALUES ('complete-review', 'agent', 'completed', 'manual', 1, ?, ?, ?)`,
-    [now, now, now],
+    `INSERT INTO trigger_dispatches
+       (id, trigger_id, agent_id, conversation_id, scheduled_at, status, finished_at, error)
+     VALUES ('failed-run', 'trigger', 'agent', ?, ?, 'failed', ?, 'safe failure')`,
+    [conversation, now - 2, now - 1],
   )
+  ctx.db.raw.run("INSERT INTO user_queue_controls (agent_id, paused) VALUES ('agent', 1)")
   ctx.db.raw.run(
-    `INSERT INTO agent_lesson_proposals
-       (id, review_id, agent_id, scope, text, evidence_json, status, created_at, updated_at)
-     VALUES ('lesson', 'complete-review', 'agent', 'private', 'Lesson', '[]', 'pending', ?, ?)`,
-    [now, now],
+    `INSERT INTO user_queue_items
+       (id, agent_id, conversation_id, source, status, text, diagnostic, created_at, updated_at, finished_at)
+     VALUES ('cut', 'agent', ?, 'http', 'failed', 'hi', ?, ?, ?, ?)`,
+    [conversation, INTERRUPTED_BY_RESTART, now, now, now],
   )
   return {
     app: createApp(),
@@ -92,23 +97,23 @@ test('attention routes require auth and validate list filters', async () => {
     expect(await response.json()).toEqual({ error })
   }
 
-  const response = await app.request('/api/attention?state=open&kind=review_failure', {
+  const response = await app.request('/api/attention?state=open&kind=trigger_failure', {
     headers: auth,
   })
   expect(response.status).toBe(200)
   expect(await response.json()).toMatchObject({
-    items: [{ key: 'review_failure:failed-review', acknowledgeable: true }],
+    items: [{ key: 'trigger_failure:failed-run', acknowledgeable: true }],
     degraded: [],
   })
 })
 
 test('acknowledgement lifecycle is idempotent and action-required work stays source-owned', async () => {
   const { app, auth } = await fixture()
-  const reviewKey = encodeURIComponent('review_failure:failed-review')
-  const lessonKey = encodeURIComponent('lesson_proposal:lesson')
+  const runKey = encodeURIComponent('trigger_failure:failed-run')
+  const queueKey = encodeURIComponent('queue_interrupted:queue:agent')
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await app.request(`/api/attention/${reviewKey}/acknowledge`, {
+    const response = await app.request(`/api/attention/${runKey}/acknowledge`, {
       method: 'POST',
       headers: auth,
     })
@@ -117,10 +122,10 @@ test('acknowledgement lifecycle is idempotent and action-required work stays sou
   }
 
   const history = await app.request('/api/attention?state=acknowledged', { headers: auth })
-  expect(await history.json()).toMatchObject({ items: [{ key: 'review_failure:failed-review' }] })
+  expect(await history.json()).toMatchObject({ items: [{ key: 'trigger_failure:failed-run' }] })
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await app.request(`/api/attention/${reviewKey}/acknowledgement`, {
+    const response = await app.request(`/api/attention/${runKey}/acknowledgement`, {
       method: 'DELETE',
       headers: auth,
     })
@@ -128,7 +133,7 @@ test('acknowledgement lifecycle is idempotent and action-required work stays sou
     expect(await response.json()).toMatchObject({ item: { acknowledgedAt: null } })
   }
 
-  const protectedResponse = await app.request(`/api/attention/${lessonKey}/acknowledge`, {
+  const protectedResponse = await app.request(`/api/attention/${queueKey}/acknowledge`, {
     method: 'POST',
     headers: auth,
   })
@@ -137,7 +142,7 @@ test('acknowledgement lifecycle is idempotent and action-required work stays sou
     error: 'action-required items must be resolved at their source',
   })
 
-  const stale = await app.request('/api/attention/review_failure%3Amissing/acknowledge', {
+  const stale = await app.request('/api/attention/trigger_failure%3Amissing/acknowledge', {
     method: 'POST',
     headers: auth,
   })
@@ -167,7 +172,7 @@ test('acknowledge-all and summary use the same open projection', async () => {
     bySeverity: { action_required: 1, error: 0, warning: 0 },
   })
   const open = await app.request('/api/attention?state=open', { headers: auth })
-  expect(await open.json()).toMatchObject({ items: [{ key: 'lesson_proposal:lesson' }] })
+  expect(await open.json()).toMatchObject({ items: [{ key: 'queue_interrupted:queue:agent' }] })
 })
 
 test('a question or a command an Agent waits on comes first, and is answered, not acknowledged', async () => {

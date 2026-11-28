@@ -1,100 +1,44 @@
-import { fstatSync } from 'node:fs'
-import { createProcessIpcClient } from '../../src/runtime/worker/ipc-client.ts'
-import type { MinimalWorkerScratch } from '../../src/runtime/worker/runtime.ts'
-
-interface FixtureInput {
-  kind: 'restricted_review'
-  message: string
-  runtime: { providerName: 'openai-codex'; apiKey: string }
-  scratch: MinimalWorkerScratch
-  hosts: string[]
-}
-
-const FORBIDDEN_MINIMAL_INPUT_SENTINELS = [
-  'telegram-secret-sentinel',
-  'bootstrap-secret-sentinel',
-  'oauth-refresh-secret-sentinel',
-  'unrelated-provider-secret-sentinel',
-  'unrelated-tool-secret-sentinel',
-]
+// A stand-in worker for the daemon side of a turn's process (spawn.ts): what it does is named by
+// the turn's message.
 
 /** One more character than the daemon buffers for a single stdout line. */
 const OVERSIZED_FRAME_CHARS = 40 * 1024 * 1024 + 1
 
-async function readInput(): Promise<{ input: FixtureInput; raw: string }> {
+const NATIVE_ABI_MISMATCH =
+  "The module '/private/checkout/node_modules/better_sqlite3.node' was compiled " +
+  'against a different Node.js version using NODE_MODULE_VERSION 141. ' +
+  'This version of Node.js requires NODE_MODULE_VERSION 147.'
+
+async function readMessage(): Promise<string> {
   const chunks: Buffer[] = []
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
-  const raw = Buffer.concat(chunks).toString('utf8')
-  return { input: JSON.parse(raw) as FixtureInput, raw }
+  return (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { message: string }).message
 }
 
+const hang = () => new Promise<void>(() => setInterval(() => undefined, 1_000))
+
 async function main(): Promise<void> {
-  const { input, raw } = await readInput()
-  if (!input.hosts.includes('apiKeyRefreshHost')) throw new Error('refresh IPC was not enabled')
-  if (input.message === 'native-abi-mismatch') {
+  const message = await readMessage()
+  if (message === 'native-abi-mismatch') {
     await new Promise<void>((resolve, reject) => {
-      process.stderr.write(
-        "The module '/private/checkout/node_modules/better_sqlite3.node'\n" +
-          'was compiled against a different Node.js version using NODE_MODULE_VERSION 141. ' +
-          'This version of Node.js requires NODE_MODULE_VERSION 147. Please try re-compiling.\n',
-        (error) => (error ? reject(error) : resolve()),
+      process.stderr.write(`${NATIVE_ABI_MISMATCH} Please try re-compiling.\n`, (error) =>
+        error ? reject(error) : resolve(),
       )
     })
     process.exitCode = 1
     return
   }
-  if (input.message === 'native-abi-frame') {
-    process.stdout.write(
-      `${JSON.stringify({
-        kind: 'fatal',
-        error:
-          "The module '/private/checkout/node_modules/better_sqlite3.node' was compiled " +
-          'against a different Node.js version using NODE_MODULE_VERSION 141. ' +
-          'This version of Node.js requires NODE_MODULE_VERSION 147.',
-      })}\n`,
-    )
+  if (message === 'native-abi-frame') {
+    process.stdout.write(`${JSON.stringify({ kind: 'fatal', error: NATIVE_ABI_MISMATCH })}\n`)
     process.exitCode = 1
     return
   }
-  const call = createProcessIpcClient()
-  const rotated = await call('refreshApiKey', { providerName: input.runtime.providerName })
-  if (input.message === 'oversized-frame') {
+  if (message === 'oversized-frame') {
     process.stdout.write('x'.repeat(OVERSIZED_FRAME_CHARS))
-    await new Promise<void>(() => setInterval(() => undefined, 1_000))
+    await hang()
   }
-
-  process.stderr.write('x'.repeat(20_000))
-  const initialSplit = Math.max(1, Math.floor(input.runtime.apiKey.length / 2))
-  process.stderr.write(`initial=${input.runtime.apiKey.slice(0, initialSplit)}`)
-  process.stderr.write(`${input.runtime.apiKey.slice(initialSplit)}\nrotated=${rotated}\n`)
-
-  const proposals = [
-    {
-      scope: 'private',
-      evidenceEntryIds: [],
-      text: JSON.stringify({
-        hosts: input.hosts,
-        environment: process.env,
-        argv: process.argv,
-        scratchRoot: input.scratch.root,
-        stdinEnded: process.stdin.readableEnded,
-        stdioAreRegularFiles: [0, 1, 2].map((fd) => fstatSync(fd).isFile()),
-        ipcConnected: process.connected,
-        forbiddenInputOccurrences: Object.fromEntries(
-          FORBIDDEN_MINIMAL_INPUT_SENTINELS.map((sentinel) => [
-            sentinel,
-            raw.split(sentinel).length - 1,
-          ]),
-        ),
-        initial: input.runtime.apiKey,
-        rotated,
-      }),
-    },
-  ]
-  process.stdout.write(`${JSON.stringify({ kind: 'review_result', proposals })}\n`)
-  if (input.message === 'hang-after-frame') {
-    await new Promise<void>(() => setInterval(() => undefined, 1_000))
-  }
+  process.stdout.write(`${JSON.stringify({ kind: 'done', messages: [] })}\n`)
+  if (message === 'hang-after-frame') await hang()
 }
 
 main()

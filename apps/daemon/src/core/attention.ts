@@ -16,8 +16,6 @@ import { rememberedTurnFailures } from './turn-failures.ts'
 
 /** Kinds kept in the database until they are dealt with; Telegram can notify about these. */
 export const RECORDED_ATTENTION_KINDS = [
-  'lesson_proposal',
-  'review_failure',
   'trigger_failure',
   'agent_loop_break',
   'queue_interrupted',
@@ -50,10 +48,6 @@ interface BaseSourceRow {
   teamName?: string
   acknowledged_at: number | null
 }
-interface ReviewSourceRow extends BaseSourceRow {
-  status: string
-  diagnostic: string | null
-}
 interface DiagnosticSourceRow extends BaseSourceRow {
   diagnostic: string | null
 }
@@ -75,7 +69,7 @@ export const bounded = (value: string | null, fallback: string): string =>
     .slice(0, 500)
 
 /** The Agent's conversation in the web workspace, with one of its sheets open over it. */
-function agentHref(agentId: string | undefined, section?: 'learning' | 'schedules' | 'mailbox') {
+function agentHref(agentId: string | undefined, section?: 'schedules' | 'mailbox') {
   const query = new URLSearchParams({ agent: agentId ?? '' })
   if (section) query.set('section', section)
   return `/?${query}`
@@ -217,57 +211,6 @@ function turnFailures(db: BazilionDb): RawItem[] {
 }
 
 const sources: Source[] = [
-  {
-    kind: 'lesson_proposal',
-    query: (db) =>
-      db.raw
-        .query<
-          BaseSourceRow,
-          []
-        >(`SELECT p.id sourceId, p.created_at occurredAt, p.updated_at updatedAt,
-        p.agent_id agentId, a.name agentName, a.team_id teamId, t.name teamName, NULL acknowledged_at
-        FROM agent_lesson_proposals p JOIN agents a ON a.id = p.agent_id
-        JOIN teams t ON t.id = a.team_id
-        WHERE p.status = 'pending'`)
-        .all()
-        .map(
-          (r): RawItem => ({
-            ...r,
-            kind: 'lesson_proposal',
-            severity: 'action_required',
-            title: 'Lesson proposal ready',
-            diagnostic: 'A reviewed-learning proposal is waiting for approval or rejection.',
-            href: agentHref(r.agentId, 'learning'),
-            acknowledgeable: false,
-          }),
-        ),
-  },
-  {
-    kind: 'review_failure',
-    query: (db) =>
-      db.raw
-        .query<
-          ReviewSourceRow,
-          []
-        >(`SELECT r.id sourceId, r.created_at occurredAt, r.updated_at updatedAt,
-        r.agent_id agentId, a.name agentName, a.team_id teamId, t.name teamName,
-        r.status, r.last_error diagnostic, aa.acknowledged_at FROM agent_reviews r
-        JOIN agents a ON a.id = r.agent_id JOIN teams t ON t.id = a.team_id
-        LEFT JOIN attention_acknowledgements aa ON aa.source_kind = 'review_failure' AND aa.source_id = r.id
-        WHERE r.status IN ('failed','cancelled')`)
-        .all()
-        .map(
-          (r): RawItem => ({
-            ...r,
-            kind: 'review_failure',
-            severity: 'error',
-            title: r.status === 'cancelled' ? 'Agent review cancelled' : 'Agent review failed',
-            diagnostic: bounded(r.diagnostic, 'The review stopped without completing.'),
-            href: agentHref(r.agentId, 'learning'),
-            acknowledgeable: true,
-          }),
-        ),
-  },
   {
     kind: 'trigger_failure',
     query: (db) =>

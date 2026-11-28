@@ -2,10 +2,9 @@
 
 **Attention** lists what needs you. First what an Agent is waiting on right now: a
 [question](questions.md) it asked (`agent_question`) and a command or an
-[MCP tool call](mcp.md#tools-that-ask-first) it wants approved (`command_approval`), soonest to expire first, each with the time it stops waiting. Then lesson
-proposals waiting for a decision, failed or cancelled reviews, scheduled triggers that failed,
-Agent message loops that were stopped, Agent queues paused after a daemon restart, and background
-turns that failed (`turn_failure`).
+[MCP tool call](mcp.md#tools-that-ask-first) it wants approved (`command_approval`), soonest to expire first, each with the time it stops waiting. Then
+scheduled triggers that failed, Agent message loops that were stopped, Agent queues paused after
+a daemon restart, and background turns that failed (`turn_failure`).
 
 It is the **Attention** page of the web UI, which says how much is open, filters by state, kind
 and severity, links each item to where it is dealt with (**Answer** and **Decide** open the
@@ -56,7 +55,7 @@ it on, pick the kinds, optionally set quiet hours, and save. From the CLI:
 ```sh
 bazilion notification settings
 bazilion notification configure --enable
-bazilion notification configure --kinds review_failure,trigger_failure
+bazilion notification configure --kinds turn_failure,trigger_failure
 bazilion notification configure --quiet-start 22:00 --quiet-end 07:00 --timezone Europe/Warsaw
 bazilion notification configure --clear-quiet-hours
 bazilion notification configure --disable
