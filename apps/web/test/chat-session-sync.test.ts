@@ -77,12 +77,14 @@ test('an activity reading asks for the head, the queue, both, or nothing', () =>
 })
 
 test('a message being sent shows its text, its images and the names of its other files', () => {
-  expect(draftEntry('hi', [])).toEqual({ type: 'user', content: 'hi' })
+  // Stamped when sent, until the saved history's own time replaces it (BAZ-101).
+  expect(draftEntry('hi', [])).toEqual({ type: 'user', content: 'hi', at: expect.any(Number) })
   const image = { mimeType: 'image/png', data: 'AAAA', name: 'shot.png' }
   const entry = draftEntry('look', [image, { mimeType: 'text/plain', data: 'eA==' }])
   expect(entry).toEqual({
     type: 'user',
     content: 'look',
+    at: expect.any(Number),
     images: [image],
     files: [{ name: 'file' }],
   })

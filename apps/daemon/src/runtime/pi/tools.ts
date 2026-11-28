@@ -60,6 +60,15 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
     label: h.def.name,
     description: h.def.description,
     parameters: Type.Unsafe<Record<string, unknown>>(h.def.parameters as Record<string, unknown>),
+    ...(h.reach ? { exposure: h.reach } : {}),
+    ...(h.group
+      ? {
+          namespace: {
+            name: h.group.name,
+            ...(h.group.description ? { description: h.group.description } : {}),
+          },
+        }
+      : {}),
     async execute(toolCallId, params, signal, onUpdate) {
       const out = await h.invoke(params as Record<string, unknown>, {
         toolCallId,

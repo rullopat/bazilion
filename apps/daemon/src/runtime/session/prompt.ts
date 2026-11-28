@@ -30,11 +30,18 @@ export interface BuildSystemPromptOptions {
    * when the ordinary browser tools are actually admitted — the SAME host
    * presence that registers the `browser_*` tools, so guidance and
    * capability never drift apart. Restricted reviews never set it.
-   * `'attached'` when the tools drive the user's own browser (BROWSER_ATTACH).
+   * `'attached'` when the tools drive the user's own browser (in this conversation).
    */
   browserGuide?: boolean | 'attached'
+  /** The turn has `browser_use`: the browser conversations start with (BAZ-102). */
+  browserDefault?: 'own' | 'yours'
   /** Web research guidance, when the turn has web_search. */
   searchGuide?: boolean
+  /**
+   * MCP connections whose tools wait to be found (BAZ-100): their group name (`mcp__github`), the
+   * operator's name for them, and how many tools each has.
+   */
+  connections?: readonly { group: string; name: string; tools: number }[]
   /** Whom the Agent can message: its teammates, and Agents of other Teams it may reach. */
   contacts?: readonly AgentContact[]
   /** The turn offers `agent_create`. */
@@ -62,6 +69,7 @@ export interface PromptSection {
     | 'agent-home'
     | 'skills'
     | 'search-guide'
+    | 'connections'
     | 'browser-guide'
     | 'team'
     | 'user'
@@ -268,11 +276,18 @@ export function buildSystemPromptSections(
     })
   }
 
+  if (options.connections && options.connections.length > 0) {
+    parts.push({ id: 'connections', text: connectionsSection(options.connections) })
+  }
+
   // Browser operating guide — only when the browser tools are admitted (T10).
   if (options.browserGuide) {
     parts.push({
       id: 'browser-guide',
-      text: browserGuideSection(options.browserGuide === 'attached'),
+      text: browserGuideSection(
+        options.browserGuide === 'attached',
+        options.browserDefault ? { byDefault: options.browserDefault } : undefined,
+      ),
     })
   }
 
@@ -397,4 +412,20 @@ function boundReviewedLessons(lessons: readonly string[], maxCharacters = 8_000)
     used += Math.min(lesson.length, remaining)
   }
   return selected
+}
+
+/** The MCP connections whose tools are found with `tool_search` or called from a script. */
+function connectionsSection(
+  connections: readonly { group: string; name: string; tools: number }[],
+): string {
+  return [
+    '# Connections',
+    '',
+    "These connections' tools are not loaded yet. Load the ones a task needs with `tool_search` (they stay loaded for this conversation), or call them from a `codemode` script, where they are `tools.<name>` and `searchTools()` finds them.",
+    '',
+    ...connections.map(
+      (connection) =>
+        `- ${connection.name} (\`${connection.group}\`): ${connection.tools} tool${connection.tools === 1 ? '' : 's'}`,
+    ),
+  ].join('\n')
 }

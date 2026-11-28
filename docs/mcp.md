@@ -5,6 +5,15 @@ schedules and inbox) as `mcp__<server>__<tool>`. Servers are configured once for
 installation. The daemon runs the MCP client (Pi's `@earendil-works/pi-mcp`); workers call tools
 through it and never connect to a server themselves.
 
+## Tools found when needed
+
+Since 0.66.0 an Agent is not given every MCP tool up front: its prompt lists each connection with
+how many tools it has, and the Agent loads the tools a task needs with `tool_search`; they stay
+loaded for the rest of the conversation. A `codemode` script can call any of them, loaded or
+not, and combine several calls in one step. So many connections, with many tools, no longer fill
+the model's window before the conversation starts. See
+[tool search and Code Mode](agent-engine.md#tool-search-and-code-mode).
+
 ## Common connections
 
 **Common connections** on `/config/mcp` (and `bazilion mcp presets`) lists four third-party

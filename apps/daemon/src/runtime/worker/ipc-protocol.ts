@@ -44,6 +44,10 @@ export interface RpcMethods {
     args: { agentId: string; action: string; args: Record<string, unknown> }
     result: ToolResultPart[]
   }
+  browserUse: {
+    args: { browser: BrowserChoice; toolCallId?: string }
+    result: BrowserSwitch
+  }
   mcpInvoke: {
     args: {
       serverId: string
@@ -374,8 +378,33 @@ export interface UserMdHost {
 }
 
 /** The Agent's managed browser, which lives in the daemon across turns. */
+/** Which browser a conversation's `browser_*` tools drive (BAZ-102). */
+export type BrowserChoice = 'own' | 'yours'
+
+/** What `browser_use` did: what the Agent is told, whether it switched, and with whose word. */
+export interface BrowserSwitch {
+  text: string
+  switched: boolean
+  /** The operator allowed the move to their Chrome (not needed while it is the default). */
+  approved: boolean
+}
+
 export interface BrowserHost {
   invoke(agentId: string, action: string, args: Record<string, unknown>): Promise<ToolResultPart[]>
+  /**
+   * Switch the conversation to the Agent's own browser or the operator's running Chrome; what
+   * the Agent is told. Moving to the operator's Chrome may wait for their approval.
+   */
+  use?(
+    browser: BrowserChoice,
+    options?: {
+      toolCallId?: string
+      /** Ends the call, and any approval it waits for. */
+      signal?: AbortSignal
+      /** The approval it waits for, to show in the chat. */
+      onApproval?: (approval: CommandApproval) => void
+    },
+  ): Promise<BrowserSwitch>
 }
 
 /** `tools/call` on the daemon's MCP connection pool. */

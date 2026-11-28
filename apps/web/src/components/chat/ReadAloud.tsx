@@ -66,7 +66,7 @@ export function ReadAloud({ text }: { text: string }) {
   }
 
   return (
-    <span className="mt-1 flex items-center gap-2">
+    <span className="flex items-center gap-2">
       <button
         type="button"
         onClick={() => (phase === 'playing' ? stopMine() : void read())}

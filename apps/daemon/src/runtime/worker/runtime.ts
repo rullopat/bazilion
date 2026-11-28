@@ -62,6 +62,8 @@ export interface AgentTurnWorkerSpec {
   unreadMessages?: number
   /** The Agent's own secrets, by name: their values are in the worker's environment. */
   secrets?: AgentSecretUse[]
+  /** The browser this conversation works in (BAZ-102), as the daemon's browser host has it. */
+  browser?: 'own' | 'yours'
 }
 
 /** One of the Agent's secrets, as a turn uses it. */

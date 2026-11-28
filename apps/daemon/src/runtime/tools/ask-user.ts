@@ -20,6 +20,8 @@ const CHOICES = {
 
 export function askUserTool(ask: AskUser): ToolHandler {
   return {
+    // A question is the model's to ask, never a script's (BAZ-100).
+    reach: 'model-only',
     def: {
       name: 'ask_user',
       description: [

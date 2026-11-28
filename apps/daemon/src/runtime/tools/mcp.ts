@@ -23,9 +23,24 @@ export function toolCallSummary(rawName: string, args: Record<string, unknown>):
   return `${rawName}\n${shown}`
 }
 
-/** Build proxy tools for every discovered MCP tool. */
+/** The group a connection's tools are searched by: `mcp__<connection>`, as in their names. */
+export function mcpGroupName(tool: Pick<InjectedMcpTool, 'toolName' | 'serverName'>): string {
+  if (tool.serverName) return `mcp__${tool.serverName}`
+  const parts = tool.toolName.split('__')
+  return parts.length >= 3 ? `${parts[0]}__${parts[1]}` : tool.toolName
+}
+
+/**
+ * Build proxy tools for every discovered MCP tool. They wait to be found (BAZ-100): not declared
+ * to the model until `tool_search` loads them, and callable from codemode scripts at any time.
+ */
 export function mcpProxyTools(host: McpHost, tools: InjectedMcpTool[]): ToolHandler[] {
   return tools.map((t) => ({
+    reach: 'deferred' as const,
+    group: {
+      name: mcpGroupName(t),
+      ...(t.serverName ? { description: `The ${t.serverName} connection` } : {}),
+    },
     def: {
       name: t.toolName,
       description: t.ask

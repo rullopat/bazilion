@@ -2,12 +2,77 @@
 // agent's persistent browser in the daemon (`lib/browser/pool.ts`), which answers
 // with text (snapshots, tab lists, logs) or, for screenshots, an image.
 
-import type { BrowserHost } from '../worker/ipc-protocol.ts'
+import type { BrowserChoice, BrowserHost } from '../worker/ipc-protocol.ts'
 import type { ToolHandler } from './types.ts'
+
+export const BROWSER_USE = 'browser_use'
+
+/**
+ * The browser a conversation works in (BAZ-102): its latest switch with `browser_use` that went
+ * through, otherwise the default. A move to the operator's Chrome counts only if they approved
+ * it, or while their Chrome is still the default: one made without asking, because it was the
+ * default then, does not outlive that default.
+ */
+export function browserChoiceIn(
+  messages: readonly { role?: string; toolName?: string; isError?: boolean; details?: unknown }[],
+  byDefault: BrowserChoice,
+): BrowserChoice {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message?.role !== 'toolResult' || message.toolName !== BROWSER_USE || message.isError)
+      continue
+    const details = message.details as { browser?: unknown; approved?: unknown } | undefined
+    if (details?.browser === 'own') return 'own'
+    if (details?.browser === 'yours')
+      return details.approved === true || byDefault === 'yours' ? 'yours' : byDefault
+  }
+  return byDefault
+}
+
+/**
+ * `browser_use`: the operator says which browser to work in, for the rest of the conversation.
+ * The model's own tool, never a script's: the choice is the operator's.
+ */
+export function browserUseTool(host: BrowserHost): ToolHandler | null {
+  const use = host.use
+  if (!use) return null
+  return {
+    reach: 'model-only',
+    def: {
+      name: BROWSER_USE,
+      description:
+        'Switch the browser your browser_* tools work in, for the rest of this conversation: "own" is your own browser, with logins of its own; "yours" is the user\'s running Chrome, where you act as them. Switch only when the user asks for it. Moving to the user\'s Chrome waits for their approval, unless it is already their default.',
+      parameters: {
+        type: 'object',
+        properties: { browser: { type: 'string', enum: ['own', 'yours'] } },
+        required: ['browser'],
+        additionalProperties: false,
+      },
+    },
+    async invoke(args, context) {
+      const browser: BrowserChoice = args.browser === 'yours' ? 'yours' : 'own'
+      const done = await use(browser, {
+        ...(context?.toolCallId ? { toolCallId: context.toolCallId } : {}),
+        ...(context?.signal ? { signal: context.signal } : {}),
+      })
+      // The transcript keeps a switch, and whether the operator allowed it: the conversation's
+      // next turns read it back. Asking for the browser it is already in records nothing.
+      return {
+        content: [{ type: 'text', text: done.text }],
+        details: done.switched ? { browser, ...(done.approved ? { approved: true } : {}) } : {},
+      }
+    },
+  }
+}
 
 const REF = { type: 'string', description: 'Element ref from the latest snapshot, e.g. "e5".' }
 
 export function browserTools(host: BrowserHost, agentId: string): ToolHandler[] {
+  const use = browserUseTool(host)
+  return [...(use ? [use] : []), ...actionTools(host, agentId)]
+}
+
+function actionTools(host: BrowserHost, agentId: string): ToolHandler[] {
   const tool = (
     action: string,
     description: string,

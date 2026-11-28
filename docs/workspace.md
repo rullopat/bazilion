@@ -31,8 +31,12 @@ Teams have no pages of their own: what used to be the Agent and Team pages is he
   The handle on the list's right edge, a faint line with a grip at its middle, makes it wider or
   narrower (drag it, or the arrow keys when it has the focus; a double-click puts it back); the
   width is kept per browser. Unsent text is kept per Agent for the tab, a reload included.
-- **The conversation** is the chat with the open Agent. Tool calls read as steps (`Ran`, `Read`,
-  `Wrote` with the lines added and removed); click one for its input and output. A message to a
+- **The conversation** is the chat with the open Agent. Each message shows the time it was sent
+  under it (point at it for the whole date), and a line before the first message of each day
+  says **Today**, **Yesterday**, the weekday within the last week or the date, in your browser's
+  language and time zone. Tool calls read as steps (`Ran`, `Read`, `Wrote` with the lines added
+  and removed); click one for its input and output. A script the Agent ran (**Ran a script**)
+  lists the calls it made, ✓ for each that worked, before what it returned. A message to a
   teammate is a hand-off card with what that teammate is doing now, or `not sent` when the call
   failed. Files an Agent delivers show
   where they were delivered, pictures as pictures. When a turn wrote files, **Review changes**

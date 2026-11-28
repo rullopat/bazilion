@@ -119,7 +119,14 @@ async function openAgentTurn(
         }
       : undefined,
     browserHost: served.has('browserHost')
-      ? { invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }) }
+      ? {
+          invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }),
+          use: (browser, options) =>
+            call('browserUse', {
+              browser,
+              ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+            }),
+        }
       : undefined,
     mcpHost: served.has('mcpHost')
       ? {
@@ -227,6 +234,7 @@ async function openAgentTurn(
       : undefined,
     contacts: input.contacts,
     withOperator: input.withOperator,
+    ...(input.browser ? { browser: input.browser } : {}),
     ...(input.unreadMessages ? { unreadMessages: input.unreadMessages } : {}),
   })
 }

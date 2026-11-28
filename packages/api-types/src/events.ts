@@ -16,11 +16,21 @@ export interface ToolCall {
   arguments: string
 }
 
+/** A call a codemode script made, as its step shows it (BAZ-100). */
+export interface ScriptCall {
+  name: string
+  status: 'ok' | 'error' | 'cancelled' | 'running' | 'unfinished'
+}
+
 export interface ProviderMessage {
   /** for role='tool': files the tool saved as results (deliver_file, image_generate). */
   results?: ResultReference[]
   role: Role
   content: string
+  /** When the message was written, in milliseconds since the epoch (BAZ-101). */
+  at?: number
+  /** for role='tool' of a codemode script: the calls it made, in order. */
+  calls?: ScriptCall[]
   toolCalls?: ToolCall[]
   /** for role='tool': links the result back to the originating call */
   toolCallId?: string
@@ -60,6 +70,8 @@ export type CommandRiskCode =
   | 'privilege-or-credential-access'
   /** An MCP tool that sends or changes something outside, set to ask first. */
   | 'outward-action'
+  /** Working in the operator's own running Chrome, signed in as them (BAZ-102). */
+  | 'your-browser'
 
 export interface CommandRisk {
   code: CommandRiskCode
@@ -139,8 +151,10 @@ export type SessionEvent =
       result: string
       /** Images emitted by the tool (browser screenshots, MCP image results). */
       images?: ToolResultImage[]
+      /** A codemode script's calls, in order (BAZ-100). */
+      calls?: ScriptCall[]
     }
-  | { type: 'tool_error'; id: string; name: string; error: string }
+  | { type: 'tool_error'; id: string; name: string; error: string; calls?: ScriptCall[] }
   | {
       /** A file the Agent saved for the user (deliver_file, image_generate); fetch it by result id. */
       type: 'file'

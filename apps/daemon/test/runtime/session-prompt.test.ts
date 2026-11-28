@@ -64,14 +64,12 @@ describe('session prompt boundary', () => {
     expect(handle.session.settingsManager.getCompactionEnabled()).toBe(true)
     expect(handle.session.settingsManager.getCompactionReserveTokens()).toBe(16_384)
     expect(handle.session.settingsManager.getCompactionKeepRecentTokens()).toBe(20_000)
-    expect(
-      handle.session
-        .getAllTools()
-        .some(
-          (tool) =>
-            ['codemode', 'tool_search'].includes(tool.name) || tool.name.startsWith('mcp__'),
-        ),
-    ).toBe(false)
+    // Pi's own codemode is given in code (BAZ-100); the repository's .pi extension never runs, and
+    // with no MCP tools there is nothing for tool_search to find.
+    const toolNames = handle.session.getAllTools().map((tool) => tool.name)
+    expect(toolNames).toContain('codemode')
+    expect(handle.session.getActiveToolNames()).not.toContain('tool_search')
+    expect(toolNames.some((name) => name.startsWith('mcp__'))).toBe(false)
     let providerSystemPrompt = ''
     let calls = 0
     handle.session.agent.streamFunction = (model) => {

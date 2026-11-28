@@ -50,7 +50,7 @@ test('a live turn folds into text, one tool box and deliverables outside it', ()
   entries = applyEvent(entries, { type: 'error', error: 'boom' })
   expect(entries).toEqual([
     { type: 'user', content: 'build it' },
-    { type: 'assistant', content: 'Working' },
+    { type: 'assistant', content: 'Working', at: expect.any(Number) },
     {
       type: 'tool',
       items: [
@@ -232,5 +232,45 @@ test('a tool call that was refused is a failed step, whatever its text says', ()
   ])
   expect(box?.type === 'tool' && pairSteps(box.items).map((step) => step.status)).toEqual([
     'failed',
+  ])
+})
+
+test('a script lists the calls it made before what it returned, live and saved (BAZ-100)', () => {
+  const calls = [
+    { name: 'mcp__docs__lookup', status: 'ok' as const },
+    { name: 'bash', status: 'error' as const },
+  ]
+  let entries: RenderEntry[] = []
+  entries = applyEvent(entries, { type: 'tool_call', id: 's1', name: 'codemode', arguments: '{}' })
+  entries = applyEvent(entries, {
+    type: 'tool_result',
+    id: 's1',
+    name: 'codemode',
+    result: 'out',
+    calls,
+  })
+  const live = entries.find((entry) => entry.type === 'tool')
+  expect(live?.type === 'tool' && live.items[1]?.body).toBe('✓ mcp__docs__lookup\n✗ bash\n\nout')
+
+  const saved = projectMessages([
+    {
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 's1', name: 'codemode', arguments: '{}' }],
+    },
+    { role: 'tool', content: 'out', toolCallId: 's1', toolName: 'codemode', calls },
+  ])
+  const box = saved.find((entry) => entry.type === 'tool')
+  expect(box?.type === 'tool' && box.items[1]?.body).toBe('✓ mcp__docs__lookup\n✗ bash\n\nout')
+})
+
+test('saved messages keep the time they were written (BAZ-101)', () => {
+  const entries = projectMessages([
+    { role: 'user', content: 'hi', at: 1_000 },
+    { role: 'assistant', content: 'hello', at: 2_000 },
+  ])
+  expect(entries).toEqual([
+    { type: 'user', content: 'hi', at: 1_000 },
+    { type: 'assistant', content: 'hello', at: 2_000 },
   ])
 })

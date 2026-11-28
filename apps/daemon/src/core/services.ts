@@ -75,8 +75,6 @@ const yesNo = (fallback: boolean): FieldInput => ({
 })
 
 const BROWSER_ON = { envVar: 'BROWSER_ENABLED', is: ['true'] } as const
-const OWN_BROWSER = { envVar: 'BROWSER_ATTACH', is: ['false'] } as const
-const RUNNING_BROWSER = { envVar: 'BROWSER_ATTACH', is: ['true'] } as const
 
 /** Order here is the display order on the Tools page and in `bazilion config list`. */
 export const SERVICES: ServiceDef[] = [
@@ -343,7 +341,9 @@ export const SERVICES: ServiceDef[] = [
       {
         envVar: 'BROWSER_ATTACH',
         kind: 'config',
-        label: 'Which browser',
+        label: 'Which browser, unless you say otherwise',
+        description:
+          'Tell an Agent in a conversation to use the other one ("use my Chrome", "use your own browser"): it switches for that conversation. Moving to your Chrome asks you first.',
         when: [BROWSER_ON],
         input: {
           type: 'choice',
@@ -370,7 +370,8 @@ export const SERVICES: ServiceDef[] = [
         // The setting is "headless": the window shows when it is false.
         input: { type: 'switch', on: 'false', off: 'true', default: false },
         advanced: true,
-        when: [BROWSER_ON, OWN_BROWSER],
+        // A conversation can use either browser, whatever the default (BAZ-102).
+        when: [BROWSER_ON],
       },
       {
         envVar: 'BROWSER_ALLOW_PRIVATE_NETWORK',
@@ -413,7 +414,7 @@ export const SERVICES: ServiceDef[] = [
           'A Chromium-family browser to use. Left empty, Bazilion uses the first installed Chrome, Brave, Edge or Chromium, and downloads Chromium once when there is none.',
         input: { type: 'text', format: 'path' },
         advanced: true,
-        when: [BROWSER_ON, OWN_BROWSER],
+        when: [BROWSER_ON],
       },
       {
         envVar: 'BROWSER_ATTACH_URL',
@@ -424,7 +425,7 @@ export const SERVICES: ServiceDef[] = [
           'For a browser started with --remote-debugging-port. Left empty, Bazilion finds the running Chrome or Chromium itself.',
         input: { type: 'text', format: 'url' },
         advanced: true,
-        when: [BROWSER_ON, RUNNING_BROWSER],
+        when: [BROWSER_ON],
       },
     ],
   },

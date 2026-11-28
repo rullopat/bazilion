@@ -28,14 +28,14 @@ import {
 import { resolveShellSecurityConfig, toolEnvironment } from '../runtime/shell/security.ts'
 import { buildDockerSandbox, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import { MAX_PICTURE_BYTES } from '../runtime/tools/pictures.ts'
-import type { WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
+import type { BrowserChoice, WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
 import { envSecretValues } from '../runtime/worker/runtime.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
 import { requestAgentSecret } from './agent-secrets.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { commandApprovalRegistry, createTurnApprovalHost } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
-import { createBrowserHost } from './browser/host.ts'
+import { conversationBrowserChoice, createBrowserHost } from './browser/host.ts'
 import { reviewCommand } from './command-review.ts'
 import { getCtx } from './ctx.ts'
 import { createHelperHost, turnClosed, turnOpened } from './helpers.ts'
@@ -68,9 +68,21 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
   const helper = turn.request.origin === 'helper'
   if (!helper) turnOpened(turn.request.attemptId)
   try {
-    const { db, authToken } = getCtx()
+    const { db, paths, authToken } = getCtx()
     // The worker, and so every shell command of the turn, never sees Bazilion's own credentials.
     const env = toolEnvironment(mergeSecretsIntoEnv(db, authToken), authToken)
+    // The browser this conversation works in (BAZ-102), once for the worker's prompt and the
+    // daemon's host: a helper starts in the browser of the conversation that started it.
+    const browser = isBrowserEnabled(env)
+      ? conversationBrowserChoice(
+          paths,
+          agentId,
+          turn.request.origin === 'helper'
+            ? turn.request.helper.parentConversationId
+            : turn.conversation.id,
+          resolveBrowserConfig(env).attach ? 'yours' : 'own',
+        )
+      : undefined
     // The Agent's own secrets join the worker's environment, and so its commands', by name.
     const secrets = agentSecretValues(db, authToken, agentId)
     const secretEnv = Object.fromEntries(secrets.map((secret) => [secret.name, secret.value]))
@@ -125,12 +137,13 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         withOperator: withOperator(turn),
         unreadMessages: messageRepo.unreadCount(db, agentId),
         secrets: secrets.map(({ name, hosts }) => ({ name, hosts })),
+        ...(browser ? { browser } : {}),
       },
       {
         env: { ...env, ...secretEnv },
         signal: turn.controller.signal,
         diagnosticSink: (diagnostic) => console.warn(`[worker ${agentId}] ${diagnostic}`),
-        ...turnHosts(turn, env, secretEnv),
+        ...turnHosts(turn, env, secretEnv, browser),
         mcpHost: mcp?.host,
         apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
       },
@@ -209,6 +222,7 @@ function turnHosts(
   turn: PreparedAgentTurn,
   env: NodeJS.ProcessEnv,
   secretEnv: Readonly<Record<string, string>>,
+  browser: BrowserChoice | undefined,
 ): WorkerHosts {
   const { db, paths, authToken } = getCtx()
   const { agent, conversation } = turn
@@ -310,13 +324,38 @@ function turnHosts(
       : undefined,
     // Agents add teammates when the operator asks, never from a schedule or a teammate's message.
     teamHost: withOperator(turn) ? createDbTeamHost(db, paths, agent.agent.id) : undefined,
-    // Bound to this turn's Agent: the worker cannot drive another Agent's browser.
+    // Bound to this turn's Agent: the worker cannot drive another Agent's browser. Its browser is
+    // the one this conversation switched to, or the default; moving to the operator's Chrome waits
+    // for them, as a risky command does, and is refused when nobody can answer.
     browserHost: isBrowserEnabled(env)
       ? createBrowserHost(resolveBrowserConfig(env), {
           paths,
           agentId: agent.agent.id,
           signal,
           uploadsShown: turn.docker ? SANDBOX_INPUTS_DIR : join(agent.agent.dir, 'uploads'),
+          ...(browser ? { chosen: browser } : {}),
+          askYours: (request) =>
+            commandApprovalRegistry.begin(
+              {
+                id: randomUUID(),
+                turnId: turn.request.attemptId,
+                toolCallId: request.toolCallId,
+                agentId: agent.agent.id,
+                teamId: agent.team.id,
+                command:
+                  'Work in your running Chrome, signed in as you, for the rest of this conversation.',
+                risks: [
+                  {
+                    code: 'your-browser',
+                    message: 'On every site you are signed in to, it acts as you.',
+                    span: { start: 0, end: 0 },
+                  },
+                ],
+                mode: turn.bashApprovalMode,
+                tool: 'your Chrome',
+              },
+              request.signal ?? signal,
+            ),
         })
       : undefined,
     // recall with everywhere: the Agent's other conversations, read here.

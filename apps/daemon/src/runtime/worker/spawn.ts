@@ -314,6 +314,17 @@ const RPC_HANDLERS: RpcHandlers = {
     host(hosts.userMdHost, 'USER.md').write(teamId, content, ifMatch),
   browserInvoke: ({ agentId, action, args }, { hosts }) =>
     host(hosts.browserHost, 'browser').invoke(agentId, action, args),
+  browserUse: ({ browser, toolCallId }, ctx) => {
+    const use = host(ctx.hosts.browserHost, 'browser').use
+    if (!use) throw new Error('This turn cannot switch browsers')
+    return use(browser, {
+      ...(toolCallId ? { toolCallId } : {}),
+      // The call ends with the worker: an approval it waits for is cancelled with it.
+      signal: ctx.signal,
+      // Moving to the operator's Chrome shows its approval in the chat, as a risky command does.
+      onApproval: (approval) => ctx.pushFrame(approvalFrame(approval)),
+    })
+  },
   mcpInvoke: ({ serverId, toolName, args, toolCallId }, ctx) =>
     host(ctx.hosts.mcpHost, 'MCP').invoke(serverId, toolName, args, {
       ...(toolCallId ? { toolCallId } : {}),

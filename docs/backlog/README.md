@@ -11,12 +11,13 @@ are never reused, so the gaps below are deliberate.
 Planned after comparing OpenClaw's tools with ours (2026-11-26). 0.63.0 improved the tools Agents
 already had (BAZ-086 to BAZ-088, with background commands) and 0.64.0 added the missing ones that
 are useful (BAZ-089 to BAZ-092). 0.65.0 (asked for on 2026-11-27) brought video, music and speech,
-the Agent in the workspace, and three changes to the workspace itself (BAZ-095 to BAZ-099); later
-releases take up the rest.
+the Agent in the workspace, and three changes to the workspace itself (BAZ-095 to BAZ-099). 0.66.0
+(asked for on 2026-11-28) brought tool search and Code Mode, message times, and the browser chosen
+in the conversation (BAZ-100 to BAZ-102); later releases take up the rest.
 
 | ID | Story | Release |
 | --- | --- | --- |
-| [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | 0.66.0 and later |
+| [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | later |
 
 **Schema.** Since 0.63.0 (BAZ-094) an upgrade migrates the home instead of needing a fresh one
 ([upgrading](../upgrades.md)); each schema change ships with its own migration.
@@ -81,3 +82,6 @@ releases take up the rest.
 | [BAZ-097](done/BAZ-097-agent-in-the-workspace.md) | The Agent in the workspace: views, theme, progress, a canvas | 0.65.0 | [workspace](../workspace.md#the-agent-in-the-workspace), [results](../results.md) |
 | [BAZ-098](done/BAZ-098-list-order-and-width.md) | The list on the left: your order, your width | 0.65.0 | [workspace](../workspace.md), [manage](../manage.md) |
 | [BAZ-099](done/BAZ-099-messages-show-at-once.md) | What happens elsewhere shows in the conversation at once | 0.65.0 | [workspace](../workspace.md#live) |
+| [BAZ-100](done/BAZ-100-tool-search-and-code-mode.md) | Tool search and Code Mode | 0.66.0 | [agent engine](../agent-engine.md#tool-search-and-code-mode), [MCP](../mcp.md#tools-found-when-needed) |
+| [BAZ-101](done/BAZ-101-message-times.md) | When each message was sent, and a line for each day | 0.66.0 | [workspace](../workspace.md) |
+| [BAZ-102](done/BAZ-102-browser-per-conversation.md) | Which browser, chosen in the conversation | 0.66.0 | [managed browser](../browser-research.md#its-own-or-yours-per-conversation) |

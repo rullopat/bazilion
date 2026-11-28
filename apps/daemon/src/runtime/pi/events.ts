@@ -29,7 +29,13 @@
 //   - auto_retry_*                 — silently retried, user sees only the
 //                                    eventual success or failure
 
-import type { ProviderMessage, SessionEvent, ToolCall, ToolResultImage } from '@bazilion/api-types'
+import type {
+  ProviderMessage,
+  ScriptCall,
+  SessionEvent,
+  ToolCall,
+  ToolResultImage,
+} from '@bazilion/api-types'
 import type { AgentMessage, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
@@ -100,17 +106,26 @@ export function translatePiEvent(
     }
 
     case 'tool_execution_update': {
+      // A call a codemode script made is part of the script's step (BAZ-100).
+      if (isNested(e)) return []
       // Cumulative partial results (Pi's bash streams its output so far): each update replaces
-      // the previous one for the same call.
-      const output = progressTail(extractToolResultText(e.partialResult), secrets)
+      // the previous one for the same call. A script's are the calls it has made so far.
+      const calls = scriptCalls(e.partialResult)
+      const output = progressTail(
+        calls ? callsText(calls) : extractToolResultText(e.partialResult),
+        secrets,
+      )
       if (!output) return []
       return [{ type: 'tool_progress', id: e.toolCallId, name: e.toolName, output }]
     }
 
     case 'tool_execution_end': {
+      if (isNested(e)) return []
       const text = redactExactValues(extractToolResultText(e.result), secrets)
+      const calls = scriptCalls(e.result)
+      const made = calls && calls.length > 0 ? { calls } : {}
       if (e.isError) {
-        return [{ type: 'tool_error', id: e.toolCallId, name: e.toolName, error: text }]
+        return [{ type: 'tool_error', id: e.toolCallId, name: e.toolName, error: text, ...made }]
       }
       const images = extractToolResultImages(e.result)
       return [
@@ -120,6 +135,7 @@ export function translatePiEvent(
           name: e.toolName,
           result: text,
           ...(images.length > 0 ? { images } : {}),
+          ...made,
         },
       ]
     }
@@ -197,6 +213,37 @@ function extractAssistantToolCalls(m: AssistantMessage): ToolCall[] {
     }
   }
   return out
+}
+
+/** A tool call that a codemode script made, not the model (`parentToolCallId`). */
+function isNested(event: unknown): boolean {
+  return typeof (event as { parentToolCallId?: unknown }).parentToolCallId === 'string'
+}
+
+const CALL_STATES = new Set<ScriptCall['status']>([
+  'ok',
+  'error',
+  'cancelled',
+  'running',
+  'unfinished',
+])
+
+/** The calls a codemode script made, from its partial or final result's details. */
+export function scriptCalls(result: unknown): ScriptCall[] | null {
+  const calls = (result as { details?: { calls?: unknown } } | undefined)?.details?.calls
+  if (!Array.isArray(calls)) return null
+  return calls.flatMap((call) => {
+    const { name, status } = (call ?? {}) as { name?: unknown; status?: unknown }
+    return typeof name === 'string' && CALL_STATES.has(status as ScriptCall['status'])
+      ? [{ name, status: status as ScriptCall['status'] }]
+      : []
+  })
+}
+
+/** "✓ memory_search" per line: a script's calls as its live output. */
+function callsText(calls: readonly ScriptCall[]): string {
+  const mark = { ok: '✓', error: '✗', cancelled: '–', running: '…', unfinished: '…' }
+  return calls.map((call) => `${mark[call.status]} ${call.name}`).join('\n')
 }
 
 /** Flatten `AgentToolResult.content` blocks into a single string — matches the
@@ -294,6 +341,7 @@ export function piMessagesToProviderView(
         out.push({
           role: 'user',
           content: stringifyContent(content),
+          ...writtenAt(m),
           ...(images.length > 0 ? { images } : {}),
         })
         break
@@ -302,7 +350,7 @@ export function piMessagesToProviderView(
         const am = m as AssistantMessage
         const text = extractAssistantText(am)
         const toolCalls = extractAssistantToolCalls(am)
-        const msg: ProviderMessage = { role: 'assistant', content: text }
+        const msg: ProviderMessage = { role: 'assistant', content: text, ...writtenAt(m) }
         if (toolCalls.length > 0) msg.toolCalls = toolCalls
         if (am.stopReason === 'aborted') msg.stopped = 'cancelled'
         else if (am.stopReason === 'error') msg.stopped = 'failed'
@@ -317,12 +365,15 @@ export function piMessagesToProviderView(
           isError?: boolean
         }
         const images = extractToolResultImages({ content: tr.content })
+        const calls = scriptCalls(m)
         out.push({
           role: 'tool',
           content: redactExactValues(stringifyContent(tr.content), secrets),
+          ...writtenAt(m),
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
           results: extractResultReferences(m),
+          ...(calls && calls.length > 0 ? { calls } : {}),
           ...(images.length > 0 ? { images } : {}),
           ...(tr.isError ? { isError: true } : {}),
         })
@@ -335,6 +386,12 @@ export function piMessagesToProviderView(
     }
   }
   return out
+}
+
+/** When Pi wrote the message (its `timestamp`), when it says. */
+function writtenAt(message: unknown): { at?: number } {
+  const at = (message as { timestamp?: unknown }).timestamp
+  return typeof at === 'number' && Number.isFinite(at) && at > 0 ? { at } : {}
 }
 
 /** Saved-file references from a tool result's details; never paths or inline bytes. */

@@ -2,7 +2,9 @@
 // retries; Bazilion supplies the model (credentials in memory only), the appended system prompt,
 // the tool list and the explicit conversation file. Nothing is discovered from disk: no Pi
 // extensions, skills, prompt templates, themes or context files, so a repository's `.pi/` cannot
-// run code. Pi's scratch state lives in `<home>/pi`, apart from any `~/.pi` of the operator.
+// run code. The only extensions are Pi's own `codemode` and `tool_search`, given in code
+// (`tool-reach.ts`). Pi's scratch state lives in `<home>/pi`, apart from any `~/.pi` of the
+// operator.
 
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -43,6 +45,7 @@ import { containerWorkdir, homeContainerPrefix } from '../shell/docker.ts'
 import { createSessionShellTools, type DockerTurn } from '../shell/tooling.ts'
 import type { AskUser } from '../tools/ask-user.ts'
 import type { FileSink, ShowResult } from '../tools/deliver-file.ts'
+import { mcpGroupName } from '../tools/mcp.ts'
 import type { RecallSource } from '../tools/recall.ts'
 import type {
   AgentContact,
@@ -81,6 +84,14 @@ import {
 } from '../worker/runtime.ts'
 import { branchOf, type ConversationHistory, contextUse, conversationHistory } from './history.ts'
 import { readSessionFile, readSessionHeader } from './session-file.ts'
+import {
+  reachToolDescriptions,
+  reachToolNames,
+  redactNestedCalls,
+  restoreLoadedTools,
+  surfaceNestedResults,
+  toolReachExtensions,
+} from './tool-reach.ts'
 import { createBazilionCustomTools } from './tools.ts'
 
 export interface CreateBazilionSessionOptions {
@@ -142,6 +153,8 @@ export interface CreateBazilionSessionOptions {
   withOperator?: boolean
   /** Messages from other Agents waiting unread, said in the system prompt. */
   unreadMessages?: number
+  /** The browser this conversation works in; absent, the default (BAZ-102). */
+  browser?: 'own' | 'yours'
   /** The Agent's own secrets, by name; their values are in `env`. */
   secrets?: readonly AgentSecretUse[]
 }
@@ -192,6 +205,8 @@ interface PiSessionSpec {
   tools: ToolDefinition[]
   /** Pi's own (host-backed) coding tools to enable alongside `tools`. */
   hostToolNames?: readonly string[]
+  /** An Agent's turn: Pi's `codemode` and `tool_search` too (BAZ-100). */
+  toolReach?: boolean
   redactionSecrets: string[]
   refreshApiKey?: (providerName: string) => Promise<string>
 }
@@ -274,16 +289,24 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
     ...(spec.systemPrompt !== undefined ? { systemPrompt: spec.systemPrompt } : {}),
     ...(spec.appendSystemPrompt ? { appendSystemPrompt: [spec.appendSystemPrompt] } : {}),
     agentsFilesOverride: () => ({ agentsFiles: spec.agentsFiles ?? [] }),
+    ...(spec.toolReach
+      ? {
+          extensionFactories: [...toolReachExtensions(), redactNestedCalls(spec.redactionSecrets)],
+        }
+      : {}),
   })
   await resourceLoader.reload()
 
-  // Pi's `tools` list is exclusive: a tool missing from it is disabled even when defined.
+  // Pi's `tools` list is exclusive: a tool missing from it is disabled even when defined. Tools
+  // found by search are the exception: registered, but out of the list (`tool-reach.ts`).
   const { session } = await createAgentSession({
     cwd: spec.cwd,
     agentDir: spec.piAgentDir,
     model,
     thinkingLevel: toPiThinkingLevel(spec.reasoningLevel),
-    tools: [...(spec.hostToolNames ?? []), ...spec.tools.map((tool) => tool.name)],
+    tools: spec.toolReach
+      ? reachToolNames(spec.hostToolNames ?? [], spec.tools)
+      : [...(spec.hostToolNames ?? []), ...spec.tools.map((tool) => tool.name)],
     customTools: spec.tools,
     sessionManager: spec.sessionManager,
     settingsManager,
@@ -293,6 +316,11 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
 
   const { refreshApiKey, redactionSecrets } = spec
   redactToolResults(session, redactionSecrets)
+  let stopSurfacing = () => {}
+  if (spec.toolReach) {
+    restoreLoadedTools(session)
+    stopSurfacing = surfaceNestedResults(session)
+  }
   if (refreshApiKey) {
     const providerName = spec.model.providerName
     // Pi asks before every provider request, so a token that expires mid-turn is replaced.
@@ -308,7 +336,14 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
       }
     }
   }
-  return { session, redactionSecrets, dispose: () => session.dispose() }
+  return {
+    session,
+    redactionSecrets,
+    dispose: () => {
+      stopSurfacing()
+      session.dispose()
+    },
+  }
 }
 
 type TurnOptions = Omit<CreateBazilionSessionOptions, 'conversation'>
@@ -366,11 +401,13 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
   const promptOptions: BuildSystemPromptOptions = {
     skills: promptSkills,
     sandboxMode: shellTools.config.sandboxMode,
-    // The guides ride along exactly when their tools are admitted.
-    ...(opts.browserHost
-      ? { browserGuide: resolveBrowserConfig(env).attach ? ('attached' as const) : true }
-      : {}),
+    // The guides ride along exactly when their tools are admitted. The browser is the one this
+    // conversation switched to, or the default (BAZ-102).
+    ...(opts.browserHost ? browserGuideOf(env, opts.browser, opts.browserHost) : {}),
     ...(opts.webSearchHost ? { searchGuide: true } : {}),
+    ...(opts.mcpHost && opts.mcpTools?.length
+      ? { connections: mcpConnections(opts.mcpTools) }
+      : {}),
     contacts: opts.contacts ?? [],
     canCreateAgents: opts.teamHost !== undefined,
     withOperator: opts.withOperator ?? true,
@@ -391,6 +428,32 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     hostToolNames: shellTools.hostToolNames,
     promptOptions,
   }
+}
+
+/** The browser guide's options: which browser the conversation is in, and its default. */
+function browserGuideOf(
+  env: NodeJS.ProcessEnv,
+  browser: 'own' | 'yours' | undefined,
+  host: BrowserHost,
+) {
+  const byDefault = resolveBrowserConfig(env).attach ? ('yours' as const) : ('own' as const)
+  const current = browser ?? byDefault
+  return {
+    browserGuide: current === 'yours' ? ('attached' as const) : true,
+    ...(host.use ? { browserDefault: byDefault } : {}),
+  }
+}
+
+/** The MCP connections a turn's tools come from, for the prompt: group, name, tool count. */
+function mcpConnections(tools: readonly InjectedMcpTool[]) {
+  const byGroup = new Map<string, { group: string; name: string; tools: number }>()
+  for (const tool of tools) {
+    const group = mcpGroupName(tool)
+    const known = byGroup.get(group)
+    if (known) known.tools++
+    else byGroup.set(group, { group, name: tool.serverName ?? group, tools: 1 })
+  }
+  return [...byGroup.values()]
 }
 
 /** A Pi session for one Agent turn (worker) or for `/compact` (daemon). */
@@ -438,6 +501,7 @@ export async function createBazilionSession(
     })),
     tools: turn.tools,
     hostToolNames: turn.hostToolNames,
+    toolReach: true,
     redactionSecrets,
     refreshApiKey: opts.refreshApiKey,
   })
@@ -470,10 +534,16 @@ export function describeTurn(opts: TurnOptions): {
     const define = HOST_TOOL_DEFINITIONS[name]
     return define ? [define(turn.modelCwd)] : []
   })
+  // Tools found by search are not declared until loaded: they cost nothing up front.
+  const declared = turn.tools.filter((tool) => tool.exposure !== 'deferred')
   return {
     systemPrompt: buildSystemPrompt(opts.agent, turn.promptOptions),
     promptSections: buildSystemPromptSections(opts.agent, turn.promptOptions),
-    tools: [...hostTools, ...turn.tools],
+    tools: [
+      ...hostTools,
+      ...declared,
+      ...reachToolDescriptions(declared.length < turn.tools.length),
+    ],
   }
 }
 
