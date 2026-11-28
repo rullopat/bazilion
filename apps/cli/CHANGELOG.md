@@ -1,5 +1,23 @@
 # bazilion
 
+## 0.66.0
+
+### Minor Changes
+
+- [#139](https://github.com/rullopat/bazilion/pull/139) [`3ac5d00`](https://github.com/rullopat/bazilion/commit/3ac5d0078e1c658a657deef5dc5b879877085988) Thanks [@rullopat](https://github.com/rullopat)! - **Which browser, chosen in the conversation.** The browser setting is now the default (an Agent's own browser unless you change it), and you tell an Agent in a conversation to "use my Chrome" or "use your own browser": it switches with the new `browser_use` tool for the rest of that conversation. Moving to your Chrome asks you first, in the conversation and on Telegram, unless your Chrome is already the default; where nobody can answer, it is refused. The Agent's Browser panel names the browser it is using.
+
+- [#139](https://github.com/rullopat/bazilion/pull/139) [`3ac5d00`](https://github.com/rullopat/bazilion/commit/3ac5d0078e1c658a657deef5dc5b879877085988) Thanks [@rullopat](https://github.com/rullopat)! - **When each message was sent.** Every message in a conversation shows its time under it, as in a messaging app (point at it for the whole date), and a line before the first message of each day says **Today**, **Yesterday**, the weekday or the date, in your browser's language and time zone.
+
+- [#139](https://github.com/rullopat/bazilion/pull/139) [`3ac5d00`](https://github.com/rullopat/bazilion/commit/3ac5d0078e1c658a657deef5dc5b879877085988) Thanks [@rullopat](https://github.com/rullopat)! - **Reviewed learning removed.** It was off unless switched on per Agent, and when on it saw only the selected conversation and never what an Agent's tools did. The **Learning** row and sheet, `bazilion agent review-config|review|reviews|lessons|lesson`, its routes, its two kinds of Attention item and Google Vertex's explicit credentials JSON (used only by reviews) are gone. Upgrading keeps the lessons you approved for one Agent: they are added to its `AGENTS.md`, so it keeps following them. Team lessons stay notes in the Team's memory. Skills Agents write for themselves are planned as its replacement.
+
+- [#139](https://github.com/rullopat/bazilion/pull/139) [`3ac5d00`](https://github.com/rullopat/bazilion/commit/3ac5d0078e1c658a657deef5dc5b879877085988) Thanks [@rullopat](https://github.com/rullopat)! - **Tool search and Code Mode.** Agents no longer get every MCP tool up front: the prompt lists each connection with how many tools it has, and the Agent loads the ones a task needs with `tool_search`; they stay loaded for the rest of the conversation. With `codemode` the Agent runs one short JavaScript script, in a sandbox with no network or files, that calls several of its tools (MCP tools included, loaded or not) and hands back only what matters. Both are Pi's own tools. The conversation shows **Ran a script** with the calls it made and their state, and the files they saved; a dangerous command or a tool that asks first still waits for you inside a script, and questions to you are never asked from one.
+
+### Patch Changes
+
+- [#139](https://github.com/rullopat/bazilion/pull/139) [`3ac5d00`](https://github.com/rullopat/bazilion/commit/3ac5d0078e1c658a657deef5dc5b879877085988) Thanks [@rullopat](https://github.com/rullopat)! - **Add an Agent from Jump to, chosen quickly.** Picking **Add an Agent** in Jump to before its lists had arrived opened a dialog with no Team and no template to choose from, because closing the palette stopped loading them. The dialog now waits for the lists and opens on the Team in view, an Agent added a moment before included.
+
+- [#139](https://github.com/rullopat/bazilion/pull/139) [`3ac5d00`](https://github.com/rullopat/bazilion/commit/3ac5d0078e1c658a657deef5dc5b879877085988) Thanks [@rullopat](https://github.com/rullopat)! - **No credentials in a long output's file.** When a command's output is too long to show whole, Pi writes all of it to a file in the system's temporary folder, and until now that file kept any credential the command printed. A command's output now loses the turn's credentials as it arrives, before anything sees it, so the model, the live output and that file all hold `[REDACTED]` instead; a script's long output file is cleaned the same way when the script returns.
+
 ## 0.65.1
 
 ### Patch Changes
