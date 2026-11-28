@@ -43,7 +43,7 @@ helpers (pidfile, schema), and CLI tests reach into the daemon for setup.
   bazilion.db                 # every record, settings, encrypted secrets, tokens, saved results
   auth.json                   # bootstrap token; the CLI's remote target after `bazilion login`
   daemon.pid                  # PID of the running daemon
-  agents/<id>/                # SOUL.md IDENTITY.md AGENTS.md TOOLS.md [BOOTSTRAP.md], sessions/, uploads/
+  agents/<id>/                # SOUL.md IDENTITY.md [BOOTSTRAP.md], sessions/, uploads/
   teams/<slug>/               # Team workspace (a directory, or a symlink to a project); memory/
   profiles/<id>/              # Agent templates
   skills/<name>/              # SKILL.md and helper files
@@ -52,7 +52,7 @@ helpers (pidfile, schema), and CLI tests reach into the daemon for setup.
 
 | Data | Lives in | Written by |
 | --- | --- | --- |
-| Agent documents | `agents/<id>/` | Copied from the Profile at spawn; the Agent edits them with `home_write`. `BOOTSTRAP.md` is read-only to it and removed by `bootstrap_done` |
+| Agent documents | `agents/<id>/` | Copied from the Profile at spawn; the Agent edits them with `home_write` and `home_edit`. `BOOTSTRAP.md` is read-only to it and removed by `bootstrap_done` |
 | Profile documents | `profiles/<id>/` | You; existing Agents keep their own copies |
 | Team USER.md | `teams.user_md` | You; Agents through `user_md_get` / `user_md_write` with an etag |
 | Team memory | `teams/<slug>/memory/` | `memory_*` tools, the Team's memory sheet in the web workspace, `bazilion memory`; the qmd index beside the notes is rebuilt from them |

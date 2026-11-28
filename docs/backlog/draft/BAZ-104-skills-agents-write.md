@@ -3,7 +3,7 @@ id: BAZ-104
 title: "Skills Agents write for themselves"
 status: draft
 created: 2026-11-28
-release: v0.67.0
+release: later
 ---
 
 # BAZ-104 — Skills Agents write for themselves
@@ -31,5 +31,6 @@ on or a proposal to wait for.
 
 - Skills today are installed folders in the home, attached per Agent; the prompt lists the
   attached ones and Docker turns see them read-only under `/skills`.
-- Approved lessons carried over by BAZ-103 are in each Agent's `AGENTS.md`; whether they become
-  its first skills is part of this story.
+- Approved lessons carried over by BAZ-103 are in each Agent's `SOUL.md` (moved there from
+  `AGENTS.md` by BAZ-105), with the rules you give it; whether lessons become its first skills is
+  part of this story.

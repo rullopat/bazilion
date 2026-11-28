@@ -39,6 +39,8 @@ export interface AgentTurnWorkerSpec {
   contacts: AgentContact[]
   /** The operator started the turn (a chat, a follow-up, Telegram), not a schedule or a teammate. */
   withOperator: boolean
+  /** The turn's replies go to the Agent's Telegram topic too: it has one and the bot runs. */
+  telegram?: boolean
   /** Messages from other Agents waiting unread (sent without waking it), for its system prompt. */
   unreadMessages?: number
   /** The Agent's own secrets, by name: their values are in the worker's environment. */
@@ -150,10 +152,10 @@ export class ExactValueStreamRedactor {
     if (value && !this.#values.includes(value)) this.#values.push(value)
   }
 
+  /** Text with the values taken out; an end that may be a value cut in two waits for the rest. */
   push(chunk: string): string {
     const data = this.#pending + chunk
-    const maxLength = Math.max(1, ...this.#values.map((value) => value.length))
-    const cutoff = Math.max(0, data.length - (maxLength - 1))
+    const cutoff = data.length - this.#unfinished(data)
     let output = ''
     let cursor = 0
     while (cursor < cutoff) {
@@ -174,6 +176,24 @@ export class ExactValueStreamRedactor {
     const output = redactExactValues(this.#pending, this.#values)
     this.#pending = ''
     return output
+  }
+
+  /** The length of the longest end of `data` that a value starts with. */
+  #unfinished(data: string): number {
+    let longest = 0
+    for (const value of this.#values) {
+      for (
+        let index = Math.max(0, data.length - value.length + 1);
+        index < data.length - longest;
+        index++
+      ) {
+        if (data.charCodeAt(index) === value.charCodeAt(0) && value.startsWith(data.slice(index))) {
+          longest = data.length - index
+          break
+        }
+      }
+    }
+    return longest
   }
 
   #nextMatch(data: string, cursor: number): { index: number; value: string } | null {

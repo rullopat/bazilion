@@ -244,6 +244,19 @@ describe('minimal worker runtime', () => {
     expect(output).toBe('before [REDACTED] after [REDACTED] done')
   })
 
+  test('a stream redactor holds back only an end that may start a value', () => {
+    const redactor = new ExactValueStreamRedactor(['secret-value-0123456789'])
+    // A prompt waiting for input shows at once: no value starts with its end.
+    expect(redactor.push('Name? ')).toBe('Name? ')
+    expect(redactor.push('first line\nsec')).toBe('first line\n')
+    expect(redactor.push('ret-val')).toBe('')
+    expect(redactor.push('ue-0123456789 and second?')).toBe('[REDACTED] and second?')
+    // An s that is not followed by the rest is let through when what follows shows it is not one.
+    expect(redactor.push('yes')).toBe('ye')
+    expect(redactor.push('!')).toBe('s!')
+    expect(redactor.flush()).toBe('')
+  })
+
   test('the worker checks only that its input is a kind it knows', () => {
     const { spec } = turnFixture(tempRoot())
     const input = { ...spec, hosts: [] }

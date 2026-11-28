@@ -132,9 +132,10 @@ describe('agent_create', () => {
     const agent = agentRepo.get(env.db, created.id)
     expect(agent?.teamId).toBe(env.teamId)
     expect(agent?.modelOverride).toBeNull()
-    const agents = readFileSync(join(agent?.dir ?? '', 'AGENTS.md'), 'utf8')
-    expect(agents).toMatch(/^# Your role\n\nRank the leads\.\n/)
-    expect(agents).toContain(`Sales Director (Agent id ${sally}) added you`)
+    const soul = readFileSync(join(agent?.dir ?? '', 'SOUL.md'), 'utf8')
+    expect(soul).toMatch(/^# Your role\n\nRank the leads\.\n/)
+    expect(soul).toContain(`Sales Director (Agent id ${sally}) added you`)
+    expect(soul).toContain('\n---\n\n# SOUL.md')
     expect(existsSync(join(agent?.dir ?? '', 'BOOTSTRAP.md'))).toBe(false)
   })
 

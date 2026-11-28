@@ -24,7 +24,7 @@ import { resolveShellSecurityConfig, toolEnvironment } from '../runtime/shell/se
 import { buildDockerSandbox, SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import { MAX_PICTURE_BYTES } from '../runtime/tools/pictures.ts'
 import type { BrowserChoice, WorkerHosts } from '../runtime/worker/ipc-protocol.ts'
-import { envSecretValues } from '../runtime/worker/runtime.ts'
+import { envSecretValues, secretForms } from '../runtime/worker/runtime.ts'
 import { noteTurnEnd, noteTurnFrame } from './activity.ts'
 import { requestAgentSecret } from './agent-secrets.ts'
 import { resolveAgentApiKey } from './api-key.ts'
@@ -44,6 +44,7 @@ import { createRecallHost } from './recall-host.ts'
 import { createResultHost } from './result-host.ts'
 import { createScheduleHost } from './schedule-host.ts'
 import { agentContacts, createDbTeamHost } from './team-host.ts'
+import { telegramLive } from './telegram/live.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
 import {
   type PreparedAgentTurn,
@@ -53,6 +54,7 @@ import {
 import { createDbUserMdHost } from './user-md-host.ts'
 import { createWebSearchHost, searchRoute } from './web-search.ts'
 import { createWorkspaceHost } from './workspace-host.ts'
+import { createXSearchHost, xSearchReady } from './x-search.ts'
 
 export { prepareAgentTurn }
 
@@ -130,6 +132,8 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         bashApprovalMode: turn.bashApprovalMode,
         contacts: agentContacts(db, agentId),
         withOperator: withOperator(turn),
+        // A helper's frames stay in its own record; other turns are mirrored to the topic.
+        telegram: !helper && turn.agent.agent.telegramTopicId !== null && telegramLive() !== null,
         unreadMessages: messageRepo.unreadCount(db, agentId),
         secrets: secrets.map(({ name, hosts }) => ({ name, hosts })),
         ...(browser ? { browser } : {}),
@@ -311,6 +315,7 @@ function turnHosts(
           signal,
         })
       : undefined,
+    xSearchHost: xSearchReady(env) ? createXSearchHost({ env: secretsEnv, signal }) : undefined,
     // Agents add teammates when the operator asks, never from a schedule or a teammate's message.
     teamHost: withOperator(turn) ? createDbTeamHost(db, paths, agent.agent.id) : undefined,
     // Bound to this turn's Agent: the worker cannot drive another Agent's browser. Its browser is
@@ -389,6 +394,13 @@ function turnHosts(
       paths,
       agentId: agent.agent.id,
       conversationId: homeConversation,
+      // What the turn takes out of a command's output: Bazilion's credentials, the Agent's secrets.
+      redact: [
+        ...new Set([
+          ...envSecretValues({ ...env, ...secretEnv }),
+          ...Object.values(secretEnv).flatMap((value) => secretForms(value)),
+        ]),
+      ],
       ...(turn.docker
         ? { docker: { sandbox, namePrefix: jobContainerPrefix(paths.home) } }
         : { host: { cwd: agent.team.path, env: { ...env, ...secretEnv } } }),

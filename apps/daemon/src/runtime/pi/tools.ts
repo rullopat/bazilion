@@ -29,6 +29,7 @@ import type { ToolHandler, ToolResultPart } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
 import { type WebFetchSecret, webFetchTool, webSearchTool } from '../tools/web.ts'
 import { workspaceTools } from '../tools/workspace.ts'
+import { xSearchTool } from '../tools/x-search.ts'
 import type {
   AudioHost,
   BrowserHost,
@@ -48,6 +49,7 @@ import type {
   VideoHost,
   WebSearchHost,
   WorkspaceHost,
+  XSearchHost,
 } from '../worker/ipc-protocol.ts'
 
 /**
@@ -113,6 +115,7 @@ export interface BazilionCustomToolsOpts {
   imageGenerationHost?: ImageGenerationHost
   /** Daemon-run search; absent means no web_search tool. */
   webSearchHost?: WebSearchHost
+  xSearchHost?: XSearchHost
   askUser?: AskUser
   /** Adding teammates (`agent_create`), in a turn the operator started. */
   teamHost?: TeamHost
@@ -162,6 +165,7 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
       ...(opts.secrets?.length ? { secrets: opts.secrets } : {}),
     }),
     ...(opts.webSearchHost ? [webSearchTool(opts.webSearchHost)] : []),
+    ...(opts.xSearchHost ? [xSearchTool(opts.xSearchHost)] : []),
   ]
   if (opts.messagingHost) {
     handlers.push(...messagingTools(opts.messagingHost, opts.agent.agent.id))

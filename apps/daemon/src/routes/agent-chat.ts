@@ -33,9 +33,11 @@ import { selectedConversationTarget } from '../lib/conversation-target.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
 import { agentContacts } from '../lib/team-host.ts'
+import { telegramLive } from '../lib/telegram/live.ts'
 import { createDbUserMdHost } from '../lib/user-md-host.ts'
 import { stopAgentTurn } from '../lib/user-queue.ts'
 import { searchRoute } from '../lib/web-search.ts'
+import { xSearchReady } from '../lib/x-search.ts'
 import { hasCredentials } from '../runtime/auth/openai-codex.ts'
 import {
   conversationUsage,
@@ -282,7 +284,7 @@ agentChatRouter.post('/:id/chat/compact', async (c) => {
   })
 })
 
-const CONTEXT_FILE_ORDER = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md', 'BOOTSTRAP.md']
+const CONTEXT_FILE_ORDER = ['SOUL.md', 'IDENTITY.md', 'BOOTSTRAP.md']
 
 function estimateTokens(chars: number): number {
   return Math.ceil(Math.max(0, chars) / 4)
@@ -324,14 +326,16 @@ agentChatRouter.get('/:id/chat/context', (c) =>
       memory: qmdBackend(join(resolved.team.path, 'memory')),
       messagingHost: createDbMessagingHost(db),
       userMdHost: createDbUserMdHost(db, paths),
-      // As in a chat turn: the operator is there.
+      // As in a chat turn: the operator is there, and its replies go to the topic if it has one.
       teamHost: { createAgent: reportOnly },
+      telegram: resolved.agent.telegramTopicId !== null && telegramLive() !== null,
       contacts: agentContacts(db, resolved.agent.id),
       fileSink: reportOnly,
       ...(isBrowserEnabled(env) ? { browserHost: { invoke: reportOnly, use: reportOnly } } : {}),
       ...(searchRoute(env, resolved.model, codexConnected).backend
         ? { webSearchHost: { search: reportOnly } }
         : {}),
+      ...(xSearchReady(env) ? { xSearchHost: { search: reportOnly } } : {}),
       ...(imageRoute(env, codexConnected).ready
         ? { imageGenerationHost: { generate: reportOnly } }
         : {}),

@@ -68,6 +68,7 @@ import type {
   VideoHost,
   WebSearchHost,
   WorkspaceHost,
+  XSearchHost,
 } from '../worker/ipc-protocol.ts'
 import type { RepositoryInstructions } from '../worker/runtime.ts'
 import {
@@ -117,6 +118,7 @@ export interface CreateBazilionSessionOptions {
   /** `deliver_file` with `result`: one of the Agent's saved results, shown again. */
   showResult?: ShowResult
   webSearchHost?: WebSearchHost
+  xSearchHost?: XSearchHost
   /** Turn-scoped bridge for dangerous bash commands. Omit to deny them. */
   bashApprovalHost?: BashApprovalHost
   /** Wins over the key in `env`: the ChatGPT access token (OAuth keys are not env values). */
@@ -148,6 +150,8 @@ export interface CreateBazilionSessionOptions {
   contacts?: readonly AgentContact[]
   /** The operator started the turn: only then does a first-run ritual apply. */
   withOperator?: boolean
+  /** The turn's replies go to the Agent's Telegram topic too. */
+  telegram?: boolean
   /** Messages from other Agents waiting unread, said in the system prompt. */
   unreadMessages?: number
   /** The browser this conversation works in; absent, the default (BAZ-102). */
@@ -370,6 +374,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     ...(opts.showResult ? { showResult: opts.showResult } : {}),
     imageGenerationHost: opts.imageGenerationHost,
     webSearchHost: opts.webSearchHost,
+    xSearchHost: opts.xSearchHost,
     askUser: opts.askUser,
     teamHost: opts.teamHost,
     jobHost: opts.jobHost,
@@ -400,6 +405,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     contacts: opts.contacts ?? [],
     canCreateAgents: opts.teamHost !== undefined,
     withOperator: opts.withOperator ?? true,
+    ...(opts.telegram ? { telegram: true } : {}),
     ...(opts.unreadMessages ? { unreadMessages: opts.unreadMessages } : {}),
     secrets: secrets.map(({ name, hosts }) => ({ name, hosts })),
   }

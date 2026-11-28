@@ -2,13 +2,16 @@
 // the turn, to start a command: on the host as its own process group, in Docker as a container of
 // the turn's image and mounts. A job runs until it ends, the Agent stops it or the owner does; no
 // clock ends it. Its record and output are files in the Agent's folder (`jobs/<id>/job.json` and
-// `output.log`), so a restart can still say what became of it. When one ends and the Agent has not
-// seen it end, the end wakes the Agent in the conversation that started it.
+// `output.log`), so a restart can still say what became of it. Its output comes through the daemon
+// and reaches the log with the turn's secrets taken out, as a command's output reaches the turn.
+// When one ends and the Agent has not seen it end, the end wakes the Agent in the conversation
+// that started it.
 
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
   closeSync,
+  createWriteStream,
   existsSync,
   mkdirSync,
   openSync,
@@ -20,8 +23,9 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { Transform } from 'node:stream'
 import type { Job, JobDetail } from '@bazilion/api-types'
-import { truncateTail } from '@earendil-works/pi-coding-agent'
+import { DEFAULT_MAX_BYTES, truncateTail } from '@earendil-works/pi-coding-agent'
 import type { Paths } from '../core/index.ts'
 import {
   type DockerSandbox,
@@ -31,10 +35,14 @@ import {
   signalDockerContainer,
 } from '../runtime/shell/docker.ts'
 import type { JobHost, JobOutputResult } from '../runtime/worker/ipc-protocol.ts'
+import { ExactValueStreamRedactor } from '../runtime/worker/runtime.ts'
 import { signalLiveChange } from './live-signal.ts'
 import { queueWake } from './wakes.ts'
 
-/** How long a stopped host job gets to end after SIGTERM before SIGKILL. */
+/**
+ * How long a stopped job gets to end before SIGKILL, and an ended job's output to finish arriving
+ * when a process it started still holds it open.
+ */
 const STOP_GRACE_MS = 3_000
 /** How often a waiting `job_output` looks for new output. Shapes latency only. */
 const POLL_MS = 200
@@ -56,6 +64,8 @@ interface Live {
   agentId: string
   child: ChildProcess
   stopping?: Job['stoppedBy']
+  /** Settles once the job has ended and all its output is in the log. */
+  ended: Promise<void>
 }
 
 const KEY = Symbol.for('bazilion.jobs')
@@ -153,6 +163,21 @@ function readLog(paths: Paths, record: JobRecord, from: number, to: number): str
   }
 }
 
+/**
+ * The end of a job's output from byte `from`, as much as the Agent is shown, read from the end of
+ * the log only: a job that printed gigabytes is not read whole to show its last lines.
+ */
+function logTail(
+  paths: Paths,
+  record: JobRecord,
+  from: number,
+  to: number,
+): { content: string; truncated: boolean } {
+  const start = Math.max(from, to - DEFAULT_MAX_BYTES)
+  const tail = truncateTail(readLog(paths, record, start, to))
+  return { content: tail.content, truncated: tail.truncated || start > from }
+}
+
 function logSize(paths: Paths, record: JobRecord): number {
   return statSync(logPath(paths, record), { throwIfNoEntry: false })?.size ?? 0
 }
@@ -161,7 +186,7 @@ function logSize(paths: Paths, record: JobRecord): number {
 export function jobDetail(paths: Paths, id: string): JobDetail | null {
   const record = findJob(paths, id)
   if (!record) return null
-  const tail = truncateTail(readLog(paths, record, 0, logSize(paths, record)))
+  const tail = logTail(paths, record, 0, logSize(paths, record))
   return { ...publicJob(record), output: tail.content, outputCut: tail.truncated }
 }
 
@@ -174,7 +199,7 @@ function ended(record: JobRecord): string {
 
 /** Wake the Agent with the job's end, unless it sees the end in a turn first. */
 function queueEndWake(paths: Paths, record: JobRecord): void {
-  const tail = truncateTail(readLog(paths, record, 0, logSize(paths, record)))
+  const tail = logTail(paths, record, 0, logSize(paths, record))
   const output = tail.content.trim()
   queueWake({
     id: `job:${record.id}`,
@@ -225,10 +250,59 @@ export interface JobTurn {
   paths: Paths
   agentId: string
   conversationId: string
+  /** The values taken out of the job's output before it is written: the turn's secrets. */
+  redact: readonly string[]
   /** Host mode: the Team workspace and the turn's tool environment. */
   host?: { cwd: string; env: NodeJS.ProcessEnv }
   /** Docker mode: the turn's container, evaluated when a job starts, and the job name prefix. */
   docker?: { sandbox: () => DockerSandbox; namePrefix: string }
+}
+
+/**
+ * The job's log, written as output arrives with `values` taken out. Bytes go through latin1, one
+ * character per byte, so a value split between two chunks is still found and nothing is decoded.
+ * The file is written as a stream: a job that prints faster than the disk takes it waits for the
+ * disk, and the daemon does not.
+ */
+function redactedLog(path: string, values: readonly string[]) {
+  const redactor = new ExactValueStreamRedactor(
+    values.map((value) => Buffer.from(value).toString('latin1')),
+  )
+  const bytes = (text: string) => (text ? Buffer.from(text, 'latin1') : undefined)
+  const stream = new Transform({
+    transform(chunk: Buffer, _encoding, done) {
+      done(null, bytes(redactor.push(chunk.toString('latin1'))))
+    },
+    // Only at the end of all output: what is held back may be the start of a value.
+    flush(done) {
+      done(null, bytes(redactor.flush()))
+    },
+  })
+  // There from the start, for whoever reads the job before it prints.
+  closeSync(openSync(path, 'a', 0o600))
+  const file = createWriteStream(path, { flags: 'a', mode: 0o600 })
+  stream.pipe(file)
+  const closed = new Promise<void>((resolve) => {
+    file.once('close', () => resolve())
+    file.once('error', () => resolve())
+  })
+  let ending = false
+  return {
+    /** Where the job's stdout and stderr go. */
+    stream,
+    /** A line of Bazilion's own, after what came before. */
+    note(text: string) {
+      if (!ending) stream.write(Buffer.from(text))
+    },
+    /** The rest written and the file closed. */
+    close(): Promise<void> {
+      if (!ending) {
+        ending = true
+        stream.end()
+      }
+      return closed
+    },
+  }
 }
 
 /** Start a job; it is running (or already ended) when this returns. */
@@ -237,7 +311,7 @@ export function startJob(turn: JobTurn, command: string): JobRecord {
   const id = `job-${randomBytes(4).toString('hex')}`
   const dir = jobDir(paths, agentId, id)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
-  const log = openSync(join(dir, 'output.log'), 'a', 0o600)
+  const log = redactedLog(join(dir, 'output.log'), turn.redact)
   let child: ChildProcess
   let record: JobRecord
   const base = {
@@ -263,7 +337,7 @@ export function startJob(turn: JobTurn, command: string): JobRecord {
       child = spawn('docker', args, {
         env: dockerSpawnEnv(sandbox),
         detached: true,
-        stdio: ['pipe', log, log],
+        stdio: 'pipe',
       })
       record = { ...base, cwd: sandbox.workdir, sandbox: 'docker', container }
     } else if (turn.host) {
@@ -271,7 +345,7 @@ export function startJob(turn: JobTurn, command: string): JobRecord {
         cwd: turn.host.cwd,
         env: turn.host.env,
         detached: true,
-        stdio: ['pipe', log, log],
+        stdio: 'pipe',
       })
       record = { ...base, cwd: turn.host.cwd, sandbox: 'host' }
       if (child.pid) {
@@ -281,17 +355,40 @@ export function startJob(turn: JobTurn, command: string): JobRecord {
     } else {
       throw new Error('a job needs a host or a Docker turn')
     }
-  } finally {
-    closeSync(log)
+  } catch (error) {
+    void log.close()
+    throw error
   }
   save(paths, record)
-  live().set(id, { agentId, child })
-  child.stdin?.on('error', () => {})
-  child.once('error', (error) => {
-    writeFileSync(join(dir, 'output.log'), `\n[could not start: ${error.message}]\n`, { flag: 'a' })
-    finish(paths, id, agentId, null)
+  let markEnded = () => {}
+  const ended = new Promise<void>((resolve) => {
+    markEnded = resolve
   })
-  child.once('exit', (code) => finish(paths, id, agentId, code))
+  live().set(id, { agentId, child, ended })
+  child.stdin?.on('error', () => {})
+  child.stdout?.pipe(log.stream, { end: false })
+  child.stderr?.pipe(log.stream, { end: false })
+  // A job ends with its process, once its output is in the log: at once, unless a process it
+  // started holds the output open. Then it ends after the grace, and that process's output is
+  // still added; what may be the start of a secret stays held back until the output closes.
+  let over = false
+  const end = (code: number | null) => {
+    if (over) return
+    over = true
+    finish(paths, id, agentId, code)
+    markEnded()
+  }
+  child.once('exit', (code) => {
+    const late = setTimeout(() => end(code), STOP_GRACE_MS)
+    child.once('close', () => clearTimeout(late))
+  })
+  child.once('close', (code) => {
+    void log.close().then(() => end(code))
+  })
+  child.once('error', (error) => {
+    log.note(`\n[could not start: ${error.message}]\n`)
+    void log.close().then(() => end(null))
+  })
   signalLiveChange()
   return record
 }
@@ -316,10 +413,7 @@ export async function stopJob(
   const entry = live().get(id)
   if (record.status !== 'running' || !entry) return publicJob(record)
   entry.stopping = by
-  const exited = new Promise<void>((resolve) => {
-    if (entry.child.exitCode !== null || entry.child.signalCode !== null) resolve()
-    else entry.child.once('exit', () => resolve())
-  })
+  const exited = entry.ended
   if (record.container) {
     // A job stopped right after it started may have no container yet: remove until its client
     // ends, and end the client itself after the grace period.
@@ -375,7 +469,7 @@ async function readOutput(
     record = load(paths, agentId, id) ?? record
   }
   const size = logSize(paths, record)
-  const tail = truncateTail(readLog(paths, record, record.readOffset, size))
+  const tail = logTail(paths, record, record.readOffset, size)
   record = update(paths, record, {
     readOffset: size,
     ...(record.status !== 'running' ? { endSeen: true } : {}),

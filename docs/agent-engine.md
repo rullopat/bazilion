@@ -88,13 +88,17 @@ and refreshes from the secrets table; only the access token comes back.
 
 `runtime/session/prompt.ts:buildSystemPrompt` joins these sections, in order, when they apply:
 
-1. **Agent instructions**: the Agent's `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `IDENTITY.md`,
+1. **Agent instructions**: the Agent's `SOUL.md` (who it is and how it works: its role, when it
+   was given one, its personality, boundaries and rules) and `IDENTITY.md` (its name and look),
    copied from its Profile at spawn.
 2. **First-Run Ritual**: while `BOOTSTRAP.md` exists, with the rule to call `bootstrap_done` when
    onboarding is complete, and not to ask what the Team's USER.md already says. Only in a turn you
    started (a chat, a follow-up, Telegram): a schedule or a teammate's message gets a note to do the
    work instead, since nobody is there to answer.
-3. **Agent Home**: what the private home is for, and `home_*` versus `memory_write`.
+3. **Agent Home**: what the private home is for, `home_*` versus `memory_write`, and that a rule
+   you give about how the Agent works goes in its SOUL.md under **How you work**.
+   **Telegram**, for an Agent with a topic: its replies are read there too, so keep them short and
+   in one message.
 4. **Available Skills**: each attached skill's `SKILL.md` body and its runtime directory (the host
    directory, or its read-only `/skills/...` mount in Docker mode).
 5. **Web research**, **Connections** (the MCP connections whose tools wait to be found, with
@@ -146,10 +150,13 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   `everywhere: true`, `query` also searches every message of the Agent's other conversations, and
   `conversation` with `from` reads one of them; only the Agent's own, read by the daemon
   (`lib/recall-host.ts`).
-- `home_read|write|list`: the Agent's own documents, by name only; `BOOTSTRAP.md` is read-only.
+- `home_read|write|edit|list`: the Agent's own documents (`SOUL.md`, `IDENTITY.md`, and
+  `BOOTSTRAP.md`, read-only), by name only. `home_edit` changes one passage or adds to the end, so a
+  rule is added without rewriting the rest.
 - `bootstrap_done`: removes `BOOTSTRAP.md`.
 - `web_fetch`: a guarded page fetch (no private addresses, also after redirects) turned into
-  Markdown. `web_search`, when a search backend is ready, runs in the daemon.
+  Markdown. `web_search`, when a search backend is ready, runs in the daemon, and so does
+  `x_search` (posts on X through xAI) while an xAI key is saved ([web research](web-research.md)).
 - `send_message`, `read_inbox`, `wait_for_reply`: the mailbox. `wake: false` sends a quiet
   message, which waits in the inbox without starting a turn; the recipient's next turn is told
   how many are unread. `wait_for_reply` takes several message ids and returns each reply as it
@@ -161,7 +168,7 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   (`lib/exchanges.ts`). See [Team Policy](team-policy.md#exchanges-between-agents).
 - `agent_create`: adds an Agent to the Agent's own Team (name, role, optional template and model,
   by default its own), only in a turn you started and at most six per turn
-  (`lib/team-host.ts`). The new Agent's `AGENTS.md` starts with its role and who made it, it gets
+  (`lib/team-host.ts`). The new Agent's `SOUL.md` starts with its role and who made it, it gets
   no first-run ritual, and in a restricted Team it is connected with its creator both ways.
 - `secret_request` (where `ask_user` is) and `secret_list`: secrets by name; the value goes from a
   masked card to the daemon's store and reaches the Agent's commands as an environment variable

@@ -1,6 +1,6 @@
 # Web research
 
-Agents research the web with two tools:
+Agents research the web with two tools, and posts on X with a third:
 
 - `web_search` finds sources. The daemon runs the search, so backend URLs and keys never reach
   the Agent.
@@ -32,6 +32,14 @@ and the result names the others so the Agent checks them itself:
 
 The same search twice in one turn is answered from the first one.
 
+`x_search` searches posts on X (Twitter) through xAI, while an xAI key is saved under
+**Setup → Models**. The daemon makes the call with the key: Grok searches X, reads the posts and
+answers from them, and the Agent gets that answer, the links of the posts it cites and how many
+posts it read. It takes `handles` (only these accounts) or `exclude_handles`, and `from`/`to`
+dates (`YYYY-MM-DD`; `to` is the first day left out). **Posts on X** on the **Web search** card
+turns it off (`BAZILION_X_SEARCH=false`); its model is `grok-4.7` unless **X search model**
+(`BAZILION_X_SEARCH_MODEL`) names another.
+
 Search results are leads: the Agent reads the pages it cites with `web_fetch`. Every kind of turn
 (chat, Telegram, follow-ups, schedules, inbox wakes) gets the same tools.
 The managed browser is separate from search; see [managed browser](browser-research.md).
@@ -59,7 +67,9 @@ configured leaves Agents without `web_search`; nothing falls back to another bac
 - A query has at most 512 characters; a search returns up to 10 results (default 5) and waits at
   most 30 seconds. Errors carry the backend's own status and message.
 - Brave, Tavily and Exa bill per query on their own plans; native search counts against the
-  OpenAI account or the ChatGPT subscription.
+  OpenAI account or the ChatGPT subscription. xAI bills X search by the posts it reads (and the
+  model's tokens), on the xAI account.
+- `x_search` has no deadline of its own: it ends when xAI answers or the turn is stopped.
 - `web_fetch` reads at most 3 MiB of a page. Saved pages stay in the uploads folder until you
   remove them.
 - Tavily takes a country by its English name; Bazilion turns the two letters into it, and a

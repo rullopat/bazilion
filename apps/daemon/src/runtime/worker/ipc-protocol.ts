@@ -31,6 +31,7 @@ export interface RpcMethods {
   readResult: { args: { resultId: string }; result: ResultContent }
   generateImages: { args: ImageGenerationInput; result: ImageGenerationOutput }
   webSearch: { args: WebSearchArgs; result: WebSearchOutput }
+  xSearch: { args: XSearchArgs; result: XSearchOutput }
   sendMessage: { args: SendMessageArgs; result: { messageId: string } }
   listInbox: { args: { agentId: string; unreadOnly: boolean }; result: Message[] }
   markRead: { args: { messageId: string }; result: null }
@@ -218,7 +219,7 @@ export interface AgentContact {
 /** A teammate an Agent adds with `agent_create`; the daemon binds it to the Agent's Team. */
 export interface CreateAgentArgs {
   name: string
-  /** What the new Agent is for: written into its AGENTS.md, so it starts knowing its job. */
+  /** What the new Agent is for: written at the top of its SOUL.md, so it starts knowing its job. */
   role: string
   /** An Agent template id; the creator's own template when omitted. */
   template?: string
@@ -351,6 +352,24 @@ export interface WebSearchOutput {
   results: Array<{ title: string; url: string; snippet: string; published?: string }>
   /** Filters asked for that this backend could not apply. */
   unapplied?: string[]
+}
+
+export interface XSearchArgs {
+  query: string
+  /** Only posts from these X accounts, or none from those in `excludeHandles` (not both). */
+  handles?: string[]
+  excludeHandles?: string[]
+  /** Posted on or after / before this date, YYYY-MM-DD. */
+  from?: string
+  to?: string
+}
+
+/** xAI's answer from the posts it read on X, and the posts it cites. */
+export interface XSearchOutput {
+  answer: string
+  posts: Array<{ url: string; title?: string }>
+  /** How many posts xAI read to answer: it bills by them. */
+  postsRead?: number
 }
 
 // The daemon side of each tool. The daemon implements them against its repos and resources;
@@ -541,6 +560,10 @@ export interface WebSearchHost {
   search(args: WebSearchArgs): Promise<WebSearchOutput>
 }
 
+export interface XSearchHost {
+  search(args: XSearchArgs): Promise<XSearchOutput>
+}
+
 /**
  * The daemon hosts that serve one worker. The worker offers a tool only when its host is
  * present: the spawner tells it which ones are (`WorkerInput.hosts`).
@@ -553,6 +576,7 @@ export interface WorkerHosts {
   questionHost?: QuestionHost
   imageGenerationHost?: ImageGenerationHost
   webSearchHost?: WebSearchHost
+  xSearchHost?: XSearchHost
   browserHost?: BrowserHost
   mcpHost?: McpHost
   /** Only in a turn the operator started: Agents add teammates when asked, not on their own. */

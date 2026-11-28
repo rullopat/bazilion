@@ -177,8 +177,6 @@ function contentsOf(files: LoadedProfile['files']): Contents {
     soul: files.soul,
     identity: files.identity,
     bootstrap: files.bootstrap,
-    agents: files.agents,
-    tools: files.tools,
   }
 }
 

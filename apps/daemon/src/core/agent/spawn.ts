@@ -16,7 +16,7 @@ import * as agentRepo from '../repos/agents.ts'
 import * as teamRepo from '../repos/teams.ts'
 import { discoverSkills } from '../skills/discover.ts'
 
-/** Put the role at the top of the Agent's AGENTS.md and drop its first-run ritual. */
+/** Put the role at the top of the Agent's SOUL.md and drop its first-run ritual. */
 function giveRole(
   dir: string,
   role: string,
@@ -27,7 +27,7 @@ function giveRole(
   const who = addedBy
     ? `${addedBy.name} (Agent id ${addedBy.id}) added you to the Team ${teamName} on ${day}, when the operator asked. Report back to ${addedBy.name} unless the operator says otherwise.`
     : `The operator added you to the Team ${teamName} on ${day}.`
-  const file = join(dir, 'AGENTS.md')
+  const file = join(dir, 'SOUL.md')
   const rest = existsSync(file) ? readFileSync(file, 'utf8').trim() : ''
   writeFileSync(
     file,
@@ -80,12 +80,6 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
       writeFileSync(join(dir, 'IDENTITY.md'), loaded.files.identity)
       if (loaded.files.bootstrap !== null) {
         writeFileSync(join(dir, 'BOOTSTRAP.md'), loaded.files.bootstrap)
-      }
-      if (loaded.files.agents !== null) {
-        writeFileSync(join(dir, 'AGENTS.md'), loaded.files.agents)
-      }
-      if (loaded.files.tools !== null) {
-        writeFileSync(join(dir, 'TOOLS.md'), loaded.files.tools)
       }
 
       const reasoningLevel: ReasoningLevel = input.reasoningLevel ?? 'medium'

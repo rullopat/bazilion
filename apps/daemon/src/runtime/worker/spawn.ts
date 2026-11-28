@@ -261,6 +261,7 @@ const RPC_HANDLERS: RpcHandlers = {
   generateImages: (args, { hosts }) =>
     host(hosts.imageGenerationHost, 'image generation').generate(args),
   webSearch: (args, { hosts }) => host(hosts.webSearchHost, 'web search').search(args),
+  xSearch: (args, { hosts }) => host(hosts.xSearchHost, 'X search').search(args),
   sendMessage: (args, { hosts }) => host(hosts.messagingHost, 'messaging').sendMessage(args),
   listInbox: ({ agentId, unreadOnly }, { hosts }) =>
     host(hosts.messagingHost, 'messaging').listInbox(agentId, { unreadOnly }),

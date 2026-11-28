@@ -8,7 +8,7 @@ export interface SpawnAgentRequest {
   /** Team the new agent joins; defaults to `default`. */
   teamId?: string
   /**
-   * What it is for: written at the top of its AGENTS.md, so it starts knowing its job, without the
+   * What it is for: written at the top of its SOUL.md, so it starts knowing its job, without the
    * get-to-know questions of a first conversation. Empty: it asks them.
    */
   role?: string

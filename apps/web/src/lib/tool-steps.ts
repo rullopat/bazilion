@@ -115,6 +115,14 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
         icon: 'web',
         kind: 'web',
       }
+    case 'x_search':
+      return {
+        doing: 'searching posts on X',
+        verb: 'Searched X for',
+        target: str(args?.query) ? clip(String(args?.query)) : null,
+        icon: 'web',
+        kind: 'web',
+      }
     case 'web_fetch':
     case 'browser_navigate': {
       const url = str(args?.url)
@@ -366,7 +374,7 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
   }
   if (tool.startsWith('home_')) {
     const own = str(args?.file)
-    return tool === 'home_write'
+    return tool === 'home_write' || tool === 'home_edit'
       ? {
           doing: 'updating its own files',
           verb: 'Updated its file',

@@ -14,15 +14,9 @@ import type { ToolHandler } from './types.ts'
 // Files the agent may read/write in its private home directory.
 // BOOTSTRAP.md is readable but not writable — its lifecycle belongs to
 // the `bootstrap_done` tool, not `home_write`.
-const HOME_FILES_READABLE = [
-  'IDENTITY.md',
-  'SOUL.md',
-  'BOOTSTRAP.md',
-  'AGENTS.md',
-  'TOOLS.md',
-] as const
+const HOME_FILES_READABLE = ['IDENTITY.md', 'SOUL.md', 'BOOTSTRAP.md'] as const
 
-const HOME_FILES_WRITABLE = ['IDENTITY.md', 'SOUL.md', 'AGENTS.md', 'TOOLS.md'] as const
+const HOME_FILES_WRITABLE = ['IDENTITY.md', 'SOUL.md'] as const
 
 export function homeTools(agentDir: string): ToolHandler[] {
   const homeRoot = resolvePrivateHomeRoot(agentDir)
@@ -60,7 +54,7 @@ export function homeTools(agentDir: string): ToolHandler[] {
       def: {
         name: 'home_write',
         description:
-          "Overwrite one of your own home files. Use this to update your name, personality, or persistent self-definition. Do NOT use this for work output (use `write` / `edit` — those land in your team's shared directory) or for facts you want to remember (use `memory_write`). BOOTSTRAP.md is not writable here; call `bootstrap_done` to retire it.",
+          "Overwrite one of your own home files. Use this to update your name, personality, persistent self-definition, or the rules you keep about how you work (in SOUL.md). It replaces the whole file: read it first and keep everything you are not changing; to change one passage or add a rule, `home_edit` is safer. Do NOT use this for work output (use `write` / `edit` — those land in your team's shared directory) or for facts you want to remember (use `memory_write`). BOOTSTRAP.md is not writable here; call `bootstrap_done` to retire it.",
         parameters: {
           type: 'object',
           properties: {
@@ -78,24 +72,67 @@ export function homeTools(agentDir: string): ToolHandler[] {
           )
         }
         const content = typeof args.content === 'string' ? args.content : ''
-        const path = privateHomeFile(homeRoot, file)
-        let fd: number | undefined
-        try {
-          rejectExistingSymlinkOrNonFile(path)
-          fd = openSync(
-            path,
-            constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollowFlag(),
-            0o600,
+        writeHomeFile(homeRoot, file, content, 'home_write')
+        return `wrote ${file} (${Buffer.byteLength(content, 'utf8')} bytes)`
+      },
+    },
+    {
+      def: {
+        name: 'home_edit',
+        description:
+          'Change one passage of one of your own home files, keeping the rest as it is: `old_text` must appear exactly once and becomes `new_text` (empty removes it). With `old_text` empty, `new_text` is added at the end of the file. Use it to add, change or remove a rule under `## How you work` in SOUL.md, or one line of IDENTITY.md.',
+        parameters: {
+          type: 'object',
+          properties: {
+            file: { type: 'string', enum: [...HOME_FILES_WRITABLE] },
+            old_text: {
+              type: 'string',
+              description: 'The exact text to change, enough of it to appear once; empty to add',
+            },
+            new_text: { type: 'string', description: 'What it becomes, or what is added' },
+          },
+          required: ['file', 'old_text', 'new_text'],
+        },
+      },
+      async invoke(args) {
+        const file = String(args.file ?? '')
+        if (!HOME_FILES_WRITABLE.includes(file as (typeof HOME_FILES_WRITABLE)[number])) {
+          throw new Error(
+            `home_edit: "file" must be one of ${HOME_FILES_WRITABLE.join(', ')}; got "${file}"`,
           )
-          if (!fstatSync(fd).isFile()) throw new Error('target is not a regular file')
-          writeFileSync(fd, content, 'utf8')
+        }
+        const oldText = typeof args.old_text === 'string' ? args.old_text : ''
+        const newText = typeof args.new_text === 'string' ? args.new_text : ''
+        const path = privateHomeFile(homeRoot, file)
+        let current: string
+        try {
+          current = readRegularFileNoFollow(path)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          throw new Error(`home_write: could not write ${file}: ${msg}`)
-        } finally {
-          if (fd !== undefined) closeSync(fd)
+          throw new Error(`home_edit: could not read ${file}: ${msg}`)
         }
-        return `wrote ${file} (${Buffer.byteLength(content, 'utf8')} bytes)`
+        let next: string
+        if (!oldText) {
+          if (!newText)
+            throw new Error('home_edit: give `new_text` to add, or `old_text` to change')
+          const body = current.trimEnd()
+          next = `${body}${body ? '\n\n' : ''}${newText.trim()}\n`
+        } else {
+          const at = current.indexOf(oldText)
+          if (at < 0) {
+            throw new Error(
+              `home_edit: ${file} does not contain \`old_text\`; read it with home_read`,
+            )
+          }
+          if (current.indexOf(oldText, at + 1) >= 0) {
+            throw new Error(
+              `home_edit: \`old_text\` appears more than once in ${file}; give more of it`,
+            )
+          }
+          next = current.slice(0, at) + newText + current.slice(at + oldText.length)
+        }
+        writeHomeFile(homeRoot, file, next, 'home_edit')
+        return `changed ${file} (${Buffer.byteLength(next, 'utf8')} bytes)`
       },
     },
     {
@@ -130,6 +167,27 @@ export function homeTools(agentDir: string): ToolHandler[] {
       },
     },
   ]
+}
+
+/** Replace a home file's content, refusing a link or anything but a regular file. */
+function writeHomeFile(homeRoot: string, file: string, content: string, tool: string): void {
+  const path = privateHomeFile(homeRoot, file)
+  let fd: number | undefined
+  try {
+    rejectExistingSymlinkOrNonFile(path)
+    fd = openSync(
+      path,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollowFlag(),
+      0o600,
+    )
+    if (!fstatSync(fd).isFile()) throw new Error('target is not a regular file')
+    writeFileSync(fd, content, 'utf8')
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`${tool}: could not write ${file}: ${msg}`)
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
 }
 
 function resolvePrivateHomeRoot(agentDir: string): string {

@@ -90,7 +90,7 @@ The home (`~/.bazilion`, or `BAZILION_HOME`):
 
 ```text
 bazilion.db  auth.json  daemon.pid
-agents/<id>/        SOUL.md IDENTITY.md AGENTS.md TOOLS.md [BOOTSTRAP.md] sessions/ uploads/
+agents/<id>/        SOUL.md IDENTITY.md [BOOTSTRAP.md] sessions/ uploads/
 teams/<slug>/       the Team workspace (or a symlink to a project), with memory/ (qmd notes)
 profiles/<id>/  skills/<name>/  browsers/<agent-id>/
 ```

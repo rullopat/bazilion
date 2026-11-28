@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { createProfile } from '../../src/core/profile/create.ts'
@@ -73,50 +73,17 @@ test('loadProfile returns profile, default skills, and file contents', () => {
   expect(loaded.files.soul).toContain('SOUL.md')
   expect(loaded.files.identity).toContain('IDENTITY.md')
   expect(loaded.files.bootstrap).toContain('BOOTSTRAP.md')
-  // AGENTS/TOOLS default ON (null opts out).
-  expect(loaded.files.agents).toContain('AGENTS.md')
-  expect(loaded.files.tools).toContain('TOOLS.md')
   expect(loaded.identity).toBeNull()
 })
 
-test('createProfile seeds AGENTS.md / TOOLS.md when provided', () => {
+test('createProfile writes SOUL.md, IDENTITY.md and BOOTSTRAP.md, and nothing else', () => {
   const profile = createProfile(env.db, env.paths, {
     id: 'felix',
     defaultModel: 'm',
-    templates: {
-      identity: '# IDENTITY\n- Name: Felix\n- Emoji: 🐾\n',
-      agents: '# AGENTS\n- peer-a: does stuff\n',
-      tools: '# TOOLS\n- run_skill before shell\n',
-    },
+    templates: { identity: '# IDENTITY\n- Name: Felix\n- Emoji: 🐾\n' },
   })
-  expect(existsSync(join(profile.dir, 'AGENTS.md'))).toBe(true)
-  expect(existsSync(join(profile.dir, 'TOOLS.md'))).toBe(true)
-  const loaded = loadProfile(env.db, 'felix')
-  expect(loaded.files.agents).toContain('peer-a')
-  expect(loaded.files.tools).toContain('run_skill')
-  expect(loaded.identity).toEqual({ name: 'Felix', emoji: '🐾' })
-})
-
-test('createProfile seeds AGENTS/TOOLS by default when omitted', () => {
-  const profile = createProfile(env.db, env.paths, {
-    id: 'standard',
-    defaultModel: 'm',
-  })
-  expect(existsSync(join(profile.dir, 'AGENTS.md'))).toBe(true)
-  expect(existsSync(join(profile.dir, 'TOOLS.md'))).toBe(true)
-  const loaded = loadProfile(env.db, 'standard')
-  expect(loaded.files.agents).toContain('External channels')
-  expect(loaded.files.tools).toContain('Tool Playbook')
-})
-
-test('createProfile with templates.agents/tools = null skips those files', () => {
-  const profile = createProfile(env.db, env.paths, {
-    id: 'minimal',
-    defaultModel: 'm',
-    templates: { agents: null, tools: null },
-  })
-  expect(existsSync(join(profile.dir, 'AGENTS.md'))).toBe(false)
-  expect(existsSync(join(profile.dir, 'TOOLS.md'))).toBe(false)
+  expect(readdirSync(profile.dir).sort()).toEqual(['BOOTSTRAP.md', 'IDENTITY.md', 'SOUL.md'])
+  expect(loadProfile(env.db, 'felix').identity).toEqual({ name: 'Felix', emoji: '🐾' })
 })
 
 test('loadProfile throws on missing profile', () => {

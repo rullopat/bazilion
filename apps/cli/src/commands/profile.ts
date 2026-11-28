@@ -69,16 +69,6 @@ const createCmd = defineCommand({
       type: 'boolean',
       description: 'Skip the bootstrap file entirely (no first-run intro)',
     },
-    'agents-file': {
-      type: 'string',
-      description: 'Path to custom AGENTS.md content (defaults to the built-in template)',
-    },
-    'skip-agents': { type: 'boolean', description: 'Create the profile without an AGENTS.md' },
-    'tools-file': {
-      type: 'string',
-      description: 'Path to custom TOOLS.md content (defaults to the built-in template)',
-    },
-    'skip-tools': { type: 'boolean', description: 'Create the profile without a TOOLS.md' },
   },
   async run({ args }) {
     const skillsMode = parseSkillsMode(args['skills-mode'])
@@ -93,8 +83,6 @@ const createCmd = defineCommand({
       soul: readTemplate(args['soul-file']),
       identity: readTemplate(args['identity-file']),
       bootstrap: args['skip-bootstrap'] ? null : readTemplate(args['bootstrap-file']),
-      agents: args['skip-agents'] ? null : readTemplate(args['agents-file']),
-      tools: args['skip-tools'] ? null : readTemplate(args['tools-file']),
     }
     const profile = await createClient().post<Profile>('/api/profiles', body)
     console.log(`created profile ${profile.id} at ${profile.dir}`)
@@ -128,8 +116,6 @@ const showCmd = defineCommand({
       }`,
     )
     console.log(`bootstrap: ${loaded.files.bootstrap !== null ? 'yes' : 'no'}`)
-    console.log(`agents:    ${loaded.files.agents !== null ? 'yes' : 'no'}`)
-    console.log(`tools:     ${loaded.files.tools !== null ? 'yes' : 'no'}`)
     if (loaded.identity) {
       const fields = Object.entries(loaded.identity)
         .filter(([, v]) => typeof v === 'string' && v.length > 0)

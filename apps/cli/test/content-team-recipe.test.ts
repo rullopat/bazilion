@@ -1,6 +1,7 @@
 import { once } from 'node:events'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
   Agent,
@@ -18,6 +19,16 @@ const recipe = join(import.meta.dirname, '../../../examples/content-team')
 const templatePath = join(recipe, 'team-template.json')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
 const document = JSON.parse(readFileSync(templatePath, 'utf8')) as TeamTemplateInput
+/** A role's SOUL.md, as the README's install loop puts it together: role, operating rules, tools. */
+const soulOf = (role: (typeof roles)[number]) =>
+  [
+    join(recipe, 'profiles', `${role}.md`),
+    join(recipe, 'operating-rules.md'),
+    join(recipe, 'tools.md'),
+  ]
+    .map((path) => readFileSync(path, 'utf8'))
+    .join('')
+const scratch = mkdtempSync(join(tmpdir(), 'bazilion-content-team-'))
 let server: TestServer
 let providerRequests = 0
 const provider = createServer((request, response) => {
@@ -64,6 +75,8 @@ beforeAll(async () => {
   expect(imported.exitCode, imported.stderr).toBe(0)
   expect(imported.stdout).toContain('content-preparation')
   for (const role of roles) {
+    const soulFile = join(scratch, `${role}.md`)
+    writeFileSync(soulFile, soulOf(role))
     const created = await server.cli([
       'profile',
       'create',
@@ -76,11 +89,7 @@ beforeAll(async () => {
       'content-preparation',
       '--skip-bootstrap',
       '--soul-file',
-      join(recipe, 'profiles', `${role}.md`),
-      '--agents-file',
-      join(recipe, 'operating-rules.md'),
-      '--tools-file',
-      join(recipe, 'tools.md'),
+      soulFile,
     ])
     expect(created.exitCode, created.stderr).toBe(0)
   }
@@ -99,6 +108,7 @@ beforeAll(async () => {
 }, 60_000)
 
 afterAll(async () => {
+  rmSync(scratch, { recursive: true, force: true })
   try {
     if (server) await server.stop()
   } finally {
@@ -123,15 +133,7 @@ test('the recipe spawns a restricted Team with exact role documents and selected
     const agent = member(first, role)
     expect(agent.teamId).toBe('content-first')
     expect(agent.modelOverride).toBeNull()
-    expect(readFileSync(join(agent.dir, 'SOUL.md'), 'utf8')).toBe(
-      readFileSync(join(recipe, 'profiles', `${role}.md`), 'utf8'),
-    )
-    expect(readFileSync(join(agent.dir, 'AGENTS.md'), 'utf8')).toBe(
-      readFileSync(join(recipe, 'operating-rules.md'), 'utf8'),
-    )
-    expect(readFileSync(join(agent.dir, 'TOOLS.md'), 'utf8')).toBe(
-      readFileSync(join(recipe, 'tools.md'), 'utf8'),
-    )
+    expect(readFileSync(join(agent.dir, 'SOUL.md'), 'utf8')).toBe(soulOf(role))
     expect(existsSync(join(agent.dir, 'BOOTSTRAP.md'))).toBe(false)
     const skills = await api<ResolvedSkillsResponse>(`/api/agents/${agent.id}/skills`)
     expect(skills.missing).toEqual([])

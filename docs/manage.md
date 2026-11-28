@@ -30,7 +30,7 @@ behind. **Delete permanently** removes everything, after asking. A row shows the
 gave itself in IDENTITY.md when it differs (`· calls itself Sales Director`).
 
 **Add an Agent** asks for a template, a Team, a name and **What is it for?**. With a role the
-Agent starts working at once: the role goes on top of its AGENTS.md with who added it, and it skips
+Agent starts working at once: the role goes on top of its SOUL.md with who added it, and it skips
 the first-run ritual that would ask you its name and purpose. Without one it starts with that
 ritual. From the CLI: `bazilion agent spawn --profile <template> --name Ana --role "Runs the
 weekly newsletter"`. Names are unique within a Team, whatever their case: adding, renaming or
@@ -53,9 +53,9 @@ A template is what a new Agent starts with. Its page has two cards, each saved w
 - **Settings**: the name (it cannot be blank; a template created without one takes its id), the
   default model, and the skills attached at spawn (all installed skills, or chosen ones). A banner says when the default model is not in Chat: Agents spawned
   from it are refused until it is.
-- **Files**: SOUL.md, IDENTITY.md, BOOTSTRAP.md, AGENTS.md and TOOLS.md, one at a time. A dot
-  marks a file changed and not saved; **Save** keeps every changed file. A template without one
-  of the last three can add it, starting from the built-in text.
+- **Files**: SOUL.md (who the Agent is and how it works), IDENTITY.md and BOOTSTRAP.md, one at a
+  time. A dot marks a file changed and not saved; **Save** keeps every changed file. A template
+  without a BOOTSTRAP.md can add one, starting from the built-in text.
 
 Agents already spawned keep their own copies. A template cannot be deleted while an Agent was
 spawned from it or a Team template uses it.

@@ -30,11 +30,9 @@ export { loadIdentityFromFile } from './profile/identity.ts'
 export { loadProfile } from './profile/load.ts'
 export { ensureSetupSeeded } from './profile/seed.ts'
 export {
-  DEFAULT_AGENTS,
   DEFAULT_BOOTSTRAP,
   DEFAULT_IDENTITY,
   DEFAULT_SOUL,
-  DEFAULT_TOOLS,
 } from './profile/templates.ts'
 export { updateProfile } from './profile/update.ts'
 export * as agentRepo from './repos/agents.ts'

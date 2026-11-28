@@ -288,6 +288,23 @@ export const SERVICES: ServiceDef[] = [
           ],
         },
       },
+      {
+        envVar: 'BAZILION_X_SEARCH',
+        kind: 'config',
+        label: 'Posts on X',
+        description:
+          'Agents search X with x_search through xAI, while an xAI key is saved under Models. xAI bills by the posts it reads.',
+        input: yesNo(true),
+      },
+      {
+        envVar: 'BAZILION_X_SEARCH_MODEL',
+        kind: 'config',
+        label: 'X search model',
+        placeholder: 'grok-4.7',
+        description: 'The Grok model that searches X. Empty: grok-4.7.',
+        advanced: true,
+        when: [{ envVar: 'BAZILION_X_SEARCH', is: ['true'] }],
+      },
       { envVar: 'BRAVE_API_KEY', kind: 'secret', label: 'Brave API key', placeholder: 'BSA…' },
       { envVar: 'TAVILY_API_KEY', kind: 'secret', label: 'Tavily API key', placeholder: 'tvly-…' },
       { envVar: 'EXA_API_KEY', kind: 'secret', label: 'Exa API key' },

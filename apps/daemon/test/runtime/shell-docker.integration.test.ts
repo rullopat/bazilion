@@ -156,6 +156,7 @@ describe.skipIf(!dockerEnabled)('Docker bash integration', () => {
       paths,
       agentId: 'agent',
       conversationId: 'conversation',
+      redact: [],
       docker: { sandbox: () => sandbox(), namePrefix: jobContainerPrefix(testDir) },
     })
     try {
