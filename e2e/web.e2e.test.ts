@@ -633,7 +633,13 @@ test('an Agent added with its job starts on it, and a Team has each name once', 
     // Adding it opened its conversation, its first line ready to be typed.
     await pw(session.page.getByPlaceholder('Message Rhea')).toBeVisible()
     // Another "mira" in Launch is refused, whatever its case. Jump to adds to the open Agent's
-    // Team, without leaving the page while it is still loading.
+    // Team, without leaving the page while it is still loading, and chosen before the palette's
+    // lists arrive (held back here), the dialog still gets them.
+    const lists = '**/api/teams'
+    await session.page.route(lists, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await route.continue()
+    })
     await session.page.keyboard.press('Control+k')
     await session.page.keyboard.type('Add an Agent')
     await session.page
@@ -641,6 +647,7 @@ test('an Agent added with its job starts on it, and a Team has each name once', 
       .first()
       .click()
     await pw(dialog.getByLabel('Team')).toContainText('Launch')
+    await session.page.unroute(lists)
     await dialog.getByLabel('Name').fill('mira')
     await dialog.getByRole('button', { name: 'Add the Agent' }).click()
     await pw(dialog.getByRole('alert')).toContainText('Launch already has an Agent named mira.')
