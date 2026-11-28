@@ -268,3 +268,71 @@ test('the context report counts codemode and tool_search, not the tools waiting 
   expect(names).toContain('tool_search')
   expect(names.filter((name) => name.startsWith('mcp__'))).toEqual([])
 })
+
+test('a script’s call resolves as its tool declares, with credentials taken out', async () => {
+  const { open, conversation } = setup()
+  const handle = await open(conversation)
+  script(handle.session, [
+    fauxAssistantMessage(
+      [
+        fauxToolCall('codemode', {
+          code: [
+            `const run = await tools.bash({ command: "echo the token is ${SECRET}" })`,
+            'if (typeof run !== "object") return "text: " + run',
+            `return "exit " + run.exit_code + ", " + (run.output.includes("${SECRET}") ? "leaked" : "clean")`,
+          ].join('\n'),
+        }),
+      ],
+      { stopReason: 'toolUse' },
+    ),
+    fauxAssistantMessage(fauxText('Done.')),
+  ])
+  try {
+    await handle.session.prompt('Run it')
+    const ran = piMessagesToProviderView(handle.session.agent.state.messages).find(
+      (message) => message.toolName === 'codemode',
+    )
+    expect(ran?.content).toContain('exit 0, clean')
+  } finally {
+    handle.dispose()
+  }
+})
+
+test('the file Pi writes the whole of a long output to holds no credential, a command’s or a script’s', async () => {
+  const { open, conversation } = setup()
+  const handle = await open(conversation)
+  script(handle.session, [
+    fauxAssistantMessage(
+      [
+        fauxToolCall('bash', {
+          // Long enough to be cut, and the last value arrives in two pieces.
+          command: `for i in $(seq 1 3000); do echo "line $i ${SECRET}"; done; printf '${SECRET.slice(0, 8)}'; sleep 0.2; printf '${SECRET.slice(8)}\\n'`,
+        }),
+      ],
+      { stopReason: 'toolUse' },
+    ),
+    fauxAssistantMessage(
+      [fauxToolCall('codemode', { code: `text("x".repeat(50000))\nreturn "${SECRET}"` })],
+      { stopReason: 'toolUse' },
+    ),
+    fauxAssistantMessage(fauxText('Done.')),
+  ])
+  const files: string[] = []
+  try {
+    await handle.session.prompt('Print them')
+    for (const name of ['bash', 'codemode']) {
+      const message = handle.session.agent.state.messages.find(
+        (entry) => entry.role === 'toolResult' && entry.toolName === name,
+      ) as { details?: { fullOutputPath?: string } } | undefined
+      const path = message?.details?.fullOutputPath
+      expect(path, name).toBeTypeOf('string')
+      files.push(path as string)
+      const full = readFileSync(path as string, 'utf8')
+      expect(full, name).toContain('[REDACTED]')
+      expect(full, name).not.toContain(SECRET)
+    }
+  } finally {
+    handle.dispose()
+    for (const file of files) rmSync(file, { force: true })
+  }
+})

@@ -85,9 +85,11 @@ import {
 import { branchOf, type ConversationHistory, contextUse, conversationHistory } from './history.ts'
 import { readSessionFile, readSessionHeader } from './session-file.ts'
 import {
+  CODEMODE,
   reachToolDescriptions,
   reachToolNames,
   redactNestedCalls,
+  redactScriptOutputFile,
   restoreLoadedTools,
   surfaceNestedResults,
   toolReachExtensions,
@@ -232,8 +234,9 @@ export function compactionFor(window: number): {
 
 /**
  * Credentials taken out of every tool result before the model, and so the transcript, gets it:
- * a command that prints a secret shows the model `[REDACTED]`. Wraps the hook Pi installs for its
- * own result handling; `values` is read at each call, so a token refreshed mid-turn counts.
+ * a command that prints a secret shows the model `[REDACTED]`; a script's long output also out
+ * of the file Pi wrote its whole text to. Wraps the hook Pi installs for its own result handling;
+ * `values` is read at each call, so a token refreshed mid-turn counts.
  */
 export function redactToolResults(session: AgentSession, values: readonly string[]): void {
   const piAfter = session.agent.afterToolCall
@@ -251,6 +254,7 @@ export function redactToolResults(session: AgentSession, values: readonly string
     })
     // Details are stored with the result too: a truncated output's text, an edit's diff.
     const details = after && 'details' in after ? after.details : context.result.details
+    if (context.toolCall.name === CODEMODE) redactScriptOutputFile(details, values)
     const cleaned = redactDeep(details, values)
     const detailsChanged = JSON.stringify(cleaned) !== JSON.stringify(details)
     if (!changed && !detailsChanged) return after
@@ -366,6 +370,8 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     ...(opts.jobHost ? { jobHost: opts.jobHost } : {}),
     // Host commands inherit them from the worker's environment; a container is given them.
     secretEnv: Object.fromEntries(secrets.map((secret) => [secret.name, secret.value])),
+    // The turn's one list of credentials, which recall leaves out too.
+    redact: recall.secrets,
   })
   const docker = shellTools.config.sandboxMode === 'docker'
   const customTools = createBazilionCustomTools({
@@ -420,11 +426,7 @@ function turnSurface(opts: TurnOptions, recall: RecallSource) {
     // the container's working directory instead.
     modelCwd: docker ? containerWorkdir(opts.docker?.cwd ?? '.') : cwd,
     docker,
-    tools: [
-      ...customTools,
-      ...shellTools.fileTools,
-      ...(shellTools.customBash ? [shellTools.customBash] : []),
-    ],
+    tools: [...customTools, ...shellTools.fileTools, shellTools.bash],
     hostToolNames: shellTools.hostToolNames,
     promptOptions,
   }

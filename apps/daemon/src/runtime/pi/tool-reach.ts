@@ -10,6 +10,7 @@
 // - Calls a script makes go through Pi's tool pipeline; the files and pictures they save are
 //   added to the script's own result, so the conversation shows them like any other step's.
 
+import { closeSync, constants, openSync, rmSync, writeSync } from 'node:fs'
 import type { ResultReference } from '@bazilion/api-types'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import {
@@ -20,6 +21,7 @@ import {
   type SessionEntry,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
+import { noFollowFlag, readRegularFileNoFollow } from '../safe-files.ts'
 import { redactDeep, redactExactValues } from '../worker/runtime.ts'
 
 export const CODEMODE = 'codemode'
@@ -45,11 +47,15 @@ export function redactNestedCalls(values: readonly string[]): ExtensionFactory {
     pi.on('tool_result', (event) => {
       if (!(event as { parentToolCallId?: string }).parentToolCallId || values.length === 0)
         return undefined
+      // Content replaced without its structured form drops it, and the script would get text
+      // where the tool's declaration promised an object (bash's `exit_code`, an MCP tool's fields).
+      const structured = event.structuredContent
       return {
         content: event.content.map((part) =>
           part.type === 'text' ? { ...part, text: redactExactValues(part.text, values) } : part,
         ),
         details: redactDeep(event.details, values),
+        ...(structured === undefined ? {} : { structuredContent: redactDeep(structured, values) }),
       }
     })
     pi.on('message_end', (event) => {
@@ -63,6 +69,31 @@ export function redactNestedCalls(values: readonly string[]): ExtensionFactory {
         } as AgentMessage,
       }
     })
+  }
+}
+
+/**
+ * Pi writes the whole text of a script's long output to a file in the system's temporary folder
+ * (`details.fullOutputPath`) before any hook sees the result: the turn's credentials are taken
+ * out of it here, once the script has returned. The text is a script's output, which Pi held in
+ * memory, so reading it back costs little. A file that cannot be rewritten is removed. (A
+ * command's output never needs this: bash's output is redacted as it arrives, `tooling.ts`.)
+ */
+export function redactScriptOutputFile(details: unknown, values: readonly string[]): void {
+  const path = (details as { fullOutputPath?: unknown } | undefined)?.fullOutputPath
+  if (typeof path !== 'string' || values.length === 0) return
+  try {
+    const text = readRegularFileNoFollow(path)
+    const redacted = redactExactValues(text, values)
+    if (redacted === text) return
+    const fd = openSync(path, constants.O_WRONLY | constants.O_TRUNC | noFollowFlag())
+    try {
+      writeSync(fd, redacted)
+    } finally {
+      closeSync(fd)
+    }
+  } catch {
+    rmSync(path, { force: true })
   }
 }
 

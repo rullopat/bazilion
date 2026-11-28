@@ -16,6 +16,7 @@ test("a tool result reaches the model with secrets taken out, after Pi's own han
   const hook = session.agent.afterToolCall as After
   const context = (text: string) =>
     ({
+      toolCall: { name: 'bash' },
       result: { content: [{ type: 'text', text }], details: {} },
       isError: false,
     }) as unknown as Parameters<After>[0]
@@ -52,6 +53,7 @@ test("a result's details are cleaned too, and a secret goes in the forms output 
   redactToolResults(session, secretForms('tok_value_1234'))
   const hook = session.agent.afterToolCall as After
   const out = await hook({
+    toolCall: { name: 'read' },
     result: {
       content: [{ type: 'text', text: 'clean' }],
       details: { truncation: { content: 'Bearer tok_value_1234' }, lines: 3 },

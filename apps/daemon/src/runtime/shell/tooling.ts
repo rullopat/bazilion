@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, posix, relative, sep } from 'node:path'
 import {
+  type BashOperations,
   createBashToolDefinition,
   createLocalBashOperations,
   defineTool,
@@ -9,6 +10,7 @@ import {
 import { type TSchema, Type } from 'typebox'
 import { readFromRoots } from '../safe-files.ts'
 import type { JobHost, JobOutputResult } from '../worker/ipc-protocol.ts'
+import { ExactValueStreamRedactor } from '../worker/runtime.ts'
 import {
   type BashApprovalHost,
   createApprovalGatedBashTool,
@@ -25,7 +27,6 @@ import {
 import { dockerApplyPatchTool, dockerFileTools, hostApplyPatchTool } from './file-tools.ts'
 import { resolveShellSecurityConfig, type ShellSecurityConfig } from './security.ts'
 
-const HOST_CODING_TOOL_NAMES = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const
 const HOST_FILE_TOOL_NAMES = ['read', 'edit', 'write', 'grep', 'find', 'ls'] as const
 
 export const SANDBOX_INPUTS_DIR = '/inputs'
@@ -55,14 +56,16 @@ export interface SessionShellToolOptions {
   jobHost?: JobHost
   /** The Agent's secrets, by name, for Docker commands (host commands inherit them). */
   secretEnv?: Readonly<Record<string, string>>
+  /** Credential values taken out of command output as it arrives; read at every chunk. */
+  redact?: readonly string[]
 }
 
 export interface SessionShellTools {
   config: ShellSecurityConfig
   /** Pi built-ins that remain host-backed and may be enabled for this session. */
   hostToolNames: readonly string[]
-  /** Same-name replacement for Pi's built-in bash when Docker, approval or jobs are active. */
-  customBash?: ToolDefinition
+  /** Bash, in place of Pi's built-in: its output redacted, with approval and jobs when on. */
+  bash: ToolDefinition
   /**
    * File tools of Bazilion's own: `apply_patch` always, and in Docker mode read, write, edit,
    * grep, find and ls on container paths (Pi's own take host paths, which would bypass it).
@@ -171,6 +174,33 @@ function describeStartedJob(started: JobOutputResult): string {
 }
 
 /**
+ * Commands whose output has the turn's credentials taken out as it arrives, before Pi sees it:
+ * the model, the live output and the file Pi writes the whole of a long output to (in the
+ * system's temporary folder) never hold one. `values` is read at every chunk, so a token
+ * refreshed during a command counts. Chunks are taken as bytes (latin1 is one character per
+ * byte), so binary output passes unchanged and a value split across two chunks is still found.
+ */
+export function redactedOutput(ops: BashOperations, values: readonly string[]): BashOperations {
+  return {
+    async exec(command, cwd, options) {
+      const redactor = new ExactValueStreamRedactor([])
+      const emit = (text: string) => {
+        if (text) options.onData(Buffer.from(text, 'latin1'))
+      }
+      const onData = (data: Buffer) => {
+        for (const value of values) redactor.add(Buffer.from(value).toString('latin1'))
+        emit(redactor.push(data.toString('latin1')))
+      }
+      try {
+        return await ops.exec(command, cwd, { ...options, onData })
+      } finally {
+        emit(redactor.flush())
+      }
+    },
+  }
+}
+
+/**
  * Resolve the session's coding tools. Docker mode enables no host-backed Pi tool: read, edit,
  * write, grep, find and ls take absolute host paths, which would bypass the container.
  */
@@ -185,15 +215,14 @@ export function createSessionShellTools(
     const fileTools = [hostApplyPatchTool(cwd)]
     const roots = [cwd, ...(options.inputsDir ? [options.inputsDir] : [])]
     const readFile = (path: string) => readFromRoots(path, roots, cwd)
-    if (!gated && !options.jobHost) {
-      return { config, hostToolNames: HOST_CODING_TOOL_NAMES, fileTools, readFile }
-    }
-    const base = createBashToolDefinition(cwd, { operations: createLocalBashOperations() })
+    const base = createBashToolDefinition(cwd, {
+      operations: redactedOutput(createLocalBashOperations(), options.redact ?? []),
+    })
     const bash = gated ? createApprovalGatedBashTool(base, options.approvalHost, cwd) : base
     return {
       config,
       hostToolNames: HOST_FILE_TOOL_NAMES,
-      customBash: withBackground(
+      bash: withBackground(
         bash as unknown as ToolDefinition,
         options.jobHost,
         gated
@@ -215,7 +244,7 @@ export function createSessionShellTools(
   }
   const sandbox = () => buildDockerSandbox(cwd, turn, options)
   const base = createBashToolDefinition(cwd, {
-    operations: createDockerBashOperations(sandbox),
+    operations: redactedOutput(createDockerBashOperations(sandbox), options.redact ?? []),
     exposeSessionEnvironment: false,
   })
   const bash = defineTool({
@@ -243,7 +272,7 @@ export function createSessionShellTools(
       dockerApplyPatchTool(workdir, containerPaths),
     ],
     readFile: (path) => containerPaths().readFile(posix.resolve(workdir, path)),
-    customBash: withBackground(
+    bash: withBackground(
       gatedBash as unknown as ToolDefinition,
       options.jobHost,
       gated

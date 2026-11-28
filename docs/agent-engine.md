@@ -170,7 +170,10 @@ can reconcile its view. The JSONL file is the only record of the conversation.
   masked card to the daemon's store and reaches the Agent's commands as an environment variable
   and `web_fetch` headers written `{{secret:NAME}}` (`lib/agent-secrets.ts`); see
   [questions](questions.md#secrets-an-agent-asks-for). Tool results go to the model with secrets
-  and Bazilion's credentials taken out (`redactToolResults` in `runtime/pi/session.ts`).
+  and Bazilion's credentials taken out (`redactToolResults` in `runtime/pi/session.ts`). A
+  command's output loses them as it arrives, so the file Pi writes the whole of a long one to,
+  in the system's temporary folder, holds none either (`redactedOutput` in
+  `runtime/shell/tooling.ts`).
 - `view_image` shows the model pictures: files in the workspace or uploads, URLs (through the
   `web_fetch` guard) and saved results, PNG, JPEG, GIF or WebP up to 25 MiB each; a model that
   takes no images gets Pi's note instead. `pdf_read` gives a PDF's text page by page (`pages`
@@ -242,11 +245,13 @@ Pi extensions (`runtime/pi/tool-reach.ts`); nothing is discovered from disk.
   with the calls it made and their state, live and afterwards, and the files and pictures they
   saved; the calls are not steps of their own.
 - Scripts get no `models` (Pi's classifiers and image models). A long output is cut, and the
-  rest written to a file in the system's temporary folder, as a long command output is; a Docker
-  turn cannot read it, and credentials are not taken out of it.
-- Credentials are taken out of what a script's calls return and of the record of those calls
-  kept with its result (`redactNestedCalls`, an extension, since Pi runs those calls with its own
-  hooks).
+  whole of it written to a file in the system's temporary folder, as a long command output is;
+  a Docker turn cannot read it.
+- Credentials are taken out of what a script's calls return, structured results included (a call
+  resolves to the object its tool declares, such as bash's `exit_code`), and of the record of
+  those calls kept with its result (`redactNestedCalls`, an extension, since Pi runs those calls
+  with its own hooks); and out of a long output's file once the script returns
+  (`redactScriptOutputFile`).
 
 ### Helpers
 
