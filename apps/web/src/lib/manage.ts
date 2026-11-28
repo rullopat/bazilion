@@ -313,8 +313,6 @@ export function matchesSkill(skill: SkillInfo, query: string): boolean {
 export const ATTENTION_KINDS: Record<AttentionItem['kind'], string> = {
   agent_question: 'Questions',
   command_approval: 'Commands to approve',
-  lesson_proposal: 'Lesson proposals',
-  review_failure: 'Review failures',
   trigger_failure: 'Schedule failures',
   agent_loop_break: 'Exchanges in circles',
   queue_interrupted: 'Paused queues',

@@ -141,11 +141,6 @@ export interface Agent {
   name: string
   modelOverride: string | null
   reasoningLevel: ReasoningLevel
-  reviewEnabled: boolean
-  reviewEveryNTurns: number
-  reviewModel: string | null
-  reviewReasoningLevel: ReasoningLevel
-  reviewTurnsSinceLast: number
   status: AgentStatus
   dir: string
   /** The team this agent belongs to. Every agent has exactly one. */
@@ -176,53 +171,6 @@ export interface Agent {
    * round-trip.
    */
   identity?: AgentIdentityFile | null
-}
-
-export type AgentReviewStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-export type AgentReviewTrigger = 'cadence' | 'manual'
-
-export interface AgentReview {
-  id: string
-  agentId: string
-  status: AgentReviewStatus
-  trigger: AgentReviewTrigger
-  sourceSessionId: string | null
-  sourceStartOrdinal: number | null
-  sourceEndOrdinal: number | null
-  inputCharacters: number
-  turnsReviewed: number
-  proposalCount: number
-  startedAt: Timestamp | null
-  finishedAt: Timestamp | null
-  lastError: string | null
-  createdAt: Timestamp
-  updatedAt: Timestamp
-}
-
-export type AgentLessonScope = 'private' | 'shared'
-export type AgentLessonStatus = 'pending' | 'approved' | 'rejected' | 'revoked'
-
-export interface AgentLessonEvidence {
-  sessionId: string
-  entryOrdinal: number
-  /** Redacted canonical-session excerpt, populated on read and never stored with the proposal. */
-  excerpt?: string
-}
-
-export interface AgentLessonProposal {
-  id: string
-  reviewId: string
-  agentId: string
-  scope: AgentLessonScope
-  text: string
-  evidence: AgentLessonEvidence[]
-  status: AgentLessonStatus
-  version: number
-  decidedAt: Timestamp | null
-  revokedAt: Timestamp | null
-  appliedKey: string | null
-  createdAt: Timestamp
-  updatedAt: Timestamp
 }
 
 export interface AgentSkillAttachment {
@@ -388,8 +336,6 @@ export interface ResolvedAgent {
   reasoningLevel: ReasoningLevel
   team: Team
   skills: string[]
-  /** Human-approved, agent-private reviewed lessons injected on every normal turn. */
-  privateLessons: string[]
   /**
    * The context window set by hand for `model` (Setup → Models), used when neither Pi's catalog
    * nor the model's server says it; null when none is set.

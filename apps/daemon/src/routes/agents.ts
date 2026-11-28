@@ -1,5 +1,5 @@
 // /api/agents: Agent CRUD, archive and Team moves. Every other /api/agents/:id/* feature has its
-// own router (agent-chat, agent-browser, agent-learning, messages, skills, telegram, triggers,
+// own router (agent-chat, agent-browser, messages, skills, telegram, triggers,
 // conversations, user-queue, questions).
 
 import { join } from 'node:path'

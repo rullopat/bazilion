@@ -221,11 +221,6 @@ describe('the browser guide comes with the browser tools', () => {
         name: 'Agent One',
         modelOverride: null,
         reasoningLevel: 'medium',
-        reviewEnabled: false,
-        reviewEveryNTurns: 8,
-        reviewModel: null,
-        reviewReasoningLevel: 'low',
-        reviewTurnsSinceLast: 0,
         status: 'idle',
         dir,
         teamId: 'team-1',
@@ -256,7 +251,6 @@ describe('the browser guide comes with the browser tools', () => {
         createdAt: 0,
       },
       skills: [],
-      privateLessons: [],
       contextWindowSetting: null,
     }) as ResolvedAgent
 

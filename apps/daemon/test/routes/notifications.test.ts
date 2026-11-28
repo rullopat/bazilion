@@ -51,14 +51,7 @@ test('notification settings need authentication and start switched off', async (
   expect(response.headers.get('cache-control')).toBe('no-store')
   expect(await response.json()).toEqual({
     enabled: false,
-    kinds: [
-      'lesson_proposal',
-      'review_failure',
-      'trigger_failure',
-      'agent_loop_break',
-      'queue_interrupted',
-      'turn_failure',
-    ],
+    kinds: ['trigger_failure', 'agent_loop_break', 'queue_interrupted', 'turn_failure'],
     timezone: 'UTC',
     quietHours: null,
     telegramReady: false,
@@ -71,7 +64,7 @@ test('settings save and read back; invalid ones are refused', async () => {
     app.request('/api/notifications', { method: 'PUT', headers: auth, body: JSON.stringify(body) })
   const settings = {
     enabled: true,
-    kinds: ['trigger_failure', 'review_failure'],
+    kinds: ['turn_failure', 'trigger_failure'],
     timezone: 'Europe/Warsaw',
     quietHours: { start: '22:00', end: '07:00' },
   }
@@ -80,7 +73,7 @@ test('settings save and read back; invalid ones are refused', async () => {
   // Kinds come back in their canonical order.
   expect(await saved.json()).toMatchObject({
     ...settings,
-    kinds: ['review_failure', 'trigger_failure'],
+    kinds: ['trigger_failure', 'turn_failure'],
   })
   for (const invalid of [
     { ...settings, timezone: 'Mars/Olympus' },

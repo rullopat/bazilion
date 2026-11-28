@@ -32,18 +32,23 @@ function fixture() {
   db.raw.run(
     "INSERT INTO agents (id,profile_id,name,status,team_id,created_at) VALUES ('agent','profile','Agent','idle','team',1)",
   )
+  // A second Agent whose follow-up queue a restart paused: an item only resuming it clears.
   db.raw.run(
-    "INSERT INTO agent_reviews (id,agent_id,status,trigger_kind,last_error,created_at,updated_at) VALUES ('review','agent','failed','manual','safe failure sk-supersecret123',10,20)",
+    "INSERT INTO agents (id,profile_id,name,status,team_id,created_at) VALUES ('paused','profile','Paused','idle','team',1)",
   )
+  db.raw.run("INSERT INTO user_queue_controls (agent_id,paused) VALUES ('paused',1)")
+  conversations.create(db, 'paused', '22222222-2222-4222-8222-222222222222')
   db.raw.run(
-    "INSERT INTO agent_lesson_proposals (id,review_id,agent_id,scope,text,evidence_json,status,created_at,updated_at) VALUES ('lesson','review','agent','private','Do this','[]','pending',11,21)",
+    `INSERT INTO user_queue_items (id,agent_id,conversation_id,source,status,text,diagnostic,created_at,updated_at,finished_at)
+     VALUES ('cut','paused','22222222-2222-4222-8222-222222222222','http','failed','hi',?,11,21,21)`,
+    [INTERRUPTED_BY_RESTART],
   )
   db.raw.run(
     "INSERT INTO agent_triggers (id,agent_id,kind,interval_sec,message,created_at) VALUES ('trigger','agent','interval',60,'run',1)",
   )
   conversations.create(db, 'agent', '11111111-1111-4111-8111-111111111111')
   db.raw.run(
-    "INSERT INTO trigger_dispatches (id,trigger_id,agent_id,conversation_id,scheduled_at,status,finished_at,error) VALUES ('dispatch','trigger','agent','11111111-1111-4111-8111-111111111111',12,'failed',22,'provider secret-free error')",
+    "INSERT INTO trigger_dispatches (id,trigger_id,agent_id,conversation_id,scheduled_at,status,finished_at,error) VALUES ('dispatch','trigger','agent','11111111-1111-4111-8111-111111111111',12,'failed',22,'provider rejected sk-supersecret123')",
   )
   db.raw.run(
     "INSERT INTO agent_loop_break_events (id,causal_chain_id,from_agent_id,to_agent_id,source_team_id,target_team_id,attempted_hop,max_hops,reason,origin,created_at) VALUES ('loop','chain','agent','agent','team','team',9,8,'causal_hop_limit_exceeded','test',13)",
@@ -57,34 +62,33 @@ test('projects source-owned action items and acknowledgeable terminal signals', 
   expect(list.degraded).toEqual([])
   expect(list.items.map((item) => item.kind)).toEqual([
     'trigger_failure',
-    'lesson_proposal',
-    'review_failure',
+    'queue_interrupted',
     'agent_loop_break',
   ])
-  expect(list.items.find((item) => item.kind === 'lesson_proposal')).toMatchObject({
+  expect(list.items.find((item) => item.kind === 'queue_interrupted')).toMatchObject({
     acknowledgeable: false,
-    href: '/?agent=agent&section=learning',
+    href: '/?agent=paused',
   })
   expect(JSON.stringify(list)).not.toContain('sk-supersecret123')
-  expect(() => acknowledgeAttention(db, 'lesson_proposal:lesson', true)).toThrow(
+  expect(() => acknowledgeAttention(db, 'queue_interrupted:queue:paused', true)).toThrow(
     'action-required items must be resolved at their source',
   )
-  expect(acknowledgeAttention(db, 'review_failure:review', true).acknowledgedAt).not.toBeNull()
+  expect(acknowledgeAttention(db, 'trigger_failure:dispatch', true).acknowledgedAt).not.toBeNull()
   expect(
     projectAttention(db, { state: 'open', limit: 100 }).items.map((item) => item.key),
-  ).not.toContain('review_failure:review')
-  expect(acknowledgeAttention(db, 'review_failure:review', false).acknowledgedAt).toBeNull()
+  ).not.toContain('trigger_failure:dispatch')
+  expect(acknowledgeAttention(db, 'trigger_failure:dispatch', false).acknowledgedAt).toBeNull()
 })
 
 test('summary matches the open projection and acknowledge-all excludes decisions', () => {
   const db = fixture()
   expect(attentionSummary(db)).toMatchObject({
-    openTotal: 4,
-    bySeverity: { action_required: 1, error: 2, warning: 1 },
+    openTotal: 3,
+    bySeverity: { action_required: 1, error: 1, warning: 1 },
   })
-  expect(acknowledgeAllAttention(db)).toBe(3)
+  expect(acknowledgeAllAttention(db)).toBe(2)
   expect(projectAttention(db, { state: 'open', limit: 100 }).items.map((item) => item.key)).toEqual(
-    ['lesson_proposal:lesson'],
+    ['queue_interrupted:queue:paused'],
   )
 })
 
@@ -93,7 +97,7 @@ test('a failed source degrades independently', () => {
   db.raw.run('DROP TABLE trigger_dispatches')
   const list = projectAttention(db, { state: 'open', limit: 100 })
   expect(list.degraded).toEqual([expect.objectContaining({ kind: 'trigger_failure' })])
-  expect(list.items.some((item) => item.kind === 'lesson_proposal')).toBe(true)
+  expect(list.items.some((item) => item.kind === 'queue_interrupted')).toBe(true)
 })
 
 function failedFollowUp(

@@ -180,7 +180,7 @@ test('the notifications card waits for its settings, then shows them with their 
     createElement(NotificationsCard, {
       settings: {
         enabled: true,
-        kinds: ['review_failure'],
+        kinds: ['turn_failure'],
         timezone: 'Europe/Warsaw',
         quietHours: { start: '22:00', end: '07:00' },
         telegramReady: true,
@@ -190,7 +190,7 @@ test('the notifications card waits for its settings, then shows them with their 
     }),
   )
   expect(on).toMatch(/>On<\/span>/)
-  expect(on.match(/type="checkbox"/g)).toHaveLength(6)
+  expect(on.match(/type="checkbox"/g)).toHaveLength(4)
   expect(on.match(/type="checkbox"[^>]*checked=""/g)).toHaveLength(1)
   expect(on).toContain('type="time"')
   expect(on).toContain('value="Europe/Warsaw"')
@@ -202,7 +202,7 @@ test('the notifications card waits for its settings, then shows them with their 
     createElement(NotificationsCard, {
       settings: {
         enabled: true,
-        kinds: ['review_failure'],
+        kinds: ['turn_failure'],
         timezone: 'UTC',
         quietHours: null,
         telegramReady: false,

@@ -28,7 +28,6 @@ export const WORKSPACE_PANEL_TABS = ['agent', 'team', 'connections', 'changes', 
 export const WORKSPACE_VIEWS = ['connections', 'changes', 'files'] as const
 export const WORKSPACE_SHEETS = [
   'schedules',
-  'learning',
   'mailbox',
   'jobs',
   'helpers',

@@ -1,36 +1,17 @@
-// What the daemon hands a worker on stdin, the learning-review worker's scratch tree and minimal
-// environment, and the exact-value redaction used on everything a worker sends back.
+// What the daemon hands a worker on stdin, and the exact-value redaction used on everything a
+// worker sends back.
 
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type {
   Attachment,
   BashApprovalMode,
   ChatFrame,
   ConversationTarget,
-  ReasoningLevel,
   ResolvedAgent,
 } from '@bazilion/api-types'
 import type { DockerTurn } from '../shell/tooling.ts'
 import type { AgentContact, InjectedMcpTool, WorkerHostName } from './ipc-protocol.ts'
 
 const REDACTED_VALUE = '[REDACTED]'
-
-/** The one provider credential a learning review gets; unrelated daemon secrets never cross. */
-export interface ReviewProviderRuntime {
-  providerName: string
-  modelId: string
-  reasoningLevel: ReasoningLevel
-  apiKey?: string
-  baseUrl?: string
-  /** Closed provider-specific fields installed in Pi's in-memory credential store, not process.env. */
-  credentialEnv?: Array<{ name: string; value: string }>
-  /** Explicit Google service-account/ADC JSON materialized only inside this review's scratch tree. */
-  credentialFile?: { envName: 'GOOGLE_APPLICATION_CREDENTIALS'; content: string }
-  /** The model's context window set by hand, for when neither the catalog nor its server says. */
-  contextWindow?: number
-}
 
 /** Workspace AGENTS.md files read by the daemon; paths are relative to the Team root. */
 export type RepositoryInstructions = ReadonlyArray<{
@@ -73,91 +54,17 @@ export interface AgentSecretUse {
   hosts: string[]
 }
 
-/** A learning review: a digest of recent turns, answered only through `propose_lesson`. */
-export interface RestrictedReviewWorkerSpec {
-  kind: 'restricted_review'
-  message: string
-  runtime: ReviewProviderRuntime
-  /** The transcript entries the digest shows; a proposal may cite only these. */
-  evidence: Array<{ sessionId: string; entryOrdinal: number }>
-}
-
-export interface MinimalWorkerScratch {
-  root: string
-  homeDir: string
-  tempDir: string
-  piAgentDir: string
-  reviewCwd: string
-  reviewSessionDir: string
-}
-
 /** The spec plus the daemon hosts serving this worker, so it offers only tools that work. */
-export type WorkerInput =
-  | (AgentTurnWorkerSpec & { hosts: WorkerHostName[] })
-  | (RestrictedReviewWorkerSpec & { hosts: WorkerHostName[]; scratch: MinimalWorkerScratch })
+export type WorkerInput = AgentTurnWorkerSpec & { hosts: WorkerHostName[] }
 
-export interface ReviewWorkerProposal {
-  scope: 'private' | 'shared'
-  text: string
-  evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
-}
-
-/** A worker's stdout line: a chat frame, or a learning review's proposals. */
-export type WorkerFrame = ChatFrame | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
+/** A worker's stdout line. */
+export type WorkerFrame = ChatFrame
 
 /** The daemon wrote the input itself; the worker checks only that it is one it knows. */
 export function parseWorkerInput(value: unknown): WorkerInput {
   const kind = (value as { kind?: unknown } | null)?.kind
-  if (kind !== 'agent_turn' && kind !== 'restricted_review') {
-    throw new Error('worker: unknown or missing input kind')
-  }
+  if (kind !== 'agent_turn') throw new Error('worker: unknown or missing input kind')
   return value as WorkerInput
-}
-
-/** Create the scratch tree of one learning-review worker: its home, tmp and Pi state. */
-export function createMinimalWorkerScratch(parentDir = tmpdir()): MinimalWorkerScratch {
-  const root = mkdtempSync(join(parentDir, 'bazilion-worker-'))
-  const scratch: MinimalWorkerScratch = {
-    root,
-    homeDir: join(root, 'home'),
-    tempDir: join(root, 'tmp'),
-    piAgentDir: join(root, 'pi'),
-    reviewCwd: join(root, 'review-work'),
-    reviewSessionDir: join(root, 'review-session'),
-  }
-  try {
-    for (const path of Object.values(scratch).slice(1)) {
-      mkdirSync(path, { recursive: true, mode: 0o700 })
-    }
-    return scratch
-  } catch (error) {
-    rmSync(root, { recursive: true, force: true })
-    throw error
-  }
-}
-
-export function cleanupMinimalWorkerScratch(scratch: MinimalWorkerScratch): void {
-  rmSync(scratch.root, { recursive: true, force: true })
-}
-
-/** The whole environment of a learning-review worker: no daemon variable reaches it. */
-export function minimalWorkerProcessEnv(scratch: MinimalWorkerScratch): NodeJS.ProcessEnv {
-  return {
-    HOME: scratch.homeDir,
-    TMPDIR: scratch.tempDir,
-    TMP: scratch.tempDir,
-    TEMP: scratch.tempDir,
-    LANG: 'C',
-    LC_ALL: 'C',
-  }
-}
-
-export function reviewRuntimeSecrets(runtime: ReviewProviderRuntime): string[] {
-  return [
-    runtime.apiKey,
-    ...(runtime.credentialEnv ?? []).map((field) => field.value),
-    runtime.credentialFile?.content,
-  ].filter((value): value is string => Boolean(value))
 }
 
 /**

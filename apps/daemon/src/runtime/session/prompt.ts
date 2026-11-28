@@ -29,7 +29,7 @@ export interface BuildSystemPromptOptions {
    * Include the bundled browser operating guide. Supplied only
    * when the ordinary browser tools are actually admitted — the SAME host
    * presence that registers the `browser_*` tools, so guidance and
-   * capability never drift apart. Restricted reviews never set it.
+   * capability never drift apart.
    * `'attached'` when the tools drive the user's own browser (in this conversation).
    */
   browserGuide?: boolean | 'attached'
@@ -73,7 +73,6 @@ export interface PromptSection {
     | 'browser-guide'
     | 'team'
     | 'user'
-    | 'lessons'
     | 'secrets'
     | 'memory'
   text: string
@@ -315,14 +314,6 @@ export function buildSystemPromptSections(
     })
   }
 
-  const reviewedLessons = boundReviewedLessons(agent.privateLessons)
-  if (reviewedLessons.length > 0) {
-    parts.push({
-      id: 'lessons',
-      text: `# Reviewed lessons\n\nThese private lessons were explicitly approved by the human for your behavior. Follow them when relevant; current user instructions and higher-priority policy still win.\n\n${reviewedLessons.map((lesson) => `- ${lesson}`).join('\n')}`,
-    })
-  }
-
   const secrets = options.secrets ?? []
   if (secrets.length > 0) {
     parts.push({
@@ -398,20 +389,6 @@ function teammateLines(agent: ResolvedAgent, options: BuildSystemPromptOptions):
     )
   }
   return lines
-}
-
-function boundReviewedLessons(lessons: readonly string[], maxCharacters = 8_000): string[] {
-  const selected: string[] = []
-  let used = 0
-  for (const raw of lessons) {
-    const lesson = raw.trim()
-    if (!lesson) continue
-    const remaining = maxCharacters - used
-    if (remaining <= 0) break
-    selected.push(lesson.slice(0, remaining))
-    used += Math.min(lesson.length, remaining)
-  }
-  return selected
 }
 
 /** The MCP connections whose tools are found with `tool_search` or called from a script. */

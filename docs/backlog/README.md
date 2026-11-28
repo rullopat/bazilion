@@ -13,10 +13,12 @@ already had (BAZ-086 to BAZ-088, with background commands) and 0.64.0 added the 
 are useful (BAZ-089 to BAZ-092). 0.65.0 (asked for on 2026-11-27) brought video, music and speech,
 the Agent in the workspace, and three changes to the workspace itself (BAZ-095 to BAZ-099). 0.66.0
 (asked for on 2026-11-28) brought tool search and Code Mode, message times, and the browser chosen
-in the conversation (BAZ-100 to BAZ-102); later releases take up the rest.
+in the conversation (BAZ-100 to BAZ-102), and removed reviewed learning (BAZ-103); 0.67.0 brings
+what replaces it, skills Agents write for themselves (BAZ-104). Later releases take up the rest.
 
 | ID | Story | Release |
 | --- | --- | --- |
+| [BAZ-104](draft/BAZ-104-skills-agents-write.md) | Skills Agents write for themselves | 0.67.0 |
 | [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | later |
 
 **Schema.** Since 0.63.0 (BAZ-094) an upgrade migrates the home instead of needing a fresh one
@@ -26,7 +28,6 @@ in the conversation (BAZ-100 to BAZ-102); later releases take up the rest.
 
 | ID | Story | Release | Guide |
 | --- | --- | --- | --- |
-| [BAZ-003](done/BAZ-003-reviewed-learning.md) | Reviewed learning | 0.12.0 | |
 | [BAZ-005](done/BAZ-005-agent-templates-refresh.md) | Agent templates with a two-sided first run | 0.5.0 | |
 | [BAZ-006](done/BAZ-006-shell-sandbox-and-approval.md) | Docker shell sandbox and dangerous-command approval | 0.11.0 | [coding](../coding-environments.md) |
 | [BAZ-007](done/BAZ-007-simple-installer-and-dashboard.md) | One-command install and dashboard launch | 0.6.0 | [README](../../README.md) |
@@ -85,3 +86,4 @@ in the conversation (BAZ-100 to BAZ-102); later releases take up the rest.
 | [BAZ-100](done/BAZ-100-tool-search-and-code-mode.md) | Tool search and Code Mode | 0.66.0 | [agent engine](../agent-engine.md#tool-search-and-code-mode), [MCP](../mcp.md#tools-found-when-needed) |
 | [BAZ-101](done/BAZ-101-message-times.md) | When each message was sent, and a line for each day | 0.66.0 | [workspace](../workspace.md) |
 | [BAZ-102](done/BAZ-102-browser-per-conversation.md) | Which browser, chosen in the conversation | 0.66.0 | [managed browser](../browser-research.md#its-own-or-yours-per-conversation) |
+| [BAZ-103](done/BAZ-103-reviewed-learning-removed.md) | Reviewed learning removed | 0.66.0 | [upgrading](../upgrades.md) |

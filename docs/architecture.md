@@ -59,7 +59,6 @@ helpers (pidfile, schema), and CLI tests reach into the daemon for setup.
 | Conversations | `agents/<id>/sessions/<id>.jsonl` | Pi; the database keeps titles and which one is active |
 | Uploaded files | `agents/<id>/uploads/` | The daemon, for non-image attachments |
 | Saved results | `agent_results` | `deliver_file` and `image_generate` |
-| Learned lessons | `agent_reviews`, `agent_lesson_proposals`; shared lessons as `memory/lessons/<id>.md` | The learning reviewer proposes, you decide |
 | Messages, triggers, queue, policy, tokens, sessions | SQLite | The daemon |
 | Credentials | `secrets` (encrypted) | `/config`, `bazilion config set`, ChatGPT sign-in |
 | Browser profiles | `browsers/<agent-id>/` | The browser; left out of backups |

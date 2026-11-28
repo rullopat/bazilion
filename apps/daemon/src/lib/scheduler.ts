@@ -48,7 +48,6 @@ import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
 import { endExchangeTurn, exchangeSoFar, noteExchangeTurn } from './exchanges.ts'
 import { signalLiveChange } from './live-signal.ts'
-import { dispatchPendingReviews } from './review-dispatcher.ts'
 import { floorToMinute } from './trigger-timing.ts'
 import { turnFailureReason, turnFrameFailure } from './turn-outcome.ts'
 import { agentsWithWakes, returnWakes, takeWakes, wakeMessage } from './wakes.ts'
@@ -573,7 +572,6 @@ async function runTick(): Promise<void> {
     work.push(fireInboxWake(agentId))
   }
   for (const agentId of agentsWithWakes()) work.push(fireWake(agentId))
-  work.push(dispatchPendingReviews())
   await Promise.allSettled(work)
 }
 

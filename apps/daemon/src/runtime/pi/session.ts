@@ -6,7 +6,7 @@
 // (`tool-reach.ts`). Pi's scratch state lives in `<home>/pi`, apart from any `~/.pi` of the
 // operator.
 
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ContextUse, ConversationTarget, ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
@@ -69,17 +69,12 @@ import type {
   WebSearchHost,
   WorkspaceHost,
 } from '../worker/ipc-protocol.ts'
-import type {
-  MinimalWorkerScratch,
-  RepositoryInstructions,
-  ReviewProviderRuntime,
-} from '../worker/runtime.ts'
+import type { RepositoryInstructions } from '../worker/runtime.ts'
 import {
   type AgentSecretUse,
   envSecretValues,
   redactDeep,
   redactExactValues,
-  reviewRuntimeSecrets,
   secretForms,
 } from '../worker/runtime.ts'
 import { branchOf, type ConversationHistory, contextUse, conversationHistory } from './history.ts'
@@ -184,15 +179,6 @@ export interface BazilionSessionHandle {
   dispose(): void
 }
 
-export interface CreateRestrictedReviewSessionOptions {
-  runtime: ReviewProviderRuntime
-  scratch: MinimalWorkerScratch
-  systemPrompt: string
-  tools: ToolDefinition[]
-  /** The ChatGPT token refresher; static credentials stay in Pi's in-memory store. */
-  refreshApiKey?: (providerName: string) => Promise<string>
-}
-
 interface PiSessionSpec {
   model: PiModelSpec
   reasoningLevel: string
@@ -200,8 +186,6 @@ interface PiSessionSpec {
   cwd: string
   piAgentDir: string
   sessionManager: SessionManager
-  /** Replaces Pi's base prompt; otherwise `appendSystemPrompt` is appended to it. */
-  systemPrompt?: string
   appendSystemPrompt?: string
   agentsFiles?: Array<{ path: string; content: string }>
   tools: ToolDefinition[]
@@ -290,7 +274,6 @@ async function openPiSession(spec: PiSessionSpec): Promise<BazilionSessionHandle
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    ...(spec.systemPrompt !== undefined ? { systemPrompt: spec.systemPrompt } : {}),
     ...(spec.appendSystemPrompt ? { appendSystemPrompt: [spec.appendSystemPrompt] } : {}),
     agentsFilesOverride: () => ({ agentsFiles: spec.agentsFiles ?? [] }),
     ...(spec.toolReach
@@ -576,50 +559,6 @@ export function conversationUsage(conversation: SessionManager): {
       .buildSessionContext()
       .messages.reduce((total, message) => total + estimateTokens(message), 0),
   }
-}
-
-/** The scratch-only learning reviewer: exactly the caller's proposal tool, no workspace. */
-export async function createRestrictedReviewSession(
-  opts: CreateRestrictedReviewSessionOptions,
-): Promise<BazilionSessionHandle> {
-  const { runtime, scratch } = opts
-  return openPiSession({
-    model: {
-      providerName: runtime.providerName,
-      modelId: runtime.modelId,
-      env: reviewCredentialEnv(runtime, scratch),
-      ...(runtime.apiKey ? { apiKey: runtime.apiKey } : {}),
-      ...(runtime.baseUrl ? { baseUrl: runtime.baseUrl } : {}),
-      ...(runtime.contextWindow ? { contextWindow: runtime.contextWindow } : {}),
-    },
-    reasoningLevel: runtime.reasoningLevel,
-    cwd: '/review',
-    piAgentDir: scratch.piAgentDir,
-    sessionManager: SessionManager.create(scratch.reviewCwd, scratch.reviewSessionDir),
-    systemPrompt: opts.systemPrompt,
-    tools: opts.tools,
-    redactionSecrets: [...new Set(reviewRuntimeSecrets(runtime))],
-    refreshApiKey: opts.refreshApiKey,
-  })
-}
-
-/** The review's projected credential fields; Vertex JSON becomes a 0600 file in its scratch. */
-function reviewCredentialEnv(
-  runtime: ReviewProviderRuntime,
-  scratch: MinimalWorkerScratch,
-): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const field of runtime.credentialEnv ?? []) env[field.name] = field.value
-  if (runtime.credentialFile) {
-    const path = join(scratch.tempDir, 'provider-credential.json')
-    writeFileSync(path, runtime.credentialFile.content, {
-      encoding: 'utf8',
-      mode: 0o600,
-      flag: 'wx',
-    })
-    env[runtime.credentialFile.envName] = path
-  }
-  return env
 }
 
 function toPiThinkingLevel(level: string): ThinkingLevel {

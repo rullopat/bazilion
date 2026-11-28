@@ -47,7 +47,6 @@ export interface WorkspaceSearch {
 /** Sheets of the Agent tab. */
 export const AGENT_SECTIONS = [
   'schedules',
-  'learning',
   'mailbox',
   'jobs',
   'helpers',

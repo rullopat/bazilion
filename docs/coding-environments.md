@@ -21,7 +21,7 @@ workspace; a link to another workspace file (such as `AGENTS.md -> CLAUDE.md`) i
 else is skipped with a line in the daemon log, never an error. The Agent's own documents (its
 `AGENTS.md`, `SOUL.md`, …) are separate and labelled Agent instructions. Pi's own discovery of
 extensions, skills, context files and prompt templates stays off, so a repository's `.pi/` runs
-nothing. Learning reviews get no repository instructions.
+nothing.
 
 ## Host or Docker
 

@@ -89,14 +89,21 @@ describe('a Telegram send failure stays visible', () => {
       profileId: 'notices',
       teamId: env.teamId,
     }).id
+    const conversation = '11111111-1111-4111-8111-111111111111'
+    conversations.create(env.db, agentId, conversation)
     env.db.raw.run(
-      `INSERT INTO agent_reviews (id, agent_id, status, trigger_kind, last_error, created_at, updated_at)
-       VALUES ('review', ?, 'failed', 'manual', 'provider exploded', 10, 20)`,
+      `INSERT INTO agent_triggers (id, agent_id, kind, interval_sec, message, created_at)
+       VALUES ('trigger', ?, 'interval', 60, 'run', 1)`,
       [agentId],
+    )
+    env.db.raw.run(
+      `INSERT INTO trigger_dispatches (id, trigger_id, agent_id, conversation_id, scheduled_at, status, finished_at, error)
+       VALUES ('run', 'trigger', ?, ?, 10, 'failed', 20, 'provider exploded')`,
+      [agentId, conversation],
     )
     notificationSettings.save(
       env.db,
-      { enabled: true, kinds: ['review_failure'], timezone: 'UTC', quietHours: null },
+      { enabled: true, kinds: ['trigger_failure'], timezone: 'UTC', quietHours: null },
       1,
     )
     openConfig(env.db).set('TELEGRAM_SERVICE_TOPIC_ID', '7')
@@ -124,6 +131,6 @@ describe('a Telegram send failure stays visible', () => {
     expect(sendMessage).toHaveBeenCalledTimes(2)
     expect(notificationSettings.notifiedKeys(env.db).size).toBe(0)
     const stillOpen = projectAttention(env.db, { state: 'open', limit: 100 }).items
-    expect(stillOpen.some((i) => i.kind === 'review_failure' && i.sourceId === 'review')).toBe(true)
+    expect(stillOpen.some((i) => i.kind === 'trigger_failure' && i.sourceId === 'run')).toBe(true)
   })
 })

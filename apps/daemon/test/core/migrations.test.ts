@@ -447,6 +447,9 @@ const SHIPPED_MIGRATIONS: Record<string, string> = {
   '003-agent-schedules.sql': '3893ecdd4cf151621a28d488e6bb08417c64beec454d368a04d9ef227133fe0f',
   // 0.65.0: the order of Teams and Agents in the list.
   '004-list-order.sql': '19e4a57a7fa18185b573fbb1955531fe2dde6314ca51d516a9c1ce6d8659de34',
+  // 0.66.0: reviewed learning removed.
+  '005-no-reviewed-learning.sql':
+    '18f3bc326f9e345d5deac2801a1f567129f930259229aa307c8c304bb22b215c',
 }
 
 test('migrations that releases shipped are unchanged', () => {

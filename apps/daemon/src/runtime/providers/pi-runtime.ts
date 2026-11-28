@@ -20,11 +20,11 @@ import { catalogContextWindow } from './catalog.ts'
 export interface PiModelSpec {
   providerName: string
   modelId: string
-  /** Where credentials and the endpoint are read from (the merged daemon env, or a projection). */
+  /** Where credentials and the endpoint are read from (the merged daemon env). */
   env: Readonly<Record<string, string | undefined>>
-  /** Wins over the key in `env`: the ChatGPT access token, a review worker's selected key. */
+  /** Wins over the key in `env`: the ChatGPT access token. */
   apiKey?: string
-  /** Wins over the endpoint in `env`. */
+  /** Wins over the endpoint in `env`, for a provider that has no setting for one. */
   baseUrl?: string
   /**
    * The context window set by hand (Setup → Models), for a model whose window neither Pi's catalog

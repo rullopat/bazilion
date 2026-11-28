@@ -47,7 +47,7 @@ export function Overview() {
     .filter((entry): entry is { agent: Agent; at: number } => entry.at !== null)
     .sort((a, b) => b.at - a.at)
     .slice(0, RECENT)
-  // Attention items that are not an Agent's question or command (lesson proposals, failures).
+  // Attention items that are not an Agent's question or command (failures, paused queues).
   const elsewhere = Math.max(attention.open - attention.agentWaits, 0)
   const summary = teamSummary([...states.values()])
 

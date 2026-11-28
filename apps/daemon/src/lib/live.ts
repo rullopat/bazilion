@@ -1,8 +1,7 @@
 // The live feed behind GET /api/events: the activity feed and what is open in Attention, pushed to
 // every connected browser when they change. A change signal (lib/live-signal.ts) has the feed look
 // at both at once; besides, the activity is looked at every second (saved files, follow-ups) and
-// Attention every five (recorded failures, lesson proposals). It runs only while someone is
-// connected.
+// Attention every five (recorded failures). It runs only while someone is connected.
 
 import { createHash } from 'node:crypto'
 import type { LiveActivityEvent, LiveAttentionEvent, LiveEvent } from '@bazilion/api-types'

@@ -254,7 +254,7 @@ test('the credentials are saved together, and a new group needs the token again'
 test('the notifications form starts from what is stored and sends what the daemon stores', () => {
   const never: NotificationSettingsResponse = {
     enabled: false,
-    kinds: ['review_failure', 'trigger_failure'],
+    kinds: ['turn_failure', 'trigger_failure'],
     timezone: 'UTC',
     quietHours: null,
     telegramReady: false,
@@ -263,7 +263,7 @@ test('the notifications form starts from what is stored and sends what the daemo
   const fresh = notificationsDraft(never, 'Europe/Warsaw')
   expect(fresh).toEqual({
     enabled: false,
-    kinds: ['review_failure', 'trigger_failure'],
+    kinds: ['turn_failure', 'trigger_failure'],
     quiet: false,
     start: '22:00',
     end: '07:00',
@@ -288,17 +288,17 @@ test('the notifications form starts from what is stored and sends what the daemo
   })
   expect(notificationsBody(draft)).toEqual({
     enabled: true,
-    kinds: ['review_failure', 'trigger_failure'],
+    kinds: ['turn_failure', 'trigger_failure'],
     timezone: 'America/Lima',
     quietHours: { start: '23:30', end: '06:15' },
   })
   expect(notificationsBody({ ...draft, quiet: false }).quietHours).toBeNull()
 
   // The order in which kinds were ticked is not a change; a different set is.
-  expect(sameNotifications(draft, { ...draft, kinds: ['trigger_failure', 'review_failure'] })).toBe(
+  expect(sameNotifications(draft, { ...draft, kinds: ['trigger_failure', 'turn_failure'] })).toBe(
     true,
   )
-  expect(sameNotifications(draft, { ...draft, kinds: ['review_failure'] })).toBe(false)
+  expect(sameNotifications(draft, { ...draft, kinds: ['turn_failure'] })).toBe(false)
   expect(sameNotifications(draft, { ...draft, end: '07:00' })).toBe(false)
   expect(sameNotifications(draft, { ...draft, enabled: false })).toBe(false)
 

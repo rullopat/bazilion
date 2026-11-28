@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { resolveAgent } from '../../src/core/agent/resolve.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
-import { agentLessonProposalRepo, agentRepo, agentReviewRepo } from '../../src/core/index.ts'
+import { agentRepo } from '../../src/core/index.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import {
   buildSystemPrompt,
@@ -69,36 +69,6 @@ test('attached SKILL.md instructions and runtime sidecar path reach the prompt',
   expect(dockerPrompt).toContain('Runtime directory: `/skills/0-reporting`')
   expect(dockerPrompt).toContain(`- ${resolved.team.id} (${resolved.team.name}): /workspace`)
   expect(dockerPrompt).not.toContain(resolved.team.path)
-})
-
-test('only approved private reviewed lessons reach the agent prompt', () => {
-  createProfile(env.db, env.paths, { id: 'profile', defaultModel: 'm' })
-  const agent = spawnAgent(env.db, env.paths, {
-    profileId: 'profile',
-    teamId: env.teamId,
-  })
-  const review = agentReviewRepo.enqueueManual(env.db, agent.id)
-  const privateProposal = agentLessonProposalRepo.insert(env.db, {
-    reviewId: review.id,
-    agentId: agent.id,
-    scope: 'private',
-    text: 'PRIVATE_APPROVED_LESSON',
-    evidence: [{ sessionId: 's', entryOrdinal: 1 }],
-  })
-  agentLessonProposalRepo.approve(env.db, privateProposal.id, 1, null)
-  const sharedProposal = agentLessonProposalRepo.insert(env.db, {
-    reviewId: review.id,
-    agentId: agent.id,
-    scope: 'shared',
-    text: 'SHARED_LESSON_NOT_IN_PRIVATE_PROMPT',
-    evidence: [{ sessionId: 's', entryOrdinal: 2 }],
-  })
-  agentLessonProposalRepo.approve(env.db, sharedProposal.id, 1, `lessons/${sharedProposal.id}.md`)
-
-  const prompt = buildSystemPrompt(resolveAgent(env.db, env.paths, agent.id))
-  expect(prompt).toContain('# Reviewed lessons')
-  expect(prompt).toContain('PRIVATE_APPROVED_LESSON')
-  expect(prompt).not.toContain('SHARED_LESSON_NOT_IN_PRIVATE_PROMPT')
 })
 
 test('Agent prompt documents never follow fixed-name symbolic links', () => {

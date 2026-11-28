@@ -1,8 +1,7 @@
 // Parent side of the per-turn worker.
 //
-// `spawnWorkerTurn` (an Agent turn) and `spawnReviewWorker` (a learning review) start `entry.ts`
-// in a fresh Node process, write one JSON `WorkerInput` to its stdin and read NDJSON frames from
-// its stdout. Over the Node IPC channel the worker calls the daemon for everything the daemon
+// `spawnWorkerTurn` starts `entry.ts` for an Agent turn in a fresh Node process, writes one JSON
+// `WorkerInput` to its stdin and reads NDJSON frames from its stdout. Over the Node IPC channel the worker calls the daemon for everything the daemon
 // owns; `RPC_HANDLERS` answers each call with the matching host from `WorkerHosts`. Frames,
 // replies and stderr are redacted for the turn's access tokens, including refreshed ones.
 //
@@ -20,7 +19,6 @@ import { parseModelString } from '../../core/providers.ts'
 import { formatNativeModuleAbiMismatch } from '../../lib/native-module-error.ts'
 import { refreshApiKeyForTurn } from './api-key-refresh.ts'
 import type {
-  ApiKeyRefreshHost,
   IpcReply,
   IpcRequest,
   RpcMethod,
@@ -30,15 +28,9 @@ import type {
 } from './ipc-protocol.ts'
 import {
   type AgentTurnWorkerSpec,
-  cleanupMinimalWorkerScratch,
-  createMinimalWorkerScratch,
   ExactValueStreamRedactor,
-  minimalWorkerProcessEnv,
-  type RestrictedReviewWorkerSpec,
-  type ReviewWorkerProposal,
   redactExactValues,
   redactJsonValue,
-  reviewRuntimeSecrets,
   type WorkerFrame,
   type WorkerInput,
 } from './runtime.ts'
@@ -70,10 +62,6 @@ export interface AgentTurnSpawnOptions extends SpawnOptions, WorkerHosts {
   env: NodeJS.ProcessEnv
 }
 
-export interface ReviewSpawnOptions extends SpawnOptions {
-  apiKeyRefreshHost?: ApiKeyRefreshHost
-}
-
 /** Run one Agent turn in a worker and stream its frames. */
 export function spawnWorkerTurn(
   spec: AgentTurnWorkerSpec,
@@ -88,33 +76,6 @@ export function spawnWorkerTurn(
     secrets: spec.apiKey ? [spec.apiKey] : [],
     opts: { signal, diagnosticSink, workerEntryPath },
   }) as AsyncGenerator<ChatFrame, void, void>
-}
-
-/** Run one learning review in a worker with a minimal environment; return its proposals. */
-export async function spawnReviewWorker(
-  spec: RestrictedReviewWorkerSpec,
-  opts: ReviewSpawnOptions,
-): Promise<ReviewWorkerProposal[]> {
-  const { apiKeyRefreshHost, ...rest } = opts
-  const hosts: WorkerHosts = apiKeyRefreshHost ? { apiKeyRefreshHost } : {}
-  const scratch = createMinimalWorkerScratch()
-  try {
-    for await (const frame of runWorker({
-      input: { ...spec, hosts: servedHosts(hosts), scratch },
-      env: minimalWorkerProcessEnv(scratch),
-      hosts,
-      providerName: spec.runtime.providerName,
-      secrets: reviewRuntimeSecrets(spec.runtime),
-      opts: rest,
-    })) {
-      if (frame.kind === 'review_result') return frame.proposals
-      if (frame.kind === 'fatal') throw new Error(frame.error)
-    }
-    throw new Error('review worker exited without a result')
-  } finally {
-    // The worker has exited by now: leaving the loop stops it and waits for it.
-    cleanupMinimalWorkerScratch(scratch)
-  }
 }
 
 function servedHosts(hosts: WorkerHosts): WorkerHostName[] {
@@ -247,7 +208,7 @@ async function* runWorker(run: WorkerRun): AsyncGenerator<WorkerFrame, void, voi
     ipcLifetime.abort()
     opts.signal?.removeEventListener('abort', stopWorker)
     // The consumer may stop after any frame: stop a still-running worker and wait for it, so a
-    // caller's cleanup (the review scratch tree) never runs under a live process.
+    // caller's cleanup never runs under a live process.
     if (child.exitCode === null && child.signalCode === null) stopWorker()
     await exit
     await stderrDone

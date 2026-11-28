@@ -361,14 +361,6 @@ export function describeStep(tool: string, args: Record<string, unknown> | null)
         icon: 'search',
         kind: 'read',
       }
-    case 'propose_lesson':
-      return {
-        doing: 'proposing a lesson',
-        verb: 'Proposed a lesson',
-        target: null,
-        icon: 'note',
-        kind: 'other',
-      }
     default:
       break
   }

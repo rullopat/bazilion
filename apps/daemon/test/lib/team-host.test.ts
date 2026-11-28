@@ -195,9 +195,9 @@ describe('recipientOf', () => {
 })
 
 describe('rosterRevision', () => {
-  test('moves when an Agent is renamed, not when its turns are counted', () => {
+  test('moves when an Agent is renamed, not when its Telegram topic is made', () => {
     const before = rosterRevision(env.db)
-    env.db.raw.run('UPDATE agents SET review_turns_since_last = 3 WHERE id = ?', [sally])
+    env.db.raw.run('UPDATE agents SET telegram_topic_id = 320 WHERE id = ?', [sally])
     // An Agent keeping USER.md up to date does not reload every open page either.
     env.db.raw.run("UPDATE teams SET user_md = 'Prefers short answers.' WHERE id = ?", [env.teamId])
     expect(rosterRevision(env.db)).toBe(before)

@@ -4,7 +4,7 @@ Each Agent has a browser of its own: the Chrome, Brave, Edge or Chromium install
 running on a persistent profile, so cookies and logins carry over from turn to turn. Agents use it
 through the `browser_*` tools: they read pages as accessibility snapshots, click, type, fill forms,
 switch tabs and take screenshots. Every Agent turn gets these tools while `BROWSER_ENABLED` is on
-(the default); learning reviews do not.
+(the default).
 
 Agents can work in the browser you already have open instead, with your logins: see
 [Your running browser](#your-running-browser). The setting is the default, and you can tell an

@@ -46,8 +46,6 @@ function actionLabel(item: AttentionItem): string {
       return 'Answer'
     case 'command_approval':
       return 'Decide'
-    case 'lesson_proposal':
-      return 'Review lesson'
     default:
       return 'Open'
   }
@@ -170,7 +168,7 @@ function AttentionCenter() {
         '/api/attention/acknowledge-all',
         { method: 'POST' },
       )
-      return `Acknowledged ${acknowledged === 1 ? '1 item' : `${acknowledged} items`}. Lesson proposals and paused queues stay open until they are dealt with.`
+      return `Acknowledged ${acknowledged === 1 ? '1 item' : `${acknowledged} items`}. Paused queues stay open until they are dealt with.`
     })
 
   return (
@@ -253,7 +251,7 @@ function AttentionCenter() {
                 : 'No item matches'
             }
           >
-            Items come from Agents' questions and commands to approve, learning reviews, schedules,
+            Items come from Agents' questions and commands to approve, schedules, background turns,
             follow-up queues and message loops.
           </CardEmpty>
         ) : (

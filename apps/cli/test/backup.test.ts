@@ -632,7 +632,7 @@ test('restore takes a backup from before schema versions, which the daemon then 
       ).map((column) => column.name)
       const current = new Set(
         (
-          db.prepare(`SELECT name FROM current.pragma_table_info('${name}')`).all() as {
+          db.prepare(`SELECT name FROM pragma_table_info('${name}', 'current')`).all() as {
             name: string
           }[]
         ).map((column) => column.name),

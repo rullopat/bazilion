@@ -7,12 +7,7 @@ import { join, posix } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { agentSecretValues, listAgentSecrets } from '../core/agent-secrets.ts'
 import { imageRoute } from '../core/image-generation-config.ts'
-import {
-  agentReviewRepo,
-  commandRuleRepo,
-  mergeSecretsIntoEnv,
-  messageRepo,
-} from '../core/index.ts'
+import { commandRuleRepo, mergeSecretsIntoEnv, messageRepo } from '../core/index.ts'
 import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { rememberLocalModelWindow } from '../runtime/providers/pi-runtime.ts'
@@ -150,7 +145,6 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     )
 
     if (!helper) mirrorTypingStart(agentId)
-    let completed = false
     for await (const frame of frames) {
       if (!helper)
         void mirrorAgentTurnFrame(agentId, frame).catch((error) => {
@@ -165,7 +159,6 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           )
         })
       if (frame.kind === 'done') {
-        completed = true
         // The worker reports the window Pi was given; seed the daemon's sync reads with it.
         const window = frame.context?.window
         if (typeof window === 'number' && window > 0)
@@ -173,10 +166,6 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       }
       if (!helper) noteTurnFrame(agentId, frame)
       yield frame
-    }
-    // Reviewed learning counts the completed turns the owner started.
-    if (completed && (turn.request.origin === 'http' || turn.request.origin === 'telegram')) {
-      agentReviewRepo.recordSuccessfulUserTurn(db, agentId)
     }
   } finally {
     if (!helper) {

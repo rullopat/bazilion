@@ -43,6 +43,12 @@ the rare case the message says part of the upgrade may have been kept, put back 
 Homes from 0.26.0 to 0.62.0 have no schema version. A later release takes such a home as
 version 1 when its schema is exactly the one those releases shipped, and upgrades it from there.
 
+0.66.0 removed reviewed learning. Upgrading a home from before it adds each Agent's approved
+private lessons to its `AGENTS.md`, under **Lessons the human approved**, once the database
+upgrade has succeeded, so the Agent keeps following them; shared lessons stay notes in the Team's
+memory. Proposals still waiting, rejected or revoked lessons and the history of reviews are
+dropped; the copy in `upgrades/` keeps them.
+
 Copies in `upgrades/` stay until you delete them. Backups leave them out, and
 `bazilion uninstall` deletes them with the rest of the home.
 

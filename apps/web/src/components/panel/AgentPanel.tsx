@@ -1,10 +1,8 @@
 // The Agent tab: who the open Agent is, what it runs on, and the ways into its deeper pages
-// (schedules, learning, mailbox, jobs, helpers, skills, secrets, Telegram, browser), which open as
-// sheets.
+// (schedules, mailbox, jobs, helpers, skills, secrets, Telegram, browser), which open as sheets.
 
 import {
   chosenName,
-  type ListAgentLessonProposalsResponse,
   type ListAgentSecretsResponse,
   type ListInboxResponse,
   type ListTriggersResponse,
@@ -12,7 +10,6 @@ import {
 } from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
 import {
-  BookOpenCheck,
   CalendarClock,
   ChevronRight,
   Globe,
@@ -42,9 +39,6 @@ import { useWorkspace } from '../workspace/context'
 import { STATE_DOT } from '../workspace/state-style'
 import { PanelGroup, PanelHeading } from './SidePanel'
 
-const plural = (count: number, one: string, many = `${one}s`) =>
-  `${count} ${count === 1 ? one : many}`
-
 export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
   const { agent } = resolved
   const { teams, to, search } = useWorkspace()
@@ -73,16 +67,14 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
   // What the rows say at a glance; a sheet closing or a turn ending may have changed it.
   const glance = useResource(
     async (signal) => {
-      const [triggers, proposals, unread, secrets] = await Promise.all([
+      const [triggers, unread, secrets] = await Promise.all([
         api<ListTriggersResponse>(`${base}/triggers`, { signal }),
-        api<ListAgentLessonProposalsResponse>(`${base}/lesson-proposals`, { signal }),
         api<ListInboxResponse>(`${base}/messages?unread=1`, { signal }),
         api<ListAgentSecretsResponse>(`${base}/secrets`, { signal }),
       ])
       return {
         schedules: triggers.triggers.filter((trigger) => trigger.enabled).length,
         schedulesOff: triggers.triggers.filter((trigger) => !trigger.enabled).length,
-        proposals: proposals.proposals.filter((proposal) => proposal.status === 'pending').length,
         unread: unread.messages.length,
         secrets: secrets.secrets.length,
       }
@@ -119,18 +111,6 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
           ? 'None'
           : `${info.schedules} on${info.schedulesOff ? `, ${info.schedulesOff} off` : ''}`
         : '',
-    },
-    {
-      section: 'learning',
-      icon: BookOpenCheck,
-      label: 'Learning',
-      detail: info?.proposals
-        ? `${plural(info.proposals, 'lesson')} to review`
-        : resolved.privateLessons.length
-          ? `${plural(resolved.privateLessons.length, 'lesson')} applied`
-          : agent.reviewEnabled
-            ? `Reviews every ${agent.reviewEveryNTurns} turns`
-            : 'Periodic review off',
     },
     {
       section: 'mailbox',
@@ -261,8 +241,7 @@ export function AgentPanel({ agent: resolved }: { agent: ResolvedAgent }) {
             <span className="shrink-0 text-sm font-semibold">{label}</span>
             <span
               className={`min-w-0 flex-1 truncate text-right text-xs ${
-                (section === 'learning' && info?.proposals) ||
-                (section === 'mailbox' && info?.unread)
+                section === 'mailbox' && info?.unread
                   ? 'font-semibold text-warning'
                   : 'text-muted-foreground'
               }`}

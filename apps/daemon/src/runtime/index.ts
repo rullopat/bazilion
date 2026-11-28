@@ -40,4 +40,4 @@ export type {
   UserMdHost,
   UserMdWriteResult,
 } from './worker/ipc-protocol.ts'
-export { spawnReviewWorker, spawnWorkerTurn } from './worker/spawn.ts'
+export { spawnWorkerTurn } from './worker/spawn.ts'

@@ -1,7 +1,5 @@
 /** What the daemon keeps a record of until it is dealt with. Telegram can notify about these. */
 export type AttentionRecordedKind =
-  | 'lesson_proposal'
-  | 'review_failure'
   | 'trigger_failure'
   | 'agent_loop_break'
   | 'queue_interrupted'

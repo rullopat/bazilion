@@ -35,12 +35,10 @@ concurrently.
 install runs `dist/worker.js`), detached into its own process group, with stdio
 `['pipe', 'pipe', 'pipe', 'ipc']`:
 
-- **stdin**: one `WorkerInput` JSON document (`runtime/worker/runtime.ts`), either an
-  `agent_turn` or a `restricted_review`, listing the daemon hosts that serve it. The worker
-  offers a tool only when its host is listed.
+- **stdin**: one `WorkerInput` JSON document (`runtime/worker/runtime.ts`), an `agent_turn`
+  listing the daemon hosts that serve it. The worker offers a tool only when its host is listed.
 - **stdout**: NDJSON `ChatFrame`s (`packages/api-types/src/events.ts`): `{kind:'event', event}`
-  per `SessionEvent`, then exactly one `{kind:'done', messages}` or `{kind:'fatal', error}`. A
-  learning review ends with `{kind:'review_result', proposals}` instead.
+  per `SessionEvent`, then exactly one `{kind:'done', messages}` or `{kind:'fatal', error}`.
 - **stderr**: read into a bounded, redacted diagnostic.
 - **IPC**: the worker calls `{type:'rpc', id, method, args}` and the daemon answers
   `{type:'rpc-reply', id, ok, result|error}`. `RpcMethods` in `ipc-protocol.ts` is the whole
@@ -110,8 +108,7 @@ and refreshes from the secrets table; only the access token comes back.
    `send_message` takes either name.
 7. **About the User**: the Team's USER.md, and how to update it with `user_md_get` /
    `user_md_write`.
-8. **Reviewed lessons**: private lessons you approved, up to 8,000 characters.
-9. **Memory**: the Team-shared memory and when to use it, and `recall` for a detail a summary of
+8. **Memory**: the Team-shared memory and when to use it, and `recall` for a detail a summary of
    the conversation left out.
 
 ## 4. The turn loop
@@ -396,8 +393,6 @@ the running ones and waits for them before closing browsers, MCP connections and
   and the transcript shows it as an update. Wakes are kept in memory; a job's record queues its
   wake again at the next start. One that cannot start waits and backs off like an inbox wake, and
   shows in Attention.
-- **Learning reviews.** Agents with reviewed learning on and enough new turns get a review in a
-  restricted worker with a minimal environment, whose only tool is `propose_lesson`.
 
 Scheduled turns are ordinary turns: their transcript is the same JSONL, and
 `trigger_dispatches` keeps only delivery state.

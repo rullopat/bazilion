@@ -3,7 +3,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -12,32 +11,19 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { ResolvedAgent } from '@bazilion/api-types'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import type { ChatFrame, ResolvedAgent } from '@bazilion/api-types'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createWebSearchHost } from '../../src/lib/web-search.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import { createBazilionCustomTools } from '../../src/runtime/pi/tools.ts'
 import type { DockerTurn } from '../../src/runtime/shell/tooling.ts'
-import type {
-  ApiKeyRefreshHost,
-  MessagingHost,
-  UserMdHost,
-} from '../../src/runtime/worker/ipc-protocol.ts'
+import type { MessagingHost, UserMdHost } from '../../src/runtime/worker/ipc-protocol.ts'
 import {
   type AgentTurnWorkerSpec,
-  cleanupMinimalWorkerScratch,
-  createMinimalWorkerScratch,
   ExactValueStreamRedactor,
-  minimalWorkerProcessEnv,
   parseWorkerInput,
-  type RestrictedReviewWorkerSpec,
 } from '../../src/runtime/worker/runtime.ts'
-import {
-  formatWorkerExitFailure,
-  type ReviewSpawnOptions,
-  spawnReviewWorker,
-  spawnWorkerTurn,
-} from '../../src/runtime/worker/spawn.ts'
+import { formatWorkerExitFailure, spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
 
 const cleanup: string[] = []
@@ -247,24 +233,6 @@ describe('minimal worker runtime', () => {
     30_000,
   )
 
-  test('constructs an exact POSIX environment with no ambient startup or credential values', () => {
-    const scratch = createMinimalWorkerScratch()
-    try {
-      const env = minimalWorkerProcessEnv(scratch)
-      expect(env).toEqual({
-        HOME: scratch.homeDir,
-        TMPDIR: scratch.tempDir,
-        TMP: scratch.tempDir,
-        TEMP: scratch.tempDir,
-        LANG: 'C',
-        LC_ALL: 'C',
-      })
-    } finally {
-      cleanupMinimalWorkerScratch(scratch)
-    }
-    expect(existsSync(scratch.root)).toBe(false)
-  })
-
   test('redacts initial and rotated values across arbitrary chunk boundaries', () => {
     const redactor = new ExactValueStreamRedactor(['initial-access-token'])
     let output = redactor.push('before initial-ac')
@@ -317,7 +285,6 @@ describe('minimal worker runtime', () => {
     expect(names).toContain('recall')
     // Discovery is daemon-owned: absent without the host, present only with it.
     expect(names).not.toContain('web_search')
-    expect(names).not.toContain('propose_lesson')
     expect(names).not.toContain('ask_user')
     expect(names).not.toContain('image_generate')
     const withImages = createBazilionCustomTools({
@@ -360,182 +327,68 @@ describe('minimal worker runtime', () => {
     await expect(iterator.next()).rejects.toThrow(/circular/i)
   })
 
-  describe('review worker', () => {
-    let scratchParent: string
-    let priorTmpdir: string | undefined
-    beforeEach(() => {
-      scratchParent = tempRoot()
-      priorTmpdir = process.env.TMPDIR
-      // Review scratch trees are created here, so each test can see them removed.
-      process.env.TMPDIR = scratchParent
-    })
-    afterEach(() => {
-      if (priorTmpdir === undefined) delete process.env.TMPDIR
-      else process.env.TMPDIR = priorTmpdir
-    })
+  describe('the worker process', () => {
+    /** Every frame a stand-in worker sends for a turn whose message names what it does. */
+    async function framesOf(message: string, diagnostics: string[] = []) {
+      const { spec } = turnFixture(tempRoot())
+      const frames: ChatFrame[] = []
+      for await (const frame of spawnWorkerTurn(
+        { ...spec, message },
+        {
+          env: { PATH: process.env.PATH ?? '' },
+          diagnosticSink: (diagnostic) => diagnostics.push(diagnostic),
+          workerEntryPath: standInWorker,
+        },
+      ))
+        frames.push(frame)
+      return frames
+    }
 
     linuxSpawnTest(
-      'gets only the refresh host and an exact minimal env, and its output is redacted',
+      'a consumer that stops early stops the live worker and waits for it',
       async () => {
-        const initial = 'initial-worker-secret'
-        const rotated = 'rotated-worker-secret'
-        const diagnostics: string[] = []
-        const refresh: ApiKeyRefreshHost = { refresh: vi.fn(async () => rotated) }
-        // A review is served only the refresh host, whatever else a caller hands it.
-        const browserHost = { invoke: vi.fn(async () => []) }
-        const imageGenerationHost = { generate: vi.fn() }
-        const ambientSecrets = {
-          TELEGRAM_BOT_TOKEN: 'telegram-secret-sentinel',
-          BAZILION_TOKEN: 'bootstrap-secret-sentinel',
-          OPENAI_CODEX_OAUTH: 'oauth-refresh-secret-sentinel',
-          ANTHROPIC_API_KEY: 'unrelated-provider-secret-sentinel',
-          FIRECRAWL_API_KEY: 'unrelated-tool-secret-sentinel',
-        }
-        const priorEnvironment = Object.fromEntries(
-          Object.keys(ambientSecrets).map((key) => [key, process.env[key]]),
+        const { spec } = turnFixture(tempRoot())
+        // The stand-in sends its frame and then hangs.
+        const frames = spawnWorkerTurn(
+          { ...spec, message: 'hang-after-frame' },
+          { env: { PATH: process.env.PATH ?? '' }, workerEntryPath: standInWorker },
         )
-        Object.assign(process.env, ambientSecrets)
-        let proposals: Awaited<ReturnType<typeof spawnReviewWorker>> = []
-        try {
-          proposals = await spawnReviewWorker(reviewSpec(initial), {
-            apiKeyRefreshHost: refresh,
-            browserHost,
-            imageGenerationHost,
-            diagnosticSink: (message) => diagnostics.push(message),
-            workerEntryPath: minimalWorkerEntry,
-          } as ReviewSpawnOptions)
-        } finally {
-          for (const [key, value] of Object.entries(priorEnvironment)) {
-            if (value === undefined) delete process.env[key]
-            else process.env[key] = value
-          }
-        }
-
-        expect(refresh.refresh).toHaveBeenCalledOnce()
-        expect(browserHost.invoke).not.toHaveBeenCalled()
-        expect(imageGenerationHost.generate).not.toHaveBeenCalled()
-        expect(readdirSync(scratchParent)).toEqual([])
-        const serialized = JSON.stringify(proposals)
-        expect(serialized).not.toContain(initial)
-        expect(serialized).not.toContain(rotated)
-        expect(serialized).toContain('[REDACTED]')
-        expect(diagnostics).toHaveLength(1)
-        expect(diagnostics[0]?.length).toBeLessThanOrEqual(16 * 1024)
-        expect(diagnostics[0]).not.toContain(initial)
-        expect(diagnostics[0]).not.toContain(rotated)
-        expect(diagnostics[0]).toContain('initial=[REDACTED]')
-        expect(diagnostics[0]).toContain('rotated=[REDACTED]')
-
-        const content = proposals[0]?.text
-        if (!content) throw new Error('fixture did not emit inspection content')
-        const inspected = JSON.parse(content) as {
-          hosts: string[]
-          environment: Record<string, string>
-          argv: string[]
-          scratchRoot: string
-          stdinEnded: boolean
-          stdioAreRegularFiles: boolean[]
-          ipcConnected: boolean
-          forbiddenInputOccurrences: Record<string, number>
-        }
-        expect(inspected.hosts).toEqual(['apiKeyRefreshHost'])
-        expect(Object.keys(inspected.environment).sort()).toEqual(
-          ['HOME', 'LANG', 'LC_ALL', 'TEMP', 'TMP', 'TMPDIR'].sort(),
-        )
-        expect(inspected.environment.PATH).toBeUndefined()
-        expect(inspected.environment.NODE_OPTIONS).toBeUndefined()
-        expect(inspected.environment.BAZILION_HOME).toBeUndefined()
-        expect(inspected.environment.DOCKER_HOST).toBeUndefined()
-        expect(inspected.stdinEnded).toBe(true)
-        expect(inspected.stdioAreRegularFiles).toEqual([false, false, false])
-        expect(inspected.ipcConnected).toBe(true)
-        expect(inspected.forbiddenInputOccurrences).toEqual({
-          'telegram-secret-sentinel': 0,
-          'bootstrap-secret-sentinel': 0,
-          'oauth-refresh-secret-sentinel': 0,
-          'unrelated-provider-secret-sentinel': 0,
-          'unrelated-tool-secret-sentinel': 0,
-        })
-        expect(inspected.argv.join(' ')).not.toContain(initial)
-        expect(inspected.argv.join(' ')).not.toContain(rotated)
-        expect(existsSync(inspected.scratchRoot)).toBe(false)
-      },
-    )
-
-    linuxSpawnTest(
-      'terminates a live child before cleaning scratch when a consumer stops early',
-      async () => {
-        // The fixture emits its result and then hangs; the reviewer returns on the result.
-        const proposals = await spawnReviewWorker(
-          { ...reviewSpec(), message: 'hang-after-frame' },
-          {
-            apiKeyRefreshHost: { refresh: async () => 'rotated' },
-            workerEntryPath: minimalWorkerEntry,
-          },
-        )
-        expect(proposals).toHaveLength(1)
-        expect(readdirSync(scratchParent)).toEqual([])
+        expect((await frames.next()).value).toMatchObject({ kind: 'done' })
+        await expect(frames.return()).resolves.toMatchObject({ done: true })
       },
     )
 
     linuxSpawnTest('bounds an unterminated stdout frame and fails closed', async () => {
-      await expect(
-        spawnReviewWorker(
-          { ...reviewSpec(), message: 'oversized-frame' },
-          {
-            apiKeyRefreshHost: { refresh: async () => 'rotated' },
-            workerEntryPath: minimalWorkerEntry,
-          },
-        ),
-      ).rejects.toThrow('worker frame exceeded the maximum size')
-      expect(readdirSync(scratchParent)).toEqual([])
+      expect(await framesOf('oversized-frame')).toContainEqual({
+        kind: 'fatal',
+        error: 'worker frame exceeded the maximum size',
+      })
     })
 
     linuxSpawnTest(
       'turns a native module ABI mismatch into an actionable fatal frame',
       async () => {
         const diagnostics: string[] = []
-        const failure = await spawnReviewWorker(
-          { ...reviewSpec(), message: 'native-abi-mismatch' },
-          {
-            apiKeyRefreshHost: { refresh: async () => 'rotated' },
-            diagnosticSink: (message) => diagnostics.push(message),
-            workerEntryPath: minimalWorkerEntry,
-          },
-        ).then(
-          () => undefined,
-          (error: unknown) => error,
+        const fatal = (await framesOf('native-abi-mismatch', diagnostics)).find(
+          (frame) => frame.kind === 'fatal',
         )
-
-        expect((failure as Error).message).toMatch(
+        expect(fatal?.kind === 'fatal' && fatal.error).toMatch(
           /built for Node module ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
         )
-        expect((failure as Error).message).not.toContain('/private/checkout')
+        expect(JSON.stringify(fatal)).not.toContain('/private/checkout')
         expect(diagnostics).toHaveLength(1)
         expect(diagnostics[0]).toContain('/private/checkout/node_modules/better_sqlite3.node')
-        expect(readdirSync(scratchParent)).toEqual([])
       },
     )
 
     linuxSpawnTest(
       'normalizes a native ABI mismatch already emitted as a worker frame',
       async () => {
-        const failure = await spawnReviewWorker(
-          { ...reviewSpec(), message: 'native-abi-frame' },
-          {
-            apiKeyRefreshHost: { refresh: async () => 'rotated' },
-            workerEntryPath: minimalWorkerEntry,
-          },
-        ).then(
-          () => undefined,
-          (error: unknown) => error,
-        )
-
-        expect((failure as Error).message).toMatch(
+        const fatal = (await framesOf('native-abi-frame')).find((frame) => frame.kind === 'fatal')
+        expect(fatal?.kind === 'fatal' && fatal.error).toMatch(
           /built for Node module ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
         )
-        expect((failure as Error).message).not.toContain('/private/checkout')
-        expect(readdirSync(scratchParent)).toEqual([])
+        expect(JSON.stringify(fatal)).not.toContain('/private/checkout')
       },
     )
   })
@@ -560,7 +413,7 @@ function tempRoot(): string {
   return root
 }
 
-const minimalWorkerEntry = fileURLToPath(
+const standInWorker = fileURLToPath(
   new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
 )
 
@@ -594,20 +447,6 @@ function turnFixture(root: string): {
   }
 }
 
-function reviewSpec(accessToken = 'initial-access-token'): RestrictedReviewWorkerSpec {
-  return {
-    kind: 'restricted_review',
-    message: 'test review',
-    runtime: {
-      providerName: 'openai-codex',
-      modelId: 'gpt-5.6-sol',
-      reasoningLevel: 'high',
-      apiKey: accessToken,
-    },
-    evidence: [],
-  }
-}
-
 function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
   return {
     agent: {
@@ -616,11 +455,6 @@ function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
       name: 'Agent One',
       modelOverride: 'openai-codex:gpt-5.6-sol',
       reasoningLevel: 'high',
-      reviewEnabled: true,
-      reviewEveryNTurns: 8,
-      reviewModel: 'openai-codex:gpt-5.6-sol',
-      reviewReasoningLevel: 'low',
-      reviewTurnsSinceLast: 0,
       status: 'idle',
       dir: agentDir,
       teamId: 'team-1',
@@ -651,7 +485,6 @@ function resolvedAgent(agentDir: string, teamDir: string): ResolvedAgent {
       createdAt: 0,
     },
     skills: [],
-    privateLessons: [],
     contextWindowSetting: null,
   }
 }

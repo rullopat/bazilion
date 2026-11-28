@@ -65,7 +65,6 @@ function agentIn(agentDir: string, teamDir: string): ResolvedAgent {
       createdAt: 0,
     },
     skills: [],
-    privateLessons: [],
     contextWindowSetting: null,
   } as unknown as ResolvedAgent
 }
