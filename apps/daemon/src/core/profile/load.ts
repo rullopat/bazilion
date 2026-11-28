@@ -17,8 +17,6 @@ export function loadProfile(db: BazilionDb, id: string): LoadedProfile {
   const soul = readFileSync(join(profile.dir, 'SOUL.md'), 'utf8')
   const identityRaw = readFileSync(join(profile.dir, 'IDENTITY.md'), 'utf8')
   const bootstrap = readOptional(join(profile.dir, 'BOOTSTRAP.md'))
-  const agents = readOptional(join(profile.dir, 'AGENTS.md'))
-  const tools = readOptional(join(profile.dir, 'TOOLS.md'))
 
   const parsedIdentity = parseIdentityMarkdown(identityRaw)
 
@@ -29,8 +27,6 @@ export function loadProfile(db: BazilionDb, id: string): LoadedProfile {
       soul,
       identity: identityRaw,
       bootstrap,
-      agents,
-      tools,
     },
     identity: identityHasValues(parsedIdentity) ? parsedIdentity : null,
   }

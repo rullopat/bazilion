@@ -291,7 +291,13 @@ test('dropdowns pick, and shortcuts open only outside fields and lists', async (
   await pw(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toHaveCount(0)
 
   await page.keyboard.press('Control+k')
-  await pw(page.getByRole('combobox', { name: 'Jump to or do anything' })).toBeFocused()
+  // The field has the page's focus. (toBeFocused also wants the window to have the computer's,
+  // which a Mac in use takes away; if the field does not have it, this says what does.)
+  const focusedOn = `(() => {
+    const el = document.activeElement
+    return el?.getAttribute('aria-label') || el?.getAttribute('name') || el?.tagName || 'nothing'
+  })()`
+  await pw.poll(() => page.evaluate<string>(focusedOn)).toBe('Jump to or do anything')
   await page.keyboard.type('Dev')
   // Typed and entered at once, before the palette's lists have arrived.
   await page.keyboard.press('Enter')
@@ -626,7 +632,7 @@ test('an Agent added with its job starts on it, and a Team has each name once', 
   try {
     // Its job is on top of its instructions, and it skips the ritual that asks its name.
     const dir = join(instance.home, 'agents', rhea?.id ?? '')
-    expect(readFileSync(join(dir, 'AGENTS.md'), 'utf8')).toMatch(
+    expect(readFileSync(join(dir, 'SOUL.md'), 'utf8')).toMatch(
       /^# Your role\n\nWrites the weekly newsletter\.\n\nThe operator added you to the Team Launch/,
     )
     expect(existsSync(join(dir, 'BOOTSTRAP.md'))).toBe(false)

@@ -12,10 +12,6 @@ export interface CreateProfileRequest {
   identity?: string
   /** Initial BOOTSTRAP.md content. Omit for default; pass null to skip bootstrap entirely. */
   bootstrap?: string | null
-  /** Initial AGENTS.md content. Omit for the default template; pass null to skip the file. */
-  agents?: string | null
-  /** Initial TOOLS.md content. Omit for the default template; pass null to skip the file. */
-  tools?: string | null
 }
 
 export interface UpdateProfileRequest {
@@ -36,19 +32,11 @@ export interface ProfileTemplates {
   soul: string
   identity: string
   bootstrap: string
-  agents: string
-  tools: string
 }
 
-export type ProfileFileName = 'SOUL.md' | 'IDENTITY.md' | 'BOOTSTRAP.md' | 'AGENTS.md' | 'TOOLS.md'
+export type ProfileFileName = 'SOUL.md' | 'IDENTITY.md' | 'BOOTSTRAP.md'
 
-export const PROFILE_FILES: ProfileFileName[] = [
-  'SOUL.md',
-  'IDENTITY.md',
-  'BOOTSTRAP.md',
-  'AGENTS.md',
-  'TOOLS.md',
-]
+export const PROFILE_FILES: ProfileFileName[] = ['SOUL.md', 'IDENTITY.md', 'BOOTSTRAP.md']
 
 export interface FileContentResponse {
   content: string

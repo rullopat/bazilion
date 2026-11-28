@@ -13,12 +13,18 @@ already had (BAZ-086 to BAZ-088, with background commands) and 0.64.0 added the 
 are useful (BAZ-089 to BAZ-092). 0.65.0 (asked for on 2026-11-27) brought video, music and speech,
 the Agent in the workspace, and three changes to the workspace itself (BAZ-095 to BAZ-099). 0.66.0
 (asked for on 2026-11-28) brought tool search and Code Mode, message times, and the browser chosen
-in the conversation (BAZ-100 to BAZ-102), and removed reviewed learning (BAZ-103); 0.67.0 brings
-what replaces it, skills Agents write for themselves (BAZ-104). Later releases take up the rest.
+in the conversation (BAZ-100 to BAZ-102), and removed reviewed learning (BAZ-103). 0.67.0
+(asked for on 2026-11-28) removes AGENTS.md and TOOLS.md from Agent homes, leaving SOUL.md for who
+an Agent is and how it works (BAZ-105), keeps secrets out of background job logs (BAZ-106) and
+searches posts on X (BAZ-107). What replaces reviewed learning, skills Agents write for
+themselves (BAZ-104), has no release yet; later releases take up the rest.
 
 | ID | Story | Release |
 | --- | --- | --- |
-| [BAZ-104](draft/BAZ-104-skills-agents-write.md) | Skills Agents write for themselves | 0.67.0 |
+| [BAZ-105](in_progress/BAZ-105-soul-only.md) | One file for who an Agent is: AGENTS.md and TOOLS.md removed | 0.67.0 |
+| [BAZ-106](in_progress/BAZ-106-job-logs-without-secrets.md) | Background job logs without secrets | 0.67.0 |
+| [BAZ-107](in_progress/BAZ-107-x-search.md) | Search posts on X | 0.67.0 |
+| [BAZ-104](draft/BAZ-104-skills-agents-write.md) | Skills Agents write for themselves | later |
 | [BAZ-093](draft/BAZ-093-later-tools.md) | The rest of OpenClaw's tool list | later |
 
 **Schema.** Since 0.63.0 (BAZ-094) an upgrade migrates the home instead of needing a fresh one

@@ -17,7 +17,7 @@ marked **needs your word** go against a standing decision in `AGENTS.md`.
 ## The list, in a suggested order
 
 Video and music generation and the Agent in the workspace moved to 0.65.0, as BAZ-095 and
-BAZ-097; tool search and Code Mode to 0.66.0, as BAZ-100.
+BAZ-097; tool search and Code Mode to 0.66.0, as BAZ-100; `x_search` to 0.67.0, as BAZ-107.
 
 1. **Goals**: a lasting goal per conversation that the Agent keeps working on after each turn,
    until it is met or blocked. It overlaps the follow-up queue, so the story starts by deciding
@@ -25,15 +25,14 @@ BAZ-097; tool search and Code Mode to 0.66.0, as BAZ-100.
 2. **Tool rules per Agent and per kind of turn**: which tools an Agent gets (say, a researcher
    without commands), and which tools Telegram or schedule turns get. Rules per sender are left
    out, because there is one user.
-3. **`x_search`**: searching posts on X through xAI, with an xAI key on the Web search card.
-4. **`code_execution`**: Python on xAI's servers, with no access to local files. Useful only
+3. **`code_execution`**: Python on xAI's servers, with no access to local files. Useful only
    where commands are off.
-5. **Plugins and gateway control**: the Agent adds an MCP server or a skill, or changes a
+4. **Plugins and gateway control**: the Agent adds an MCP server or a skill, or changes a
    setting. **Needs your word:** today only you manage connections and settings.
-6. **Nodes**: phones and other computers paired with Bazilion (camera, location, notifications,
+5. **Nodes**: phones and other computers paired with Bazilion (camera, location, notifications,
    a command run there). **Needs your word:** pairing codes were removed in the November 2026
    cleanup, and macOS is untested.
-7. **Elevated mode**: one turn that runs its commands on the host while Docker is on. **Needs
+6. **Elevated mode**: one turn that runs its commands on the host while Docker is on. **Needs
    your word:** Docker applies to every kind of turn.
 
 ## Notes

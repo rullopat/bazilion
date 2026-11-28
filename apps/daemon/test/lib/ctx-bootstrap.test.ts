@@ -6,8 +6,7 @@
 // locks that decision in — it'll fail loudly if a future change reintroduces
 // default-team seeding into the bootstrap path.
 
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync } from 'node:fs'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { isSetupComplete } from '../../src/core/availableModels.ts'
 import { ensureSetupSeeded } from '../../src/core/profile/seed.ts'
@@ -40,15 +39,13 @@ test('ensureSetupSeeded creates the default profile + team once a provider is co
   expect(result?.team.policyMode).toBe('open')
 })
 
-test('the seeded default profile ships the default-on template files', () => {
+test('the seeded default profile ships SOUL.md, IDENTITY.md and BOOTSTRAP.md', () => {
   providerStateRepo.setEnabled(env.db, 'anthropic', true)
   providerModelRepo.replace(env.db, 'anthropic', ['claude-opus-4-6'])
   const result = ensureSetupSeeded(env.db, env.paths)
   const dir = result?.profile.dir
   expect(dir).toBeTruthy()
-  for (const file of ['SOUL.md', 'IDENTITY.md', 'BOOTSTRAP.md', 'AGENTS.md', 'TOOLS.md']) {
-    expect(existsSync(join(dir as string, file))).toBe(true)
-  }
+  expect(readdirSync(dir as string).sort()).toEqual(['BOOTSTRAP.md', 'IDENTITY.md', 'SOUL.md'])
 })
 
 test("the seeded default team's USER.md starts empty", () => {

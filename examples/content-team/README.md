@@ -5,23 +5,23 @@ to, plus a researcher, a writer and a designer. Nothing here posts anything or a
 
 - `team-template.json`: a restricted Team template. The coordinator and each specialist can
   message each other; specialists cannot message each other or other Teams.
-- `profiles/*.md`: the role instructions (each Agent's `SOUL.md`).
-- `operating-rules.md`, `tools.md`: each Agent's `AGENTS.md` and `TOOLS.md`.
+- `profiles/*.md`: the role instructions.
+- `operating-rules.md`, `tools.md`: the rules and tool notes every role shares. Each Agent's
+  `SOUL.md` is its role followed by these two.
 - `skills/content-preparation/`: the shared skill every role uses.
 - `brief.md`: a worksheet to fill in with the coordinator at the start of a cycle.
 
 Install it from the repository root (the daemon reads these paths, so use a local daemon). Pick
 an enabled model for `CONTENT_MODEL`; from a source checkout use `pnpm tsx apps/cli/src/index.ts`
-in place of `bazilion`:
+in place of `bazilion`. The loop needs bash or zsh:
 
-```sh
+```bash
 recipe="$PWD/examples/content-team"
 bazilion skill import --from "$recipe/skills"
 for role in coordinator researcher writer designer; do
   bazilion profile create "content-$role" --model "$CONTENT_MODEL" \
     --skills-mode selected --skills content-preparation --skip-bootstrap \
-    --soul-file "$recipe/profiles/$role.md" \
-    --agents-file "$recipe/operating-rules.md" --tools-file "$recipe/tools.md"
+    --soul-file <(cat "$recipe/profiles/$role.md" "$recipe/operating-rules.md" "$recipe/tools.md")
 done
 bazilion team-template import "$recipe/team-template.json"
 bazilion team-template spawn content-preparation content

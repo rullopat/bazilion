@@ -38,6 +38,37 @@ test('buildSystemPrompt ignores a legacy on-disk HEARTBEAT.md', () => {
   expect(prompt).not.toContain('LEGACY_HEARTBEAT_PROMPT_SENTINEL')
 })
 
+test("an Agent's instructions are its SOUL.md and IDENTITY.md, and say where its rules go", () => {
+  createProfile(env.db, env.paths, { id: 'profile', defaultModel: 'm' })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'profile', teamId: env.teamId })
+  // A file from before 0.67.0 that the daemon's start has not moved yet is not read.
+  writeFileSync(join(agent.dir, 'AGENTS.md'), 'OLD_AGENTS_SENTINEL\n')
+  writeFileSync(join(agent.dir, 'TOOLS.md'), 'OLD_TOOLS_SENTINEL\n')
+
+  const sections = buildSystemPromptSections(resolveAgent(env.db, env.paths, agent.id))
+  const instructions = sections.find((section) => section.id === 'agent-instructions')?.text
+  expect(instructions?.match(/^## [A-Z]+\.md$/gm)).toEqual(['## SOUL.md', '## IDENTITY.md'])
+  const prompt = sections.map((section) => section.text).join('\n')
+  expect(prompt).not.toContain('OLD_AGENTS_SENTINEL')
+  expect(prompt).not.toContain('OLD_TOOLS_SENTINEL')
+  expect(sections.find((section) => section.id === 'agent-home')?.text).toContain(
+    'add it to SOUL.md under `## How you work`',
+  )
+})
+
+test('only a turn whose replies go to Telegram is told how they read there', () => {
+  createProfile(env.db, env.paths, { id: 'profile', defaultModel: 'm' })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'profile', teamId: env.teamId })
+  const ids = (options: Parameters<typeof buildSystemPromptSections>[1]) =>
+    buildSystemPromptSections(resolveAgent(env.db, env.paths, agent.id), options).map(
+      (section) => section.id,
+    )
+  // A topic alone is not enough: the bot may be stopped, or the turn a helper's.
+  agentRepo.setTelegramTopicId(env.db, agent.id, 320)
+  expect(ids({})).not.toContain('telegram')
+  expect(ids({ telegram: true })).toContain('telegram')
+})
+
 test('attached SKILL.md instructions and runtime sidecar path reach the prompt', () => {
   const skillDir = join(env.paths.skillsDir, 'reporting')
   mkdirSync(skillDir, { recursive: true })

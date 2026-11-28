@@ -1,14 +1,19 @@
 // Reviewed learning is removed in 0.66.0 (BAZ-103): upgrading a home from before it keeps the
-// lessons the owner approved for one Agent, in its AGENTS.md, and drops the rest.
+// lessons the owner approved for one Agent, in its SOUL.md (its AGENTS.md in 0.66, which 0.67.0
+// moved into SOUL.md), and drops the rest.
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { openDb } from '../../src/core/db/client.ts'
 import { shippedSchema } from '../../src/core/db/schema.ts'
+import { DEFAULT_SOUL } from '../../src/core/profile/templates.ts'
 import * as webTokenRepo from '../../src/core/repos/webTokens.ts'
 import { keepApprovedLessons } from '../../src/lib/approved-lessons.ts'
+
+const shipped = (file: string) =>
+  readFileSync(join(import.meta.dirname, '../fixtures/agent-files-0.66', file), 'utf8')
 
 let home: string
 let oldHome: string | undefined
@@ -60,25 +65,33 @@ function writeHome065(): void {
   `)
   db.close()
   writeFileSync(join(home, 'auth.json'), `${JSON.stringify({ token })}\n`, { mode: 0o600 })
-  mkdirSync(join(home, 'agents', 'agent'), { recursive: true })
+  for (const agent of ['agent', 'quiet']) {
+    mkdirSync(join(home, 'agents', agent), { recursive: true })
+    writeFileSync(join(home, 'agents', agent, 'SOUL.md'), shipped('SOUL.md'))
+    writeFileSync(join(home, 'agents', agent, 'TOOLS.md'), shipped('TOOLS.md'))
+  }
   writeFileSync(
     join(home, 'agents', 'agent', 'AGENTS.md'),
-    '# Your role\n\nWrites the newsletter.\n',
+    `# Your role\n\nWrites the newsletter.\n\n---\n\n${shipped('AGENTS.md')}`,
   )
-  mkdirSync(join(home, 'agents', 'quiet'), { recursive: true })
+  writeFileSync(join(home, 'agents', 'quiet', 'AGENTS.md'), shipped('AGENTS.md'))
 }
 
-test('the upgrade keeps approved lessons for one Agent in its AGENTS.md and drops the rest', async () => {
+test('the upgrade keeps approved lessons for one Agent in its SOUL.md and drops the rest', async () => {
   writeHome065()
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const { db, paths } = getCtx()
 
-  const instructions = readFileSync(join(home, 'agents', 'agent', 'AGENTS.md'), 'utf8')
+  const instructions = readFileSync(join(home, 'agents', 'agent', 'SOUL.md'), 'utf8')
   expect(instructions).toBe(
     [
       '# Your role',
       '',
       'Writes the newsletter.',
+      '',
+      '---',
+      '',
+      DEFAULT_SOUL.trim(),
       '',
       '## Lessons the human approved',
       '',
@@ -89,8 +102,11 @@ test('the upgrade keeps approved lessons for one Agent in its AGENTS.md and drop
       '',
     ].join('\n'),
   )
-  // An Agent without approved lessons gets no file.
-  expect(() => readFileSync(join(home, 'agents', 'quiet', 'AGENTS.md'))).toThrow()
+  // An Agent without approved lessons gets none, and neither keeps an AGENTS.md or TOOLS.md.
+  expect(readFileSync(join(home, 'agents', 'quiet', 'SOUL.md'), 'utf8')).toBe(DEFAULT_SOUL)
+  for (const agent of ['agent', 'quiet']) {
+    expect(readdirSync(join(home, 'agents', agent))).toEqual(['SOUL.md'])
+  }
 
   const tables = db.raw
     .query<{ name: string }, []>("SELECT name FROM sqlite_schema WHERE type = 'table'")
@@ -116,5 +132,5 @@ test('the upgrade keeps approved lessons for one Agent in its AGENTS.md and drop
 
   // Carried again (an upgrade retried after a failure), nothing is added twice.
   keepApprovedLessons(paths, [{ agentId: 'agent', lessons: ['Deploys go through staging first.'] }])
-  expect(readFileSync(join(home, 'agents', 'agent', 'AGENTS.md'), 'utf8')).toBe(instructions)
+  expect(readFileSync(join(home, 'agents', 'agent', 'SOUL.md'), 'utf8')).toBe(instructions)
 })

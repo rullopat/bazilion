@@ -18,7 +18,7 @@ import { ModelMenu } from '../ModelMenu'
 import { CheckboxRow, ChoiceCards, TextField } from '../ui/form'
 import { Notice } from '../ui/parts'
 
-export type FileKey = 'soul' | 'identity' | 'bootstrap' | 'agents' | 'tools'
+export type FileKey = 'soul' | 'identity' | 'bootstrap'
 
 export interface TemplateFile {
   key: FileKey
@@ -33,7 +33,7 @@ export const TEMPLATE_FILES: readonly TemplateFile[] = [
   {
     key: 'soul',
     name: 'SOUL.md',
-    hint: 'Persona, values and operating principles. Part of every session.',
+    hint: 'Who the Agent is and how it works: persona, boundaries and its rules. Part of every session.',
     optional: false,
   },
   {
@@ -46,18 +46,6 @@ export const TEMPLATE_FILES: readonly TemplateFile[] = [
     key: 'bootstrap',
     name: 'BOOTSTRAP.md',
     hint: 'The first-run ritual in which the Agent introduces itself; it retires the file once done.',
-    optional: true,
-  },
-  {
-    key: 'agents',
-    name: 'AGENTS.md',
-    hint: 'How the Agent works in its workspace: memory, red lines, who it hands work to.',
-    optional: true,
-  },
-  {
-    key: 'tools',
-    name: 'TOOLS.md',
-    hint: 'Notes on its tools and environment beyond the tool descriptions.',
     optional: true,
   },
 ]
@@ -158,8 +146,6 @@ export function CreateAgentTemplateDialog({
     soul: true,
     identity: true,
     bootstrap: true,
-    agents: true,
-    tools: true,
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -184,8 +170,6 @@ export function CreateAgentTemplateDialog({
           identity: starter.identity,
           // null leaves an optional file out.
           bootstrap: optional.bootstrap ? starter.bootstrap : null,
-          agents: optional.agents ? starter.agents : null,
-          tools: optional.tools ? starter.tools : null,
         } satisfies CreateProfileRequest,
       })
       await navigate({ to: '/templates/agents/$id', params: { id: shownId } })
@@ -251,7 +235,7 @@ export function CreateAgentTemplateDialog({
         <fieldset className="m-0 grid min-w-0 gap-2.5 border-0 p-0">
           <legend className="mb-2 p-0 text-sm font-semibold text-foreground">Files</legend>
           <p className="m-0 text-xs text-muted-foreground">
-            SOUL.md and IDENTITY.md are always there. These three can be left out:
+            SOUL.md and IDENTITY.md are always there. This one can be left out:
           </p>
           {TEMPLATE_FILES.filter((file) => file.optional).map((file) => (
             <CheckboxRow

@@ -51,6 +51,8 @@ export interface BuildSystemPromptOptions {
    * teammate's message) a first-run ritual waits: there is nobody to answer its questions.
    */
   withOperator?: boolean
+  /** The turn's replies go to the Agent's Telegram topic too (it has one, and the bot runs). */
+  telegram?: boolean
   /** Messages from other Agents waiting unread: the prompt says so, so the Agent reads them. */
   unreadMessages?: number
   /** The Agent's secrets, by name and the hosts web_fetch may send each to. */
@@ -67,6 +69,7 @@ export interface PromptSection {
     | 'agent-instructions'
     | 'first-run'
     | 'agent-home'
+    | 'telegram'
     | 'skills'
     | 'search-guide'
     | 'connections'
@@ -79,9 +82,7 @@ export interface PromptSection {
 }
 
 interface HomeDocuments {
-  'AGENTS.md': string | null
   'SOUL.md': string | null
-  'TOOLS.md': string | null
   'IDENTITY.md': string | null
   'BOOTSTRAP.md': string | null
 }
@@ -118,8 +119,7 @@ export function loadPromptSkills(
   return loaded
 }
 
-// Prompt order: peers first (who else is around), then persona, then tooling
-// hints, then self-knowledge, then the wake-up playbook.
+// Who the Agent is and how it works (SOUL.md, with its role and rules), then its name and look.
 //
 // BOOTSTRAP.md is intentionally NOT in this generic-context list — it gets
 // its own dedicated "First-Run Ritual" section below with explicit
@@ -128,7 +128,7 @@ export function loadPromptSkills(
 // per turn, so the section auto-vanishes when `bootstrap_done` removes the
 // file (vs. wrapping the user message, which would persist in pi's session
 // JSONL forever and replay on every future turn).
-const CONTEXT_FILE_ORDER = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md'] as const
+const CONTEXT_FILE_ORDER = ['SOUL.md', 'IDENTITY.md'] as const
 
 /** Snapshot the exact Agent-home prompt inputs without following fixed-name links. */
 function loadHomeDocuments(agentDir: string): HomeDocuments {
@@ -142,9 +142,7 @@ function loadHomeDocuments(agentDir: string): HomeDocuments {
     }
   }
   return {
-    'AGENTS.md': read('AGENTS.md'),
     'SOUL.md': read('SOUL.md'),
-    'TOOLS.md': read('TOOLS.md'),
     'IDENTITY.md': read('IDENTITY.md'),
     'BOOTSTRAP.md': read('BOOTSTRAP.md'),
   }
@@ -223,14 +221,26 @@ export function buildSystemPromptSections(
     text: [
       '# Agent Home',
       '',
-      'Your private home holds who you are — identity, soul, and behaviour rules. It is not shared with other agents and cannot be overwritten by them. The files above (IDENTITY.md, SOUL.md, AGENTS.md, TOOLS.md) live in this home, plus BOOTSTRAP.md when you are still in your first-run ritual.',
+      'Your private home holds who you are: SOUL.md (your role, personality, boundaries and the rules you keep about how you work) and IDENTITY.md (your name and look), plus BOOTSTRAP.md when you are still in your first-run ritual. It is not shared with other agents and cannot be overwritten by them.',
       '',
       '- To change who you are (name, vibe, personality, how you behave): use `home_write`.',
+      '- When the human gives you a rule about how you work that should hold from now on ("always…", "never…", "from now on…"), add it to SOUL.md under `## How you work` with `home_edit` (start that section if it is missing). Change or remove it when they take it back. A preference every Agent in the Team should follow belongs in USER.md instead.',
       '- To inspect exact wording of your own files: use `home_read` or `home_list`.',
       '- To remember facts the user told you or things you learned: use `memory_write` — NOT `home_write`.',
       '- To produce work output (code, docs, artefacts): use the workspace tools currently exposed to you — those operate on your team workspace, not your private home.',
     ].join('\n'),
   })
+
+  if (options.telegram) {
+    parts.push({
+      id: 'telegram',
+      text: [
+        '# Telegram',
+        '',
+        "Your replies also go to your topic in the human's Telegram group, often read on a phone. Keep them short and match the length of what you were asked. Say a thing in one message rather than several in a row. Markdown is converted for Telegram: headings become bold lines and tables fixed-width blocks, so short paragraphs and lists read best.",
+      ].join('\n'),
+    })
+  }
 
   if (agent.skills.length > 0) {
     const loaded = options.skills ?? []

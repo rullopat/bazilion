@@ -15,6 +15,7 @@ import {
   keepApprovedLessons,
   readApprovedLessons,
 } from './approved-lessons.ts'
+import { moveOldFilesIntoSoul } from './soul-only.ts'
 
 let _db: BazilionDb | null = null
 let _paths: Paths | null = null
@@ -97,7 +98,7 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
           )
           .get(webTokenRepo.hashToken(token))
         if (!bootstrap) throw new IncompatibleBootstrapIdentityError()
-        // An upgrade from before 0.66.0 drops reviewed learning: its lessons go to AGENTS.md.
+        // An upgrade from before 0.66.0 drops reviewed learning: its lessons go to SOUL.md.
         approvedLessons = readApprovedLessons(db)
       },
     })
@@ -118,6 +119,9 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
         throw new IncompatibleBootstrapIdentityError()
       }
     }
+
+    // An Agent home or template from before 0.67.0 still has AGENTS.md and TOOLS.md.
+    moveOldFilesIntoSoul(paths)
 
     // Work a daemon stop cut short fails and is not run again: a trigger run, a follow-up (whose
     // queue is paused).

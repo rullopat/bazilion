@@ -404,8 +404,6 @@ export interface LoadedProfile {
     soul: string
     identity: string
     bootstrap: string | null
-    agents: string | null
-    tools: string | null
   }
   /** Structured fields parsed from IDENTITY.md — null when no values are set. */
   identity: AgentIdentityFile | null

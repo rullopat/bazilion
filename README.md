@@ -55,8 +55,8 @@ is not supported.
 
 ## Concepts
 
-- **Profile**: an Agent template: `SOUL.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`, an optional
-  first-run `BOOTSTRAP.md`, a default model and skills.
+- **Profile**: an Agent template: `SOUL.md` (who the Agent is and how it works), `IDENTITY.md`,
+  an optional first-run `BOOTSTRAP.md`, a default model and skills.
 - **Agent**: spawned from a Profile into a Team. Its own documents and its conversation
   transcripts (Pi session files) live in `~/.bazilion/agents/<id>/`.
 - **Team**: a workspace directory (or a link to an existing project), a USER.md about you, a

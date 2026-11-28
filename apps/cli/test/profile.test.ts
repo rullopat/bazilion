@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
@@ -76,7 +76,7 @@ test('PUT /api/profiles/:id/files/:file edits SOUL.md post-creation', async () =
   expect(soul).toBe('# edited post-creation\nnew rules')
 })
 
-test('profile create --soul-file, --skip-bootstrap and --skip-tools write custom templates', async () => {
+test('profile create --soul-file and --skip-bootstrap write custom templates', async () => {
   const scratch = mkdtempSync(join(tmpdir(), 'bazilion-tmpl-'))
   const soulPath = join(scratch, 'soul.md')
   writeFileSync(soulPath, '# custom soul\nmake it yours')
@@ -90,7 +90,6 @@ test('profile create --soul-file, --skip-bootstrap and --skip-tools write custom
       '--soul-file',
       soulPath,
       '--skip-bootstrap',
-      '--skip-tools',
     ])
     expect(r.exitCode).toBe(0)
 
@@ -99,8 +98,10 @@ test('profile create --soul-file, --skip-bootstrap and --skip-tools write custom
 
     const show = await server.cli(['profile', 'show', 'custom-tmpl'])
     expect(show.stdout).toContain('bootstrap: no')
-    expect(show.stdout).toContain('agents:    yes')
-    expect(show.stdout).toContain('tools:     no')
+    expect(readdirSync(join(server.home, 'profiles', 'custom-tmpl')).sort()).toEqual([
+      'IDENTITY.md',
+      'SOUL.md',
+    ])
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }

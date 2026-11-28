@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { archiveAgent } from '../../src/core/agent/archive.ts'
@@ -57,12 +57,18 @@ test('spawnAgent creates dir, copies templates, inserts row, attaches default sk
   expect(agentRepo.listAttachedSkills(env.db, agent.id)).toEqual(['skill-a'])
 })
 
-test('a fresh spawn from a default-template profile has the default-on files', () => {
+test('a fresh spawn from a default-template profile has its three home files', () => {
   seedProfile() // no template overrides → default-on set
   const agent = spawn({ name: 'five' })
-  for (const file of ['SOUL.md', 'IDENTITY.md', 'BOOTSTRAP.md', 'AGENTS.md', 'TOOLS.md']) {
+  for (const file of ['SOUL.md', 'IDENTITY.md', 'BOOTSTRAP.md']) {
     expect(existsSync(join(agent.dir, file))).toBe(true)
   }
+  expect(readdirSync(agent.dir).sort()).toEqual([
+    'BOOTSTRAP.md',
+    'IDENTITY.md',
+    'SOUL.md',
+    'sessions',
+  ])
 })
 
 test('resolveAgent surfaces parsed identity from the agent IDENTITY.md', () => {
@@ -93,33 +99,6 @@ test('backwards-compat: an old 3-field placeholder IDENTITY.md resolves to null 
     '# IDENTITY.md — Who Am I?\n\n- **Name:**\n- **Vibe:**\n- **Emoji:**\n',
   )
   expect(resolveAgent(env.db, env.paths, agent.id).agent.identity).toBeNull()
-})
-
-test('spawnAgent copies optional AGENTS/TOOLS files when the profile seeded them', () => {
-  createProfile(env.db, env.paths, {
-    id: 'felix',
-    defaultModel: 'm',
-    templates: {
-      agents: '# AGENTS\n- peer: hello\n',
-      tools: '# TOOLS\n- ripgrep before grep\n',
-    },
-  })
-  const agent = spawn({ profileId: 'felix' })
-  expect(existsSync(join(agent.dir, 'AGENTS.md'))).toBe(true)
-  expect(existsSync(join(agent.dir, 'TOOLS.md'))).toBe(true)
-})
-
-test('spawnAgent does not create optional AGENTS/TOOLS files when the profile lacks them', () => {
-  // These files default ON, so a profile that lacks them must opt out
-  // with null. spawn must not fabricate files the profile doesn't have.
-  createProfile(env.db, env.paths, {
-    id: 'no-optionals',
-    defaultModel: 'anthropic:claude-opus-4-6',
-    templates: { agents: null, tools: null },
-  })
-  const agent = spawn({ profileId: 'no-optionals' })
-  expect(existsSync(join(agent.dir, 'AGENTS.md'))).toBe(false)
-  expect(existsSync(join(agent.dir, 'TOOLS.md'))).toBe(false)
 })
 
 test('spawning many agents from one profile produces independent instances', () => {

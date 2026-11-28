@@ -14,8 +14,8 @@ release: v0.66.0
 Reviewed learning (from 0.12.0) was off unless switched on per Agent, and when on it saw little:
 only the selected conversation, your messages and the Agent's replies, and each tool call as its
 name with "completed", never what it did or how it failed. The owner asked on 2026-11-28 for it to
-go in 0.66.0, and for a replacement in the next release: skills Agents write for themselves
-(BAZ-104). Agents keep learning as they always could, in the Team's memory, USER.md and their
+go in 0.66.0, and for a replacement later: skills Agents write for themselves (BAZ-104).
+Agents keep learning as they always could, in the Team's memory, USER.md and their
 own identity.
 
 ## As built

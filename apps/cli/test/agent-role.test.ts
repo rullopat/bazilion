@@ -28,7 +28,7 @@ test('an Agent added with a role starts knowing its job, without the first-run q
   expect(working.exitCode, working.stderr).toBe(0)
   const id = extractAgentId(working.stdout)
   const dir = join(server.home, 'agents', id)
-  expect(readFileSync(join(dir, 'AGENTS.md'), 'utf8')).toMatch(
+  expect(readFileSync(join(dir, 'SOUL.md'), 'utf8')).toMatch(
     /^# Your role\n\nFind leads in Krakow and hand them to the Sales Director\.\n\nThe operator added you to the Team Default/,
   )
   expect(existsSync(join(dir, 'BOOTSTRAP.md'))).toBe(false)

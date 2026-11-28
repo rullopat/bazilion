@@ -19,7 +19,7 @@ there.
 A file is used when it is a regular file of at most 128 KiB whose real path stays inside the Team
 workspace; a link to another workspace file (such as `AGENTS.md -> CLAUDE.md`) is fine. Anything
 else is skipped with a line in the daemon log, never an error. The Agent's own documents (its
-`AGENTS.md`, `SOUL.md`, …) are separate and labelled Agent instructions. Pi's own discovery of
+`SOUL.md` and `IDENTITY.md`) are separate and labelled Agent instructions. Pi's own discovery of
 extensions, skills, context files and prompt templates stays off, so a repository's `.pi/` runs
 nothing.
 
@@ -130,8 +130,12 @@ bazilion job show <job-id>      # the end of its output
 bazilion job stop <job-id>
 ```
 
-Each job is `agents/<id>/jobs/<job-id>/` in the home (`job.json` and `output.log`). A daemon stop
-stops every job; the next start tells their Agents. HTTP: `GET /api/agents/:id/jobs`,
+Each job is `agents/<id>/jobs/<job-id>/` in the home (`job.json` and `output.log`). Its output
+reaches `output.log` through the daemon with the values a turn takes out of command output (the
+saved API keys and the Agent's own secrets) replaced by `[REDACTED]`, so the file never holds
+them. A job ends when its command does. If a process it started in the background still holds its
+output, the end comes 3 seconds later, and what that process prints is still added to the log. A daemon stop stops every job; the next start tells their
+Agents. HTTP: `GET /api/agents/:id/jobs`,
 `GET /api/jobs/:id`, `POST /api/jobs/:id/stop`.
 
 ## Dangerous-command approval

@@ -31,29 +31,31 @@ test('home_read rejects files outside the whitelist', async () => {
   ).rejects.toThrow(/must be one of/)
 })
 
-test('home tools do not expose or edit a legacy HEARTBEAT.md', async () => {
-  const legacy = '# legacy scheduled instructions\n'
-  writeFileSync(join(agentDir, 'HEARTBEAT.md'), legacy, 'utf8')
+test.each([
+  'HEARTBEAT.md',
+  'AGENTS.md',
+  'TOOLS.md',
+])('home tools do not expose or edit a %s left from an older version', async (file) => {
+  const legacy = '# legacy instructions\n'
+  writeFileSync(join(agentDir, file), legacy, 'utf8')
   const tools = createToolRegistry(homeTools(agentDir))
 
-  await expect(tools.invoke('home_read', JSON.stringify({ file: 'HEARTBEAT.md' }))).rejects.toThrow(
+  await expect(tools.invoke('home_read', JSON.stringify({ file }))).rejects.toThrow(
     /must be one of/,
   )
   await expect(
-    tools.invoke(
-      'home_write',
-      JSON.stringify({ file: 'HEARTBEAT.md', content: '# replacement\n' }),
-    ),
+    tools.invoke('home_write', JSON.stringify({ file, content: '# replacement\n' })),
   ).rejects.toThrow(/must be one of/)
-  expect(await tools.invoke('home_list', '{}')).not.toContain('HEARTBEAT.md')
-  expect(readFileSync(join(agentDir, 'HEARTBEAT.md'), 'utf8')).toBe(legacy)
+  expect(await tools.invoke('home_list', '{}')).not.toContain(file)
+  expect(readFileSync(join(agentDir, file), 'utf8')).toBe(legacy)
 })
 
 test('home_read surfaces a helpful error if the file is missing', async () => {
   const tools = createToolRegistry(homeTools(agentDir))
-  // TOOLS.md is whitelisted but not seeded in beforeEach — should raise a read error
-  await expect(tools.invoke('home_read', JSON.stringify({ file: 'TOOLS.md' }))).rejects.toThrow(
-    /could not read TOOLS\.md/,
+  // BOOTSTRAP.md is retired after the first conversation: reading it then is an error.
+  rmSync(join(agentDir, 'BOOTSTRAP.md'))
+  await expect(tools.invoke('home_read', JSON.stringify({ file: 'BOOTSTRAP.md' }))).rejects.toThrow(
+    /could not read BOOTSTRAP\.md/,
   )
 })
 
@@ -65,6 +67,55 @@ test('home_write replaces file contents and is readable back', async () => {
   expect(readFileSync(join(agentDir, 'IDENTITY.md'), 'utf8')).toBe(body)
   const r = await tools.invoke('home_read', JSON.stringify({ file: 'IDENTITY.md' }))
   expect(r).toBe(body)
+})
+
+test('home_edit changes one passage or adds to the end, and keeps the rest', async () => {
+  const tools = createToolRegistry(homeTools(agentDir))
+  const edit = (args: Record<string, string>) =>
+    tools.invoke('home_edit', JSON.stringify({ file: 'SOUL.md', ...args }))
+  await edit({ old_text: '', new_text: '## How you work\n\n- Answer in Italian.' })
+  expect(readFileSync(join(agentDir, 'SOUL.md'), 'utf8')).toBe(
+    '# SOUL\n\nhelpful and honest.\n\n## How you work\n\n- Answer in Italian.\n',
+  )
+  await edit({ old_text: '- Answer in Italian.', new_text: '- Answer in Italian.\n- Be brief.' })
+  await edit({ old_text: '- Answer in Italian.\n', new_text: '' })
+  expect(readFileSync(join(agentDir, 'SOUL.md'), 'utf8')).toBe(
+    '# SOUL\n\nhelpful and honest.\n\n## How you work\n\n- Be brief.\n',
+  )
+
+  // A passage that is not there, or is there twice, changes nothing.
+  await expect(edit({ old_text: 'Answer in French.', new_text: 'x' })).rejects.toThrow(
+    /does not contain/,
+  )
+  await edit({ old_text: '', new_text: '- Be brief.' })
+  const twice = readFileSync(join(agentDir, 'SOUL.md'), 'utf8')
+  await expect(edit({ old_text: '- Be brief.', new_text: '' })).rejects.toThrow(/more than once/)
+  expect(readFileSync(join(agentDir, 'SOUL.md'), 'utf8')).toBe(twice)
+  await expect(
+    tools.invoke(
+      'home_edit',
+      JSON.stringify({ file: 'BOOTSTRAP.md', old_text: 'first run.', new_text: '' }),
+    ),
+  ).rejects.toThrow(/must be one of/)
+})
+
+test('home_edit refuses a linked file', async () => {
+  const outside = join(agentDir, '..', `outside-${Date.now()}.md`)
+  writeFileSync(outside, 'outside\n')
+  try {
+    unlinkSync(join(agentDir, 'SOUL.md'))
+    symlinkSync(outside, join(agentDir, 'SOUL.md'))
+    const tools = createToolRegistry(homeTools(agentDir))
+    await expect(
+      tools.invoke(
+        'home_edit',
+        JSON.stringify({ file: 'SOUL.md', old_text: 'outside', new_text: 'changed' }),
+      ),
+    ).rejects.toThrow(/home_edit: could not read SOUL\.md/)
+    expect(readFileSync(outside, 'utf8')).toBe('outside\n')
+  } finally {
+    rmSync(outside, { force: true })
+  }
 })
 
 test('home_write refuses to touch BOOTSTRAP.md (lifecycle belongs to bootstrap_done)', async () => {

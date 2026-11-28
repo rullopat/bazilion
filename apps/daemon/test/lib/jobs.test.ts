@@ -27,14 +27,35 @@ afterEach(async () => {
   env.cleanup()
 })
 
-function host(agentId = 'a1') {
+function host(agentId = 'a1', redact: string[] = [], extraEnv: Record<string, string> = {}) {
   return createJobHost({
     paths: env.paths,
     agentId,
     conversationId: 'conversation-1',
-    host: { cwd: workspace, env: { PATH: process.env.PATH ?? '/usr/bin:/bin' } },
+    redact,
+    host: { cwd: workspace, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', ...extraEnv } },
   })
 }
+
+test("a job's log never holds the turn's secrets, even one printed in two pieces", async () => {
+  const secret = 'job-secret-0123456789abcdef'
+  const jobs = host('a1', [secret], { JOB_TOKEN: secret })
+  const { job } = await jobs.start({
+    command: `echo "token $JOB_TOKEN"; printf 'split ${secret.slice(0, 9)}'; sleep 0.2; printf '${secret.slice(9)} done\\n'; printf 'Name? '; read name; echo "hi $name"`,
+  })
+  const prompt = await jobs.output({ id: job.id, waitSeconds: 5 })
+  let shown = prompt.output
+  // The prompt shows before the job gets its input: nothing is held back that cannot be a secret.
+  for (let tries = 0; !shown.includes('Name? ') && tries < 20; tries++) {
+    shown += (await jobs.output({ id: job.id, waitSeconds: 1 })).output
+  }
+  expect(shown).toContain('Name? ')
+  await jobs.input({ id: job.id, text: 'Ana\n' })
+  await waitFor(() => listJobs(env.paths, 'a1')[0]?.status === 'exited')
+  const log = readFileSync(join(env.paths.agentDir('a1'), 'jobs', job.id, 'output.log'), 'utf8')
+  expect(log).toBe('token [REDACTED]\nsplit [REDACTED] done\nName? hi Ana\n')
+  expect(jobDetail(env.paths, job.id)?.output).not.toContain(secret)
+})
 
 test('a job runs past its call; job_output waits for new output and its end', async () => {
   const jobs = host()
@@ -54,6 +75,22 @@ test('a job runs past its call; job_output waits for new output and its end', as
   // The Agent saw its end: no wake.
   expect(takeWakes('a1')).toEqual([])
 })
+
+test('a process a job left running keeps its output clean after the job has ended', async () => {
+  const secret = 'linger-secret-0123456789'
+  const jobs = host('a1', [secret])
+  // The command ends at once; what it started prints a secret in two pieces around the job's end.
+  const { job } = await jobs.start({
+    command: `(sleep 2.5; printf 'late ${secret.slice(0, 10)}'; sleep 1; printf '${secret.slice(10)}\\n') & echo started`,
+  })
+  const log = () =>
+    readFileSync(join(env.paths.agentDir('a1'), 'jobs', job.id, 'output.log'), 'utf8')
+  for (let i = 0; i < 100 && !log().includes('[REDACTED]'); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  expect(listJobs(env.paths, 'a1')[0]).toMatchObject({ status: 'exited', exitCode: 0 })
+  expect(log()).toBe('started\nlate [REDACTED]\n')
+}, 15_000)
 
 test('a job that ends unseen wakes its Agent in its conversation, with the end of its output', async () => {
   const jobs = host()

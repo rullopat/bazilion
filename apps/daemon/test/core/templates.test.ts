@@ -1,10 +1,8 @@
 import { expect, test } from 'vitest'
 import {
-  DEFAULT_AGENTS,
   DEFAULT_BOOTSTRAP,
   DEFAULT_IDENTITY,
   DEFAULT_SOUL,
-  DEFAULT_TOOLS,
 } from '../../src/core/profile/templates.ts'
 
 // Cheap regression guard: assert the key markers each template promises are
@@ -26,14 +24,10 @@ test('DEFAULT_BOOTSTRAP runs a two-phase ritual (identity + user profile)', () =
   expect(DEFAULT_BOOTSTRAP).toMatch(/etag/i)
 })
 
-test('DEFAULT_AGENTS is the workspace operating manual', () => {
-  expect(DEFAULT_AGENTS).toContain('Red lines')
-  expect(DEFAULT_AGENTS).toContain('External channels')
-  expect(DEFAULT_AGENTS).toContain('Triple-Tap')
-  expect(DEFAULT_AGENTS).toContain('Memory discipline')
-})
-
-test('DEFAULT_SOUL and DEFAULT_TOOLS carry their richer content', () => {
+test('DEFAULT_SOUL says who the Agent is and how it works, and names only files it has', () => {
   expect(DEFAULT_SOUL).toContain('Core truths')
-  expect(DEFAULT_TOOLS).toContain('Environment notes')
+  expect(DEFAULT_SOUL).toContain('Boundaries')
+  expect(DEFAULT_SOUL).toContain('trash over rm')
+  expect(DEFAULT_SOUL).not.toContain('AGENTS.md')
+  expect(DEFAULT_SOUL).not.toContain('TOOLS.md')
 })

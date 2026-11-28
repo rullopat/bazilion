@@ -26,7 +26,7 @@ describe('session prompt boundary', () => {
     const teamDir = paths.teamDir('team-1')
     for (const path of [join(agentDir, 'sessions'), join(teamDir, 'memory')])
       mkdirSync(path, { recursive: true })
-    writeFileSync(join(agentDir, 'AGENTS.md'), 'PRIVATE_AGENT_SENTINEL\n')
+    writeFileSync(join(agentDir, 'SOUL.md'), 'PRIVATE_AGENT_SENTINEL\n')
     mkdirSync(join(teamDir, '.pi', 'extensions'), { recursive: true })
     mkdirSync(join(teamDir, '.pi', 'skills', 'untrusted'), { recursive: true })
     writeFileSync(

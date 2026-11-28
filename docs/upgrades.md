@@ -44,10 +44,20 @@ Homes from 0.26.0 to 0.62.0 have no schema version. A later release takes such a
 version 1 when its schema is exactly the one those releases shipped, and upgrades it from there.
 
 0.66.0 removed reviewed learning. Upgrading a home from before it adds each Agent's approved
-private lessons to its `AGENTS.md`, under **Lessons the human approved**, once the database
+private lessons to its `SOUL.md`, under **Lessons the human approved**, once the database
 upgrade has succeeded, so the Agent keeps following them; shared lessons stay notes in the Team's
 memory. Proposals still waiting, rejected or revoked lessons and the history of reviews are
 dropped; the copy in `upgrades/` keeps them.
+
+0.67.0 removed `AGENTS.md` and `TOOLS.md` from Agent homes and templates. When the daemon starts
+and finds one, it moves what the file says into `SOUL.md`, which is in the Agent's instructions on
+every turn: the role at the top of an `AGENTS.md` goes to the top, its approved lessons to the end,
+and text the built-in default did not have under **How you work** (from `AGENTS.md`) or **Tools**
+(from `TOOLS.md`). A `SOUL.md` that is still a built-in default becomes today's. The files as they
+were, `SOUL.md` included, are kept in `upgrades/agent-files-<time>/`; then the two are removed. A
+home it cannot move, because one of those files is a link, is left as it is with a line in the
+daemon log, and what its old files say is not in the Agent's instructions until you replace the
+link with the file it points to and restart Bazilion.
 
 Copies in `upgrades/` stay until you delete them. Backups leave them out, and
 `bazilion uninstall` deletes them with the rest of the home.
@@ -63,4 +73,6 @@ A release refuses a home that a later release has already upgraded, and says so.
 3. Install the earlier release and start it.
 
 What changed in the database since that upgrade is lost; files in the home (conversations,
-memory, Team workspaces) are not touched.
+memory, Team workspaces) are not touched. Going back before 0.67.0, the Agents keep working with
+their `SOUL.md` alone; to have their old `AGENTS.md` and `TOOLS.md` again, copy them back from
+`upgrades/agent-files-<time>/`, with the `SOUL.md` kept there.

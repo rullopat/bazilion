@@ -129,6 +129,9 @@ async function openAgentTurn(
     webSearchHost: served.has('webSearchHost')
       ? { search: (args) => call('webSearch', args) }
       : undefined,
+    xSearchHost: served.has('xSearchHost')
+      ? { search: (args) => call('xSearch', args) }
+      : undefined,
     imageGenerationHost: served.has('imageGenerationHost')
       ? {
           generate: async (request) => {
@@ -221,6 +224,7 @@ async function openAgentTurn(
       : undefined,
     contacts: input.contacts,
     withOperator: input.withOperator,
+    ...(input.telegram ? { telegram: true } : {}),
     ...(input.browser ? { browser: input.browser } : {}),
     ...(input.unreadMessages ? { unreadMessages: input.unreadMessages } : {}),
   })

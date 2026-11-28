@@ -17,11 +17,9 @@ import type { Context } from 'hono'
 import {
   agentRepo,
   createProfile,
-  DEFAULT_AGENTS,
   DEFAULT_BOOTSTRAP,
   DEFAULT_IDENTITY,
   DEFAULT_SOUL,
-  DEFAULT_TOOLS,
   deleteProfile,
   loadProfile,
   profileRepo,
@@ -53,8 +51,6 @@ profilesRouter.get('/_/templates', (c) =>
     soul: DEFAULT_SOUL,
     identity: DEFAULT_IDENTITY,
     bootstrap: DEFAULT_BOOTSTRAP,
-    agents: DEFAULT_AGENTS,
-    tools: DEFAULT_TOOLS,
   } satisfies ProfileTemplates),
 )
 
@@ -74,23 +70,14 @@ profilesRouter.post('/', async (c) => {
     return c.json({ error: 'id and defaultModel are required' }, 400)
   }
 
-  // Per optional file: a non-empty string overrides, `null` skips the file, and omitting it lets
-  // createProfile write the default. AGENTS/TOOLS are default-on, so the UI prefills the editors
-  // and passes `null` only when the operator opts out.
-  const templates: {
-    soul?: string
-    identity?: string
-    bootstrap?: string | null
-    agents?: string | null
-    tools?: string | null
-  } = {}
+  // BOOTSTRAP.md: a non-empty string overrides, `null` skips the file, and omitting it lets
+  // createProfile write the default.
+  const templates: { soul?: string; identity?: string; bootstrap?: string | null } = {}
   if (typeof body.soul === 'string' && body.soul) templates.soul = body.soul
   if (typeof body.identity === 'string' && body.identity) templates.identity = body.identity
-  for (const key of ['bootstrap', 'agents', 'tools'] as const) {
-    const value = body[key]
-    if (value === null) templates[key] = null
-    else if (typeof value === 'string' && value) templates[key] = value
-  }
+  if (body.bootstrap === null) templates.bootstrap = null
+  else if (typeof body.bootstrap === 'string' && body.bootstrap)
+    templates.bootstrap = body.bootstrap
 
   const { db, paths } = getCtx()
   const profile = createProfile(db, paths, {
